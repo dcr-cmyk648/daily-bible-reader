@@ -27,6 +27,16 @@ const SECRET_PATTERNS = [
   {name: "real authorized-user email", regex: /"email"\s*:\s*"(?![^"@]+@(?:example\.com|example\.org|example\.net|example\.invalid))[^"@]+@[^"@]+"/i}
 ];
 
+const PUBLIC_GOOGLE_IDENTIFIER_PATHS = [
+  /^config\/pages-pwa-public\.json$/,
+  /^dist\/pages-pwa\/config\.json$/,
+  /^dist\/pages-pwa\/assets\/pwa-client\.[a-f0-9]{16}\.js$/,
+  /^web\/pwa-canary\/config\.json$/,
+  /^web\/pwa-canary\/assets\/pwa-client\.[a-f0-9]{16}\.js$/
+];
+const PUBLIC_OAUTH_CLIENT_ID = /\b\d{6,}-[a-z0-9_-]{12,}\.apps\.googleusercontent\.com\b/i;
+const PUBLIC_API_DEPLOYMENT_ASSIGNMENT = /["']?apiDeploymentId["']?\s*[:=]\s*["'][A-Za-z0-9_-]{20,}["']/;
+
 // Build these at runtime so the scanner can safely inspect its own source.
 const ESV_SIGNATURES = [
   new RegExp(["In the beginning", "God created the heavens and the earth"].join(", "), "i"),
@@ -64,6 +74,9 @@ export function inspectText(relativePath, text) {
     if (pattern.regex.test(text)) problems.push(pattern.name);
   }
   inspectSecretAssignments(text, problems);
+  const publicIdentifierPath = PUBLIC_GOOGLE_IDENTIFIER_PATHS.some((pattern) => pattern.test(relativePath));
+  if (!publicIdentifierPath && PUBLIC_OAUTH_CLIENT_ID.test(text)) problems.push("public OAuth client ID outside allowlisted PWA artifact");
+  if (!publicIdentifierPath && PUBLIC_API_DEPLOYMENT_ASSIGNMENT.test(text)) problems.push("public Apps Script API deployment ID outside allowlisted PWA artifact");
   for (const signature of ESV_SIGNATURES) {
     if (signature.test(text)) problems.push("likely ESV passage wording");
   }

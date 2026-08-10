@@ -77,7 +77,9 @@ The tracked pre-commit hook can be enabled with:
 git config core.hooksPath .githooks
 ```
 
-It is enabled in the current local repository. GitHub Pages is enabled from `main` and publishes only `web/release.json` plus immutable JavaScript/CSS releases. It never receives private content, comments, ESV wording, credentials, Google IDs, account emails, or the Apps Script deployment URL. Generate and verify the current code-only release before a commit:
+It is enabled in the current local repository. GitHub Pages is enabled from `main`. The phone-confirmed production hybrid uses only `web/release.json` plus immutable JavaScript/CSS releases. A separate, non-production `web/pwa-canary/` build adds a public shell, manifest/icons, and narrowly scoped service worker. It never receives private content, comments, ESV wording, credentials, Drive/Sheet/file IDs, account emails, or the Apps Script web-app URL. Once Google setup is enabled, the canary necessarily publishes only its non-secret OAuth web-client ID and API-executable deployment ID; the repository scanner confines those identifiers to the canary config/client paths.
+
+The canary is deliberately disabled until its separate Google API project is approved and configured. It does not change the installed Apps Script production URL. Generate and verify both public delivery paths before a commit:
 
 ```sh
 npm run build
@@ -89,7 +91,8 @@ npm run check
 
 - `app/frontend/` — dependency-free mobile web client and local mock adapter
 - `app/apps-script/` — Apps Script backend source; production bundle is generated into ignored `dist/`
-- `web/` — code-only, content-addressed GitHub Pages release manifest and assets
+- `app/pages-pwa/` — isolated Pages launcher, GIS/API transport, and public-only service worker
+- `web/` — code-only, content-addressed GitHub Pages release assets plus the isolated `pwa-canary/`
 - `app/shared/` — pure server-domain logic shared with tests
 - `schemas/` — versioned plan, reading, source, commentary, comment, highlight, and provider-policy schemas
 - `fixtures/` — fabricated mock Scripture and non-substantive pilot placeholders
@@ -102,6 +105,7 @@ npm run check
 - `docs/CONTENT_AND_RIGHTS.md` — conservative source-handling rules
 - `docs/COMMENTARY_WORKFLOW.md` — one-reading research and publication pipeline
 - `docs/CONTENT_AUTOMATION.md` — proposed scheduled drafting and deterministic readiness-buffer workflow
+- `docs/BACKLOG.md` — prioritized index of requested features, decisions, manual checks, and accepted behavior
 - `docs/EDITORIAL_STANCE.md` — confessional premise, supernatural evidentiary weighting, fair-engagement method, and concise daily hierarchy
 - `docs/CHRONOLOGY.md` — schedule model and chronology limits
 - `docs/TESTING.md` — validation strategy

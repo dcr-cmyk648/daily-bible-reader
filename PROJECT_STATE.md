@@ -4,7 +4,7 @@ Updated 2026-08-10 (`America/Detroit`).
 
 ## Current phase
 
-The private reader is operating as a seven-day pre-launch bridge based on Celebration Church's *Reading the Bible in 3 Years — Year 3 Quarter 4*. Apps Script version 23 passed its installed-iPhone open/reopen, live-ESV, and highlight-write gate and is now the production authenticated launcher/backend. GitHub Pages serves the content-addressed code-only frontend. The earlier versions 20–22 failures are retained as diagnostic history; routine frontend work no longer churns Apps Script deployments.
+The private reader is operating as a seven-day pre-launch bridge based on Celebration Church's *Reading the Bible in 3 Years — Year 3 Quarter 4*. Apps Script version 23 passed its installed-iPhone open/reopen, live-ESV, and highlight-write gate and remains the production authenticated launcher/backend. GitHub Pages serves the content-addressed code-only frontend. A separate Pages-top-level PWA/API canary is implemented locally and its isolated Apps Script project/API deployment now exists, but the public PWA remains disabled pending the dedicated standard Cloud project, OAuth client, private properties, and phone gate. Production has not changed.
 
 The app has local-first startup, a dark full-month calendar, authoritative two-reader completion, three reading pages, live network-only ESV, source-grounded private commentary, append-only shared comments, and append-only shared verse highlights. Dustin and Shane have distinct highlight colors, may both mark the same verse, see server timestamps, and may remove only their own marks.
 
@@ -29,7 +29,7 @@ The full 92-day Celebration chapter assignment is factual reference metadata onl
 ## Decisions in force
 
 - The top-level launcher and private backend remain an Apps Script HTML-service web app executing as the accessing user. Google identity, the exact two-user server allowlist, reader enrollment/code, and Drive permission must all succeed; failures close access.
-- GitHub Pages is enabled from `main` and serves only `web/release.json` plus immutable code/style assets. It contains no private data or Google/deployment identifiers and is never treated as authorization.
+- GitHub Pages is enabled from `main`. Production consumes only `web/release.json` plus immutable code/style assets. The isolated `web/pwa-canary/` is public-shell code, icons, and metadata only; once enabled, its non-secret OAuth client/API deployment IDs are the sole identifier exception. Pages is never authorization.
 - Drive is canonical for private plans, commentary, and source metadata. The restricted event spreadsheet has separate append-only `comment-events` and `highlight-events` tabs.
 - Reader identity, display name, IDs, timestamps, and revisions are server-derived. The client cannot select another user, Sheet, Drive file, passage, or redirect.
 - ESV is the only displayed translation. Each chapter is fetched server-side through the official API and is never persisted in Git, Drive, IndexedDB, or a service-worker cache.
@@ -43,9 +43,11 @@ The full 92-day Celebration chapter assignment is factual reference metadata onl
 
 ## Approved backlog and design candidates
 
+`docs/BACKLOG.md` is the canonical cross-feature index; this section records the immediate decisions that materially affect current implementation.
+
 - Add the selected reading's **verse of the day** to the card below the calendar, above the date-specific open button. The validated reference should appear immediately from private commentary metadata. If the exact ESV wording is shown there, retrieve it server-side without blocking calendar selection, keep it memory-only, and include the required ESV identification, link, and notice; do not copy the wording into plan/commentary metadata or IndexedDB.
 - Use Matthew Henry's *Complete Commentary on the Whole Bible* as the default foundational commentary pass, then build outward with independent sources suited to the passage. The preferred exact research edition is CrossWire `MHC` version 2.2, explicitly marked public domain; preserve the normal edition, provenance, independence, and claim-level citation controls.
-- Evaluate a Pages-top-level PWA only through a separate two-account canary. Expected gains are faster and more deterministic shell launch, true public-asset offline caching, correct iOS icon/manifest behavior, and tighter version control—not faster live Drive, Sheets, ESV, or write operations. The preferred prototype uses Google Identity Services plus an Apps Script API executable running under the caller's OAuth authority. Creating the standard Cloud project, OAuth client, or API deployment remains approval-gated, and production stays on version 23 until the complete phone/security gate passes.
+- Evaluate a Pages-top-level PWA only through the prepared separate two-account canary. Expected gains are faster and more deterministic shell launch, true public-asset offline caching, correct iOS icon/manifest behavior, and tighter version control—not faster live Drive, Sheets, ESV, or write operations. The local GIS/API adapter, exact public cache, rollback/update flow, isolated API manifest, and tests are complete. The separately named Apps Script project and API deployment were created after approval; the standard Cloud project, OAuth client, private properties, enabled public config, and complete phone/security gate remain. Production stays on version 23 until that gate passes.
 
 ## Completed work
 
@@ -70,11 +72,14 @@ The full 92-day Celebration chapter assignment is factual reference metadata onl
 - Added and verified the frozen 17-column `highlight-events` tab in the existing event spreadsheet without changing sharing.
 - Extended plan/reading schemas with stream IDs/sequences, context reading IDs, unit labels, and partial-passage bounds. Validation enforces four unique streams, contiguous schedule/stream order, earlier-only context, exact ranges, and introduction immediately followed by chapter 1.
 - Documented the four-stream scheduling model without generating the complete plan.
+- Added the canonical `docs/BACKLOG.md` so all requested deployment, calendar, commentary, automation, plan, offline, and manual-check work survives conversation history and is prioritized independently of the current task.
+- Built the isolated Pages-top-level PWA canary. It reuses frontend release `ced732908c22c3de`, supplies a concurrency-safe eleven-method `scripts.run` adapter, keeps OAuth tokens in memory, validates full scopes and SRI assets, owns the manifest/open-Bible icons, and installs an explicit public-only service-worker update/rollback path. A separate build emits an API-executable-only Apps Script bundle without altering the production `USER_ACCESSING` manifest.
+- Created the separately named canary Apps Script project, pushed the validated API-only build, and created its first API deployment. No production script, deployment, sharing, or properties were changed; its identifiers remain outside tracked files until the shared standard Cloud/OAuth setup is complete.
 - Built A/B bundle `aa5f629de676c1b3`, created immutable Apps Script version 22, deployed it only to canary, and cloned it back from Google to confirm an exact byte match with the inspected bundle. Its phone failure was preserved as diagnostic evidence rather than promoted. Both deployment URLs return no-store Google sign-in redirects to anonymous requests.
 
 ## Validation status
 
-- `npm run check` passes: repository safety over 80 files, seven schemas, seven active readings, the independent 92-day reference schedule, private validation of three v3 syntheses plus four v2 placeholders and 36 sources, and 103/103 tests.
+- `npm run check` passes: repository safety over 97 files, seven schemas, seven active readings, the independent 92-day reference schedule, private validation of three v3 syntheses plus four v2 placeholders and 36 sources, and 112/112 tests. The hybrid remains server `c57d948db8fbf838` / frontend `ced732908c22c3de`; the checked-in PWA config is disabled until Google setup.
 - Hybrid server build `c57d948db8fbf838` has 23,837 bytes of Apps Script HTML with only 1,757-byte and 4,074-byte watchdog/loader scripts inline. Live Pages frontend `ced732908c22c3de` contains the integrity-checked 73,635-byte core, 21,566-byte CSS, and 6,501-byte optional highlight client; exact HTTPS readback, content types, and permissive asset CORS were verified after publication. Tracked `web/` exactly matches the live release, and prior `73da95f8a9ec3bb3` remains available for fallback.
 - GitHub Pages HTTPS readback passed for the release manifest and all three immutable assets: status, content type, CORS, byte length, and complete bytes were verified. Apps Script version 23 also matches the inspected local build exactly; its anonymous probe correctly redirects to Google sign-in with no-store headers.
 - At iPhone-class width, the optimistic add/remove smoke used fabricated Scripture, updated accessible verse state correctly, produced no horizontal overflow or console errors, and left the server/launcher build unchanged.
@@ -92,8 +97,9 @@ The full 92-day Celebration chapter assignment is factual reference metadata onl
 - An editor of the underlying Sheet could alter rows directly. Google sharing is restricted to the two exact accounts, but the event logs are operationally auditable rather than cryptographically immutable.
 - Offline revocation is not instantaneous. Removing access requires allowlist, Drive, and Sheet revocation plus clearing downloaded data on a retained device.
 - No service worker runs under Apps Script hosting; warm local-first startup is supported, but iOS controls cold shell retention and ESV always needs a network.
+- The Pages canary cannot make a real private call until its new API deployment and a separate standard Cloud project/OAuth web client share one project and receive the private Script Properties. The authenticated diagnostic confirmed production currently has no API-executable deployment. This is an external setup gate, not a local code failure.
 - The three substantive syntheses remain `in_review`. D057–D060 remain placeholders. No later commentary or full chronological plan has been generated.
 
 ## Next concrete action
 
-Keep the stable hybrid in production while deciding whether to authorize a separate Pages-top-level/GIS/API-executable canary. Independently, implement the selected-day verse preview as a normal frontend/data-contract release and apply the Matthew Henry foundational pass to future commentary research before beginning the approved content-automation work.
+Complete the approved dedicated Cloud-project login, associate that project with the new `Daily Bible Reader Pages Canary` script, create the OAuth web client, set the canary's private Script Properties, and publish the enabled Pages canary for Dustin's installed-iPhone gate. Keep the stable hybrid in production throughout. After the stability decision, the first queued product change is `CAL-001` (selected-day verse preview), followed by readiness automation and the Matthew Henry-based rolling content workflow recorded in `docs/BACKLOG.md`.

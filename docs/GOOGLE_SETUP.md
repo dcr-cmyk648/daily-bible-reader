@@ -140,6 +140,25 @@ Apps Script supplies the viewport and the supported Apple/mobile-web-app capabil
 
 The manifest request uses no-store plus a unique query and every asset path contains the deterministic release ID, so routine updates no longer depend on replacing an Apps Script HTML document. This still cannot guarantee cold offline launch under the Apps Script origin. If the thin launcher remains unreliable, pause and review the Pages-top-level PWA/GIS fallback in `docs/ARCHITECTURE.md`.
 
-## 7. Revocation and backup
+## 7. Create the separate Pages/API canary
+
+This is not part of production setup. The local code is prepared, but no canary Apps Script or Cloud project has been created. Google requires a separate explicit approval for those persistent resources.
+
+Use a separate standalone Apps Script project so associating a standard Cloud project, changing OAuth consent, or testing API execution cannot force the working version-23 web app to reauthorize or change deployment behavior. The prepared `npm run build:api-canary` output removes the web-app entry point and adds only `executionApi.access: ANYONE`; “any logged-in user” is only the outer API permission. A request still needs the canary OAuth client token, and every exposed reader function repeats the exact two-account allowlist, reader code/enrollment, Drive permission, scope, payload, and resource-ID controls.
+
+After exact approval to create the canary resources:
+
+1. Create a standard Google Cloud project owned by Dustin. Record its project **ID** and numeric project **number** privately.
+2. Enable **Google Apps Script API** in that Cloud project.
+3. Configure the OAuth consent screen for an external personal-use app. Add only Dustin and Shane as test users. The app uses the four scopes already listed in `app/apps-script/appsscript.json`; an unverified-app warning is expected during this two-user test.
+4. Create one **Web application** OAuth client with the single authorized JavaScript origin `https://dcr-cmyk648.github.io`. No wildcard, Apps Script URL, localhost production origin, client secret, or redirect URI belongs in the Pages app.
+5. Create a separate standalone Apps Script project named `Daily Bible Reader Pages Canary`, associate it with the standard Cloud project's numeric project number, push only the inspected `dist/apps-script-api-canary/` bundle, and configure the same private Script Properties as production. Dustin must enter the saved ESV key directly into that project's Script Properties; it must not pass through chat, Git, or the public config.
+6. Deploy that script as an **API executable**, with access limited to logged-in users. Record only the API deployment ID—not a web-app URL—as the public deployment identifier.
+7. Put the public OAuth client ID and public API deployment ID into `config/pages-pwa-public.json`, set `enabled: true`, then run `npm run build`, `npm run publish:pages`, and `npm run check`. The safety scanner permits those identifiers only in the exact canary config/client paths.
+8. Commit/push the enabled code-only canary and test `https://dcr-cmyk648.github.io/daily-bible-reader/web/pwa-canary/` in Safari before installing it. Production version 23 remains the rollback and should not be uninstalled yet.
+
+Google's official `scripts.run` requirements—API-executable deployment, all script scopes, a shared standard Cloud project, and the Apps Script API—were rechecked 2026-08-10: <https://developers.google.com/apps-script/api/how-tos/execute>. The API-executable manifest access values were rechecked at <https://developers.google.com/apps-script/manifest/web-app-api-executable>. The local authenticated diagnostic currently reports that the existing production project is **not** deployed as an API executable; no production setting was changed.
+
+## 8. Revocation and backup
 
 Follow `docs/SECURITY.md`. Audit Drive and Sheet sharing periodically. Keep encrypted/private exports of content and comments outside Git, and test restore with new IDs before treating a backup as usable.

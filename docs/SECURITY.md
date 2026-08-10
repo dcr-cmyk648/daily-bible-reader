@@ -2,12 +2,12 @@
 
 ## Invariants
 
-- No secret, API key, Google resource ID, Apps Script deployment URL, user email, private commentary, comment body export, ESV passage, or raw copyrighted source in Git or public artifacts. GitHub Pages contains executable code, styles, and non-sensitive release metadata only.
+- No secret, API key, private Google resource ID, Apps Script web-app URL, user email, private commentary, comment body export, ESV passage, or raw copyrighted source enters Git or public artifacts. The Pages canary's non-secret OAuth web-client ID and API-executable deployment ID are its only identifier exception and are allowlisted to exact config/client paths; Drive, Sheet, file, account, key, and web-app identifiers remain forbidden.
 - Signed-in access alone is insufficient: active/effective identity must match, the account must be allowlisted, a freshly presented code or a versioned per-user enrollment must match the server-held hash, and the account must be able to read the configured Drive manifest.
 - The browser cannot choose identity, display name, timestamps, author ID, Drive IDs, Sheet ID, ESV reference, revision number, or redirect target.
 - Every private RPC repeats authorization. Errors reveal no private file names, IDs, emails, comment bodies, or provider response bodies.
 - Comments and Markdown are rendered as text/allowlisted elements, never arbitrary HTML.
-- The current ESV policy forbids persistent Scripture storage. Private content and a sanitized reader-bound bootstrap have a separate seven-day IndexedDB store, and no service worker caches either category.
+- The current ESV policy forbids persistent Scripture storage. Private content and a sanitized reader-bound bootstrap have a separate seven-day IndexedDB store. The Pages-canary service worker caches only an exact public-asset allowlist and never caches private content, ESV, comments, highlights, OAuth/API responses, or credentials.
 - The temporary owner-only phone setup Sheet may contain Shane's exact Google account and no other input. It must never contain API keys, reader codes or hashes, passwords, tokens, or Google file IDs.
 
 ## Threat model
@@ -28,6 +28,9 @@
 | Calendar activity inference | Server-derived author ID, maximum 42 plan-validated IDs, active-event materialization, body-free response, and plan-versioned local state | A device holder can see which days either authorized reader completed until downloaded data is cleared |
 | Drive sharing error | configured-ID-only access, active-user execution, explicit allowlist, no “anyone with link” | Owner must periodically audit folder and Sheet sharing |
 | Stale or substituted client asset | Fixed Pages origin/path, deterministic release ID, no-store manifest lookup, immutable release paths, SHA-384 integrity, locally remembered last-valid manifest, published-output/source verification | Pages availability is now a runtime dependency; a compromised repository owner could publish a matching malicious manifest and asset, so GitHub account security and protected `main` remain operational controls |
+| Leaked Pages OAuth token | GIS token model; requested scopes fixed in code; token kept only in JavaScript memory; no token logging/storage; restrictive CSP; text-only rendering; expiry skew and 401 clearing | XSS in the public origin could act with the token until expiry, so third-party scripts/analytics are prohibited and the canary must not be promoted before the two-account security gate |
+| Leaked public OAuth/API identifiers | Identifiers are not credentials; API requires a valid caller token and the server repeats identity, allowlist, reader enrollment/code, Drive permission, scope, and request validation | OAuth-brand abuse or quota noise remains possible; restrict authorized origins and monitor/revoke the canary client/deployment if abused |
+| Service-worker overreach or stale code | Exact generated public URL set, same-origin GET-only interception, config/API bypass, network-first navigation/manifest, complete install before activation, explicit update button, current-plus-prior rollback cache, app-specific cache prefix | iOS controls lifecycle timing; installed-phone update, rollback, Cache Storage inspection, and offline tests remain mandatory |
 
 ## Identity and authorization
 
@@ -56,6 +59,8 @@ Before online private reads/writes, `ScriptApp.getAuthorizationInfo` confirms al
 ## CSP and rendering
 
 The local server sends a restrictive CSP (`default-src 'self'`, no objects, no frames, no form submissions). The generated Apps Script HTML uses a best-effort meta policy limited to Google script origins plus the one exact GitHub Pages origin needed for its manifest, JavaScript, CSS, and public icon. The loader rejects any asset origin/path outside the configured immutable release prefix and applies SHA-384 integrity. Apps Script's iframe sandbox remains part of the boundary. XSS safety does not depend on CSP because all untrusted material is rendered through `textContent` and an allowlisted Markdown renderer.
+
+The Pages canary uses a different restrictive CSP: self-hosted code/style/icon assets, Google's GIS client/frame/style endpoints, and the exact Google OAuth and Apps Script REST hosts. It has no inline executable script, analytics, arbitrary frames, form targets, or open redirect. Its API shim exposes only the reader RPC allowlist and retains the OAuth access token in memory; `localStorage` stores only a non-sensitive prior-consent flag. Repository safety rejects public OAuth/API identifiers outside the exact canary paths.
 
 ## Revocation, rotation, backup
 

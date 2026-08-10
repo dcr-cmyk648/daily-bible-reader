@@ -18,14 +18,15 @@ const BRIDGE_READING_IDS = [
   "CC-Y3Q4-D059",
   "CC-Y3Q4-D060"
 ];
-const ALLOWED_PREFIXES = ["app/frontend/", "app/shared/", "fixtures/", "config/"];
+const ALLOWED_PREFIXES = ["app/frontend/", "app/shared/", "fixtures/", "config/", "web/"];
 const MIME = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".webmanifest": "application/manifest+json; charset=utf-8",
-  ".svg": "image/svg+xml"
+  ".svg": "image/svg+xml",
+  ".png": "image/png"
 };
 
 function send(response, status, body, headers = {}) {

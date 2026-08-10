@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "content-live-index/v1",
+  "planVersion": "fabricated-automation-v1",
+  "updatedAt": "2026-08-10T09:00:00.000Z",
+  "readings": [
+    {
+      "readingId": "TST-001",
+      "dayIndex": 1,
+      "publicationStatus": "published",
+      "humanReviewStatus": "approved",
+      "contentHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "manifestContentHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "manifestEntryPresent": true,
+      "validationStatus": "passed"
+    }
+  ]
+}

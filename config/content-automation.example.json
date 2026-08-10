@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "content-automation-policy/v1",
+  "generationTimezone": "America/Detroit",
+  "generationStrategy": "earliest_gap_only",
+  "maxReadingsGeneratedPerRun": 1,
+  "autoPublish": false,
+  "requireValidationPassed": true,
+  "requireMatchingHashes": true,
+  "draftBuffer": {
+    "targetDays": 7,
+    "warningBelowDays": 5,
+    "criticalBelowDays": 3,
+    "allowedReviewStatuses": ["unreviewed", "in_review", "approved"]
+  },
+  "publishedBuffer": {
+    "targetDays": 5,
+    "warningBelowDays": 3,
+    "criticalBelowDays": 2,
+    "allowedReviewStatuses": ["approved"],
+    "acceptedPublicationStatuses": ["reviewed", "published"]
+  }
+}

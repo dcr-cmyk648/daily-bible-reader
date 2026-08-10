@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "content-staging-index/v1",
+  "planVersion": "fabricated-automation-v1",
+  "updatedAt": "2026-08-10T09:00:00.000Z",
+  "entries": [
+    {
+      "readingId": "TST-002",
+      "dayIndex": 2,
+      "stage": "ready_for_review",
+      "artifactRef": "FABRICATED_AUTOMATION_DRAFT_TST_002",
+      "generatedAt": "2026-08-10T08:00:00.000Z",
+      "workflowVersion": "fabricated-workflow/v1",
+      "modelOrTool": "FABRICATED TEST TOOL — no model output",
+      "sourceSetVersion": "fabricated-sources/v1",
+      "humanReviewStatus": "unreviewed",
+      "contentHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "validation": {
+        "status": "passed",
+        "checkedAt": "2026-08-10T08:30:00.000Z",
+        "errorCodes": []
+      },
+      "priorContentHashes": [],
+      "knownLimitations": ["Fabricated metadata fixture; contains no commentary."]
+    },
+    {
+      "readingId": "intro-TSB",
+      "dayIndex": 4,
+      "stage": "ready_for_review",
+      "artifactRef": "FABRICATED_AUTOMATION_DRAFT_INTRO_TSB",
+      "generatedAt": "2026-08-10T08:00:00.000Z",
+      "workflowVersion": "fabricated-workflow/v1",
+      "modelOrTool": "FABRICATED TEST TOOL — no model output",
+      "sourceSetVersion": "fabricated-sources/v1",
+      "humanReviewStatus": "unreviewed",
+      "contentHash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "validation": {
+        "status": "passed",
+        "checkedAt": "2026-08-10T08:30:00.000Z",
+        "errorCodes": []
+      },
+      "priorContentHashes": [],
+      "knownLimitations": ["Later staged work must not hide the day-three gap."]
+    }
+  ]
+}

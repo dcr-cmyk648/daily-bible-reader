@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daily-bible-reader.local/schemas/content-readiness-report.schema.json",
+  "title": "Content automation readiness report",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "planVersion",
+    "evaluatedAt",
+    "effectiveDate",
+    "startIndex",
+    "remainingDays",
+    "draft",
+    "published",
+    "nextAction"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "content-readiness-report/v1"},
+    "planVersion": {"type": "string", "minLength": 1, "maxLength": 80},
+    "evaluatedAt": {"type": "string", "format": "date-time"},
+    "effectiveDate": {"type": "string", "format": "date"},
+    "startIndex": {"type": "integer", "minimum": 0},
+    "remainingDays": {"type": "integer", "minimum": 0},
+    "draft": {"$ref": "#/$defs/horizon"},
+    "published": {"$ref": "#/$defs/horizon"},
+    "nextAction": {
+      "type": "object",
+      "required": ["kind", "readingId", "reasonCode"],
+      "properties": {
+        "kind": {"enum": ["none", "generate_or_repair_one", "review_or_publish_one", "plan_complete"]},
+        "readingId": {"type": ["string", "null"], "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{1,79}$"},
+        "reasonCode": {"type": "string", "minLength": 1, "maxLength": 100}
+      },
+      "additionalProperties": false
+    }
+  },
+  "$defs": {
+    "horizon": {
+      "type": "object",
+      "required": [
+        "consecutiveReadyDays",
+        "targetDays",
+        "targetMet",
+        "warningBelowDays",
+        "criticalBelowDays",
+        "state",
+        "readyThroughReadingId",
+        "nextGapReadingId",
+        "nextGapReason"
+      ],
+      "properties": {
+        "consecutiveReadyDays": {"type": "integer", "minimum": 0},
+        "targetDays": {"type": "integer", "minimum": 0},
+        "targetMet": {"type": "boolean"},
+        "warningBelowDays": {"type": "integer", "minimum": 0},
+        "criticalBelowDays": {"type": "integer", "minimum": 0},
+        "state": {"enum": ["green", "warning", "critical"]},
+        "readyThroughReadingId": {"type": ["string", "null"], "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{1,79}$"},
+        "nextGapReadingId": {"type": ["string", "null"], "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{1,79}$"},
+        "nextGapReason": {"type": ["string", "null"], "pattern": "^[a-z0-9][a-z0-9_-]{1,99}$"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

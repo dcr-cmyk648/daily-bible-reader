@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daily-bible-reader.local/schemas/content-staging-index.schema.json",
+  "title": "Private commentary staging index",
+  "type": "object",
+  "required": ["schemaVersion", "planVersion", "updatedAt", "entries"],
+  "properties": {
+    "schemaVersion": {"const": "content-staging-index/v1"},
+    "planVersion": {"type": "string", "minLength": 1, "maxLength": 80},
+    "updatedAt": {"type": "string", "format": "date-time"},
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "readingId",
+          "dayIndex",
+          "stage",
+          "artifactRef",
+          "generatedAt",
+          "workflowVersion",
+          "modelOrTool",
+          "sourceSetVersion",
+          "humanReviewStatus",
+          "contentHash",
+          "validation",
+          "priorContentHashes",
+          "knownLimitations"
+        ],
+        "properties": {
+          "readingId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{1,79}$"},
+          "dayIndex": {"type": "integer", "minimum": 1},
+          "stage": {
+            "enum": [
+              "researching",
+              "drafted",
+              "ready_for_review",
+              "changes_requested",
+              "approved",
+              "published",
+              "validation_failed"
+            ]
+          },
+          "artifactRef": {"type": "string", "minLength": 1, "maxLength": 500},
+          "generatedAt": {"type": ["string", "null"], "format": "date-time"},
+          "workflowVersion": {"type": "string", "minLength": 1, "maxLength": 100},
+          "modelOrTool": {"type": ["string", "null"], "maxLength": 300},
+          "sourceSetVersion": {"type": "string", "minLength": 1, "maxLength": 100},
+          "humanReviewStatus": {
+            "enum": ["not_started", "unreviewed", "in_review", "approved", "changes_requested"]
+          },
+          "contentHash": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+          "validation": {
+            "type": "object",
+            "required": ["status", "checkedAt", "errorCodes"],
+            "properties": {
+              "status": {"enum": ["not_run", "passed", "failed"]},
+              "checkedAt": {"type": ["string", "null"], "format": "date-time"},
+              "errorCodes": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{1,79}$"}
+              }
+            },
+            "additionalProperties": false
+          },
+          "priorContentHashes": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+          },
+          "knownLimitations": {
+            "type": "array",
+            "items": {"type": "string", "maxLength": 4000}
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

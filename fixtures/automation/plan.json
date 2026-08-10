@@ -1,0 +1,122 @@
+{
+  "schemaVersion": "plan/v1",
+  "planVersion": "fabricated-automation-v1",
+  "title": "FABRICATED automation fixture plan",
+  "canonId": "fabricated-test-canon",
+  "entries": [
+    {
+      "planVersion": "fabricated-automation-v1",
+      "dayIndex": 1,
+      "readingId": "TST-001",
+      "kind": "chapter",
+      "bookId": "TSA",
+      "chapter": 1,
+      "passages": [{"bookId": "TSA", "chapter": 1, "verseCount": 10}],
+      "orderingRationale": "Fabricated fixture ordering.",
+      "chronologyBasis": "pragmatic",
+      "confidence": "high",
+      "notes": "No biblical or private content.",
+      "sourceIds": ["fabricated_automation_fixture"]
+    },
+    {
+      "planVersion": "fabricated-automation-v1",
+      "dayIndex": 2,
+      "readingId": "TST-002",
+      "kind": "chapter",
+      "bookId": "TSA",
+      "chapter": 2,
+      "passages": [{"bookId": "TSA", "chapter": 2, "verseCount": 10}],
+      "orderingRationale": "Fabricated fixture ordering.",
+      "chronologyBasis": "pragmatic",
+      "confidence": "high",
+      "notes": "No biblical or private content.",
+      "sourceIds": ["fabricated_automation_fixture"]
+    },
+    {
+      "planVersion": "fabricated-automation-v1",
+      "dayIndex": 3,
+      "readingId": "TST-003",
+      "kind": "chapter",
+      "bookId": "TSA",
+      "chapter": 3,
+      "passages": [{"bookId": "TSA", "chapter": 3, "verseCount": 10}],
+      "orderingRationale": "Fabricated fixture ordering.",
+      "chronologyBasis": "pragmatic",
+      "confidence": "high",
+      "notes": "Intentional earliest draft gap.",
+      "sourceIds": ["fabricated_automation_fixture"]
+    },
+    {
+      "planVersion": "fabricated-automation-v1",
+      "dayIndex": 4,
+      "readingId": "intro-TSB",
+      "kind": "book_intro",
+      "bookId": "TSB",
+      "orderingRationale": "Fabricated fixture book introduction.",
+      "chronologyBasis": "pragmatic",
+      "confidence": "high",
+      "notes": "Book introductions use the same buffer contract.",
+      "sourceIds": ["fabricated_automation_fixture"]
+    },
+    {
+      "planVersion": "fabricated-automation-v1",
+      "dayIndex": 5,
+      "readingId": "TST-005",
+      "kind": "chapter",
+      "bookId": "TSB",
+      "chapter": 1,
+      "passages": [{"bookId": "TSB", "chapter": 1, "verseCount": 10}],
+      "orderingRationale": "Fabricated fixture chapter after its introduction.",
+      "chronologyBasis": "pragmatic",
+      "confidence": "high",
+      "notes": "No biblical or private content.",
+      "sourceIds": ["fabricated_automation_fixture"]
+    },
+    {
+      "planVersion": "fabricated-automation-v1",
+      "dayIndex": 6,
+      "readingId": "TST-006",
+      "kind": "chapter",
+      "bookId": "TSB",
+      "chapter": 2,
+      "passages": [{"bookId": "TSB", "chapter": 2, "verseCount": 10}],
+      "orderingRationale": "Fabricated fixture ordering.",
+      "chronologyBasis": "pragmatic",
+      "confidence": "high",
+      "notes": "No biblical or private content.",
+      "sourceIds": ["fabricated_automation_fixture"]
+    },
+    {
+      "planVersion": "fabricated-automation-v1",
+      "dayIndex": 7,
+      "readingId": "TST-007",
+      "kind": "chapter",
+      "bookId": "TSB",
+      "chapter": 3,
+      "passages": [{"bookId": "TSB", "chapter": 3, "verseCount": 10}],
+      "orderingRationale": "Fabricated fixture ordering.",
+      "chronologyBasis": "pragmatic",
+      "confidence": "high",
+      "notes": "No biblical or private content.",
+      "sourceIds": ["fabricated_automation_fixture"]
+    },
+    {
+      "planVersion": "fabricated-automation-v1",
+      "dayIndex": 8,
+      "readingId": "TST-008",
+      "kind": "chapter",
+      "bookId": "TSB",
+      "chapter": 4,
+      "passages": [{"bookId": "TSB", "chapter": 4, "verseCount": 10}],
+      "orderingRationale": "Fabricated fixture ordering.",
+      "chronologyBasis": "pragmatic",
+      "confidence": "high",
+      "notes": "No biblical or private content.",
+      "sourceIds": ["fabricated_automation_fixture"]
+    }
+  ],
+  "bookMetrics": {
+    "TSA": {"verseCount": 30, "chapterCount": 3, "versification": "fabricated"},
+    "TSB": {"verseCount": 40, "chapterCount": 4, "versification": "fabricated"}
+  }
+}

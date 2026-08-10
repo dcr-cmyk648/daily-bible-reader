@@ -105,6 +105,7 @@ npm run check
 - `docs/CONTENT_AND_RIGHTS.md` — conservative source-handling rules
 - `docs/COMMENTARY_WORKFLOW.md` — one-reading research and publication pipeline
 - `docs/CONTENT_AUTOMATION.md` — proposed scheduled drafting and deterministic readiness-buffer workflow
+- `docs/AUTOMATION_RUNBOOK.md` — implemented read-only buffer evaluator, rollout gates, and saved scheduled-task workflow
 - `docs/BACKLOG.md` — prioritized index of requested features, decisions, manual checks, and accepted behavior
 - `docs/EDITORIAL_STANCE.md` — confessional premise, supernatural evidentiary weighting, fair-engagement method, and concise daily hierarchy
 - `docs/CHRONOLOGY.md` — schedule model and chronology limits

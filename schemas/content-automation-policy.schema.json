@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daily-bible-reader.local/schemas/content-automation-policy.schema.json",
+  "title": "Daily Bible Reader content automation policy",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "generationTimezone",
+    "generationStrategy",
+    "maxReadingsGeneratedPerRun",
+    "autoPublish",
+    "requireValidationPassed",
+    "requireMatchingHashes",
+    "draftBuffer",
+    "publishedBuffer"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "content-automation-policy/v1"},
+    "generationTimezone": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 100,
+      "pattern": "^[A-Za-z_]+(?:/[A-Za-z0-9_+.-]+)+$"
+    },
+    "generationStrategy": {"const": "earliest_gap_only"},
+    "maxReadingsGeneratedPerRun": {"const": 1},
+    "autoPublish": {"const": false},
+    "requireValidationPassed": {"const": true},
+    "requireMatchingHashes": {"const": true},
+    "draftBuffer": {"$ref": "#/$defs/draftBuffer"},
+    "publishedBuffer": {"$ref": "#/$defs/publishedBuffer"}
+  },
+  "$defs": {
+    "baseBuffer": {
+      "type": "object",
+      "required": ["targetDays", "warningBelowDays", "criticalBelowDays", "allowedReviewStatuses"],
+      "properties": {
+        "targetDays": {"type": "integer", "minimum": 1, "maximum": 30},
+        "warningBelowDays": {"type": "integer", "minimum": 1, "maximum": 30},
+        "criticalBelowDays": {"type": "integer", "minimum": 1, "maximum": 30},
+        "allowedReviewStatuses": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"enum": ["not_started", "unreviewed", "in_review", "approved", "changes_requested"]}
+        }
+      },
+      "additionalProperties": false
+    },
+    "draftBuffer": {
+      "type": "object",
+      "required": ["targetDays", "warningBelowDays", "criticalBelowDays", "allowedReviewStatuses"],
+      "properties": {
+        "targetDays": {"type": "integer", "minimum": 1, "maximum": 30},
+        "warningBelowDays": {"type": "integer", "minimum": 1, "maximum": 30},
+        "criticalBelowDays": {"type": "integer", "minimum": 1, "maximum": 30},
+        "allowedReviewStatuses": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"enum": ["unreviewed", "in_review", "approved"]}
+        }
+      },
+      "additionalProperties": false
+    },
+    "publishedBuffer": {
+      "type": "object",
+      "required": ["targetDays", "warningBelowDays", "criticalBelowDays", "allowedReviewStatuses", "acceptedPublicationStatuses"],
+      "properties": {
+        "targetDays": {"type": "integer", "minimum": 1, "maximum": 30},
+        "warningBelowDays": {"type": "integer", "minimum": 1, "maximum": 30},
+        "criticalBelowDays": {"type": "integer", "minimum": 1, "maximum": 30},
+        "allowedReviewStatuses": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"const": "approved"}
+        },
+        "acceptedPublicationStatuses": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"enum": ["reviewed", "published"]}
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,6 @@
+{
+  "schemaVersion": "app-config/v1",
+  "sharedStartDate": "2026-08-10",
+  "sharedStartDateMode": "fixed",
+  "timezone": "America/Detroit"
+}

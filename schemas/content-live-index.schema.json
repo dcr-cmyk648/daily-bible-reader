@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daily-bible-reader.local/schemas/content-live-index.schema.json",
+  "title": "Published commentary metadata index",
+  "type": "object",
+  "required": ["schemaVersion", "planVersion", "updatedAt", "readings"],
+  "properties": {
+    "schemaVersion": {"const": "content-live-index/v1"},
+    "planVersion": {"type": "string", "minLength": 1, "maxLength": 80},
+    "updatedAt": {"type": "string", "format": "date-time"},
+    "readings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "readingId",
+          "dayIndex",
+          "publicationStatus",
+          "humanReviewStatus",
+          "contentHash",
+          "manifestContentHash",
+          "manifestEntryPresent",
+          "validationStatus"
+        ],
+        "properties": {
+          "readingId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{1,79}$"},
+          "dayIndex": {"type": "integer", "minimum": 1},
+          "publicationStatus": {"enum": ["placeholder", "draft", "reviewed", "published"]},
+          "humanReviewStatus": {
+            "enum": ["not_started", "unreviewed", "in_review", "approved", "changes_requested"]
+          },
+          "contentHash": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+          "manifestContentHash": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+          "manifestEntryPresent": {"type": "boolean"},
+          "validationStatus": {"enum": ["not_run", "passed", "failed"]}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

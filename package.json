@@ -4,9 +4,9 @@
   "private": true,
   "description": "Private two-person daily ESV reader with Drive-hosted commentary and revision-aware shared comments.",
   "scripts": {
-    "build": "npm run build:hybrid && npm run build:api-canary && npm run build:pwa",
+    "build": "npm run build:hybrid && npm run build:token-canary && npm run build:pwa",
     "build:hybrid": "node scripts/build-apps-script.mjs",
-    "build:api-canary": "node scripts/build-apps-script-api-canary.mjs",
+    "build:token-canary": "node scripts/build-apps-script-token-canary.mjs",
     "build:pwa": "node scripts/build-pages-pwa.mjs",
     "publish:pages": "npm run publish:pages-assets && npm run publish:pwa",
     "publish:pages-assets": "node scripts/publish-pages-assets.mjs",

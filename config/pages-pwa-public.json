@@ -1,6 +1,5 @@
 {
-  "schemaVersion": "dbr-pages-public-config/v1",
+  "schemaVersion": "dbr-pages-public-config/v2",
   "enabled": false,
-  "oauthClientId": "",
-  "apiDeploymentId": ""
+  "backendWebAppUrl": ""
 }

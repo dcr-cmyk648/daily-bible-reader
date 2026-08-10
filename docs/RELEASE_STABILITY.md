@@ -1,6 +1,6 @@
 # Installed-reader release stability
 
-Status: release-blocking investigation, 2026-08-10.
+Status: stable hybrid production plus isolated Pages/token canary, 2026-08-10.
 
 ## What the deployed artifacts show
 
@@ -40,25 +40,27 @@ The line ceiling is deliberately far below the observed failure and close to the
 
 1. Production stays on the last phone-confirmed immutable version until a canary passes.
 2. A stability canary changes one delivery variable at a time.
-3. `npm run check`, generated-line enforcement, exact artifact inspection, and anonymous no-store/sign-in probing must pass before canary.
+3. `npm run check`, generated-line enforcement, repository safety, exact artifact inspection, and public-backend status/denial probing must pass before canary.
 4. A new shell architecture or storage/RPC migration requires an installed-iPhone cold launch, close/reopen, calendar open, one Scripture open, and one write test before promotion.
 5. Ordinary content publication does not redeploy the shell. After the hybrid's initial phone gate, routine frontend changes publish a verified immutable Pages release; phone testing is reserved for launcher, storage, authentication, backend-contract, and deployment changes instead of every small UI edit.
-6. Failed canaries are never promoted. Rollback changes only the deployment's immutable version pointer.
+6. Failed canaries are never promoted. The stable production deployment stays pinned to version 23; a token-canary rollback archives its separate endpoint or restores the last good Pages release.
 
-## External code-only asset architecture
+## Stable hybrid control
 
-The bounded-line build was unreliable, so the fallback is active. GitHub Pages serves only content-addressed JavaScript and CSS. A small Apps Script HTML document remains the signed-in top-level launcher, which preserves `google.script.run`, user-executed authorization, Drive gating, Sheet writes, User Properties, and the server-held ESV key. No commentary, comments, ESV wording, credentials, Google resource IDs, account emails, or deployment URL enters Pages.
+The bounded-line build was unreliable, so production version 23 uses a small Apps Script launcher and code-only Pages assets. Its immutable server build `c57d948db8fbf838` and initial frontend release `73da95f8a9ec3bb3` passed exact artifact comparison and installed-iPhone open/reopen, ESV, comment, and highlight checks. The later frontend release `ced732908c22c3de` remains the phone-confirmed public-code control.
 
-The launcher fetches a fixed-origin `release.json` with `no-store` and a unique query, validates its schema, release path, byte bounds, and exact Pages origin, and loads each immutable asset with SHA-384 Subresource Integrity. It remembers only the last validated code-release manifest in `localStorage`; if the current manifest is temporarily unavailable, it may request that previously successful immutable release. Old release directories remain available. Arbitrary URLs supplied by a manifest are rejected.
+The stable launcher still uses `google.script.run`, `USER_ACCESSING`, Google identity, Drive gating, and User Properties. It remains installed and available throughout the Pages canary. No token-canary build, push, or deployment may update this production deployment pointer.
 
-Build `c57d948db8fbf838` paired the initial launcher/server with frontend release `73da95f8a9ec3bb3`. Its Apps Script HTML is 23,837 bytes and contains only the 1,757-byte watchdog and 4,074-byte loader inline; the 73,635-byte application core, 21,566-byte stylesheet, and 5,666-byte optional highlight client are Pages assets. The release manifest and every immutable asset passed live HTTPS status, content-type, CORS, size, and exact-byte readback. Immutable Apps Script version 23 was also downloaded from Google and exactly matched the inspected build. Dustin then confirmed installed-iPhone open/reopen, live ESV, and highlight add/remove; that exact artifact was promoted to production.
+Its **D** Home Screen monogram is a confirmed Apps Script hosting limitation: Apps Script provides an outer favicon but no Web App Manifest or Apple touch icon for the installed top-level document. Reinstalling the same Apps Script URL cannot fix it.
 
-The phone gate also resolved the icon question. The intended open-Bible PNG is valid and reachable, and Apps Script's favicon setter receives its exact URL, but the installed icon is still WebKit's **D** monogram. Apps Script provides no outer-document manifest or Apple touch-icon API, while iOS uses those declarations for Home Screen artwork. The icon is therefore a documented hosting limitation rather than stale Pages content. Do not churn launcher versions to retry the same unsupported metadata path.
+## Pages/token canary boundary
 
-This is not yet a service-worker-controlled PWA because the installed top-level origin remains Apps Script. It should make routine UI releases deterministic and fast without weakening Google identity. If the thin launcher itself remains unreliable or slow, the next boundary is a Pages-top-level PWA using Google Identity Services and server-side token validation; that larger authentication migration is not assumed safe without a separate prototype and two-account authorization test.
+The user approved a lower-friction bearer-token model for this two-person personal app. The isolated `web/pwa-canary/` is now a real top-level PWA: it owns the manifest/open-Bible icon, public-only service worker, immediate shell, and update lifecycle. It replaces the discarded GIS/API-executable prototype and requires no OAuth web client, Cloud billing setup, or Shane consent screen.
 
-## Pages-top-level canary gate
+The Pages client sends one bounded hidden-form POST per RPC to a separate public owner-executed Apps Script web-app deployment. The response is confined by fixed Pages origin, Google response-origin validation, request ID, and a 192-bit nonce. Only eleven methods and exact argument counts are accepted. Reader codes remain in POST bodies/IndexedDB and server-side hashes; no private data or ESV response enters Pages or Cache Storage.
 
-The isolated `web/pwa-canary/` prototype is now built locally but remains disabled and is not a production target. It loads the already phone-confirmed immutable core rather than issuing a new production frontend release. Its own deterministic release covers the public launcher, HTML, manifest, icons, service worker, public configuration, and referenced core manifest. Publishing it never deletes `web/releases/` or an older versioned PWA client.
+The token backend is built into `dist/apps-script-token-canary/`. It is derived from the common server but has a status-only `doGet`, allowlisted `doPost`, token-derived identity, script-cache rate buckets, and `ANYONE_ANONYMOUS` / `USER_DEPLOYING` manifest without `userinfo.email`. `app/apps-script/appsscript.json` remains the stable `USER_ACCESSING` source manifest. The token deployment is an immutable separate deployment; project HEAD is restored to the stable bundle immediately afterward.
 
-The canary cannot be enabled until the separately approved Google resources exist and the public identifiers pass the repository allowlist. Before publishing an enabled canary: run the full check; inspect all eight current PWA files; verify HTTPS MIME types and bytes; verify the service worker controls only `/web/pwa-canary/`; inspect Cache Storage for public assets only; then perform Dustin's installed-iPhone cold/warm/offline/update/token-expiry/live-ESV/write tests. Shane and the denial cases follow before any production-host decision. A canary failure changes nothing about Apps Script version 23 or frontend release `ced732908c22c3de`.
+Publishing never deletes `web/releases/` or older versioned PWA clients. The service worker controls only `/web/pwa-canary/`, skips config and every non-GET/cross-origin request, installs a complete enumerated public cache before activation, and retains one prior app cache for rollback.
+
+Before recommending the new install URL: run the full check; inspect the four generated Apps Script token files and all generated PWA files; verify live HTTPS MIME types, hashes, bytes, endpoint status, and one sanitized private RPC; inspect Cache Storage; then perform Dustin's cold/warm/offline/update/live-ESV/comment/highlight/code-retention tests. Shane and crossed/wrong-token tests follow. A failure changes nothing about Apps Script production version 23.

@@ -17,9 +17,9 @@
 
   var BUILD_CONFIG = __DBR_PUBLIC_CONFIG__;
   var FRONTEND_MANIFEST_URL = "../release.json";
-  var API_ROOT = "https://script.googleapis.com/v1/scripts/";
-  var TOKEN_SKEW_MS = 60000;
-  var TOKEN_FLAG = "dbr-google-consent-v1";
+  var RPC_CHANNEL = "dbr-rpc-response/v1";
+  var RPC_TRANSPORT_VERSION = "dbr-form-bridge/v1";
+  var RPC_TIMEOUT_MS = 45000;
   var ALLOWED_METHODS = new Set([
     "getBootstrapData",
     "confirmReaderAccess",
@@ -33,17 +33,9 @@
     "submitHighlightEvent",
     "forgetReaderEnrollment"
   ]);
-  var REQUIRED_SCOPES = [
-    "https://www.googleapis.com/auth/drive.readonly",
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/script.external_request",
-    "https://www.googleapis.com/auth/userinfo.email"
-  ];
   var bootFinished = false;
-  var tokenClient = null;
-  var accessToken = "";
-  var tokenExpiresAt = 0;
-  var tokenWaiters = [];
+  var pendingRequests = new Map();
+  var responseListenerInstalled = false;
   var updateRegistration = null;
   var reloadingForUpdate = false;
 
@@ -85,195 +77,140 @@
   }
 
   function validateConfig(value) {
-    if (!value || value.schemaVersion !== "dbr-pages-public-config/v1" || value.enabled !== true ||
-        !/^\d{6,}-[a-z0-9_-]{12,}\.apps\.googleusercontent\.com$/.test(String(value.oauthClientId || "")) ||
-        !/^[A-Za-z0-9_-]{20,}$/.test(String(value.apiDeploymentId || "")) ||
+    if (!value || value.schemaVersion !== "dbr-pages-public-config/v2" || value.enabled !== true ||
         !/^[a-f0-9]{16}$/.test(String(value.pwaReleaseId || ""))) {
-      throw new Error("The Pages canary is not configured for private Google access.");
+      throw new Error("The Pages canary is not configured for its private reader bridge.");
+    }
+    var backendUrl = String(value.backendWebAppUrl || "");
+    if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]{20,}\/exec$/.test(backendUrl)) {
+      throw new Error("The Pages canary is not configured for its private reader bridge.");
     }
     return Object.freeze({
       schemaVersion: value.schemaVersion,
       enabled: true,
-      oauthClientId: value.oauthClientId,
-      apiDeploymentId: value.apiDeploymentId,
+      backendWebAppUrl: backendUrl,
       pwaReleaseId: value.pwaReleaseId
     });
   }
 
-  function authGate(message, busy) {
-    var gate = element("googleAuthGate");
-    var button = element("googleAuthButton");
-    if (gate) gate.hidden = false;
-    if (button) button.disabled = Boolean(busy);
-    setText("googleAuthStatus", message || "Authorize this installed reader to contact the private backend.");
-    setText("authStatus", accessTokenIsFresh() ? "Google connected" : "Google authorization needed");
-  }
-
-  function hideAuthGate() {
-    var gate = element("googleAuthGate");
-    if (gate) gate.hidden = true;
-    var button = element("googleAuthButton");
-    if (button) button.disabled = false;
-    setText("authStatus", "Google connected");
-  }
-
-  function accessTokenIsFresh() {
-    return Boolean(accessToken) && tokenExpiresAt - Date.now() > TOKEN_SKEW_MS;
-  }
-
-  function rejectTokenWaiters(message) {
-    var waiting = tokenWaiters.splice(0);
-    waiting.forEach(function rejectWaiter(waiter) {
-      waiter.reject(new Error(message || "Google authorization was not completed."));
-    });
-  }
-
-  function resolveTokenWaiters() {
-    if (!accessTokenIsFresh()) return;
-    var waiting = tokenWaiters.splice(0);
-    waiting.forEach(function resolveWaiter(waiter) {
-      waiter.resolve(accessToken);
-    });
-  }
-
-  function clearToken(message) {
-    accessToken = "";
-    tokenExpiresAt = 0;
-    authGate(message || "Google authorization is needed to refresh private data.", false);
-  }
-
-  function getAccessToken() {
-    if (accessTokenIsFresh()) return Promise.resolve(accessToken);
-    authGate("Continue with Google to refresh private readings and shared activity.", false);
-    return new Promise(function waitForToken(resolve, reject) {
-      tokenWaiters.push({resolve: resolve, reject: reject});
-    });
-  }
-
-  function tokenCallback(response) {
-    if (!response || response.error || !response.access_token) {
-      authGate("Google authorization was not completed. Retry when you are ready.", false);
-      rejectTokenWaiters("Google authorization was not completed.");
-      return;
+  function randomHex(byteCount) {
+    if (!root.crypto || typeof root.crypto.getRandomValues !== "function") {
+      throw new Error("Secure request identifiers are unavailable in this browser.");
     }
-    var seconds = Number(response.expires_in || 0);
-    var granted = new Set(String(response.scope || "").split(/\s+/).filter(Boolean));
-    var missingScope = REQUIRED_SCOPES.some(function missing(scope) { return !granted.has(scope); });
-    if (!Number.isFinite(seconds) || seconds < 60 || missingScope) {
-      authGate("Google returned an unusable authorization. Please retry.", false);
-      rejectTokenWaiters(missingScope
-        ? "Google did not grant every permission required by the private reader."
-        : "Google authorization expired before it could be used.");
-      return;
-    }
-    accessToken = String(response.access_token);
-    tokenExpiresAt = Date.now() + seconds * 1000;
+    var bytes = new Uint8Array(byteCount);
+    root.crypto.getRandomValues(bytes);
+    return Array.from(bytes, function toHex(value) { return value.toString(16).padStart(2, "0"); }).join("");
+  }
+
+  function allowedResponseOrigin(value) {
     try {
-      root.localStorage && root.localStorage.setItem(TOKEN_FLAG, "yes");
-    } catch (_error) {}
-    hideAuthGate();
-    resolveTokenWaiters();
-  }
-
-  function loadGoogleIdentity() {
-    return new Promise(function load(resolve, reject) {
-      if (root.google && root.google.accounts && root.google.accounts.oauth2) {
-        resolve();
-        return;
-      }
-      var script = root.document.createElement("script");
-      script.src = "https://accounts.google.com/gsi/client";
-      script.async = true;
-      script.defer = true;
-      script.referrerPolicy = "no-referrer";
-      script.onload = function onload() {
-        if (root.google && root.google.accounts && root.google.accounts.oauth2) resolve();
-        else reject(new Error("Google authorization support did not initialize."));
-      };
-      script.onerror = function onerror() {
-        reject(new Error("Google authorization support could not be loaded."));
-      };
-      root.document.head.appendChild(script);
-    });
-  }
-
-  function requestAuthorization(promptValue) {
-    if (!tokenClient) {
-      authGate("Google authorization is still loading. Retry in a moment.", false);
-      return;
-    }
-    authGate("Waiting for Google authorization…", true);
-    try {
-      tokenClient.requestAccessToken({prompt: promptValue === undefined ? "consent" : promptValue});
+      var url = new URL(String(value || ""));
+      return url.protocol === "https:" && (
+        url.hostname === "script.google.com" ||
+        url.hostname === "script.googleusercontent.com" ||
+        url.hostname.endsWith(".script.googleusercontent.com")
+      );
     } catch (_error) {
-      authGate("Google authorization could not be opened. Retry from Safari.", false);
+      return false;
     }
   }
 
-  function initializeIdentity(config) {
-    return loadGoogleIdentity().then(function ready() {
-      tokenClient = root.google.accounts.oauth2.initTokenClient({
-        client_id: config.oauthClientId,
-        scope: REQUIRED_SCOPES.join(" "),
-        include_granted_scopes: true,
-        callback: tokenCallback,
-        error_callback: function errorCallback() {
-          authGate("Google authorization was interrupted. Retry when you are ready.", false);
-          rejectTokenWaiters("Google authorization was interrupted.");
-        }
-      });
-      var button = element("googleAuthButton");
-      if (button) button.addEventListener("click", function onAuthorize() { requestAuthorization(""); });
-      authGate("Continue with Google to connect the private backend. Saved readings can open while you authorize.", false);
-      var previouslyConsented = false;
-      try {
-        previouslyConsented = root.localStorage && root.localStorage.getItem(TOKEN_FLAG) === "yes";
-      } catch (_error) {}
-      if (previouslyConsented) root.setTimeout(function silentRenewal() { requestAuthorization(""); }, 0);
-    });
-  }
-
-  function executionFailure(payload, status) {
-    var message = "The private backend request failed.";
-    var code = status === 401 ? "AUTH_REQUIRED" : status === 403 ? "ACCESS_DENIED" : "SERVER_ERROR";
-    if (payload && payload.error) {
-      var details = Array.isArray(payload.error.details) ? payload.error.details : [];
-      var scriptError = details.find(function findDetail(detail) { return detail && detail.errorMessage; });
-      message = scriptError && scriptError.errorMessage || payload.error.message || message;
-      if (scriptError && scriptError.errorType) code = String(scriptError.errorType);
-    }
-    var error = new Error(message);
-    error.code = code;
-    error.status = status;
+  function bridgeError(input, fallback) {
+    var error = new Error(input && input.message || fallback || "The private backend request failed.");
+    error.code = input && input.code || "SERVER_UNAVAILABLE";
     return error;
   }
 
-  async function execute(config, method, args) {
+  function cleanupRequest(requestId) {
+    var pending = pendingRequests.get(requestId);
+    if (!pending) return null;
+    pendingRequests.delete(requestId);
+    root.clearTimeout(pending.timeoutId);
+    if (pending.form && typeof pending.form.remove === "function") pending.form.remove();
+    if (pending.iframe && typeof pending.iframe.remove === "function") pending.iframe.remove();
+    return pending;
+  }
+
+  function handleBridgeMessage(event) {
+    if (!event || !allowedResponseOrigin(event.origin) || !event.data || event.data.channel !== RPC_CHANNEL) return false;
+    var requestId = String(event.data.requestId || "");
+    var pending = pendingRequests.get(requestId);
+    if (!pending || String(event.data.responseNonce || "") !== pending.responseNonce) return false;
+    cleanupRequest(requestId);
+    if (event.data.ok !== true || !("result" in event.data)) {
+      pending.reject(bridgeError(event.data.error, "The private backend returned an invalid response."));
+      return true;
+    }
+    pending.resolve(event.data.result);
+    return true;
+  }
+
+  function installResponseListener() {
+    if (responseListenerInstalled) return;
+    root.addEventListener("message", handleBridgeMessage);
+    responseListenerInstalled = true;
+  }
+
+  function hiddenInput(name, value) {
+    var input = root.document.createElement("input");
+    input.type = "hidden";
+    input.name = name;
+    input.value = String(value);
+    return input;
+  }
+
+  function execute(config, method, args) {
     if (!ALLOWED_METHODS.has(method)) throw new Error("The requested backend operation is not allowlisted.");
     var serialized = JSON.stringify(args || []);
     if (serialized.length > 150000) throw new Error("The backend request is too large.");
-    var token = await getAccessToken();
-    var response = await root.fetch(API_ROOT + encodeURIComponent(config.apiDeploymentId) + ":run", {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer " + token,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({function: method, parameters: args || [], devMode: false}),
-      cache: "no-store",
-      credentials: "omit",
-      redirect: "error"
+    if (!root.document || !root.document.body) throw new Error("The private backend bridge is unavailable.");
+    installResponseListener();
+    var requestId = "rpc-" + randomHex(16);
+    var responseNonce = randomHex(24);
+    var frameName = "dbr_rpc_" + randomHex(12);
+    var iframe = root.document.createElement("iframe");
+    iframe.name = frameName;
+    iframe.hidden = true;
+    iframe.setAttribute("aria-hidden", "true");
+    iframe.referrerPolicy = "no-referrer";
+    iframe.title = "Private reader response";
+    var form = root.document.createElement("form");
+    form.hidden = true;
+    form.method = "POST";
+    form.action = config.backendWebAppUrl;
+    form.target = frameName;
+    form.acceptCharset = "UTF-8";
+    [
+      ["action", "dbr-rpc"],
+      ["transport_version", RPC_TRANSPORT_VERSION],
+      ["request_id", requestId],
+      ["response_nonce", responseNonce],
+      ["method", method],
+      ["args_json", serialized],
+      ["client_origin", root.location.origin]
+    ].forEach(function addField(field) { form.appendChild(hiddenInput(field[0], field[1])); });
+    root.document.body.appendChild(iframe);
+    root.document.body.appendChild(form);
+    return new Promise(function waitForResponse(resolve, reject) {
+      var timeoutId = root.setTimeout(function timedOut() {
+        cleanupRequest(requestId);
+        reject(bridgeError({code: "SERVER_UNAVAILABLE", message: "The private backend did not respond. Retry when your connection is stable."}));
+      }, RPC_TIMEOUT_MS);
+      pendingRequests.set(requestId, {
+        responseNonce: responseNonce,
+        iframe: iframe,
+        form: form,
+        timeoutId: timeoutId,
+        resolve: resolve,
+        reject: reject
+      });
+      try {
+        form.submit();
+      } catch (_error) {
+        cleanupRequest(requestId);
+        reject(bridgeError({code: "SERVER_UNAVAILABLE", message: "The private backend request could not be sent."}));
+      }
     });
-    var payload = null;
-    try {
-      payload = await response.json();
-    } catch (_error) {}
-    if (response.status === 401) clearToken("Google authorization expired. Continue again to resume synchronization.");
-    if (!response.ok || payload && payload.error) throw executionFailure(payload, response.status);
-    if (!payload || payload.done !== true || !payload.response || !("result" in payload.response)) {
-      throw new Error("The private backend returned an invalid response.");
-    }
-    return payload.response.result;
   }
 
   function createRunner(config, successHandler, failureHandler) {
@@ -382,20 +319,16 @@
     installBootBridge();
     var config = validateConfig(BUILD_CONFIG);
     installAppsScriptShim(config);
-    authGate("Loading Google authorization. Saved readings can open while this finishes.", true);
+    setText("authStatus", "Private reader ready");
     var updateButton = element("pwaUpdateButton");
     if (updateButton) updateButton.addEventListener("click", activateWaitingWorker);
     registerServiceWorker().catch(function serviceWorkerUnavailable() {
       if (root.document && root.document.documentElement) root.document.documentElement.dataset.pwaServiceWorker = "unavailable";
     });
-    var identityReady = initializeIdentity(config).catch(function identityFailed(error) {
-      authGate(error && error.message || "Google authorization is unavailable.", false);
-    });
     var release = await fetchRelease();
     root.DBRStaticRelease = {releaseId: release.releaseId, source: "pages-pwa"};
     await loadScript(release.core);
     await loadScript(release.highlights);
-    await identityReady;
   }
 
   return {
@@ -405,9 +338,8 @@
     validateRelease: validateRelease,
     createRunner: createRunner,
     execute: execute,
-    clearToken: clearToken,
-    tokenCallback: tokenCallback,
-    requiredScopes: REQUIRED_SCOPES.slice(),
+    handleBridgeMessage: handleBridgeMessage,
+    allowedResponseOrigin: allowedResponseOrigin,
     allowedMethods: Array.from(ALLOWED_METHODS)
   };
 });

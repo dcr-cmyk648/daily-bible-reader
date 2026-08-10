@@ -4,38 +4,57 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-const PUBLIC_OAUTH_ID = ["123456789012-", "abcdefghijklmnop", ".apps.googleusercontent.com"].join("");
 const PUBLIC_DEPLOYMENT_ID = ["AbCdEfGhIjKlMnOpQrSt", "UvWxYz_12345"].join("");
 const CONFIG = {
-  schemaVersion: "dbr-pages-public-config/v1",
+  schemaVersion: "dbr-pages-public-config/v2",
   enabled: true,
-  oauthClientId: PUBLIC_OAUTH_ID,
-  apiDeploymentId: PUBLIC_DEPLOYMENT_ID,
+  backendWebAppUrl: `https://script.google.com/macros/s/${PUBLIC_DEPLOYMENT_ID}/exec`,
   pwaReleaseId: "0123456789abcdef"
 };
-const TOKEN = "test-access-token-kept-in-memory-only";
-const GRANTED_SCOPES = [
-  "https://www.googleapis.com/auth/drive.readonly",
-  "https://www.googleapis.com/auth/spreadsheets",
-  "https://www.googleapis.com/auth/script.external_request",
-  "https://www.googleapis.com/auth/userinfo.email"
-].join(" ");
 
 function source() {
   return fs.readFileSync(path.join(__dirname, "../app/pages-pwa/client.js"), "utf8")
     .replace("__DBR_PUBLIC_CONFIG__", JSON.stringify(CONFIG));
 }
 
-function harness(fetchImpl) {
-  const storage = new Map();
+function fields(form) {
+  return Object.fromEntries(form.children.map((input) => [input.name, input.value]));
+}
+
+function harness(onSubmit) {
+  const listeners = new Map();
+  const appended = [];
+  let randomValue = 0;
+  function node(tagName) {
+    return {
+      tagName: tagName.toUpperCase(),
+      children: [],
+      removed: false,
+      appendChild(child) { this.children.push(child); return child; },
+      setAttribute(name, value) { this[name] = String(value); },
+      remove() { this.removed = true; },
+      submit() { if (onSubmit) onSubmit(this, emit); }
+    };
+  }
+  const document = {
+    body: {
+      appendChild(child) { appended.push(child); return child; }
+    },
+    createElement: node,
+    getElementById() { return null; }
+  };
+  function emit(origin, data) {
+    (listeners.get("message") || []).forEach((listener) => listener({origin, data}));
+  }
   const context = {
     URL,
     Date,
     JSON,
     Promise,
     Set,
+    Map,
     Proxy,
-    encodeURIComponent,
+    Uint8Array,
     setTimeout,
     clearTimeout,
     location: {
@@ -43,76 +62,112 @@ function harness(fetchImpl) {
       origin: "https://reader.example.test",
       reload() {}
     },
-    localStorage: {
-      getItem(key) { return storage.get(key) || null; },
-      setItem(key, value) { storage.set(key, String(value)); }
+    crypto: {
+      getRandomValues(array) {
+        for (let index = 0; index < array.length; index += 1) array[index] = (++randomValue) % 256;
+        return array;
+      }
     },
-    fetch: fetchImpl || (async () => ({
-      ok: true,
-      status: 200,
-      json: async () => ({done: true, response: {result: {ok: true}}})
-    }))
+    addEventListener(type, listener) {
+      const current = listeners.get(type) || [];
+      current.push(listener);
+      listeners.set(type, current);
+    }
   };
   context.globalThis = context;
   vm.runInNewContext(source(), context, {filename: "pages-pwa-client.js"});
-  return {api: context.DBRPagesPwa, context, storage};
+  context.document = document;
+  return {api: context.DBRPagesPwa, context, appended, emit};
 }
 
-test("Pages PWA validates only the narrow public Google configuration", () => {
+test("Pages PWA validates only the narrow public token-bridge configuration", () => {
   const {api} = harness();
-  assert.equal(api.validateConfig(CONFIG).apiDeploymentId, CONFIG.apiDeploymentId);
+  assert.equal(api.validateConfig(CONFIG).backendWebAppUrl, CONFIG.backendWebAppUrl);
   assert.throws(() => api.validateConfig({...CONFIG, enabled: false}), /not configured/);
-  assert.throws(() => api.validateConfig({...CONFIG, oauthClientId: "not-a-client"}), /not configured/);
-  assert.throws(() => api.validateConfig({...CONFIG, apiDeploymentId: "short"}), /not configured/);
+  assert.throws(() => api.validateConfig({...CONFIG, backendWebAppUrl: "https://evil.example/exec"}), /not configured/);
+  assert.throws(() => api.validateConfig({...CONFIG, backendWebAppUrl: `${CONFIG.backendWebAppUrl}?code=secret`}), /not configured/);
 });
 
-test("Apps Script API adapter keeps its OAuth token in memory and forwards an allowlisted RPC", async () => {
+test("form bridge keeps the bearer code in a POST body and accepts only a nonce-bound Google response", async () => {
   let request;
-  const {api, storage} = harness(async (url, options) => {
-    request = {url, options};
-    return {ok: true, status: 200, json: async () => ({done: true, response: {result: {ok: true, data: {value: 7}}}})};
+  const {api} = harness((form, emit) => {
+    request = form;
+    const sent = fields(form);
+    emit("https://evil.example", {
+      channel: "dbr-rpc-response/v1",
+      requestId: sent.request_id,
+      responseNonce: sent.response_nonce,
+      ok: true,
+      result: {ok: true, data: {value: "evil"}}
+    });
+    emit("https://script.googleusercontent.com", {
+      channel: "dbr-rpc-response/v1",
+      requestId: sent.request_id,
+      responseNonce: "0".repeat(48),
+      ok: true,
+      result: {ok: true, data: {value: "wrong nonce"}}
+    });
+    emit("https://script.googleusercontent.com", {
+      channel: "dbr-rpc-response/v1",
+      requestId: sent.request_id,
+      responseNonce: sent.response_nonce,
+      ok: true,
+      result: {ok: true, data: {value: 7}}
+    });
   });
-  api.tokenCallback({access_token: TOKEN, expires_in: 3600, scope: GRANTED_SCOPES});
-  const response = await api.execute(CONFIG, "getBootstrapData", ["reader-code"]);
+  const readerCode = "private-reader-code-123456789";
+  const response = await api.execute(CONFIG, "getBootstrapData", [readerCode]);
+  const sent = fields(request);
   assert.equal(response.data.value, 7);
-  assert.equal(request.url, `https://script.googleapis.com/v1/scripts/${CONFIG.apiDeploymentId}:run`);
-  assert.equal(request.options.method, "POST");
-  assert.equal(request.options.headers.Authorization, `Bearer ${TOKEN}`);
-  assert.deepEqual(JSON.parse(request.options.body), {
-    function: "getBootstrapData",
-    parameters: ["reader-code"],
-    devMode: false
-  });
-  assert.deepEqual(Array.from(storage.entries()), [["dbr-google-consent-v1", "yes"]]);
-  assert.equal(JSON.stringify(Array.from(storage.entries())).includes(TOKEN), false);
-  await assert.rejects(api.execute(CONFIG, "arbitraryServerFunction", []), /not allowlisted/);
+  assert.equal(request.method, "POST");
+  assert.equal(request.action, CONFIG.backendWebAppUrl);
+  assert.equal(request.action.includes(readerCode), false);
+  assert.equal(sent.method, "getBootstrapData");
+  assert.equal(sent.transport_version, "dbr-form-bridge/v1");
+  assert.equal(sent.client_origin, "https://reader.example.test");
+  assert.deepEqual(JSON.parse(sent.args_json), [readerCode]);
+  assert.match(sent.request_id, /^rpc-[a-f0-9]{32}$/);
+  assert.match(sent.response_nonce, /^[a-f0-9]{48}$/);
+  assert.throws(() => api.execute(CONFIG, "arbitraryServerFunction", []), /not allowlisted/);
 });
 
-test("google.script.run compatibility runners keep concurrent handlers isolated", async () => {
-  const {api} = harness(async (_url, options) => {
-    const body = JSON.parse(options.body);
-    return {ok: true, status: 200, json: async () => ({done: true, response: {result: body.function}})};
+test("google.script.run compatibility runners isolate concurrent response handlers", async () => {
+  const {api} = harness((form, emit) => {
+    const sent = fields(form);
+    const delay = sent.method === "getBootstrapData" ? 8 : 1;
+    setTimeout(() => emit("https://abc.script.googleusercontent.com", {
+      channel: "dbr-rpc-response/v1",
+      requestId: sent.request_id,
+      responseNonce: sent.response_nonce,
+      ok: true,
+      result: sent.method
+    }), delay);
   });
-  api.tokenCallback({access_token: TOKEN, expires_in: 3600, scope: GRANTED_SCOPES});
   const runner = api.createRunner(CONFIG, null, null);
   const values = [];
   await Promise.all([
-    new Promise((resolve) => runner.withSuccessHandler((value) => { values.push(`a:${value}`); resolve(); }).getBootstrapData("a")),
-    new Promise((resolve) => runner.withSuccessHandler((value) => { values.push(`b:${value}`); resolve(); }).listComments("b", "reading"))
+    new Promise((resolve) => runner.withSuccessHandler((value) => { values.push(`a:${value}`); resolve(); }).getBootstrapData("a-long-reader-code")),
+    new Promise((resolve) => runner.withSuccessHandler((value) => { values.push(`b:${value}`); resolve(); }).listComments("b-long-reader-code", "reading"))
   ]);
   assert.deepEqual(values.sort(), ["a:getBootstrapData", "b:listComments"]);
 });
 
-test("Apps Script API adapter clears an expired token and fails closed on 401", async () => {
-  const {api, storage} = harness(async () => ({
-    ok: false,
-    status: 401,
-    json: async () => ({error: {message: "Invalid Credentials"}})
-  }));
-  api.tokenCallback({access_token: TOKEN, expires_in: 3600, scope: GRANTED_SCOPES});
-  await assert.rejects(api.execute(CONFIG, "confirmReaderAccess", ["reader-code"]), /Invalid Credentials/);
-  assert.equal(storage.get("dbr-google-consent-v1"), "yes");
-  assert.equal(JSON.stringify(Array.from(storage.entries())).includes(TOKEN), false);
+test("form bridge propagates a bounded public transport error", async () => {
+  const {api} = harness((form, emit) => {
+    const sent = fields(form);
+    emit("https://script.google.com", {
+      channel: "dbr-rpc-response/v1",
+      requestId: sent.request_id,
+      responseNonce: sent.response_nonce,
+      ok: false,
+      error: {code: "RATE_LIMITED", message: "Too many requests; retry shortly."}
+    });
+  });
+  await assert.rejects(api.execute(CONFIG, "confirmReaderAccess", ["reader-code-long-enough"]), (error) => {
+    assert.equal(error.code, "RATE_LIMITED");
+    assert.equal(error.message, "Too many requests; retry shortly.");
+    return true;
+  });
 });
 
 test("Pages release validation confines integrity-checked assets to one immutable release", () => {
@@ -138,7 +193,7 @@ test("Pages release validation confines integrity-checked assets to one immutabl
   assert.throws(() => api.validateRelease(manifest), /allowlist/);
 });
 
-test("service worker caches only enumerated public shell assets and retains one rollback cache", () => {
+test("service worker caches only enumerated public shell assets and never private responses", () => {
   const worker = fs.readFileSync(path.join(__dirname, "../app/pages-pwa/service-worker.js"), "utf8");
   assert.match(worker, /ALLOWED_CACHE_URLS\.has\(request\.url\)/);
   assert.match(worker, /request\.url === CONFIG_URL\) return/);
@@ -146,7 +201,7 @@ test("service worker caches only enumerated public shell assets and retains one 
   assert.match(worker, /url\.origin !== self\.location\.origin/);
   assert.match(worker, /dated\.slice\(1\)/);
   assert.match(worker, /DBR_ACTIVATE_UPDATE/);
-  assert.doesNotMatch(worker, /api\.esv\.org|script\.googleapis\.com|oauth2\.googleapis\.com/);
+  assert.doesNotMatch(worker, /api\.esv\.org|script\.google\.com|script\.googleapis\.com/);
 });
 
 test("Pages PWA build keeps the canary isolated from the stable frontend release", () => {
@@ -158,12 +213,16 @@ test("Pages PWA build keeps the canary isolated from the stable frontend release
   assert.doesNotMatch(publish, /\brm\s*\(/);
 });
 
-test("API-executable build is separate from the production USER_ACCESSING manifest", () => {
+test("token web-app build is separate from the production USER_ACCESSING manifest", () => {
   const production = JSON.parse(fs.readFileSync(path.join(__dirname, "../app/apps-script/appsscript.json"), "utf8"));
-  const builder = fs.readFileSync(path.join(__dirname, "../scripts/build-apps-script-api-canary.mjs"), "utf8");
+  const builder = fs.readFileSync(path.join(__dirname, "../scripts/build-apps-script-token-canary.mjs"), "utf8");
+  const bridge = fs.readFileSync(path.join(__dirname, "../app/apps-script-token-canary/TokenBridge.gs"), "utf8");
   assert.deepEqual(production.webapp, {access: "ANYONE", executeAs: "USER_ACCESSING"});
   assert.equal(production.executionApi, undefined);
-  assert.match(builder, /delete manifest\.webapp/);
-  assert.match(builder, /manifest\.executionApi = \{access: "ANYONE"\}/);
-  assert.match(builder, /dist\/apps-script-api-canary/);
+  assert.match(builder, /ANYONE_ANONYMOUS/);
+  assert.match(builder, /USER_DEPLOYING/);
+  assert.match(builder, /dist\/apps-script-token-canary/);
+  assert.match(bridge, /DBR_TOKEN_BRIDGE_METHODS/);
+  assert.match(bridge, /setXFrameOptionsMode\(HtmlService\.XFrameOptionsMode\.ALLOWALL\)/);
+  assert.doesNotMatch(bridge, /Logger\.|console\.|Session\.getActiveUser/);
 });

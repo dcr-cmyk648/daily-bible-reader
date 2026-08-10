@@ -2,78 +2,84 @@
 
 ## Invariants
 
-- No secret, API key, private Google resource ID, Apps Script web-app URL, user email, private commentary, comment body export, ESV passage, or raw copyrighted source enters Git or public artifacts. The Pages canary's non-secret OAuth web-client ID and API-executable deployment ID are its only identifier exception and are allowlisted to exact config/client paths; Drive, Sheet, file, account, key, and web-app identifiers remain forbidden.
-- Signed-in access alone is insufficient: active/effective identity must match, the account must be allowlisted, a freshly presented code or a versioned per-user enrollment must match the server-held hash, and the account must be able to read the configured Drive manifest.
-- The browser cannot choose identity, display name, timestamps, author ID, Drive IDs, Sheet ID, ESV reference, revision number, or redirect target.
-- Every private RPC repeats authorization. Errors reveal no private file names, IDs, emails, comment bodies, or provider response bodies.
-- Comments and Markdown are rendered as text/allowlisted elements, never arbitrary HTML.
-- The current ESV policy forbids persistent Scripture storage. Private content and a sanitized reader-bound bootstrap have a separate seven-day IndexedDB store. The Pages-canary service worker caches only an exact public-asset allowlist and never caches private content, ESV, comments, highlights, OAuth/API responses, or credentials.
-- The temporary owner-only phone setup Sheet may contain Shane's exact Google account and no other input. It must never contain API keys, reader codes or hashes, passwords, tokens, or Google file IDs.
+- No reader code/hash, ESV key/text, private Google resource ID, email, private commentary, comment/highlight export, or raw copyrighted source enters Git or public artifacts.
+- The Pages token canary's Apps Script `/exec` URL is the sole narrow endpoint exception. It is public configuration and is confined to exact config/generated-client paths.
+- Every private RPC requires a valid high-entropy reader code. The server hashes it and maps it to exactly one configured Dustin/Shane identity; frontend identity fields are never trusted.
+- The browser cannot choose display name, author ID, timestamp, server ID, Drive/Sheet/file ID, ESV reference, revision, callable backend function, or response origin.
+- Methods, argument counts, request sizes, reading IDs, verse ranges, and writes are validated server-side. Public errors omit private data and stacks.
+- Comments and Markdown render through text nodes/allowlisted elements, never arbitrary HTML.
+- ESV text is network-only. The service worker caches an exact public-code allowlist and never handles cross-origin/private traffic.
+- The stable `USER_ACCESSING` deployment remains unchanged until the separate owner-executed token PWA passes its installed-iPhone gate.
 
 ## Threat model
 
 | Threat | Primary controls | Residual/operational risk |
 |---|---|---|
-| Unauthenticated outsider | Apps Script signed-in access, non-anonymous manifest, empty allowlist default, fail-closed RPC | Deployment settings must be checked after every redeploy |
-| Signed-in third Google user | Server email allowlist plus Drive permission check on every private flow | Misconfigured allowlist or Drive sharing; two-account setup audit is mandatory |
-| Leaked reader code | SHA-256 hashes only in Script/User Properties; code or enrollment must match the signed-in user's allowlist record and Drive access; separate codes for Dustin and Shane | A code on an unlocked authorized device can be reused; rotate its configured hash, revoke access if needed, and use **Forget reader code** on a retained device |
-| Leaked temporary setup URL | 24-hour token plus active/effective owner identity and access to the standalone script file; anonymous access redirects to Google sign-in; setup version is undeployed after use | The link remains sensitive until expiry even though it is not sufficient without the owner Google account |
-| Leaked Apps Script URL | URL is not a credential; all RPCs reauthorize and never accept arbitrary IDs | Authorization prompts may reveal the owner's support identity as Google documents |
-| Leaked ESV key | Script Properties only, never browser/log/build; rotate immediately and review provider usage | Script editors can access project configuration; do not grant friend script edit access |
-| Malicious comment/Markdown | length/type validation, control-character rejection, text-only DOM rendering, no raw HTML | Plain-text links are not automatically activated in the pilot |
-| Highlight identity spoof or collision | Server-derived author/time, reading-and-verse validation, immutable events, owner-only removal, idempotent request IDs, and script lock | Both readers may intentionally highlight the same verse; a Sheet Editor can still alter rows outside the app |
-| Accidental Git/Pages publication | ignore rules, staged-content hook, safety scanner, code-only Pages/Apps Script build inspection, exact published-release verification | Heuristic ESV detection cannot prove absence; human diff review remains required |
-| Browser persistence | Seven-day private-content ceiling, reader-bound bootstrap record, separate mock/production cache contexts, writes gated on current server confirmation, explicit-denial purge, total ESV persistence refusal, plan-versioned reading/completion caches, no service worker, clear-data control, inspectable counts | Offline revocation is not instantaneous; anyone with an unlocked authorized device and its browser storage can read the saved copy; completion reveals whether either reader commented; browser/OS backups are outside application control; use device passcodes and clear site data on loss/revocation |
-| Comment collision/retry | script lock, append-only revisions, base revision, server timestamps, idempotent request ID | Conflicting edit is rejected and requires refresh/manual merge; a Sheet Editor can still alter rows outside the app |
-| Calendar activity inference | Server-derived author ID, maximum 42 plan-validated IDs, active-event materialization, body-free response, and plan-versioned local state | A device holder can see which days either authorized reader completed until downloaded data is cleared |
-| Drive sharing error | configured-ID-only access, active-user execution, explicit allowlist, no “anyone with link” | Owner must periodically audit folder and Sheet sharing |
-| Stale or substituted client asset | Fixed Pages origin/path, deterministic release ID, no-store manifest lookup, immutable release paths, SHA-384 integrity, locally remembered last-valid manifest, published-output/source verification | Pages availability is now a runtime dependency; a compromised repository owner could publish a matching malicious manifest and asset, so GitHub account security and protected `main` remain operational controls |
-| Leaked Pages OAuth token | GIS token model; requested scopes fixed in code; token kept only in JavaScript memory; no token logging/storage; restrictive CSP; text-only rendering; expiry skew and 401 clearing | XSS in the public origin could act with the token until expiry, so third-party scripts/analytics are prohibited and the canary must not be promoted before the two-account security gate |
-| Leaked public OAuth/API identifiers | Identifiers are not credentials; API requires a valid caller token and the server repeats identity, allowlist, reader enrollment/code, Drive permission, scope, and request validation | OAuth-brand abuse or quota noise remains possible; restrict authorized origins and monitor/revoke the canary client/deployment if abused |
-| Service-worker overreach or stale code | Exact generated public URL set, same-origin GET-only interception, config/API bypass, network-first navigation/manifest, complete install before activation, explicit update button, current-plus-prior rollback cache, app-specific cache prefix | iOS controls lifecycle timing; installed-phone update, rollback, Cache Storage inspection, and offline tests remain mandatory |
+| Unauthenticated outsider without a code | 128-bit-or-stronger private codes; only hashes in Script Properties; all private operations authenticate first; generic errors | The public endpoint can receive blind traffic and consume quota |
+| Outsider with a stolen code | Separate code per reader; constant-time-style comparison; server-mapped identity; rotation; bounded methods/resources | A stolen code is sufficient to impersonate that reader until rotation; this is the accepted bearer-token tradeoff |
+| Leaked Apps Script URL | URL contains no data or credential; POST response goes only to the fixed Pages origin; method/payload/global rate controls | URL leakage permits quota noise and blind calls; Apps Script cannot expose a reliable source IP for strong IP throttling |
+| Malicious website framing/submitting | Response has no interactive UI, exact `postMessage` destination, 192-bit request nonce, fixed transport/method allowlist | `ALLOWALL` removes Google's default frame protection; nonce/origin controls must not be weakened |
+| Leaked ESV key | Script Properties only; never browser/log/build; key rotation and provider review | Anyone with script-project edit access could change code/config; Shane must not be a script editor |
+| Malicious comment/Markdown | length/type/control validation; text-only/allowlisted rendering; escaped JSON response | A valid reader can intentionally post objectionable plain text |
+| Identity spoofing | First argument is authenticated token; author/display/time/IDs are derived server-side; exact two-record configuration | Anyone holding a reader's code is intentionally treated as that reader |
+| Comment/highlight collision or retry | Script lock; append-only revisions; base revision; idempotent client request IDs | A native Sheet editor can still alter rows outside the app |
+| Arbitrary Drive/Sheet access | IDs exist only in Script Properties/manifest; browser sends stable reading IDs; compiled RPC allowlist | Owner-executed code has Dustin's declared scope authority; a server bug has more consequence than under per-user Drive gating |
+| Accidental Git/Pages publication | ignore rules; staged hook; safety scanner; exact public-path exception; build inspection | Heuristic Scripture/secret detection is not a proof; human diff review remains required |
+| Browser-cache persistence | seven-day private-content ceiling; reader-bound bootstrap; explicit-denial purge; clear/forget controls; no ESV persistence | Offline revocation is delayed; device/OS backups are outside app control |
+| Stale or substituted shell | immutable content-addressed assets; SHA-384; network-first navigation/manifest; complete service-worker install; explicit activation; prior cache retained | GitHub account/repository security is part of the trust boundary |
+| Drive/Sheet sharing mistake | app never relies on link sharing; audit exact accounts; private IDs never public | Token PWA reads as owner even if Shane's Drive share is removed; token rotation is the application revocation action |
 
-## Identity and authorization
+## Bearer-token authorization
 
-`Session.getActiveUser().getEmail()` and `Session.getEffectiveUser().getEmail()` are read server-side. Both must be nonempty and equal. The normalized email must exactly match one of two `AUTHORIZED_USERS_JSON` entries in Script Properties. That record contains a configured SHA-256 `readerCodeHash`; a constant-time comparison binds the presented code to the same email, `authorId`, and `displayName`. Swapping Dustin's and Shane's codes fails. The server returns only configured `authorId` and `displayName`. Google documents that user email is unavailable in owner-executed unauthorizing contexts, which makes a wrong deployment fail closed: <https://developers.google.com/apps-script/reference/base/session>.
+`AUTHORIZED_USERS_JSON` must contain exactly two records with unique valid SHA-256 hashes, stable unique author IDs, and safe display names. Raw codes are generated locally and delivered separately. They are not administrative tokens and cannot select a different identity.
 
-The raw code is generated locally, given directly to its reader, and stored only in that reader's IndexedDB after successful verification. It is not an administrative token and cannot choose identity. It never enters Git, tracked config, the Sheet, a URL, logs, or an export. The configured hash goes in Script Properties.
+Every RPC hashes the presented code with SHA-256 on Apps Script and compares it with both configured hashes before accessing Drive, Sheets, or ESV. The matching record supplies the identity. Missing, malformed, wrong, duplicated, or ambiguous configuration fails closed. A token-derived prefix scopes per-reader request counters without storing the raw token.
 
-After successful verification, Apps Script writes a versioned enrollment to `PropertiesService.getUserProperties()` containing only the verified hash, server-derived `authorId`, and enrollment time. Google documents User Properties as persistent key-value storage scoped to the current user of the script ([reference](https://developers.google.com/apps-script/reference/properties/properties-service), [guide](https://developers.google.com/apps-script/guides/properties)); no new OAuth scope is required. Every RPC still repeats active/effective identity, allowlist, enrollment/hash, scope, and Drive checks. This is persistent account enrollment, not an owner-executed public session. A hash rotation, author mismatch, deleted User Property, allowlist removal, identity mismatch, or lost Drive access fails closed. **Forget reader code** removes the User Property and the browser fallback.
+The PWA stores a successfully verified raw code only in IndexedDB. It is sent in an HTTPS POST body, not a URL, and is absent from `localStorage`, Cache Storage, Git, Pages metadata, service-worker messages, exports, and logs. The user-facing **Forget reader code** clears local storage. Rotation replaces the relevant configured hash; no deployment or client update is required.
 
-For a computer-free initial handoff, the temporary owner setup version may embed AES-GCM ciphertext of both raw reader codes. The encryption key is derived from the expiring setup token, which is not embedded in source; decryption happens only in the owner's browser after the independent Google/Drive owner check. The normal project HEAD, immutable reader deployment, Drive files, Script Properties, and chat never contain either raw code. Remove the temporary deployment immediately after handoff.
+This design intentionally does not authenticate Dustin or Shane through Google on the Pages path. The Apps Script deployment executes as Dustin and mediates access. The security boundary is therefore equivalent in spirit to a small private site protected by two long random API tokens. This is acceptable only because the owner explicitly selected it for a low-exposure two-person personal app.
 
-Before online private reads/writes, `ScriptApp.getAuthorizationInfo` confirms all explicit scopes. Missing consent returns an authorization-required state before accessing content. Drive access to the manifest is then exercised as the content gate. A later installed-app launch may paint an unexpired, locally reader-bound offline copy first, but no write leaves the device until the current server check succeeds; an explicit identity, allowlist, code, or Drive denial clears the cached private state and hides the interface.
+## Transport and abuse controls
 
-## Input and abuse controls
+- HTTPS form POST only; reader code never appears in query parameters.
+- One exact Pages response origin compiled server-side; browser-supplied origin is not treated as authentication.
+- Random 128-bit request ID and 192-bit response nonce per call.
+- Browser accepts responses only from `script.google.com` or an HTTPS `script.googleusercontent.com` host and only for a live ID/nonce pair.
+- Eleven explicit public methods with exact argument counts; no dynamic function lookup/evaluation from request text.
+- 150 KB request ceiling plus existing response/file/comment limits.
+- Global approximate request limit and per-token operation buckets.
+- Script locks around event idempotency/conflict checks/appends.
+- No `Logger`, `console`, analytics, or intentional request-body logging.
 
-- JSON-shaped objects only; unknown fields are ignored server-side.
-- Reading IDs: 1–80 safe identifier characters and must exist in the private plan.
-- Comment body: 1–8,000 Unicode characters after newline normalization; NUL and unsupported controls rejected.
-- Display name/identity: server configuration only.
-- Client request ID: UUID-like, 16–100 safe characters.
-- Comment and highlight writes: rate-limited per Google user and serialized with a script lock.
-- Highlight references: the reading must exist in the private plan and the exact book/chapter/verse must fall inside one of its allowlisted passage ranges.
-- Content files and response sizes have explicit maxima.
-- No private bodies are sent to `console`, Apps Script logs, Stackdriver messages, analytics, or AI services.
+Apps Script quotas remain the final abuse ceiling. The global cache counter is a practical throttle, not a DDoS control or billing firewall; Apps Script has no application charge in this design, but quota exhaustion could make the reader temporarily unavailable.
 
-## CSP and rendering
+## CSP, framing, and rendering
 
-The local server sends a restrictive CSP (`default-src 'self'`, no objects, no frames, no form submissions). The generated Apps Script HTML uses a best-effort meta policy limited to Google script origins plus the one exact GitHub Pages origin needed for its manifest, JavaScript, CSS, and public icon. The loader rejects any asset origin/path outside the configured immutable release prefix and applies SHA-384 integrity. Apps Script's iframe sandbox remains part of the boundary. XSS safety does not depend on CSP because all untrusted material is rendered through `textContent` and an allowlisted Markdown renderer.
+The Pages CSP permits scripts/styles/images from self only, frames and form submissions only to Google Apps Script response hosts, no plugins, no base URL, and no embedding of the Pages shell. There are no inline executable scripts or third-party analytics.
 
-The Pages canary uses a different restrictive CSP: self-hosted code/style/icon assets, Google's GIS client/frame/style endpoints, and the exact Google OAuth and Apps Script REST hosts. It has no inline executable script, analytics, arbitrary frames, form targets, or open redirect. Its API shim exposes only the reader RPC allowlist and retains the OAuth access token in memory; `localStorage` stores only a non-sensitive prior-consent flag. Repository safety rejects public OAuth/API identifiers outside the exact canary paths.
+The hidden Apps Script response must opt out of the default `X-Frame-Options` header. It contains no controls and emits one escaped `postMessage` to the fixed Pages origin. The nonce prevents an unrelated framed response from satisfying a live request. Important: do not turn the backend status page into an interactive framed administration interface.
 
-## Revocation, rotation, backup
+Untrusted commentary/comment data is rendered as text or through the existing restricted Markdown renderer. JSON embedded in the response page escapes `<`, `>`, `&`, and JavaScript line separators, preventing a comment such as `</script>` from terminating the response script.
 
-To revoke the friend: remove their allowlist entry, remove Drive folder and Sheet sharing, create a new deployment version if deployment access changed, and ask them to clear downloaded data. Their remembered enrollment cannot override any of those server-side gates. Removing only one layer is incomplete.
+## Resource and scope boundary
 
-To rotate a reader code: generate a new pair locally (or generate only the affected reader's equivalent high-entropy value), update that user's `readerCodeHash` in `AUTHORIZED_USERS_JSON`, and give the raw replacement only to that person. The old per-user enrollment no longer matches and is rejected automatically; the next successful entry replaces it. Use **Forget reader code** on any retained device to remove the local fallback. Never paste either raw codes or their hashes into chat; even hashes are deployment configuration and user-linkage metadata.
+Only the deployer authorizes `drive.readonly`, `spreadsheets`, and `script.external_request`. The token bundle removes `userinfo.email`, does not call `Session.getActiveUser()` for identity, and never obtains or sends the owner's OAuth token.
 
-To rotate the ESV key: replace `ESV_API_KEY` in Script Properties, revoke the old key with the provider, and inspect provider usage. Never paste it into chat or a local tracked file.
+The browser supplies only plan reading IDs and validated event payloads. Drive file IDs are resolved through the private manifest; Sheet ID/tab names and the ESV key come only from Script Properties. Server code never scans Drive and never accepts an arbitrary file, spreadsheet, callback origin, or redirect from the client.
 
-Back up Drive content and both event tabs in the comments Sheet with owner-controlled, access-restricted exports. Restore into new private files, update only the manifest/Script Properties IDs, re-audit sharing, and test authorization with all three account classes. Backups containing commentary, comments, or highlights stay outside Git.
+Direct Drive/Sheet access remains governed by Google sharing. A reader code cannot protect a Sheet shared as “anyone with the link.” Native sharing should remain restricted to the exact intended accounts even though the token app itself does not depend on Shane's Google permissions.
 
-The comment log is revision-aware, not tamper-proof. In the preferred `USER_ACCESSING` model the friend needs direct Sheet edit permission, so Google Sheet version history and sharing audit are the available operational evidence. If direct row modification is outside the accepted trust model, deployment must pause for the GIS/server-validated mediated-write fallback described in `docs/ARCHITECTURE.md`.
+## Revocation, rotation, and recovery
 
-The native Google Sheet does not know about application reader codes. Its direct editors must therefore be limited by Google sharing to Dustin's and Shane's exact accounts. A valid code never justifies link sharing or a third editor.
+To revoke or replace Shane's application access:
 
-The temporary phone setup Sheet is not an application data store or credential store. Once Shane's account has been transferred into ignored deployment state and sharing is configured, clear or remove the temporary Sheet so the extra copy of the account identifier does not persist unnecessarily.
+1. Generate a replacement token locally if access will continue, or remove/disable Shane's record if it will not.
+2. Update only the stored hash in `AUTHORIZED_USERS_JSON`.
+3. Remove Google Drive/Sheet sharing separately if native access should also end.
+4. Ask Shane to clear downloaded data on a retained device; rotate immediately if a device is lost.
+
+To rotate the ESV key, replace `ESV_API_KEY` in Script Properties, revoke the old provider key, and inspect provider usage. Never paste either key or reader codes into chat.
+
+If the public backend is abused, create a new token deployment URL, update only the narrow public config, publish a new PWA release, and archive the old deployment. If GitHub Pages is compromised, stop the token deployment or rotate both codes before restoring a known-good immutable release.
+
+Back up Drive content and Sheet event tabs with owner-controlled restricted exports outside Git. Test restore with new private IDs before treating a backup as usable. The append-only event log is revision-aware but not cryptographically immutable.

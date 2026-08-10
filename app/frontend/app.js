@@ -2576,7 +2576,7 @@
     if (button.dataset.confirmForget !== "true") {
       button.dataset.confirmForget = "true";
       button.textContent = "Confirm forget reader code";
-      button.setAttribute("aria-label", "Confirm forgetting reader access for this Google account and browser");
+      button.setAttribute("aria-label", "Confirm forgetting reader access for this browser");
       setSyncStatus("Press the forget button again to require the reader code next time");
       root.setTimeout(() => {
         if (button.dataset.confirmForget === "true") {
@@ -2670,7 +2670,7 @@
     element("authStatus").textContent = "Reader code required";
     element("readerCodeStatus").textContent = error && error.message
       ? error.message
-      : "Enter the code assigned to your signed-in Google account.";
+      : "Enter the private reader code assigned to you.";
     element("readerCodeInput").value = "";
     state.readerCodeSubmitting = false;
     updateReaderCodeSubmitState();
@@ -2715,7 +2715,7 @@
       ? "Local mock · fabricated data"
       : options && options.cached
         ? `Saved copy for ${state.session.displayName} · checking access`
-        : `Signed in as ${state.session.displayName}`;
+        : `Reading as ${state.session.displayName}`;
     const esvNotice = state.policy.requiredAttribution.notice || FALLBACK_ESV_NOTICE;
     element("esvNotice").textContent = esvNotice;
     element("verseOfDayNotice").textContent = esvNotice;
@@ -2779,7 +2779,7 @@
     try {
       const bootstrap = await state.adapter.getBootstrapData();
       if (!bootstrap.session || bootstrap.session.authorId !== expectedAuthorId) {
-        throw appError("The signed-in account changed while refreshing private data.", "AUTH_REQUIRED");
+        throw appError("The authorized reader changed while refreshing private data.", "AUTH_REQUIRED");
       }
       await installBootstrap(bootstrap, {cached: false});
       await persistBootstrap(bootstrap);
@@ -2806,7 +2806,7 @@
         if (hadCachedShell) {
           const confirmation = await state.adapter.confirmReaderAccess();
           if (!confirmation.session || confirmation.session.authorId !== expectedAuthorId) {
-            throw appError("The signed-in account does not match this device's saved reader.", "AUTH_REQUIRED");
+            throw appError("The authorized reader does not match this device's saved reader.", "AUTH_REQUIRED");
           }
           const confirmedParticipants = Array.isArray(confirmation.participants)
             ? confirmation.participants.map((participant) => participant && participant.authorId)
@@ -2818,7 +2818,7 @@
           state.serverAccessConfirmed = true;
           state.bootstrap = {...state.bootstrap, appBuildId: confirmation.appBuildId, appUrl: confirmation.appUrl};
           configureBuildUpdate(confirmation);
-          element("authStatus").textContent = `Signed in as ${state.session.displayName}`;
+          element("authStatus").textContent = `Reading as ${state.session.displayName}`;
           await rememberConfirmedDevice();
           setBanner("");
           setSyncStatus("Ready · refreshing saved data in the background");
@@ -2827,7 +2827,7 @@
         }
         const bootstrap = await state.adapter.getBootstrapData();
         if (expectedAuthorId && (!bootstrap.session || bootstrap.session.authorId !== expectedAuthorId)) {
-          throw appError("The signed-in account does not match this device's saved reader.", "AUTH_REQUIRED");
+          throw appError("The authorized reader does not match this device's saved reader.", "AUTH_REQUIRED");
         }
         state.serverAccessConfirmed = true;
         await installBootstrap(bootstrap, {cached: false});
@@ -2909,7 +2909,7 @@
       }
       state.readerCodeSubmitting = true;
       updateReaderCodeSubmitState();
-      element("readerCodeStatus").textContent = "Checking Google identity, Drive permission, and reader code…";
+      element("readerCodeStatus").textContent = "Checking your private reader code…";
       state.readerCode = code;
       try {
         await startAuthorizedApplication({allowCached: false});
@@ -2960,12 +2960,12 @@
     if (explicitAccessFailure(error) && state.adapter && state.adapter.kind === "apps-script") {
       const message = ["READER_CODE_REQUIRED", "READER_CODE_INVALID"].includes(code)
         ? error.message
-        : "Access could not be confirmed. Sign in with an authorized Google account and grant the required permissions.";
+        : "Access could not be confirmed. Check your private reader code and connection.";
       showReaderCodeGate(appError(message, code));
       return;
     }
     const publicMessage = ["AUTH_REQUIRED", "ACCESS_DENIED", "WRONG_EXECUTION_IDENTITY"].includes(code)
-      ? "Access could not be confirmed. Sign in with an authorized Google account and grant the required permissions."
+      ? "Access could not be confirmed. Check your private reader code and connection."
       : "The reader could not finish loading. Private data remains closed; retry after checking the local server or deployment configuration.";
     setBanner(publicMessage, "error");
     setSyncStatus("Unavailable");

@@ -22,12 +22,11 @@ const SECRET_PATTERNS = [
   {name: "Google API key", regex: /AIza[0-9A-Za-z_-]{35}/},
   {name: "GitHub token", regex: /gh[opusr]_[A-Za-z0-9_]{30,}/},
   {name: "OAuth client secret", regex: /GOCSPX-[A-Za-z0-9_-]{20,}/},
-  {name: "Apps Script deployment URL", regex: /https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]{20,}\/exec/},
   {name: "likely personal Gmail address", regex: /\b[A-Z0-9._%+-]+@gmail\.com\b/i},
   {name: "real authorized-user email", regex: /"email"\s*:\s*"(?![^"@]+@(?:example\.com|example\.org|example\.net|example\.invalid))[^"@]+@[^"@]+"/i}
 ];
 
-const PUBLIC_GOOGLE_IDENTIFIER_PATHS = [
+const PUBLIC_PWA_ENDPOINT_PATHS = [
   /^config\/pages-pwa-public\.json$/,
   /^dist\/pages-pwa\/config\.json$/,
   /^dist\/pages-pwa\/assets\/pwa-client\.[a-f0-9]{16}\.js$/,
@@ -36,6 +35,7 @@ const PUBLIC_GOOGLE_IDENTIFIER_PATHS = [
 ];
 const PUBLIC_OAUTH_CLIENT_ID = /\b\d{6,}-[a-z0-9_-]{12,}\.apps\.googleusercontent\.com\b/i;
 const PUBLIC_API_DEPLOYMENT_ASSIGNMENT = /["']?apiDeploymentId["']?\s*[:=]\s*["'][A-Za-z0-9_-]{20,}["']/;
+const APPS_SCRIPT_WEBAPP_URL = /https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]{20,}\/exec/;
 
 // Build these at runtime so the scanner can safely inspect its own source.
 const ESV_SIGNATURES = [
@@ -74,9 +74,10 @@ export function inspectText(relativePath, text) {
     if (pattern.regex.test(text)) problems.push(pattern.name);
   }
   inspectSecretAssignments(text, problems);
-  const publicIdentifierPath = PUBLIC_GOOGLE_IDENTIFIER_PATHS.some((pattern) => pattern.test(relativePath));
-  if (!publicIdentifierPath && PUBLIC_OAUTH_CLIENT_ID.test(text)) problems.push("public OAuth client ID outside allowlisted PWA artifact");
-  if (!publicIdentifierPath && PUBLIC_API_DEPLOYMENT_ASSIGNMENT.test(text)) problems.push("public Apps Script API deployment ID outside allowlisted PWA artifact");
+  const publicEndpointPath = PUBLIC_PWA_ENDPOINT_PATHS.some((pattern) => pattern.test(relativePath));
+  if (PUBLIC_OAUTH_CLIENT_ID.test(text)) problems.push("obsolete public OAuth client ID");
+  if (PUBLIC_API_DEPLOYMENT_ASSIGNMENT.test(text)) problems.push("obsolete Apps Script API deployment ID");
+  if (!publicEndpointPath && APPS_SCRIPT_WEBAPP_URL.test(text)) problems.push("Apps Script deployment URL outside allowlisted PWA artifact");
   for (const signature of ESV_SIGNATURES) {
     if (signature.test(text)) problems.push("likely ESV passage wording");
   }

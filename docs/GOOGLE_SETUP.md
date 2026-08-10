@@ -1,164 +1,144 @@
-# Approval-gated Google and ESV setup
+# Google and deployment setup
 
-External setup was approved on 2026-08-08. The private Drive hierarchy/content, native comments Sheet, Script Properties, owner-entered ESV key, and signed-in/user-executed Apps Script deployment exist. The active private config now selects the seven-day Celebration bridge; the full 92-day source schedule is stored separately as factual reference metadata; only days 54–56 have synthesis, while days 57–60 are explicit placeholders. The fourteen active reading files are exact-byte verified and individually shared with Shane as Viewer; a post-write audit found only the owner and Shane, with no link or domain access. Existing shared config/plan/registry/manifest files were updated in place without deleting the preserved Genesis files. The 92-day reference file remains owner-only because the app does not retrieve it. Shane's authenticated access, reader-code binding, and comment creation have passed; his live ESV and Home Screen installation checks remain pending.
+Status: the current `USER_ACCESSING` production deployment and its private Drive/Sheet/Script Properties are operational. The Pages token PWA uses a separate immutable owner-executed web-app deployment as a canary. No Google OAuth client, OAuth consent-screen project, Apps Script API executable, billing account, or new paid service is required.
 
-The production URL now serves phone-confirmed immutable version 23. Versions 20–22 failed the iPhone canary before the application core started; version 22 failed despite a maximum generated line of 817 characters, disproving the prior line-length hypothesis. Version 23 reduced Apps Script to the authenticated launcher/backend and moved the code-only frontend to GitHub Pages. Initial hybrid build `c57d948db8fbf838` and frontend release `73da95f8a9ec3bb3` passed Pages HTTPS readback, CORS, integrity, exact-byte checks, Google artifact comparison, installed-iPhone open/reopen, live ESV, and highlight add/remove. The exact version-23 artifact was then promoted from canary to the unchanged production URL. Server enrollment, private Drive content, ESV retrieval, comments, scopes, execution identity, deployment access, and sharing remain unchanged. The complete incident record is in `docs/RELEASE_STABILITY.md`.
+## Existing private resources
 
-## Phone-only setup handoff
+The owner-managed Apps Script project already has:
 
-The owner-only Google Sheet named `Daily Bible Reader Setup Inputs` was the temporary phone-friendly handoff for Shane's exact account. Its input cell was cleared after setup while formatting and email validation were preserved; the Sheet now records completion status and remains unshared.
+- `PRIVATE_MANIFEST_FILE_ID`
+- `COMMENTS_SPREADSHEET_ID`
+- optional `COMMENTS_SHEET_NAME` and `HIGHLIGHTS_SHEET_NAME`
+- `AUTHORIZED_USERS_JSON` with Dustin/Shane identities and unique reader-code hashes
+- `ESV_API_KEY`
 
-Never put the ESV API key, reader codes or hashes, passwords, tokens, or Google file IDs in that Sheet or in chat. The ESV key was entered directly into Apps Script Script Properties from the authenticated owner-only setup page.
+The private manifest points to the configured app, plan, source registry, and reading content/metadata files. The Sheet contains the frozen `comment-events` and `highlight-events` headers. None of these values belongs in Git, Pages, chat, deployment descriptions, or logs.
 
-For the computer-free handoff, a separate 24-hour Apps Script setup deployment may be created after the account is read. It must:
+The token canary is deployed from the existing script project so it can reuse these Script Properties without copying or exposing the ESV key. The active production deployment stays pinned to immutable version 23. Apps Script deployments preserve their referenced version; temporarily pushing the token bundle to project HEAD does not alter version 23 or its production deployment pointer.
 
-- run as the accessing user and require the active/effective identity to be the owner of the standalone script file;
-- require a high-entropy expiring setup token in addition to that Google/Drive owner check;
-- install only the four generated non-secret deployment properties;
-- accept the ESV key in a password field and send it directly to Script Properties through `google.script.run`;
-- carry only AES-GCM ciphertext for the raw Dustin/Shane reader-code handoff, with decryption performed in the owner's browser from the expiring setup token;
-- contain no raw reader code or ESV key in source, Drive, chat, URL, logs, or Script Properties; and
-- be undeployed after the owner confirms setup, while the normal project HEAD remains the clean code-only bundle.
+## Token configuration
 
-This one-time flow completed successfully. The initial setup-page link attempted iframe navigation on iPhone; opening the normal deployment URL directly bypassed it. Any future setup-page builder must emit a top-level target. The temporary deployment and local setup-token/helper files were removed after the installed reader was verified.
+`AUTHORIZED_USERS_JSON` may retain the legacy private email fields, but token authorization ignores them. Exactly two records must remain, with:
 
-## 1. Prepare private Drive content
-
-Create a private owner-controlled folder. Do not use “anyone with the link.” Share the content folder directly with the friend as Viewer. Create portable Markdown/JSON files and a private manifest using the topology in `docs/ARCHITECTURE.md`. Confirm the friend can open the manifest/content through inherited Drive permissions but cannot edit the folder.
-
-The Celebration bridge uses `sharedStartDateMode: "fixed"`, start date 2026-08-08, `futureLookaheadDays: 6`, and a seven-ID testing override so every bridge reading can be audited now. The later new plan receives its own agreed start date and may reduce or disable the override. Reading IDs and comments do not change when dates change.
-
-The separate comments Sheet has been created with `comment-events` and `highlight-events` tabs and shared directly with Shane's exact account as Editor. The permission and absence of link/domain sharing were read back after the write. The Sheet is not the content permission gate.
-
-The prior eight manifest/config/plan/source/Genesis files and all fourteen active bridge reading/metadata files are individually shared with Shane as Viewer. The bridge files remain in their original private parent folder; the post-share audit confirmed exactly one owner plus Shane as reader on every file and no broad permission. The 92-day factual reference file remains owner-only and is not requested by the runtime. Do not use link sharing. A future move to an inherited dedicated-folder ACL requires a separate migration and a fresh manifest, parent, and permission audit.
-
-Its exact header row in columns A–O is:
-
-```text
-event_id | comment_id | client_request_id | plan_version | reading_id | event_type | author_id | display_name | body_json | base_revision | revision | created_at | updated_at | deleted_at | received_at
+```json
+[
+  {
+    "authorId": "dustin",
+    "displayName": "Dustin",
+    "readerCodeHash": "64 lowercase SHA-256 hex characters"
+  },
+  {
+    "authorId": "shane",
+    "displayName": "Shane",
+    "readerCodeHash": "a different 64-character hash"
+  }
+]
 ```
 
-Freeze the header and leave appended rows under application control. The app writes each row as plain text and JSON-encodes the comment body to prevent spreadsheet formula interpretation. Because Shane must be a Sheet Editor for a `USER_ACCESSING` deployment, app-level revision history does not prevent either user from editing rows directly; review the tradeoff in `docs/ARCHITECTURE.md` before production. Reader codes protect the app RPCs but cannot gate Google's native Sheet editor. Direct Sheet access is limited by the Sheet's Google-account sharing list, so “valid code” must never be treated as permission to link-share it.
+Do not paste raw codes or hashes into chat. Dustin and Shane keep only their own raw code. The PWA stores the successful code in IndexedDB after first entry.
 
-The exact `highlight-events` header row in columns A–Q is:
+## Build and inspect
 
-```text
-event_id | highlight_id | client_request_id | plan_version | reading_id | event_type | author_id | display_name | book_id | chapter | verse | base_revision | revision | created_at | updated_at | deleted_at | received_at
-```
-
-Freeze this header too. Preserve both event tabs during backup and restore; the app never accepts a tab name from the browser.
-
-## 2. Create the standalone Apps Script project
-
-After building locally (`npm run build`), create a standalone Apps Script project and associate it with a standard Cloud project if needed for the consent configuration. Use clasp only after reviewing `dist/apps-script/`. Do not give the friend edit access to the script project because Script Properties include the ESV key.
-
-First generate separate high-entropy codes on a trusted local terminal:
+From a trusted maintainer computer:
 
 ```sh
-npm run reader-codes
+npm ci
+npm run check
+npm run build:token-canary
 ```
 
-Give Dustin only Dustin's raw code and Shane only Shane's. Do not paste the output into chat, store it in a tracked file, or place raw codes in Script Properties. Preserve only the SHA-256 hashes long enough to enter the configuration below.
+Inspect exactly these generated files before pushing:
 
-Set these Script Properties in the Apps Script UI:
+- `dist/apps-script-token-canary/Code.gs`
+- `dist/apps-script-token-canary/ServerCore.gs`
+- `dist/apps-script-token-canary/TokenBridge.gs`
+- `dist/apps-script-token-canary/appsscript.json`
 
-- `PRIVATE_MANIFEST_FILE_ID` — private manifest Drive file ID
-- `COMMENTS_SPREADSHEET_ID` — separately shared comment Sheet ID
-- `COMMENTS_SHEET_NAME` — `comment-events`
-- `HIGHLIGHTS_SHEET_NAME` — optional; defaults to `highlight-events`
-- `AUTHORIZED_USERS_JSON` — exactly two records. Replace the example emails and hash placeholders in the Apps Script UI only:
+The token manifest must be `ANYONE_ANONYMOUS` / `USER_DEPLOYING`, omit `executionApi`, omit `userinfo.email`, and retain only Drive read, Sheets, and external-request scopes. The active authorization function must call `authorizeTokenIdentity`, not `Session.getActiveUser`. `doGet` is status-only; `doPost` exposes only the fixed method map. There is no `Index.html` in this bundle.
 
-  ```json
-  [
-    {
-      "email": "dustin@example.com",
-      "authorId": "dustin",
-      "displayName": "Dustin",
-      "readerCodeHash": "<64-lowercase-hex-characters>"
-    },
-    {
-      "email": "shane@example.com",
-      "authorId": "shane",
-      "displayName": "Shane",
-      "readerCodeHash": "<64-lowercase-hex-characters>"
-    }
-  ]
-  ```
-- `ESV_API_KEY` — official key obtained by the owner; never store it locally in tracked config
+The tracked production manifest at `app/apps-script/appsscript.json` must remain `ANYONE` / `USER_ACCESSING` throughout.
 
-Use the narrow explicit scopes in `app/apps-script/appsscript.json`. Google documents the personal-use verification exception for fewer than 100 users, while warning that limited users may click through an unverified-app screen: <https://support.google.com/cloud/answer/13464323> (checked 2026-08-08). This does not waive Google API user-data policy obligations.
+## Create the canary deployment without moving production
 
-## 3. Deploy securely
+1. Record `clasp deployments` privately and identify the current production version/deployment for rollback verification.
+2. Point a temporary ignored clasp configuration at `dist/apps-script-token-canary/` for the existing script project.
+3. `clasp push --force` only after the generated bundle and safety output have been inspected.
+4. Create a **new** deployment with a description identifying it as the Pages token canary. Do not update the production deployment.
+5. In the deployment UI/metadata, verify **execute as me/deployer** and **who has access: anyone**, including anonymous access. The manifest representation is `USER_DEPLOYING` / `ANYONE_ANONYMOUS`.
+6. Record the new `/exec` URL only in `config/pages-pwa-public.json`. It is intentionally public configuration, but must not appear elsewhere.
+7. Immediately point clasp back to `dist/apps-script/`, push the inspected stable hybrid source back to project HEAD, and verify the production deployment is still on version 23.
 
-Deploy as a Web app:
+The token deployment remains pinned to its immutable version after project HEAD is restored. Never “update” the production deployment while the owner-executed manifest is at HEAD.
 
-- Execute as: **User accessing the web app**
-- Who has access: **Anyone with a Google account** (not anonymous)
+## Owner authorization
 
-The source manifest encodes `USER_ACCESSING` / `ANYONE`; verify the deployment UI agrees. A leaked URL is not considered authorization.
+The web app executes under Dustin's authority. The existing project authorization normally already covers Drive read, Sheets, and external URL fetch. If Google requests authorization after the token version is pushed, Dustin—not Shane—must grant those three scopes from the Apps Script editor/deployment flow. The backend does not request `userinfo.email` and must never transmit `ScriptApp.getOAuthToken()`.
 
-## 4. Two-account acceptance test
+Google documents that an execute-as-owner web app always runs as the script owner/deployer regardless of the caller: <https://developers.google.com/apps-script/guides/web> (checked 2026-08-10).
 
-In clean browser profiles:
+## Configure and publish Pages
 
-1. Dustin grants all required scopes, enters Dustin's code, sees `Dustin`, reads all seven bridge entries, gets each live ESV chapter group, creates/edits/deletes a comment, and highlights/unhighlights a verse.
-2. Shane grants scopes, enters Shane's code, sees `Shane`, reads only because the Drive folder is shared, and writes only because the Sheet is shared. Confirm both readers can highlight the same verse in their distinct colors, see both server timestamps, and remove only their own mark.
-3. Confirm Shane's code fails while Dustin is signed in and Dustin's code fails while Shane is signed in.
-4. A third signed-in account is denied before any private metadata is returned, even if it has a copied reader code.
-5. Anonymous/incognito-without-login is denied by Google.
-6. Remove Shane's folder permission and confirm reads fail closed.
-7. Restore folder permission but remove Sheet edit permission and confirm reads work while writes fail safely.
-8. Temporarily deploy an owner-executed test and confirm the server's active/effective identity guard rejects Shane; never publish that deployment.
-9. Deny one granular scope and confirm the app shows authorization-required without content.
-10. Disconnect the phone after both readings have loaded: commentary, snapshots, drafts, and the outbox should remain usable; ESV is available only when admitted by the current provider policy.
+The only tracked public backend value is:
 
-If `USER_ACCESSING` is unreliable across the two personal accounts, stop. Evaluate the documented GIS/server-validation fallback; do not deploy an owner-executed public content endpoint.
+```json
+{
+  "schemaVersion": "dbr-pages-public-config/v2",
+  "enabled": true,
+  "backendWebAppUrl": "https://script.google.com/macros/s/DEPLOYMENT_ID/exec"
+}
+```
 
-## 5. Install on iPhone for the audit
+Then run:
 
-After the acceptance deployment exists:
+```sh
+npm run build
+npm run publish:pages
+npm run check
+```
 
-1. Open the exact deployed `/exec` URL in Safari on the iPhone; do not use a copied iframe or `script.googleusercontent.com` redirect URL.
-2. Sign in to the intended Google account and grant only the scopes listed in the consent screen.
-3. Enter that person's assigned reader code. The raw code remains only in that device's IndexedDB as a fallback; Apps Script stores only the verified hash and author binding in that user's private User Properties so future browser-storage loss does not normally require re-entry.
-4. Test Micah 3–4 and Micah 5–7 as single daily Scripture pages, a placeholder day, a comment draft, a verse highlight, synchronization, and “Clear downloaded data.”
-5. In Safari, choose Share → Add to Home Screen, enable **Open as Web App**, choose the name, and add it. Apple documents this flow at <https://support.apple.com/en-ie/guide/iphone/iphea86e5236/ios>.
-6. Launch the new Home Screen icon and repeat the bridge and comment tests at least once before relying on offline private commentary.
+Review `web/pwa-canary/` before committing. It may contain code/style/icon assets, release metadata, and the one public backend URL. It must not contain reader codes/hashes, ESV key/text, account emails, Drive/Sheet/file IDs, commentary, comments, highlights, or API responses. The safety scanner permits the endpoint only in the exact config/generated-client paths.
 
-The local/conventional shell declares a dedicated 180-pixel Apple touch icon and 192-/512-pixel manifest icons. Production also calls `HtmlOutput.setFaviconUrl` with the exact reachable HTTPS Pages URL of that PNG, which supplies the browser favicon. The version-23 iPhone check established that this does **not** supply a Home Screen icon: Apps Script offers only the favicon setter and ignores direct favicon declarations, while iOS requires either an `apple-touch-icon` or manifest icon in the installed top-level document. WebKit therefore generates the observed **D** monogram from the app name. Removing and re-adding the Apps Script URL cannot change it. A custom icon now requires either a separately approved removable Web Clip configuration profile or the Pages-top-level/GIS migration; do not weaken authentication or add a cross-origin redirect merely to change artwork. References checked 2026-08-10: <https://developers.google.com/apps-script/reference/html/html-output>, <https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/>, and <https://developer.apple.com/documentation/devicemanagement/webclip>.
+Commit and push the code-only release to `main`. Wait for GitHub Pages, then verify the release manifest and every referenced asset over HTTPS for status, content type, byte identity, and integrity. Do not delete old `web/releases/` or earlier versioned PWA clients.
 
-Apps Script supplies the viewport and the supported Apple/mobile-web-app capability settings through `HtmlOutput.addMetaTag`; placing them only in raw HTML is not sufficient in HTML Service. Google currently permits only `viewport`, `apple-mobile-web-app-capable`, `mobile-web-app-capable`, and `google-site-verification` through that method. Theme and status-bar styling remain in the local HTML/CSS but must not be passed to `addMetaTag`, which throws before the page is served. No service worker is registered under this hosting model, so cold offline launch is not guaranteed. The app's seven-reading target applies to fetched private payloads and policy-admitted Scripture, not to the executable shell.
+The install URL is:
 
-## 6. Publish an update without trapping an old installed version
+`https://dcr-cmyk648.github.io/daily-bible-reader/web/pwa-canary/`
 
-1. Run `npm run build`, `npm run publish:pages`, and `npm run check`. Inspect `dist/apps-script/`, `dist/pages/`, and tracked `web/`; the verifier must prove the current public manifest and assets exactly match source.
-2. Commit and push the code-only release to `main`. Wait for Pages deployment, then retrieve `web/release.json` and all three assets over HTTPS. Confirm release ID, byte counts, SHA-384 values, `Access-Control-Allow-Origin`, JavaScript content type, and absence of private indicators.
-3. A frontend-only release stops here: the fixed loader discovers the new manifest and immutable asset path. Do not redeploy Apps Script merely to change UI JavaScript or CSS.
-4. For a backend, RPC, semantic-HTML, loader, scope, or deployment change, create a new immutable Apps Script version on canary. Preserve `getBootstrapData(readerCode)` for at least one transition. Production remains on the last phone-confirmed version.
-5. Launch canary on the installed iPhone, close/reopen it, verify the month appears, open live ESV, and perform one comment or highlight write. Cache details must show `clientDeliveryMode: pages-assets`, the expected frontend release ID, and current/saved release source.
-6. Only after that gate should the existing production deployment pointer move to the same immutable version. Record the prior version for immediate rollback. Released `web/releases/<releaseId>/` directories are immutable and remain available because a device may retain their last-valid manifest.
+Open it first in iPhone Safari, then use **Share → Add to Home Screen → Open as Web App**. Keep the current Apps Script-installed app until the canary passes.
 
-The manifest request uses no-store plus a unique query and every asset path contains the deterministic release ID, so routine updates no longer depend on replacing an Apps Script HTML document. This still cannot guarantee cold offline launch under the Apps Script origin. If the thin launcher remains unreliable, pause and review the Pages-top-level PWA/GIS fallback in `docs/ARCHITECTURE.md`.
+## Acceptance gate
 
-## 7. Create the separate Pages/API canary
+On Dustin's iPhone verify, in order:
 
-This is not part of production setup. The local code is prepared, but no canary Apps Script or Cloud project has been created. Google requires a separate explicit approval for those persistent resources.
+1. Cold open shows the public shell promptly and the open-Bible icon.
+2. First code entry identifies Dustin; Shane's code is never used on Dustin's device.
+3. Close and reopen without re-entering the code.
+4. Calendar/cached private commentary paints before background synchronization completes.
+5. Live ESV loads with exact attribution and remains unavailable rather than substituted on provider failure.
+6. Comment create, edit, and retract work and update calendar completion.
+7. Highlight add/remove works with immediate optimistic feedback and authoritative reconciliation.
+8. Offline reopen shows the shell, cached permitted commentary/calendar, and drafts; Scripture clearly requires a connection.
+9. A deployed public-shell update presents the explicit restart control and activates the new version without deleting the rollback cache.
+10. Cache inspection shows public assets only; no ESV, comments, private payloads, reader code, or Google response document is in Cache Storage.
 
-Use a separate standalone Apps Script project so associating a standard Cloud project, changing OAuth consent, or testing API execution cannot force the working version-23 web app to reauthorize or change deployment behavior. The prepared `npm run build:api-canary` output removes the web-app entry point and adds only `executionApi.access: ANYONE`; “any logged-in user” is only the outer API permission. A request still needs the canary OAuth client token, and every exposed reader function repeats the exact two-account allowlist, reader code/enrollment, Drive permission, scope, payload, and resource-ID controls.
+Then test Shane's distinct code on a separate browser/device and verify server-provided display identity. Test a deliberately wrong code and a crossed code on disposable state. Do not ask Shane to test until the current content and interface are ready.
 
-After exact approval to create the canary resources:
+## Sheet and Drive sharing
 
-1. Create a standard Google Cloud project owned by Dustin. Record its project **ID** and numeric project **number** privately.
-2. Enable **Google Apps Script API** in that Cloud project.
-3. Configure the OAuth consent screen for an external personal-use app. Add only Dustin and Shane as test users. The app uses the four scopes already listed in `app/apps-script/appsscript.json`; an unverified-app warning is expected during this two-user test.
-4. Create one **Web application** OAuth client with the single authorized JavaScript origin `https://dcr-cmyk648.github.io`. No wildcard, Apps Script URL, localhost production origin, client secret, or redirect URI belongs in the Pages app.
-5. Create a separate standalone Apps Script project named `Daily Bible Reader Pages Canary`, associate it with the standard Cloud project's numeric project number, push only the inspected `dist/apps-script-api-canary/` bundle, and configure the same private Script Properties as production. Dustin must enter the saved ESV key directly into that project's Script Properties; it must not pass through chat, Git, or the public config.
-6. Deploy that script as an **API executable**, with access limited to logged-in users. Record only the API deployment ID—not a web-app URL—as the public deployment identifier.
-7. Put the public OAuth client ID and public API deployment ID into `config/pages-pwa-public.json`, set `enabled: true`, then run `npm run build`, `npm run publish:pages`, and `npm run check`. The safety scanner permits those identifiers only in the exact canary config/client paths.
-8. Commit/push the enabled code-only canary and test `https://dcr-cmyk648.github.io/daily-bible-reader/web/pwa-canary/` in Safari before installing it. Production version 23 remains the rollback and should not be uninstalled yet.
+The app no longer requires Shane's Google account to edit the Sheet or read Drive because requests execute as Dustin. Existing direct sharing may remain for audit/convenience, limited to the exact two accounts. Never use domain or “anyone with the link” sharing.
 
-Google's official `scripts.run` requirements—API-executable deployment, all script scopes, a shared standard Cloud project, and the Apps Script API—were rechecked 2026-08-10: <https://developers.google.com/apps-script/api/how-tos/execute>. The API-executable manifest access values were rechecked at <https://developers.google.com/apps-script/manifest/web-app-api-executable>. The local authenticated diagnostic currently reports that the existing production project is **not** deployed as an API executable; no production setting was changed.
+Reader codes do not protect the native Drive or Sheet interfaces. If Shane should lose all access, rotate/remove his reader-code hash and separately revoke his Drive/Sheet sharing.
 
-## 8. Revocation and backup
+## Rollback and incident response
 
-Follow `docs/SECURITY.md`. Audit Drive and Sheet sharing periodically. Keep encrypted/private exports of content and comments outside Git, and test restore with new IDs before treating a backup as usable.
+- PWA failure: keep using the phone-confirmed Apps Script production URL; do not move its deployment pointer.
+- Public-shell regression: restore `web/pwa-canary/` to the last good generated release while retaining immutable assets.
+- Backend regression: archive/stop the token canary deployment and create a new immutable version after repair; do not reuse a changed deployment blindly.
+- Token leak: replace that reader's hash immediately and deliver a new code privately.
+- Backend URL abuse: create a new deployment URL, update the narrow public config, publish a new PWA version, and archive the old deployment.
+- GitHub compromise: stop/archive the token endpoint or rotate both codes before restoring a known-good Pages release.
+- ESV key leak: rotate in Script Properties/provider controls and review usage.
+
+## Backup and restore
+
+Keep restricted owner-controlled backups of the Drive content tree and both Sheet event tabs outside Git. A restore uses new private file/Sheet IDs, updates Script Properties/manifest privately, rechecks headers and sharing, and runs the same acceptance gate. Never place a backup containing commentary, comments, highlights, ESV responses, or identifiers in the repository.

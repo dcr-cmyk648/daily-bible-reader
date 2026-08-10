@@ -82,6 +82,33 @@
     };
   }
 
+  function authorizeTokenIdentity(input) {
+    const allowedUsers = Array.isArray(input && input.allowedUsers) ? input.allowedUsers : [];
+    const participants = publicParticipants(allowedUsers);
+    const presentedHash = String(input && input.presentedReaderCodeHash || "").toLowerCase();
+    if (!presentedHash) {
+      throw domainError("READER_CODE_REQUIRED", "A private reader code is required.");
+    }
+    if (!READER_CODE_HASH.test(presentedHash)) {
+      throw domainError("READER_CODE_INVALID", "The private reader code is invalid.");
+    }
+
+    const configuredHashes = allowedUsers.map((record) => String(record && record.readerCodeHash || "").toLowerCase());
+    if (configuredHashes.some((hash) => !READER_CODE_HASH.test(hash)) ||
+        new Set(configuredHashes).size !== configuredHashes.length) {
+      throw domainError("INVALID_SERVER_CONFIG", "Authorized-reader token configuration is invalid.");
+    }
+
+    let matchingIndex = -1;
+    configuredHashes.forEach((hash, index) => {
+      if (constantTimeEqual(hash, presentedHash)) matchingIndex = matchingIndex === -1 ? index : -2;
+    });
+    if (matchingIndex < 0) {
+      throw domainError("READER_CODE_INVALID", "The private reader code is invalid.");
+    }
+    return participants[matchingIndex];
+  }
+
   function publicParticipants(allowedUsersInput) {
     const allowedUsers = Array.isArray(allowedUsersInput) ? allowedUsersInput : [];
     if (allowedUsers.length !== 2) {
@@ -640,6 +667,7 @@
     applyHighlightEvent,
     assertAllowedFileId,
     authorizeIdentity,
+    authorizeTokenIdentity,
     completedReadingIds,
     constantTimeEqual,
     countParsedVerses,

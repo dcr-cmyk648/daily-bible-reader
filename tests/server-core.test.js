@@ -60,6 +60,37 @@ test("owner and friend identities are server-derived", () => {
   });
 });
 
+test("bearer reader codes derive one of exactly two configured identities", () => {
+  assert.deepEqual(core.authorizeTokenIdentity({
+    allowedUsers: users,
+    presentedReaderCodeHash: DUSTIN_CODE_HASH
+  }), {authorId: "dustin", displayName: "Dustin"});
+  assert.deepEqual(core.authorizeTokenIdentity({
+    allowedUsers: users.map(({authorId, displayName, readerCodeHash}) => ({authorId, displayName, readerCodeHash})),
+    presentedReaderCodeHash: SHANE_CODE_HASH
+  }), {authorId: "shane", displayName: "Shane"});
+});
+
+test("bearer reader-code authentication fails closed on missing, unknown, or ambiguous credentials", () => {
+  assert.throws(() => core.authorizeTokenIdentity({allowedUsers: users}), {code: "READER_CODE_REQUIRED"});
+  assert.throws(() => core.authorizeTokenIdentity({
+    allowedUsers: users,
+    presentedReaderCodeHash: "c".repeat(64)
+  }), {code: "READER_CODE_INVALID"});
+  assert.throws(() => core.authorizeTokenIdentity({
+    allowedUsers: users,
+    presentedReaderCodeHash: "not-a-hash"
+  }), {code: "READER_CODE_INVALID"});
+  assert.throws(() => core.authorizeTokenIdentity({
+    allowedUsers: [users[0]],
+    presentedReaderCodeHash: DUSTIN_CODE_HASH
+  }), {code: "INVALID_SERVER_CONFIG"});
+  assert.throws(() => core.authorizeTokenIdentity({
+    allowedUsers: [users[0], {...users[1], readerCodeHash: DUSTIN_CODE_HASH}],
+    presentedReaderCodeHash: DUSTIN_CODE_HASH
+  }), {code: "INVALID_SERVER_CONFIG"});
+});
+
 test("the public reader roster contains display identities but no emails or code hashes", () => {
   assert.deepEqual(core.publicParticipants(users), [
     {authorId: "dustin", displayName: "Dustin"},

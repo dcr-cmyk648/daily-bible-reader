@@ -25,17 +25,17 @@ test("repository scanner permits conspicuous mock fixture and provider metadata"
   assert.deepEqual(safety.inspectText("config/provider.json", '{"translation":"ESV","policyVersion":"example","apiKeyMayReachClient":false}'), []);
 });
 
-test("repository scanner confines non-secret public Google IDs to the PWA allowlist", async () => {
+test("repository scanner confines non-secret public Google endpoints to the PWA allowlist", async () => {
   const safety = await import("../scripts/check-repository-safety.mjs");
-  const oauthClientId = ["123456789012-", "abcdefghijklmnop", ".apps.googleusercontent.com"].join("");
-  const apiDeploymentId = ["AbCdEfGhIjKlMnOpQrSt", "UvWxYz_12345"].join("");
+  const deploymentId = ["AbCdEfGhIjKlMnOpQrSt", "UvWxYz_12345"].join("");
+  const backendWebAppUrl = `https://script.google.com/macros/s/${deploymentId}/exec`;
   const publicConfig = JSON.stringify({
-    schemaVersion: "dbr-pages-public-config/v1",
+    schemaVersion: "dbr-pages-public-config/v2",
     enabled: true,
-    oauthClientId,
-    apiDeploymentId
+    backendWebAppUrl
   });
   assert.deepEqual(safety.inspectText("config/pages-pwa-public.json", publicConfig), []);
-  assert.ok(safety.inspectText("app/frontend/config.js", publicConfig).includes("public OAuth client ID outside allowlisted PWA artifact"));
-  assert.ok(safety.inspectText("app/frontend/config.js", publicConfig).includes("public Apps Script API deployment ID outside allowlisted PWA artifact"));
+  assert.ok(safety.inspectText("app/frontend/config.js", publicConfig).includes("Apps Script deployment URL outside allowlisted PWA artifact"));
+  const obsoleteOAuth = ["123456789012-", "abcdefghijklmnop", ".apps.googleusercontent.com"].join("");
+  assert.ok(safety.inspectText("config/pages-pwa-public.json", obsoleteOAuth).includes("obsolete public OAuth client ID"));
 });

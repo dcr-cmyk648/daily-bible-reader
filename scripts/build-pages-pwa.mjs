@@ -13,16 +13,6 @@ const OUTPUT = path.join(ROOT, "dist/pages-pwa");
 const PUBLIC_CONFIG = path.join(ROOT, "config/pages-pwa-public.json");
 const PWA_SCOPE_PATH = "/daily-bible-reader/web/pwa-canary/";
 const MAX_PUBLIC_ASSET_BYTES = 750_000;
-const GOOGLE_AUTH_GATE = `
-    <section id="googleAuthGate" class="access-gate" aria-labelledby="googleAuthHeading" hidden>
-      <div class="access-card">
-        <p class="eyebrow">Private Google access</p>
-        <h1 id="googleAuthHeading">Connect your Google account</h1>
-        <p id="googleAuthExplanation">The installed reader keeps its public shell on this phone. Google authorization is still required before the private backend can be refreshed.</p>
-        <p id="googleAuthStatus" class="muted" role="status" aria-live="polite">No private request has been sent.</p>
-        <button id="googleAuthButton" class="primary-button" type="button">Continue with Google</button>
-      </div>
-    </section>`;
 const PWA_UPDATE_PANEL = `
       <section id="pwaUpdatePanel" class="update-panel global-panel" aria-labelledby="pwaUpdateHeading" hidden>
         <div>
@@ -63,18 +53,17 @@ function validateFrontendManifest(value) {
 }
 
 function validatePublicConfig(value) {
-  if (!value || value.schemaVersion !== "dbr-pages-public-config/v1" || typeof value.enabled !== "boolean") {
+  if (!value || value.schemaVersion !== "dbr-pages-public-config/v2" || typeof value.enabled !== "boolean") {
     throw new Error("Pages PWA public configuration is invalid.");
   }
   if (value.enabled) {
-    if (!/^\d{6,}-[a-z0-9_-]{12,}\.apps\.googleusercontent\.com$/.test(String(value.oauthClientId || "")) ||
-        !/^[A-Za-z0-9_-]{20,}$/.test(String(value.apiDeploymentId || ""))) {
-      throw new Error("Enabled Pages PWA configuration requires valid public OAuth and API deployment IDs.");
+    if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]{20,}\/exec$/.test(String(value.backendWebAppUrl || ""))) {
+      throw new Error("Enabled Pages PWA configuration requires one valid Apps Script web-app URL.");
     }
-  } else if (value.oauthClientId || value.apiDeploymentId) {
-    throw new Error("Disabled Pages PWA configuration must not contain partial identifiers.");
+  } else if (value.backendWebAppUrl) {
+    throw new Error("Disabled Pages PWA configuration must not contain a backend URL.");
   }
-  const extra = Object.keys(value).filter((key) => !["schemaVersion", "enabled", "oauthClientId", "apiDeploymentId"].includes(key));
+  const extra = Object.keys(value).filter((key) => !["schemaVersion", "enabled", "backendWebAppUrl"].includes(key));
   if (extra.length) throw new Error(`Pages PWA public configuration has unexpected fields: ${extra.join(", ")}.`);
   return value;
 }
@@ -97,7 +86,7 @@ async function main() {
   const frontendManifest = validateFrontendManifest(JSON.parse(frontendManifestText));
   const publicConfig = validatePublicConfig(JSON.parse(configText));
   const pwaReleaseId = digest([
-    `esbuild:${esbuildVersion};target:safari15;delivery:pages-pwa-v1`,
+    `esbuild:${esbuildVersion};target:safari15;delivery:pages-pwa-token-v2`,
     sourceHtml,
     clientSource,
     workerSource,
@@ -151,22 +140,17 @@ async function main() {
   const style = frontendManifest.assets.styles;
   const pwaCsp = [
     "default-src 'self'",
-    "script-src 'self' https://accounts.google.com/gsi/client",
-    "style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data:",
-    "connect-src 'self' https://accounts.google.com https://oauth2.googleapis.com https://script.googleapis.com",
-    "frame-src https://accounts.google.com",
+    "connect-src 'self'",
+    "frame-src https://script.google.com https://*.googleusercontent.com",
     "object-src 'none'",
     "base-uri 'none'",
-    "form-action 'none'",
+    "form-action https://script.google.com",
     "frame-ancestors 'none'"
   ].join("; ");
   let html = sourceHtml;
-  html = assertSingleReplacement(
-    html,
-    html.replace("    </header>\n\n    <section id=\"readerCodeGate\"", `    </header>\n${GOOGLE_AUTH_GATE}\n\n    <section id="readerCodeGate"`),
-    "Google authorization gate"
-  );
   html = assertSingleReplacement(
     html,
     html.replace(
@@ -200,8 +184,8 @@ async function main() {
   html = html.replaceAll('href="assets/', 'href="assets/');
   html = html.replace('<html lang="en">', `<html lang="en" data-pwa-release="${pwaReleaseId}">`);
   validateNoExecutableInlineScripts(html);
-  if (/google\.script\.run|ESV_API_KEY|private-content|script\.google\.com\/macros\/s\//i.test(html)) {
-    throw new Error("Pages PWA shell contains a private bridge or secret indicator.");
+  if (/google\.script\.run|ESV_API_KEY|private-content|oauthClientId|apiDeploymentId/i.test(html)) {
+    throw new Error("Pages PWA shell contains a secret or obsolete authorization indicator.");
   }
 
   const pwaManifest = JSON.parse(manifestText);
@@ -235,7 +219,7 @@ async function main() {
   ];
   const violations = await inspectPaths(publicPaths);
   if (violations.length) throw new Error(`Pages PWA safety failure:\n- ${violations.join("\n- ")}`);
-  process.stdout.write(`Pages PWA canary ${pwaReleaseId} built against frontend ${frontendManifest.releaseId}; Google access ${publicConfig.enabled ? "configured" : "disabled"}.\n`);
+  process.stdout.write(`Pages PWA canary ${pwaReleaseId} built against frontend ${frontendManifest.releaseId}; token bridge ${publicConfig.enabled ? "configured" : "disabled"}.\n`);
 }
 
 main().catch((error) => {

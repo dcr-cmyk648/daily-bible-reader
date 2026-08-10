@@ -4,7 +4,7 @@ The synthesis is a prepublication artifact, never a runtime AI response. Work on
 
 Scheduled preparation uses the repo-local `$draft-daily-commentary` skill only after `scripts/content-automation.mjs work-order` emits a validated `commentary-work-order/v1` packet from an explicitly enabled private policy. The packet authorizes one ignored `unreviewed` staging draft and nothing else. The status evaluator, work-order generator, and skill are separate gates; none can publish.
 
-Dustin authorized the exact authenticated `gpt-5.3-codex-spark` worker for future work-order-bound commentary drafting. Spark may run only after the main task has built an actually consulted, rights-audited, Scripture-free source packet. Invoke it sequentially, read-only, with multi-agent features disabled and a strict output schema. Its output remains `unreviewed`; the main task must verify every citation, remove workflow-facing prose, validate the final hash and rights boundaries, and hand the reading back for review. Spark does not research by title or snippet, broaden the reading range, approve, upload, publish, or recur by itself.
+Keep this complete workflow in the primary task: source discovery and consultation, rights decisions, evidentiary weighting, synthesis, editing, citation verification, validation, and publication handoff. Do not delegate the main daily synthesis to Spark. The exact authenticated `gpt-5.3-codex-spark` model is reserved for the separate mass verse-by-verse Matthew Henry condensation lane in `MATTHEW_HENRY_PIPELINE.md`. D057's preserved Spark-assisted draft is a one-off calibration and does not authorize the same method for D058 or later readings.
 
 ## 1. Create the reading workspace
 

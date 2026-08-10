@@ -1,6 +1,6 @@
 # Content automation runbook
 
-Status: deterministic local foundation and one-reading commentary handoff implemented. One real D057 staging run completed under a stable work order and the gate was disabled again before D058. No recurring task, private Drive staging area, or publication automation is enabled.
+Status: deterministic local foundation and one-reading commentary handoff implemented. One real D057 run completed under a stable work order, received a separate explicit manual publication approval, and was verified in private Drive; the generation gate was disabled again before D058. No recurring task, private Drive staging area, or publication automation is enabled.
 
 The automation controller is deliberately read-only. It inspects versioned metadata, measures consecutive draft and published buffers, and selects at most one earliest next action. When—and only when—a private policy explicitly enables generation, it can emit a schema-validated one-reading work order for the repo-local `$draft-daily-commentary` skill. Neither command opens commentary bodies, invokes a model, writes Drive, changes the live manifest, or deploys the reader.
 
@@ -49,7 +49,7 @@ node scripts/content-automation.mjs work-order \
   --live-index <private-live-index.json>
 ```
 
-The packet explicitly names `$draft-daily-commentary`. The skill works only in `private-content/automation/staging/<readingId>/`, prepares commentary, synthesis, registry/coverage, and validation artifacts, and leaves them `unreviewed`. It cannot publish or select a second reading. Dustin authorizes the exact ChatGPT-authenticated `gpt-5.3-codex-spark` model as the skill's optional drafting worker after the main task has assembled an actually consulted, rights-audited, Scripture-free source packet. Run Spark sequentially, read-only, with a strict schema and multi-agent features disabled; preserve its raw draft for audit and never let it research by snippet, approve, or publish.
+The packet explicitly names `$draft-daily-commentary`. The skill works only in `private-content/automation/staging/<readingId>/`, prepares commentary, synthesis, registry/coverage, and validation artifacts, and leaves them `unreviewed`. It cannot publish or select a second reading. The primary task must execute the full main-commentary workflow itself. Do not invoke Spark here; the exact ChatGPT-authenticated `gpt-5.3-codex-spark` model is reserved for mass verse-by-verse Matthew Henry condensation. Preserve the D057 Spark-assisted artifact as a one-off calibration rather than a reusable precedent.
 
 ## Decision rules
 
@@ -69,7 +69,7 @@ The active bridge's legacy accepted studies still use `in_review` metadata in Dr
 When Dustin explicitly enables the recurring task:
 
 1. Reuse the validated ignored policy, staging-index, and live-index files; the policy must begin disabled.
-2. Reuse the completed D057 manual run as the real work-order/Spark handoff test; confirm its private audit files and exact hash remain available.
+2. Reuse the completed D057 manual run as the real work-order/publication test; retain its one-off Spark calibration artifact for audit, but confirm the scheduled prompt keeps future main synthesis in the primary task.
 3. In a dedicated clean automation checkout or isolated task worktree, verify that private metadata is available from the configured canonical source; do not assume ignored files from another worktree exist.
 4. Create a desktop scheduled task, provisionally daily at 5:00 a.m. `America/Detroit`, and explicitly invoke `$draft-daily-commentary` in its prompt.
 5. Give it repository and web-research access only. Do not give deployment, Apps Script, Sheet, comment, ESV-key, or live-manifest write authority.

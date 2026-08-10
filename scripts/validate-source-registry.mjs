@@ -66,6 +66,22 @@ export function validateRegistryProvenance(registry) {
         `${source.sourceId}: quality/duplicate exclusions must use the excluded tier`);
     }
 
+    const criticalPerspective = (source.traditionOrPerspective || []).some((perspective) =>
+      /(?:modern critical|historical-critical|classic critical)/i.test(String(perspective))
+    );
+    if (criticalPerspective) {
+      assert(source.affiliationContext, `${source.sourceId}: critical source requires verified or explicitly unclear affiliation context`);
+      assert(source.synthesisPriority, `${source.sourceId}: critical source requires an explicit synthesis role`);
+      if (source.summaryUseStatus === "inaccessible") {
+        assert(source.synthesisPriority === "inventory_only",
+          `${source.sourceId}: inaccessible critical source must remain inventory-only`);
+      }
+      if (source.affiliationContext === "secular_academic") {
+        assert(source.synthesisPriority !== "core",
+          `${source.sourceId}: secular critical work may supply context or a major counterposition, not the confessional core`);
+      }
+    }
+
     const serialized = JSON.stringify(source);
     assert(!/"(?:rawText|rawSourceText|fullCommentaryText|sourceText|quotation)"\s*:/.test(serialized),
       `${source.sourceId}: registry contains a forbidden raw-source or quotation field`);

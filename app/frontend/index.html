@@ -103,7 +103,7 @@
             <p id="offlinePackStatus" class="muted" aria-live="polite">Offline pack has not been prepared yet.</p>
           </div>
           <div class="storage-actions">
-            <button id="syncOutbox" type="button">Sync pending comments</button>
+            <button id="syncOutbox" type="button">Sync pending activity</button>
             <button id="clearDownloadedData" class="danger-button" type="button">Clear downloaded data</button>
             <button id="forgetReaderAccess" class="danger-button" type="button">Forget reader code</button>
           </div>
@@ -168,6 +168,7 @@
                 </div>
               </div>
               <div id="scriptureState" class="inline-state" role="status" aria-live="polite">Scripture loads when the chapter opens.</div>
+              <p id="highlightHelp" class="highlight-help" hidden>Tap a verse to see or change Dustin and Shane’s shared highlights.</p>
               <div id="scriptureContent" class="scripture-content"></div>
               <div class="esv-attribution" aria-label="ESV copyright and use notice">
                 <strong>ESV</strong>
@@ -271,6 +272,19 @@
           </div>
         </section>
       </section>
+
+      <aside id="highlightPopover" class="highlight-popover" role="dialog" aria-labelledby="highlightPopoverReference" hidden>
+        <div class="highlight-popover-heading">
+          <div>
+            <p class="eyebrow">Shared verse highlight</p>
+            <h2 id="highlightPopoverReference">Selected verse</h2>
+          </div>
+          <button id="highlightClose" type="button" aria-label="Close verse highlight details">Close</button>
+        </div>
+        <div id="highlightPopoverList" class="highlight-popover-list"></div>
+        <p id="highlightStatus" class="muted" role="status" aria-live="polite"></p>
+        <button id="highlightAction" class="primary-button" type="button">Highlight this verse</button>
+      </aside>
     </main>
 
     <footer class="app-footer">

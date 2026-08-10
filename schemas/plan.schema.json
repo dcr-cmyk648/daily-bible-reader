@@ -9,6 +9,32 @@
     "planVersion": {"type": "string", "minLength": 1, "maxLength": 80},
     "title": {"type": "string", "minLength": 1, "maxLength": 200},
     "canonId": {"type": "string", "minLength": 1, "maxLength": 100},
+    "structure": {
+      "type": "object",
+      "required": ["oneReadingUnitPerDay", "bookIntroductionPolicy", "interweavingStrategy", "targetFinishTogether", "streams"],
+      "properties": {
+        "oneReadingUnitPerDay": {"const": true},
+        "bookIntroductionPolicy": {"const": "immediately_before_chapter_1"},
+        "interweavingStrategy": {"const": "proportional_four_stream"},
+        "targetFinishTogether": {"const": true},
+        "streams": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "object",
+            "required": ["streamId", "unitCount", "orderingRule"],
+            "properties": {
+              "streamId": {"enum": ["old_testament", "new_testament", "psalms", "proverbs"]},
+              "unitCount": {"type": "integer", "minimum": 1},
+              "orderingRule": {"type": "string", "minLength": 1, "maxLength": 1000}
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
     "entries": {
       "type": "array",
       "minItems": 1,
@@ -30,4 +56,3 @@
   },
   "additionalProperties": false
 }
-

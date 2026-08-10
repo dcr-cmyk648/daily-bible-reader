@@ -28,6 +28,22 @@ function request(overrides = {}) {
   };
 }
 
+function highlightRequest(overrides = {}) {
+  return {
+    clientRequestId: "highlight:1234567890abcdef",
+    eventType: "create",
+    planVersion: plan.planVersion,
+    readingId: FIRST_READING,
+    bookId: "MIC",
+    chapter: 3,
+    verse: 1,
+    baseRevision: 0,
+    authorId: "spoofed-friend",
+    displayName: "Spoofed Name",
+    ...overrides
+  };
+}
+
 function ids() {
   let value = 0;
   return (kind) => `${kind}:${String(++value).padStart(16, "0")}`;
@@ -320,12 +336,127 @@ test("HTML/script input remains inert plain data and size/control limits apply",
   assert.throws(() => core.validateCommentRequest(request({body: "bad\u0000text"}), plan), {code: "COMMENT_INVALID"});
 });
 
+test("shared highlights are append-only, identity-bound, and may overlap by reader", () => {
+  const makeIds = ids();
+  const dustin = {authorId: "dustin", displayName: "Dustin"};
+  const shane = {authorId: "shane", displayName: "Shane"};
+  const first = core.applyHighlightEvent({
+    payload: highlightRequest(), plan, identity: dustin, existingEvents: [],
+    now: "2026-08-10T12:00:00.000Z", idFactory: makeIds
+  }).event;
+  assert.equal(first.authorId, "dustin");
+  assert.equal(first.displayName, "Dustin");
+  assert.equal(first.revision, 1);
+  assert.equal(first.createdAt, "2026-08-10T12:00:00.000Z");
+
+  const second = core.applyHighlightEvent({
+    payload: highlightRequest({clientRequestId: "highlight:2234567890abcdef"}),
+    plan,
+    identity: shane,
+    existingEvents: [first],
+    now: "2026-08-10T12:05:00.000Z",
+    idFactory: makeIds
+  }).event;
+  assert.equal(core.materializeHighlightEvents([first, second]).length, 2);
+
+  assert.throws(() => core.applyHighlightEvent({
+    payload: highlightRequest({
+      clientRequestId: "highlight:3234567890abcdef",
+      eventType: "delete",
+      highlightId: first.highlightId,
+      baseRevision: 1
+    }),
+    plan,
+    identity: shane,
+    existingEvents: [first, second],
+    idFactory: makeIds
+  }), {code: "HIGHLIGHT_FORBIDDEN"});
+
+  const removed = core.applyHighlightEvent({
+    payload: highlightRequest({
+      clientRequestId: "highlight:4234567890abcdef",
+      eventType: "delete",
+      highlightId: first.highlightId,
+      baseRevision: 1
+    }),
+    plan,
+    identity: dustin,
+    existingEvents: [first, second],
+    now: "2026-08-10T12:10:00.000Z",
+    idFactory: makeIds
+  }).event;
+  assert.equal(removed.revision, 2);
+  assert.ok(removed.deletedAt);
+  assert.deepEqual(core.materializeHighlightEvents([first, second, removed]).map((item) => item.authorId), ["shane"]);
+  assert.equal(core.materializeHighlightEvents([first, second, removed], {includeDeleted: true}).length, 2);
+});
+
+test("highlight retries are idempotent and verse references cannot escape the reading", () => {
+  const identity = {authorId: "dustin", displayName: "Dustin"};
+  const makeIds = ids();
+  const first = core.applyHighlightEvent({
+    payload: highlightRequest(), plan, identity, existingEvents: [], idFactory: makeIds
+  }).event;
+  const retry = core.applyHighlightEvent({
+    payload: highlightRequest(), plan, identity, existingEvents: [first], idFactory: makeIds
+  });
+  assert.equal(retry.idempotent, true);
+  assert.equal(retry.event.highlightId, first.highlightId);
+  assert.throws(() => core.validateHighlightRequest(highlightRequest({chapter: 2}), plan), {code: "INVALID_HIGHLIGHT_REFERENCE"});
+  assert.throws(() => core.validateHighlightRequest(highlightRequest({verse: 13}), plan), {code: "INVALID_HIGHLIGHT_REFERENCE"});
+  assert.throws(() => core.validateHighlightRequest(highlightRequest({readingId: SECOND_READING, chapter: 4, verse: 1}), plan),
+    {code: "INVALID_HIGHLIGHT_REFERENCE"});
+});
+
 test("ESV parsed range count and expected range validation", () => {
   assert.equal(core.countParsedVerses([[1001001, 1001031]]), 31);
   const payload = {canonical: "Configured chapter", parsed: [[1001001, 1001031]], passages: ["mock response shape only (ESV)"]};
   assert.equal(core.validateEsvPayload(payload, {verseCount: 31}).verseCount, 31);
+  assert.equal(core.validateEsvPayload(payload, {verseCount: 31, startVerse: 1, endVerse: 31}).verseCount, 31);
   assert.throws(() => core.validateEsvPayload(payload, {verseCount: 30}), {code: "ESV_RANGE_MISMATCH"});
+  assert.throws(() => core.validateEsvPayload(payload, {verseCount: 31, startVerse: 2, endVerse: 32}), {code: "ESV_RANGE_MISMATCH"});
   assert.throws(() => core.countParsedVerses([[1001031, 1002001]]), {code: "INVALID_ESV_RESPONSE"});
+});
+
+test("long-term plan validation enforces four streams, intro adjacency, continuity, and partial ranges", () => {
+  const streamIds = ["old_testament", "new_testament", "psalms", "proverbs"];
+  const entries = [];
+  streamIds.forEach((streamId, streamIndex) => {
+    const bookId = ["GEN", "MAT", "PSA", "PRO"][streamIndex];
+    entries.push({
+      planVersion: "four-stream-v1", dayIndex: entries.length + 1, readingId: `${bookId}-INTRO`,
+      kind: "book_intro", bookId, streamId, streamSequence: 1, contextReadingIds: [],
+      orderingRationale: "test", chronologyBasis: "pragmatic", confidence: "high", notes: "", sourceIds: []
+    });
+    entries.push({
+      planVersion: "four-stream-v1", dayIndex: entries.length + 1, readingId: `${bookId}-001`,
+      kind: "chapter", bookId, chapter: 1, streamId, streamSequence: 2,
+      contextReadingIds: [`${bookId}-INTRO`], passages: [{bookId, chapter: 1, verseStart: 1, verseEnd: 3, verseCount: 3}],
+      orderingRationale: "test", chronologyBasis: "pragmatic", confidence: "high", notes: "", sourceIds: []
+    });
+  });
+  const structured = {
+    schemaVersion: "plan/v1",
+    planVersion: "four-stream-v1",
+    structure: {
+      oneReadingUnitPerDay: true,
+      bookIntroductionPolicy: "immediately_before_chapter_1",
+      interweavingStrategy: "proportional_four_stream",
+      targetFinishTogether: true,
+      streams: streamIds.map((streamId) => ({streamId, unitCount: 2, orderingRule: "test"}))
+    },
+    entries
+  };
+  assert.equal(core.validatePlanStructure(structured), structured);
+  const brokenIntro = JSON.parse(JSON.stringify(structured));
+  brokenIntro.entries[1].bookId = "EXO";
+  assert.throws(() => core.validatePlanStructure(brokenIntro), {code: "INVALID_PLAN"});
+  const futureContext = JSON.parse(JSON.stringify(structured));
+  futureContext.entries[0].contextReadingIds = [futureContext.entries[1].readingId];
+  assert.throws(() => core.validatePlanStructure(futureContext), {code: "INVALID_PLAN"});
+  const wrongRange = JSON.parse(JSON.stringify(structured));
+  wrongRange.entries[1].passages[0].verseCount = 4;
+  assert.throws(() => core.validatePlanStructure(wrongRange), {code: "INVALID_PLAN"});
 });
 
 test("verse of the day is a reference inside the configured reading, never stored ESV text", () => {

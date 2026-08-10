@@ -16,7 +16,7 @@
   const DAY_MS = 86400000;
   const CLIENT_BUILD_ID = "__DBR_BUILD_ID__";
   const DB_NAME = "dailyBibleReaderPilot";
-  const DB_VERSION = 4;
+  const DB_VERSION = 5;
   const BOOTSTRAP_CACHE_KEY = "__app-bootstrap__";
   const BOOTSTRAP_CACHE_SCHEMA = "bootstrap-cache/v1";
   const STORE_DEFINITIONS = {
@@ -27,6 +27,9 @@
     commentDrafts: "draftKey",
     commentSnapshot: "commentId",
     commentEvents: "eventId",
+    highlightOutbox: "clientRequestId",
+    highlightSnapshot: "highlightId",
+    highlightEvents: "eventId",
     deviceCredentials: "credentialId"
   };
   const BOOK_NAMES = {
@@ -47,6 +50,7 @@
     calendarSyncPromise: null,
     calendarWindow: null,
     comments: [],
+    highlights: [],
     completionByReadingId: new Map(),
     completedReadingIds: new Set(),
     config: null,
@@ -63,7 +67,10 @@
     store: null,
     sources: [],
     commentSyncToken: 0,
+    highlightSyncToken: 0,
     scriptureRequestToken: 0,
+    currentScripture: null,
+    selectedHighlightReference: null,
     verseOfTheDay: null,
     uiWired: false,
     view: "home"
@@ -136,6 +143,13 @@
       ids.add(entry.readingId);
       expectedDay += 1;
     });
+    if (root.DBRServerCore && typeof root.DBRServerCore.validatePlanStructure === "function") {
+      try {
+        root.DBRServerCore.validatePlanStructure(plan);
+      } catch (error) {
+        throw appError(error && error.message || "The active reading plan is invalid.", "INVALID_PLAN");
+      }
+    }
     return plan;
   }
 
@@ -294,7 +308,11 @@
     const passages = Array.isArray(entry.passages) && entry.passages.length
       ? entry.passages
       : [{bookId: entry.bookId, chapter: entry.chapter}];
-    const sameBook = passages.every((passage) => passage.bookId === passages[0].bookId);
+    if (passages.length === 1 && Number.isInteger(passages[0].verseStart)) {
+      const passage = passages[0];
+      return entry.unitLabel || `${BOOK_NAMES[passage.bookId] || passage.bookId} ${passage.chapter}:${passage.verseStart}–${passage.verseEnd}`;
+    }
+    const sameBook = passages.every((passage) => passage.bookId === passages[0].bookId && !Number.isInteger(passage.verseStart));
     const sequential = passages.every((passage, index) => index === 0 || passage.chapter === passages[index - 1].chapter + 1);
     if (sameBook && sequential) {
       const first = passages[0].chapter;
@@ -362,6 +380,78 @@
       result.push(item);
     });
     return result;
+  }
+
+  function compactHighlightOutbox(items) {
+    const ordered = (Array.isArray(items) ? items : []).slice().sort((a, b) =>
+      String(a.queuedAt || "").localeCompare(String(b.queuedAt || ""))
+    );
+    const result = [];
+    const pendingCreateByTempId = new Map();
+    ordered.forEach((item) => {
+      if (item.eventType === "create" && item.localTempId) {
+        pendingCreateByTempId.set(item.localTempId, item);
+        result.push(item);
+        return;
+      }
+      if (item.eventType === "delete" && item.localTempId && pendingCreateByTempId.has(item.localTempId)) {
+        const create = pendingCreateByTempId.get(item.localTempId);
+        const index = result.indexOf(create);
+        if (index >= 0) result.splice(index, 1);
+        pendingCreateByTempId.delete(item.localTempId);
+        return;
+      }
+      result.push(item);
+    });
+    return result;
+  }
+
+  function splitNumberedVerses(passageText) {
+    const text = String(passageText || "");
+    const marker = /\[(\d+)\]\s*/g;
+    const matches = Array.from(text.matchAll(marker));
+    if (!matches.length) return [];
+    return matches.map((match, index) => ({
+      verse: Number(match[1]),
+      text: text.slice(match.index + match[0].length, matches[index + 1] ? matches[index + 1].index : text.length).trim()
+    })).filter((record, index, records) =>
+      Number.isInteger(record.verse) && record.verse > 0 && record.text &&
+      records.findIndex((candidate) => candidate.verse === record.verse) === index
+    );
+  }
+
+  function verseBelongsToPassage(passage, verse) {
+    if (!passage || !Number.isInteger(verse) || verse < 1 || !Number.isInteger(passage.verseCount)) return false;
+    const start = Number.isInteger(passage.verseStart) ? passage.verseStart : 1;
+    const end = Number.isInteger(passage.verseEnd) ? passage.verseEnd : passage.verseCount;
+    return end >= start && passage.verseCount === end - start + 1 && verse >= start && verse <= end;
+  }
+
+  function highlightReferenceKey(reference) {
+    return reference ? `${reference.bookId}:${reference.chapter}:${reference.verse}` : "";
+  }
+
+  function effectiveHighlights(serverHighlights, outboxItems, session) {
+    const pending = compactHighlightOutbox(outboxItems || []);
+    const pendingDeletes = new Set(pending.filter((item) => item.eventType === "delete").map((item) => item.highlightId));
+    const active = (serverHighlights || []).filter((item) => item && !item.deletedAt && !pendingDeletes.has(item.highlightId));
+    pending.filter((item) => item.eventType === "create").forEach((item) => {
+      const duplicate = active.some((candidate) => candidate.authorId === (session && session.authorId) &&
+        candidate.readingId === item.readingId && candidate.bookId === item.bookId &&
+        candidate.chapter === item.chapter && candidate.verse === item.verse);
+      if (!duplicate) active.push({
+        ...item,
+        highlightId: item.localTempId,
+        authorId: session && session.authorId,
+        displayName: session && session.displayName,
+        createdAt: item.queuedAt,
+        updatedAt: item.queuedAt,
+        revision: 0,
+        pending: true,
+        deletedAt: null
+      });
+    });
+    return active;
   }
 
   function safeExternalUrl(value) {
@@ -614,9 +704,11 @@
           passages: entry.passages.map((passage) => ({
             bookId: passage.bookId,
             chapter: passage.chapter,
+            verseStart: Number.isInteger(passage.verseStart) ? passage.verseStart : 1,
+            verseEnd: Number.isInteger(passage.verseEnd) ? passage.verseEnd : passage.verseCount,
             canonical: `${BOOK_NAMES[passage.bookId] || passage.bookId} ${passage.chapter}`,
             verses: Array.from({length: passage.verseCount}, (_, index) =>
-              `Fabricated mock verse ${index + 1} for local layout testing in chapter ${passage.chapter}; no licensed Scripture is stored here.`
+              `Fabricated mock verse ${(Number.isInteger(passage.verseStart) ? passage.verseStart : 1) + index} for local layout testing in chapter ${passage.chapter}; no licensed Scripture is stored here.`
             )
           })),
           cacheAllowed: false
@@ -653,6 +745,24 @@
         });
         if (!result.idempotent) await store.put("commentEvents", result.event);
         await store.put("commentSnapshot", result.event);
+        return result;
+      },
+      async listHighlights(readingId) {
+        const events = await store.getAll("highlightEvents");
+        return core.materializeHighlightEvents(events.filter((event) => event.readingId === readingId));
+      },
+      async submitHighlightEvent(payload) {
+        const events = await store.getAll("highlightEvents");
+        const result = core.applyHighlightEvent({
+          payload,
+          plan: state.plan,
+          identity: state.session,
+          existingEvents: events,
+          now: new Date().toISOString(),
+          idFactory: (kind) => createRequestId(kind)
+        });
+        if (!result.idempotent) await store.put("highlightEvents", result.event);
+        await store.put("highlightSnapshot", result.event);
         return result;
       },
       async forgetReaderEnrollment() {
@@ -714,6 +824,8 @@
       listComments: (readingId) => appsScriptRpc("listComments", state.readerCode, readingId).then(unwrapRpc),
       listCommentActivity: (readingIds) => appsScriptRpc("listCommentActivity", state.readerCode, readingIds).then(unwrapRpc),
       submitCommentEvent: (payload) => appsScriptRpc("submitCommentEvent", state.readerCode, payload).then(unwrapRpc),
+      listHighlights: (readingId) => appsScriptRpc("listHighlights", state.readerCode, readingId).then(unwrapRpc),
+      submitHighlightEvent: (payload) => appsScriptRpc("submitHighlightEvent", state.readerCode, payload).then(unwrapRpc),
       forgetReaderEnrollment: () => appsScriptRpc("forgetReaderEnrollment", state.readerCode).then(unwrapRpc)
     };
   }
@@ -1043,7 +1155,7 @@
     const passage = (entry.passages || []).find((candidate) =>
       candidate.bookId === selection.bookId && candidate.chapter === selection.chapter
     );
-    if (!passage || !Number.isInteger(passage.verseCount) || selection.verse > passage.verseCount) return null;
+    if (!verseBelongsToPassage(passage, selection.verse)) return null;
     return {bookId: selection.bookId, chapter: selection.chapter, verse: selection.verse};
   }
 
@@ -1058,17 +1170,8 @@
   }
 
   function extractNumberedVerseText(passageText, verseNumber) {
-    if (!Number.isInteger(verseNumber) || verseNumber < 1) return "";
-    const text = String(passageText || "");
-    const marker = /\[(\d+)\]\s*/g;
-    let match;
-    while ((match = marker.exec(text))) {
-      if (Number(match[1]) !== verseNumber) continue;
-      const start = marker.lastIndex;
-      const next = marker.exec(text);
-      return text.slice(start, next ? next.index : text.length).trim();
-    }
-    return "";
+    const record = splitNumberedVerses(passageText).find((candidate) => candidate.verse === verseNumber);
+    return record ? record.text : "";
   }
 
   function prepareVerseOfTheDay() {
@@ -1243,7 +1346,125 @@
     scriptureState.dataset.state = "error";
     scriptureState.textContent = message || "ESV Scripture is unavailable. Retry or open the passage on ESV.org.";
     element("scriptureContent").replaceChildren();
+    element("highlightHelp").hidden = true;
+    state.currentScripture = null;
+    closeHighlightPopover();
     renderVerseOfDayUnavailable();
+  }
+
+  function participantIndex(authorId) {
+    return state.calendarParticipants.findIndex((participant) => participant.authorId === authorId);
+  }
+
+  function highlightsAt(reference) {
+    const key = highlightReferenceKey(reference);
+    return state.highlights.filter((highlight) => highlightReferenceKey(highlight) === key);
+  }
+
+  function highlightReferenceLabel(reference) {
+    return `${BOOK_NAMES[reference.bookId] || reference.bookId} ${reference.chapter}:${reference.verse}`;
+  }
+
+  function applyHighlightState() {
+    if (!root.document) return;
+    root.document.querySelectorAll(".scripture-verse").forEach((button) => {
+      const reference = {
+        bookId: button.dataset.bookId,
+        chapter: Number(button.dataset.chapter),
+        verse: Number(button.dataset.verse)
+      };
+      const active = highlightsAt(reference);
+      [0, 1].forEach((index) => {
+        button.setAttribute(`data-highlight-reader-${index}`, active.some((highlight) => participantIndex(highlight.authorId) === index)
+          ? "true"
+          : "false");
+      });
+      const names = state.calendarParticipants
+        .filter((participant) => active.some((highlight) => highlight.authorId === participant.authorId))
+        .map((participant) => participant.displayName);
+      const verseText = button.lastElementChild ? button.lastElementChild.textContent : "";
+      button.setAttribute("aria-label", `${highlightReferenceLabel(reference)}. ${verseText}${names.length ? ` Highlighted by ${names.join(" and ")}.` : " Not highlighted."}`);
+    });
+    if (!element("highlightPopover").hidden && state.selectedHighlightReference) renderHighlightPopover();
+  }
+
+  function scriptureVerseButton(reference, verseText) {
+    const button = root.document.createElement("button");
+    button.type = "button";
+    button.className = "scripture-verse";
+    button.dataset.bookId = reference.bookId;
+    button.dataset.chapter = String(reference.chapter);
+    button.dataset.verse = String(reference.verse);
+    const number = root.document.createElement("span");
+    number.className = "scripture-verse-number";
+    number.textContent = String(reference.verse);
+    number.setAttribute("aria-hidden", "true");
+    const text = root.document.createElement("span");
+    text.textContent = verseText;
+    button.append(number, text);
+    button.addEventListener("click", () => openHighlightPopover(reference));
+    return button;
+  }
+
+  function renderScriptureVerseList(passage, records) {
+    const list = root.document.createElement("div");
+    list.className = "scripture-verse-list";
+    records.forEach((record) => {
+      list.appendChild(scriptureVerseButton({
+        bookId: passage.bookId,
+        chapter: passage.chapter,
+        verse: record.verse
+      }, record.text));
+    });
+    return list;
+  }
+
+  function renderHighlightPopover() {
+    const reference = state.selectedHighlightReference;
+    if (!reference) return closeHighlightPopover();
+    const popover = element("highlightPopover");
+    const active = highlightsAt(reference).slice().sort((left, right) => participantIndex(left.authorId) - participantIndex(right.authorId));
+    element("highlightPopoverReference").textContent = highlightReferenceLabel(reference);
+    const list = element("highlightPopoverList");
+    list.replaceChildren();
+    if (!active.length) {
+      replaceWithText(list, "Neither reader has highlighted this verse.");
+    } else {
+      active.forEach((highlight) => {
+        const row = root.document.createElement("div");
+        row.className = "highlight-person";
+        const swatch = root.document.createElement("span");
+        swatch.className = `highlight-person-swatch participant-color-${Math.max(0, participantIndex(highlight.authorId))}`;
+        swatch.setAttribute("aria-hidden", "true");
+        const copy = root.document.createElement("div");
+        const name = root.document.createElement("strong");
+        name.textContent = highlight.displayName;
+        const time = root.document.createElement("span");
+        time.textContent = highlight.pending ? "Pending on this device" : `Highlighted ${formatTimestamp(highlight.updatedAt)}`;
+        copy.append(name, time);
+        row.append(swatch, copy);
+        list.appendChild(row);
+      });
+    }
+    const own = active.find((highlight) => highlight.authorId === state.session.authorId);
+    const action = element("highlightAction");
+    action.textContent = own ? "Remove my highlight" : "Highlight this verse";
+    action.dataset.action = own ? "delete" : "create";
+    element("highlightStatus").textContent = own && own.pending
+      ? "This change is saved on your device and will be shared after synchronization."
+      : "Highlights are shared with both readers; each person keeps their own color.";
+    popover.hidden = false;
+  }
+
+  function openHighlightPopover(reference) {
+    state.selectedHighlightReference = reference;
+    renderHighlightPopover();
+    element("highlightAction").focus({preventScroll: true});
+  }
+
+  function closeHighlightPopover() {
+    state.selectedHighlightReference = null;
+    if (element("highlightPopover")) element("highlightPopover").hidden = true;
   }
 
   function renderScripture(scripture, sourceLabel) {
@@ -1252,6 +1473,8 @@
     content.replaceChildren();
     scriptureState.hidden = false;
     scriptureState.dataset.state = "info";
+    state.currentScripture = scripture;
+    element("highlightHelp").hidden = false;
 
     if (scripture && scripture.isMock === true && scripture.translation === "MOCK") {
       element("translationLabel").textContent = "MOCK — not ESV";
@@ -1266,21 +1489,12 @@
         section.className = "scripture-passage";
         const heading = root.document.createElement("h3");
         heading.textContent = passage.canonical;
-        const list = root.document.createElement("ol");
-        list.className = "mock-verses";
-        passage.verses.forEach((verse, index) => {
-          const item = root.document.createElement("li");
-          const number = root.document.createElement("span");
-          number.className = "verse-number";
-          number.textContent = String(index + 1);
-          const text = root.document.createElement("span");
-          text.textContent = verse;
-          item.append(number, text);
-          list.appendChild(item);
-        });
+        const start = Number.isInteger(passage.verseStart) ? passage.verseStart : 1;
+        const list = renderScriptureVerseList(passage, passage.verses.map((verse, index) => ({verse: start + index, text: verse})));
         section.append(heading, list);
         content.appendChild(section);
       });
+      applyHighlightState();
       renderVerseOfTheDay(scripture);
       return;
     }
@@ -1299,13 +1513,20 @@
       section.className = "scripture-passage";
       const heading = root.document.createElement("h3");
       heading.textContent = passage.canonical;
-      const pre = root.document.createElement("pre");
-      pre.textContent = passage.passage;
-      section.append(heading, pre);
+      const verses = splitNumberedVerses(passage.passage);
+      if (verses.length) {
+        section.append(heading, renderScriptureVerseList(passage, verses));
+      } else {
+        const pre = root.document.createElement("pre");
+        pre.textContent = passage.passage;
+        section.append(heading, pre);
+        element("highlightHelp").hidden = true;
+      }
       content.appendChild(section);
     });
     const esvUrl = safeExternalUrl(scripture.esvUrl);
     if (esvUrl && esvUrl.startsWith("https://www.esv.org/")) element("openEsvLink").href = esvUrl;
+    applyHighlightState();
     renderVerseOfTheDay(scripture);
   }
 
@@ -1483,6 +1704,9 @@
 
   async function loadScripture(entry) {
     const token = ++state.scriptureRequestToken;
+    state.currentScripture = null;
+    element("highlightHelp").hidden = true;
+    closeHighlightPopover();
     const scriptureState = element("scriptureState");
     scriptureState.hidden = false;
     scriptureState.dataset.state = "info";
@@ -1843,6 +2067,7 @@
     element("nextPage").hidden = nextPage === 2;
     element("finishReading").hidden = nextPage !== 2;
     element("extendedStudy").hidden = nextPage !== 2;
+    if (nextPage !== 1) closeHighlightPopover();
     if (nextPage !== 2) {
       element("extendedStudy").querySelectorAll("details").forEach((disclosure) => {
         disclosure.open = false;
@@ -1865,6 +2090,9 @@
     state.currentEntry = null;
     state.scriptureRequestToken += 1;
     state.commentSyncToken += 1;
+    state.highlightSyncToken += 1;
+    state.currentScripture = null;
+    closeHighlightPopover();
     element("readingView").hidden = true;
     element("homeView").hidden = false;
     element("skipLink").href = "#calendarHeading";
@@ -1908,6 +2136,7 @@
     setReadingPage(0, {focus: false});
 
     if (schedule.locked) {
+      state.highlights = [];
       setBanner("This future reading is locked by the shared plan configuration.", "info");
     } else if (schedule.usingTestingOverride) {
       setBanner("Development override is active. The shared calendar has not been changed.", "info");
@@ -1938,8 +2167,13 @@
     }
     setSyncStatus("Loading reading…");
     const entry = schedule.selectedEntry;
-    await loadCachedDiscussion(entry.readingId);
+    state.highlights = [];
+    await Promise.all([
+      loadCachedDiscussion(entry.readingId),
+      entry.kind === "chapter" ? loadCachedHighlights(entry.readingId) : Promise.resolve()
+    ]);
     refreshComments({background: true, readingId: entry.readingId}).catch(() => {});
+    if (entry.kind === "chapter") refreshHighlights({readingId: entry.readingId}).catch(() => {});
     const result = await readingPayloadWithCache(entry.readingId);
     const payload = result.payload;
     if (state.currentEntry.readingId !== entry.readingId) return;
@@ -2088,6 +2322,147 @@
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return "Time unavailable";
     return new Intl.DateTimeFormat(undefined, {dateStyle: "medium", timeStyle: "short"}).format(date);
+  }
+
+  async function replaceHighlightSnapshots(readingId, highlights) {
+    const existing = await state.store.getAll("highlightSnapshot");
+    for (const snapshot of existing) {
+      if (snapshot.readingId === readingId) await state.store.delete("highlightSnapshot", snapshot.highlightId);
+    }
+    for (const highlight of highlights || []) {
+      if (highlight && highlight.highlightId && !highlight.deletedAt) await state.store.put("highlightSnapshot", highlight);
+    }
+  }
+
+  async function loadCachedHighlights(readingId) {
+    const [snapshots, outbox] = await Promise.all([
+      state.store.getAll("highlightSnapshot"),
+      state.store.getAll("highlightOutbox")
+    ]);
+    if (state.currentEntry && state.currentEntry.readingId === readingId) {
+      state.highlights = effectiveHighlights(
+        snapshots.filter((item) => item.readingId === readingId && !item.deletedAt),
+        outbox.filter((item) => item.readingId === readingId),
+        state.session
+      );
+      applyHighlightState();
+    }
+  }
+
+  async function refreshHighlights(options) {
+    const readingId = options && options.readingId || (state.currentEntry && state.currentEntry.readingId);
+    if (!readingId || !state.currentEntry || state.currentEntry.kind !== "chapter") return;
+    const token = ++state.highlightSyncToken;
+    if (!serverCallsAllowed()) {
+      await loadCachedHighlights(readingId);
+      return;
+    }
+    try {
+      const highlights = await state.adapter.listHighlights(readingId);
+      await replaceHighlightSnapshots(readingId, highlights);
+      if (state.currentEntry && state.currentEntry.readingId === readingId && token === state.highlightSyncToken) {
+        const outbox = (await state.store.getAll("highlightOutbox")).filter((item) => item.readingId === readingId);
+        state.highlights = effectiveHighlights(highlights, outbox, state.session);
+        applyHighlightState();
+      }
+    } catch {
+      await loadCachedHighlights(readingId);
+      if (!element("highlightPopover").hidden) {
+        element("highlightStatus").textContent = "Showing saved highlight activity; shared synchronization will retry later.";
+      }
+    }
+  }
+
+  async function queueHighlight(payload) {
+    const item = {...payload, queuedAt: new Date().toISOString(), status: "pending"};
+    await state.store.put("highlightOutbox", item);
+    await updateCacheInspector();
+    return item;
+  }
+
+  async function toggleSelectedHighlight() {
+    const reference = state.selectedHighlightReference;
+    if (!reference || !state.currentEntry || state.currentEntry.kind !== "chapter") return;
+    const action = element("highlightAction");
+    action.disabled = true;
+    try {
+      const outbox = compactHighlightOutbox(await state.store.getAll("highlightOutbox"));
+      const sameReference = (item) => item.readingId === state.currentEntry.readingId &&
+        item.bookId === reference.bookId && item.chapter === reference.chapter && item.verse === reference.verse;
+      const pendingDelete = outbox.find((item) => item.eventType === "delete" && sameReference(item));
+      if (pendingDelete) {
+        await state.store.delete("highlightOutbox", pendingDelete.clientRequestId);
+        await loadCachedHighlights(state.currentEntry.readingId);
+        element("highlightStatus").textContent = "Pending removal canceled.";
+        return;
+      }
+      const own = highlightsAt(reference).find((highlight) => highlight.authorId === state.session.authorId);
+      if (own && own.pending) {
+        await state.store.delete("highlightOutbox", own.clientRequestId);
+        await loadCachedHighlights(state.currentEntry.readingId);
+        element("highlightStatus").textContent = "Pending highlight removed from this device.";
+        return;
+      }
+      if (own) {
+        await queueHighlight({
+          clientRequestId: createRequestId("highlight-delete"),
+          eventType: "delete",
+          planVersion: own.planVersion,
+          readingId: own.readingId,
+          highlightId: own.highlightId,
+          bookId: own.bookId,
+          chapter: own.chapter,
+          verse: own.verse,
+          baseRevision: own.revision
+        });
+      } else {
+        await queueHighlight({
+          clientRequestId: createRequestId("highlight-create"),
+          localTempId: createRequestId("local-highlight"),
+          eventType: "create",
+          planVersion: state.plan.planVersion,
+          readingId: state.currentEntry.readingId,
+          bookId: reference.bookId,
+          chapter: reference.chapter,
+          verse: reference.verse,
+          baseRevision: 0
+        });
+      }
+      await loadCachedHighlights(state.currentEntry.readingId);
+      if (!root.navigator || root.navigator.onLine !== false || state.adapter.kind === "mock") {
+        await flushHighlightOutbox();
+      } else {
+        element("highlightStatus").textContent = "Saved on this device; the highlight will sync when connected.";
+      }
+    } finally {
+      action.disabled = false;
+      renderHighlightPopover();
+    }
+  }
+
+  async function flushHighlightOutbox() {
+    if (!serverCallsAllowed()) return;
+    if (root.navigator && root.navigator.onLine === false && state.adapter.kind !== "mock") return;
+    const queued = compactHighlightOutbox(await state.store.getAll("highlightOutbox"));
+    for (const item of queued) {
+      try {
+        const result = await state.adapter.submitHighlightEvent(item);
+        await state.store.delete("highlightOutbox", item.clientRequestId);
+        if (result && result.event) await state.store.put("highlightSnapshot", result.event);
+      } catch (error) {
+        await state.store.put("highlightOutbox", {...item, status: "error", errorCode: error.code || "SYNC_FAILED"});
+        if (!element("highlightPopover").hidden) {
+          element("highlightStatus").textContent = error.code === "REVISION_CONFLICT"
+            ? "Highlight changed on another device; synchronize and retry."
+            : "Highlight remains saved on this device; synchronization will retry.";
+        }
+        break;
+      }
+    }
+    if (state.currentEntry && state.currentEntry.kind === "chapter") {
+      await refreshHighlights({readingId: state.currentEntry.readingId});
+    }
+    await updateCacheInspector();
   }
 
   function commentCard(comment, pending) {
@@ -2380,7 +2755,7 @@
 
   async function updateCacheInspector() {
     if (!state.store || !state.policy) return;
-    const [scripture, content, completion, outbox, drafts, snapshots, mockEvents, credential] = await Promise.all([
+    const [scripture, content, completion, outbox, drafts, snapshots, mockEvents, highlightOutbox, highlightSnapshots, mockHighlightEvents, credential] = await Promise.all([
       state.store.getAll("scriptureCache"),
       state.store.getAll("privateContent"),
       state.store.getAll("calendarCompletion"),
@@ -2388,6 +2763,9 @@
       state.store.getAll("commentDrafts"),
       state.store.getAll("commentSnapshot"),
       state.store.getAll("commentEvents"),
+      state.store.getAll("highlightOutbox"),
+      state.store.getAll("highlightSnapshot"),
+      state.store.getAll("highlightEvents"),
       state.store.get("deviceCredentials", "reader-code")
     ]);
     const freshContent = [];
@@ -2419,6 +2797,9 @@
       localMockRevisionEvents: mockEvents.length,
       offlineDrafts: drafts.length,
       pendingCommentEvents: outbox.length,
+      cachedHighlightSnapshots: highlightSnapshots.length,
+      pendingHighlightEvents: highlightOutbox.length,
+      localMockHighlightEvents: mockHighlightEvents.length,
       readerCodeStored: Boolean(credential && credential.readerCode),
       serviceWorkerRegistered: false
     }, null, 2);
@@ -2448,9 +2829,11 @@
     if (credential && credential.readerCode) await state.store.put("deviceCredentials", credential);
     element("commentBody").value = "";
     state.comments = [];
+    state.highlights = [];
     state.completionByReadingId = new Map();
     state.completedReadingIds = new Set();
     await renderComments([]);
+    closeHighlightPopover();
     await updateCacheInspector();
     renderCalendar();
     delete element("offlinePackStatus").dataset.state;
@@ -2498,6 +2881,7 @@
     }
     if (!serverCallsAllowed()) return;
     flushOutbox().catch(() => setSyncStatus("Sync retry failed"));
+    flushHighlightOutbox().catch(() => {});
     if (state.view === "home") syncCalendarCompletion().catch(() => {});
   }
 
@@ -2533,7 +2917,17 @@
     element("refreshComments").addEventListener("click", refreshComments);
     element("commentForm").addEventListener("submit", submitNewComment);
     element("commentBody").addEventListener("input", scheduleDraftSave);
-    element("syncOutbox").addEventListener("click", flushOutbox);
+    element("syncOutbox").addEventListener("click", async () => {
+      await flushOutbox();
+      await flushHighlightOutbox();
+    });
+    element("highlightClose").addEventListener("click", closeHighlightPopover);
+    element("highlightAction").addEventListener("click", () => toggleSelectedHighlight().catch(() => {
+      element("highlightStatus").textContent = "The highlight could not be changed; retry after synchronization.";
+    }));
+    root.document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !element("highlightPopover").hidden) closeHighlightPopover();
+    });
     element("clearDownloadedData").addEventListener("click", clearDownloadedData);
     element("forgetReaderAccess").addEventListener("click", forgetReaderAccess);
     root.addEventListener("online", resumeOnlineWork);
@@ -2640,6 +3034,10 @@
     state.policy = null;
     state.session = null;
     state.sources = [];
+    state.comments = [];
+    state.highlights = [];
+    state.currentScripture = null;
+    closeHighlightPopover();
     state.calendarParticipants = [];
     state.completionByReadingId = new Map();
     state.completedReadingIds = new Set();
@@ -2648,9 +3046,13 @@
   function startConfirmedBackgroundWork() {
     syncCalendarCompletion().catch(() => {});
     flushOutbox().catch(() => {});
+    flushHighlightOutbox().catch(() => {});
     if (state.view === "reading" && state.currentEntry) {
       refreshComments({background: true, readingId: state.currentEntry.readingId}).catch(() => {});
-      if (state.currentEntry.kind === "chapter") loadScripture(state.currentEntry).catch(() => {});
+      if (state.currentEntry.kind === "chapter") {
+        refreshHighlights({readingId: state.currentEntry.readingId}).catch(() => {});
+        loadScripture(state.currentEntry).catch(() => {});
+      }
     }
     scheduleOfflinePrefetch();
   }
@@ -2848,7 +3250,7 @@
       : "The reader could not finish loading. Private data remains closed; retry after checking the local server or deployment configuration.";
     setBanner(publicMessage, "error");
     setSyncStatus("Unavailable");
-    ["nextPage", "finishReading", "submitComment", "refreshComments", "refreshCalendar", "syncOutbox", "openSelectedReading", "previousMonth", "nextMonth"].forEach((id) => {
+    ["nextPage", "finishReading", "submitComment", "refreshComments", "refreshCalendar", "syncOutbox", "highlightAction", "openSelectedReading", "previousMonth", "nextMonth"].forEach((id) => {
       if (element(id)) element(id).disabled = true;
     });
   }
@@ -2858,12 +3260,14 @@
     buildMonthCalendar,
     calculateSchedule,
     civilDayNumber,
+    compactHighlightOutbox,
     compactOutbox,
     createRequestId,
     createBrowserStore,
     dateOnlyForDay,
     datePartsInTimeZone,
     extractNumberedVerseText,
+    effectiveHighlights,
     formatReadingDate,
     handleFatalError,
     init,
@@ -2876,9 +3280,11 @@
     normalizedVerseOfTheDay,
     safeExternalUrl,
     safeVersionedAppUrl,
+    splitNumberedVerses,
     splitComprehensiveSections,
     titleForEntry,
     verseReferenceLabel,
+    verseBelongsToPassage,
     validatePlan
   };
 });

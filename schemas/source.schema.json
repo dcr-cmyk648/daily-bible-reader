@@ -47,6 +47,8 @@
         "publisher": {"type": "string", "maxLength": 300},
         "resourceType": {"type": "string", "minLength": 1, "maxLength": 100},
         "traditionOrPerspective": {"type": "array", "items": {"type": "string", "maxLength": 100}, "uniqueItems": true},
+        "affiliationContext": {"enum": ["church_confessional", "christian_academic", "secular_academic", "mixed_or_unclear", "historical"]},
+        "synthesisPriority": {"enum": ["core", "context", "major_counterposition", "inventory_only"]},
         "scope": {"type": "string", "maxLength": 1000},
         "urlOrCitation": {"type": "string", "minLength": 1, "maxLength": 2000},
         "accessDate": {"type": ["string", "null"], "format": "date"},
@@ -65,4 +67,3 @@
   },
   "additionalProperties": false
 }
-

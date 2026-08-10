@@ -25,6 +25,43 @@ test("offline create followed by delete disappears before sync", () => {
   assert.deepEqual(app.compactOutbox(items), []);
 });
 
+test("offline verse highlights compact and remain visible until synchronized", () => {
+  const queued = [
+    {
+      clientRequestId: "highlight:1234567890abcdef", localTempId: "highlight-local:1234567890", eventType: "create",
+      planVersion: "plan-v1", readingId: "MIC-003", bookId: "MIC", chapter: 3, verse: 1, baseRevision: 0,
+      queuedAt: "2026-08-10T12:00:00.000Z"
+    }
+  ];
+  const effective = app.effectiveHighlights([], queued, {authorId: "dustin", displayName: "Dustin"});
+  assert.equal(effective.length, 1);
+  assert.equal(effective[0].pending, true);
+  assert.equal(effective[0].authorId, "dustin");
+  assert.deepEqual(app.compactHighlightOutbox([...queued, {
+    clientRequestId: "highlight:2234567890abcdef", localTempId: queued[0].localTempId, eventType: "delete",
+    queuedAt: "2026-08-10T12:01:00.000Z"
+  }]), []);
+});
+
+test("numbered Scripture rendering supports shared highlights and partial verse units", () => {
+  assert.deepEqual(app.splitNumberedVerses("[7] First line.\n\n[8] Second line.\nContinued."), [
+    {verse: 7, text: "First line."},
+    {verse: 8, text: "Second line.\nContinued."}
+  ]);
+  assert.equal(app.verseBelongsToPassage({verseStart: 7, verseEnd: 9, verseCount: 3}, 8), true);
+  assert.equal(app.verseBelongsToPassage({verseStart: 7, verseEnd: 9, verseCount: 3}, 6), false);
+  assert.equal(app.verseBelongsToPassage({verseStart: 7, verseEnd: 9, verseCount: 4}, 8), false);
+  const html = fs.readFileSync(path.join(__dirname, "../app/frontend/index.html"), "utf8");
+  const css = fs.readFileSync(path.join(__dirname, "../app/frontend/styles.css"), "utf8");
+  const frontend = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
+  assert.match(html, /id="highlightPopover"/);
+  assert.match(html, /id="highlightAction"/);
+  assert.match(css, /data-highlight-reader-0/);
+  assert.match(css, /data-highlight-reader-1/);
+  assert.match(frontend, /function refreshHighlights/);
+  assert.match(frontend, /state\.adapter\.submitHighlightEvent/);
+});
+
 test("a signed-in reader's active or queued comment marks only that reading complete", () => {
   const comments = [
     {commentId: "comment:1234567890123456", readingId: "intro-GEN", authorId: "dustin", deletedAt: null},
@@ -165,6 +202,10 @@ test("Apps Script source uses user identity, configured IDs, locking, and no pay
   assert.match(code, /\[manifestId, cached\.manifest\.appConfigFileId, cached\.manifest\.planFileId\]/);
   assert.match(code, /DBR_READER_ENROLLMENT/);
   assert.match(code, /readerCodeHash:\s*presentedReaderCodeHash/);
+  assert.match(code, /function listHighlights\(readerCode, readingId\)/);
+  assert.match(code, /function submitHighlightEvent\(readerCode, payload\)/);
+  assert.match(code, /const DBR_HIGHLIGHT_COLUMNS/);
+  assert.match(code, /dbrAssertHighlightHeader_/);
   assert.equal(/readerCode:\s*normalizedReaderCode/.test(code), false);
   assert.equal(/console\.(?:log|warn|error)\s*\(/.test(code), false);
   assert.equal(/Logger\.log\s*\(/.test(code), false);
@@ -296,7 +337,7 @@ test("content readiness distinguishes a full study from a downloaded placeholder
 
 test("every production RPC accepts the reader code as its first argument while enrollment may satisfy it", () => {
   const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
-  ["getBootstrapData", "getReadingPayload", "getReadingPayloads", "getScripture", "listComments", "listCommentActivity", "submitCommentEvent", "forgetReaderEnrollment"].forEach((name) => {
+  ["getBootstrapData", "getReadingPayload", "getReadingPayloads", "getScripture", "listComments", "listCommentActivity", "submitCommentEvent", "listHighlights", "submitHighlightEvent", "forgetReaderEnrollment"].forEach((name) => {
     assert.match(source, new RegExp(`appsScriptRpc\\(\"${name}\", state\\.readerCode`));
   });
 });
@@ -386,6 +427,11 @@ test("editorial contract requires practical prose and confessional evidentiary w
   assert.match(workflow, /Source breadth does not imply equal epistemic weight/);
   assert.match(workflow, /must not force every included contextual or counterposition source into the main path/);
   assert.match(workflow, /assumed prophecy, miracle, or divine action was impossible/);
+  assert.match(stance, /church-confessional and Christian academic sources/);
+  assert.match(stance, /must never mention internal “rules,” prompts, source quotas, or editorial instructions/);
+  assert.match(stance, /contextReadingIds/);
+  assert.match(workflow, /do not manufacture neutrality or spend the reader's time on fringe catalogues/);
+  assert.match(workflow, /do not repeat the same background dispute chapter after chapter/);
   assert.match(validator, /DEPENDENT_CROSS_REFERENCE/);
   assert.match(validator, /assertStandalone\(paragraph\.markdown/);
   assert.doesNotMatch(validator, /main all-sources synthesis must cite every included source/);

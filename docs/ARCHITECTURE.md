@@ -31,14 +31,14 @@ Google documents both execution modes and notes that user-accessing deployments 
 Git (code/schemas/tests) ──build──> Apps Script HTML + server code
                                            │ runs as accessing user
                                            ├── configured Drive file IDs (private content)
-                                           ├── configured Google Sheet (comment events)
+                                           ├── configured Google Sheet (comment + highlight events)
                                            └── ESV API (server-held key)
 
 Browser memory  <── live policy-checked ESV response (never persisted)
-Browser IndexedDB <── private content cache / comment state
+Browser IndexedDB <── private content cache / comment + highlight state
        │
        ├── device fallback for the raw reader code
-       └── offline comment drafts + idempotent outbox
+       └── offline comment drafts + idempotent comment/highlight outboxes
 
 Apps Script User Properties ── verified reader-code hash + author binding only
 ```
@@ -82,9 +82,11 @@ The pilot manifest requests only:
 
 Granular OAuth denial is checked before private operations and fails closed. Google recommends explicit least-permissive scopes and permission checks for web apps: <https://developers.google.com/apps-script/concepts/scopes>.
 
-## Comments
+## Shared comments and verse highlights
 
 One Sheet row is one immutable event (`create`, `edit`, or `delete`). The latest revision is materialized for display; older rows remain history. Server identity, display name, IDs, revision, and timestamps are authoritative. The client supplies a unique `clientRequestId`; retries return the already-recorded event. A script lock covers idempotency lookup, conflict validation, and append.
+
+The same spreadsheet has a separate `highlight-events` tab. One row records an immutable `create` or `delete` event for one stable reading, book, chapter, verse, and author. The server derives the author and timestamp, validates the verse against the reading's exact passage bounds, and permits deletion only by the author who created that highlight. Dustin and Shane may independently highlight the same verse; materialization retains both events, and the client renders their configured colors together. Highlight retries use the same idempotent request-ID pattern and script lock as comments.
 
 The friend needs viewer access to the content folder and editor access to the separate comments Sheet. The owner may keep the content folder read-only for the friend. Email addresses are stored only in private Script Properties and are never sent to the browser or Sheet.
 
@@ -99,10 +101,13 @@ Direct Sheet editing is a separate Google interface. Native Sheet access is cont
 - IndexedDB `scriptureCache`: retained as a policy-enforcement store, but the current ESV policy disables writes and deletes legacy records; never a service-worker cache.
 - IndexedDB `commentDrafts` and `commentOutbox`: offline drafts/events with unique request IDs.
 - IndexedDB `commentSnapshot`: last server materialization for offline context.
+- IndexedDB `highlightOutbox`: idempotent offline create/delete events; it cannot flush until current server authorization succeeds.
+- IndexedDB `highlightSnapshot`: the last server-materialized highlights for the open reading, including only server-derived display names and timestamps.
+- IndexedDB `highlightEvents`: local-mock event history only; production history remains in the Sheet.
 - IndexedDB `calendarCompletion`: one plan-versioned record per reading containing body-free completion booleans for the two configured `authorId` values plus a synchronization timestamp; no comment body or email address is duplicated here.
 - IndexedDB `commentEvents`: local-mock revision history only; production history remains in the Sheet.
 
-The app targets the next seven available readings for offline private-content use. Missing private records are retrieved through one authorization and one batched Apps Script response; the source registry and plan are not reread seven times. The current bridge has seven. ESV remains network-only even when private commentary is downloaded; this is an explicit provider-policy decision, not an accidental cache miss. Explicit authentication, authorization, reader-code, or manifest-permission failures clear and close the local private interface. Transient network/server failures may use the identity-bound snapshot, while every comment write remains in the local outbox until the current Google/Drive check succeeds. A fully offline device cannot observe a later revocation until it reconnects; revocation therefore includes asking the user to clear downloaded data.
+The app targets the next seven available readings for offline private-content use. Missing private records are retrieved through one authorization and one batched Apps Script response; the source registry and plan are not reread seven times. The current bridge has seven. ESV remains network-only even when private commentary is downloaded; this is an explicit provider-policy decision, not an accidental cache miss. Explicit authentication, authorization, reader-code, or manifest-permission failures clear and close the local private interface. Transient network/server failures may use the identity-bound snapshot, while comment and highlight writes remain in their local outboxes until the current Google/Drive check succeeds. A fully offline device cannot observe a later revocation until it reconnects; revocation therefore includes asking the user to clear downloaded data.
 
 ## Local-first daily startup
 
@@ -110,7 +115,7 @@ After one confirmed launch, the installed app stores a sanitized bootstrap snaps
 
 The full bootstrap refresh, shared-comment activity, and seven-reading preparation run after the visible shell is usable. Apps Script reuses a 30-second per-user parsed manifest/config/plan cache during that burst but still checks access to all three Drive files; the cache is an optimization, never an authorization source. Opening a downloaded reading renders commentary first, refreshes it in the background, and retrieves ESV independently. A deterministic readiness line distinguishes downloaded placeholders from substantive study content and warns when fewer than three consecutive studies are prepared from the current plan day.
 
-The pilot registers no service worker, so HTTP caching cannot silently become an ESV corpus. “Clear downloaded data” removes any legacy Scripture-cache records plus private content, drafts, outbox, and snapshots while preserving reader access. A separate two-step “Forget reader code” action deletes both the account enrollment and the local fallback. Debug status reports counts, build IDs, policy dates, and whether a credential exists, never bodies or the code itself.
+The pilot registers no service worker, so HTTP caching cannot silently become an ESV corpus. “Clear downloaded data” removes any legacy Scripture-cache records plus private content, drafts, comment/highlight outboxes, and snapshots while preserving reader access. A separate two-step “Forget reader code” action deletes both the account enrollment and the local fallback. Debug status reports counts, build IDs, policy dates, and whether a credential exists, never bodies or the code itself.
 
 ## Shared calendar and bridge navigation
 

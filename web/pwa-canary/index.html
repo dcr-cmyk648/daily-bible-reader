@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-pwa-release="e81ac2149dced547">
+<html lang="en" data-pwa-release="81f1675160f0a493">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -7,12 +7,12 @@
     <meta name="color-scheme" content="dark">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; img-src 'self' data:; connect-src 'self' https://accounts.google.com https://oauth2.googleapis.com https://script.googleapis.com; frame-src https://accounts.google.com; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-src https://script.google.com https://*.googleusercontent.com; object-src 'none'; base-uri 'none'; form-action https://script.google.com; frame-ancestors 'none'">
     <title>Daily Bible Reader</title>
     <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon-180.png">
     <link rel="icon" type="image/png" sizes="192x192" href="assets/bible-reader-icon-192.png">
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="../releases/ced732908c22c3de/styles.css" integrity="sha384-M2TTLYQs3/dPnseAMTT8ny+Qybhk5IBKC6a/7funB34VPqljXn3KD+2aMvHakxsw" crossorigin="anonymous">
+    <link rel="stylesheet" href="../releases/01e0dce691dd3cc9/styles.css" integrity="sha384-M2TTLYQs3/dPnseAMTT8ny+Qybhk5IBKC6a/7funB34VPqljXn3KD+2aMvHakxsw" crossorigin="anonymous">
   </head>
   <body>
     <a id="skipLink" class="skip-link" href="#calendarHeading">Skip to the calendar</a>
@@ -28,25 +28,15 @@
       </div>
     </header>
 
-    <section id="googleAuthGate" class="access-gate" aria-labelledby="googleAuthHeading" hidden>
-      <div class="access-card">
-        <p class="eyebrow">Private Google access</p>
-        <h1 id="googleAuthHeading">Connect your Google account</h1>
-        <p id="googleAuthExplanation">The installed reader keeps its public shell on this phone. Google authorization is still required before the private backend can be refreshed.</p>
-        <p id="googleAuthStatus" class="muted" role="status" aria-live="polite">No private request has been sent.</p>
-        <button id="googleAuthButton" class="primary-button" type="button">Continue with Google</button>
-      </div>
-    </section>
-
     <section id="readerCodeGate" class="access-gate" aria-labelledby="readerCodeHeading" hidden>
       <div class="access-card">
         <p class="eyebrow">Private reader</p>
         <h1 id="readerCodeHeading">Enter your reader code</h1>
-        <p>Your Google account and Drive access are checked separately. Dustin's and Shane's codes are not interchangeable.</p>
+        <p>Your code selects your private reader identity. Dustin's and Shane's codes are not interchangeable.</p>
         <form id="readerCodeForm" class="comment-form">
           <label for="readerCodeInput">Reader code</label>
           <input id="readerCodeInput" type="password" minlength="12" maxlength="128" autocomplete="one-time-code" autocapitalize="none" spellcheck="false" required>
-          <p id="readerCodeStatus" class="muted" role="status" aria-live="polite">After verification, the code stays in this app's private browser storage and the script remembers enrollment for this Google account.</p>
+          <p id="readerCodeStatus" class="muted" role="status" aria-live="polite">After verification, the code stays in this app's private browser storage so you normally enter it only once.</p>
           <button id="readerCodeSubmit" type="submit" disabled>Unlock reader</button>
         </form>
       </div>
@@ -307,6 +297,6 @@
       <p>Private two-person bridge · Seven scheduled days · No runtime AI</p>
     </footer>
 
-    <script src="assets/pwa-client.e81ac2149dced547.js"></script>
+    <script src="assets/pwa-client.81f1675160f0a493.js"></script>
   </body>
 </html>

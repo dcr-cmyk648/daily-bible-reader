@@ -22,6 +22,7 @@
 
   const DAY_MS = 86400000;
   const CLIENT_BUILD_ID = "__DBR_BUILD_ID__";
+  const CLIENT_DELIVERY_MODE = "__DBR_DELIVERY_MODE__";
   const DB_NAME = "dailyBibleReaderPilot";
   const DB_VERSION = 4;
   const BOOTSTRAP_CACHE_KEY = "__app-bootstrap__";
@@ -432,7 +433,11 @@
     if (!panel) return;
     const serverBuildId = String(bootstrap && bootstrap.appBuildId || "");
     const updateUrl = safeVersionedAppUrl(bootstrap && bootstrap.appUrl, serverBuildId);
-    const stale = state.adapter.kind === "apps-script" && serverBuildId && serverBuildId !== CLIENT_BUILD_ID;
+    // A Pages-delivered client receives its current release from the validated
+    // code-only manifest. The Apps Script build ID then describes backend code,
+    // not whether this independently versioned frontend is stale.
+    const stale = CLIENT_DELIVERY_MODE !== "pages-assets" &&
+      state.adapter.kind === "apps-script" && serverBuildId && serverBuildId !== CLIENT_BUILD_ID;
     panel.hidden = !(stale && updateUrl);
     if (stale && updateUrl) {
       element("updateLink").href = updateUrl;
@@ -2510,6 +2515,8 @@
     element("cacheInspector").textContent = JSON.stringify({
       storageMode: state.store.mode,
       clientBuildId: CLIENT_BUILD_ID,
+      clientDeliveryMode: CLIENT_DELIVERY_MODE,
+      staticReleaseSource: root.DBRStaticRelease && root.DBRStaticRelease.source || null,
       serverBuildId: state.bootstrap && state.bootstrap.appBuildId,
       providerPolicy: policyState,
       offlineReadingWindowDays: state.config.offlineReadingWindowDays,

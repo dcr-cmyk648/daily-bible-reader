@@ -61,7 +61,9 @@ The ignored bundle contains seven Markdown files, their metadata, the source reg
 
 ## iPhone installation and updates
 
-The intended audit deployment is the authenticated Apps Script `/exec` URL opened in iPhone Safari and added with Share → Add to Home Screen → Open as Web App. Conventional/local hosting declares Apple touch and manifest icons. Apps Script ignores favicon link tags written directly in an HTML file, so the production `HtmlOutput` applies the embedded PNG through `setFaviconUrl`; an icon failure is isolated so it can never prevent the reader from opening. The app does not use a service worker under Apps Script hosting, so iOS still controls cold shell retention. Once the shell starts, an identity-bound seven-day bootstrap/commentary snapshot avoids making the calendar wait on Drive; a lightweight manifest access check runs in the background, and ESV remains network-only. A tiny independent watchdog changes the literal startup state immediately and provides a bounded recovery path if the core shell does not become usable. Shared-highlight enhancement loads after the core and cannot block the calendar. Every build receives a deterministic content hash; an old installed client compares its hash with the server and offers a user-initiated, versioned **Load latest version** navigation. Production CSS/JavaScript is minified for Safari 15, while the independent boot/highlight scripts target Safari 12. The August startup incidents demonstrated both first-RPC and pre-core stalls, so bundle size is recorded for diagnosis but is not treated as an undocumented platform limit. Deployment permissions and the exact acceptance test are in `docs/GOOGLE_SETUP.md`.
+The audit deployment remains the authenticated Apps Script `/exec` URL opened in iPhone Safari and added with Share → Add to Home Screen → Open as Web App. After repeated iPhone failures in large inline HTML-service scripts, Apps Script now serves only stable semantic HTML, a small watchdog/loader, and the authenticated backend. GitHub Pages serves the content-addressed code-only application assets. The loader checks one fixed origin and immutable release prefix, applies SHA-384 integrity, fetches the release manifest without cache reuse, and remembers a last-valid code release for transient availability failures. Routine frontend changes publish a new immutable Pages directory and do not redeploy Apps Script.
+
+No service worker controls the Apps Script top-level origin, so iOS still controls cold launcher retention. Once the application starts, an identity-bound seven-day bootstrap/commentary snapshot paints the calendar before the Drive refresh; ESV remains network-only. The shared-highlight enhancement remains optional and cannot block the core. Deployment permissions and the exact acceptance test are in `docs/GOOGLE_SETUP.md`.
 
 ## Safety boundary
 
@@ -73,12 +75,19 @@ The tracked pre-commit hook can be enabled with:
 git config core.hooksPath .githooks
 ```
 
-It is enabled in the current local repository. The private GitHub repository is source and release history only; GitHub Pages is deliberately disabled, and the phone never retrieves private data or executable code from GitHub.
+It is enabled in the current local repository. GitHub Pages is enabled from `main` and publishes only `web/release.json` plus immutable JavaScript/CSS releases. It never receives private content, comments, ESV wording, credentials, Google IDs, account emails, or the Apps Script deployment URL. Generate and verify the current code-only release before a commit:
+
+```sh
+npm run build
+npm run publish:pages
+npm run check
+```
 
 ## Project map
 
 - `app/frontend/` — dependency-free mobile web client and local mock adapter
 - `app/apps-script/` — Apps Script backend source; production bundle is generated into ignored `dist/`
+- `web/` — code-only, content-addressed GitHub Pages release manifest and assets
 - `app/shared/` — pure server-domain logic shared with tests
 - `schemas/` — versioned plan, reading, source, commentary, comment, highlight, and provider-policy schemas
 - `fixtures/` — fabricated mock Scripture and non-substantive pilot placeholders

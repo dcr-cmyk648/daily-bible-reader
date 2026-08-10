@@ -4,7 +4,7 @@ Updated 2026-08-10 (`America/Detroit`).
 
 ## Current phase
 
-The private reader is operating as a seven-day pre-launch bridge based on Celebration Church's *Reading the Bible in 3 Years — Year 3 Quarter 4*. Feature work is paused for a release-stability investigation. The unchanged production URL remains on confirmed-working immutable version 19. Version 21's watchdog executed on Dustin's iPhone, but its core did not start. Reflow-only A/B build `aa5f629de676c1b3` is immutable version 22 on canary.
+The private reader is operating as a seven-day pre-launch bridge based on Celebration Church's *Reading the Bible in 3 Years — Year 3 Quarter 4*. Feature work remains paused for release stabilization. The unchanged production URL remains on confirmed-working immutable version 19. Reflow-only version 22 also failed before its core started, disproving the generated-line hypothesis. A hybrid replacement is built locally: Apps Script becomes a small authenticated launcher/backend and GitHub Pages serves content-addressed code-only assets.
 
 The app has local-first startup, a dark full-month calendar, authoritative two-reader completion, three reading pages, live network-only ESV, source-grounded private commentary, append-only shared comments, and append-only shared verse highlights. Dustin and Shane have distinct highlight colors, may both mark the same verse, see server timestamps, and may remove only their own marks.
 
@@ -28,8 +28,8 @@ The full 92-day Celebration chapter assignment is factual reference metadata onl
 
 ## Decisions in force
 
-- Hosting is an Apps Script HTML-service web app executing as the accessing user. Google identity, the exact two-user server allowlist, reader enrollment/code, and Drive permission must all succeed; failures close access.
-- The private GitHub repository stores source and code-only CI history. GitHub Pages is disabled and GitHub is not a runtime dependency.
+- The top-level launcher and private backend remain an Apps Script HTML-service web app executing as the accessing user. Google identity, the exact two-user server allowlist, reader enrollment/code, and Drive permission must all succeed; failures close access.
+- GitHub Pages is enabled from `main` and serves only `web/release.json` plus immutable code/style assets. It contains no private data or Google/deployment identifiers and is never treated as authorization.
 - Drive is canonical for private plans, commentary, and source metadata. The restricted event spreadsheet has separate append-only `comment-events` and `highlight-events` tabs.
 - Reader identity, display name, IDs, timestamps, and revisions are server-derived. The client cannot select another user, Sheet, Drive file, passage, or redirect.
 - ESV is the only displayed translation. Each chapter is fetched server-side through the official API and is never persisted in Git, Drive, IndexedDB, or a service-worker cache.
@@ -54,6 +54,8 @@ The full 92-day Celebration chapter assignment is factual reference metadata onl
 - Isolated highlights into an optional post-core client after the version-20 phone stall. The core reader now starts immediately, installed readers stay on IndexedDB schema version 4, highlights never migrate or persist in IndexedDB, and independent 8/45-second startup watchdogs replace an infinite **Starting…** state with a visible recovery path.
 - Downloaded immutable Apps Script versions 15–22 from Google and built a release matrix. The working version-19 core's longest minified line is 49,022 characters; both pre-core failures exceed 50,000. Version 22 preserves version-21 logic but reduces every inline script line to at most 817 characters.
 - Added a permanent 800-byte esbuild line target, a hard 1,200-character generated-script ceiling, per-script build diagnostics, and the release policy in `docs/RELEASE_STABILITY.md`.
+- Recorded version 22's first-open iPhone failure and rejected line length as a sufficient cause instead of weakening the phone gate.
+- Built the external code-only delivery path. The launcher validates one fixed Pages origin/prefix, retrieves a no-store release manifest, applies SHA-384 integrity, keeps a last-valid immutable-release fallback, and rejects hostile paths. Frontend/server releases are independently versioned so routine UI changes do not redeploy Apps Script.
 - Added and verified the frozen 17-column `highlight-events` tab in the existing event spreadsheet without changing sharing.
 - Extended plan/reading schemas with stream IDs/sequences, context reading IDs, unit labels, and partial-passage bounds. Validation enforces four unique streams, contiguous schedule/stream order, earlier-only context, exact ranges, and introduction immediately followed by chapter 1.
 - Documented the four-stream scheduling model without generating the complete plan.
@@ -61,7 +63,8 @@ The full 92-day Celebration chapter assignment is factual reference metadata onl
 
 ## Validation status
 
-- `npm run check` passes: repository safety over 69 files, seven schemas, seven active readings, the independent 92-day reference schedule, private validation of three v3 syntheses plus four v2 placeholders and 36 sources, 98/98 tests, and parsed/inspected 119,556-byte code-only A/B build `aa5f629de676c1b3`; inline script maxima are 801, 817, and 814 characters.
+- `npm run check` passes: repository safety over 77 files, seven schemas, seven active readings, the independent 92-day reference schedule, private validation of three v3 syntheses plus four v2 placeholders and 36 sources, and 102/102 tests.
+- Hybrid build `c57d948db8fbf838` has 23,837 bytes of Apps Script HTML with only 1,757-byte and 4,074-byte watchdog/loader scripts inline. Pages frontend `73da95f8a9ec3bb3` contains the integrity-checked 73,635-byte core, 21,566-byte CSS, and 5,666-byte optional highlight client; tracked `web/` exactly matches the source build.
 - Schedule coverage includes stable IDs, grouped/partial passages, Detroit civil dates and DST, start-date changes, lookahead/locking, four-stream invariants, earlier-reading context, and introduction/chapter-1 adjacency.
 - Authorization, comment, and highlight coverage includes two server-derived users, anonymous/third-user denial, Drive denial, code spoofing, arbitrary-ID rejection, create/edit/retract, highlight add/remove/overlap, owner-only removal, exact verse bounds, idempotent retry, collisions, XSS, and payload limits.
 - ESV coverage includes server-only keys, exact attribution, no translation fallback, exact requested boundaries, and total persistent-storage refusal under the active provider policy.
@@ -70,7 +73,7 @@ The full 92-day Celebration chapter assignment is factual reference metadata onl
 
 ## Known risks and external checks
 
-- Version 22 needs the installed-phone A/B. Local and anonymous checks cannot reproduce the Apps Script/iPhone inline-delivery boundary. Production therefore remains on version 19 until the canary opens and reopens. If version 22 works, line length is causal for the version 20–21 pre-core failure; if it does not, feature work remains paused and the external code-only asset shell is next.
+- The hybrid has not yet passed HTTPS Pages readback or an installed-phone canary. Production therefore remains on version 19. Local tests cannot prove Apps Script CSP/sanitization, Pages availability inside the Google iframe, or iPhone execution.
 - Shane's account/code binding and app-mediated comment creation are verified. His live ESV, Home Screen installation, and highlight overlap remain manual checks for later.
 - An editor of the underlying Sheet could alter rows directly. Google sharing is restricted to the two exact accounts, but the event logs are operationally auditable rather than cryptographically immutable.
 - Offline revocation is not instantaneous. Removing access requires allowlist, Drive, and Sheet revocation plus clearing downloaded data on a retained device.
@@ -79,4 +82,4 @@ The full 92-day Celebration chapter assignment is factual reference metadata onl
 
 ## Next concrete action
 
-Open canary version 22 on Dustin's iPhone. Confirm startup, close/reopen, calendar, and one reading. Do not promote or resume feature work until this one-variable test is recorded. A pass confirms the build-line root cause and permits a later deliberate production promotion; a failure triggers the thin Apps Script shell plus external code-only asset prototype described in `docs/RELEASE_STABILITY.md`.
+Publish frontend `73da95f8a9ec3bb3` to Pages from `main`, read back and verify every HTTPS byte/integrity/CORS header, then create an immutable Apps Script canary from server build `c57d948db8fbf838`. Open, close/reopen, read live ESV, and perform one write on the installed iPhone. Do not promote production or resume feature work until that gate passes.

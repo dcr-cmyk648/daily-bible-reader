@@ -2,7 +2,7 @@
 
 ## Invariants
 
-- No secret, API key, Google ID, user email, private commentary, comment body export, ESV passage, or raw copyrighted source in Git or public artifacts.
+- No secret, API key, Google resource ID, Apps Script deployment URL, user email, private commentary, comment body export, ESV passage, or raw copyrighted source in Git or public artifacts. GitHub Pages contains executable code, styles, and non-sensitive release metadata only.
 - Signed-in access alone is insufficient: active/effective identity must match, the account must be allowlisted, a freshly presented code or a versioned per-user enrollment must match the server-held hash, and the account must be able to read the configured Drive manifest.
 - The browser cannot choose identity, display name, timestamps, author ID, Drive IDs, Sheet ID, ESV reference, revision number, or redirect target.
 - Every private RPC repeats authorization. Errors reveal no private file names, IDs, emails, comment bodies, or provider response bodies.
@@ -22,12 +22,12 @@
 | Leaked ESV key | Script Properties only, never browser/log/build; rotate immediately and review provider usage | Script editors can access project configuration; do not grant friend script edit access |
 | Malicious comment/Markdown | length/type validation, control-character rejection, text-only DOM rendering, no raw HTML | Plain-text links are not automatically activated in the pilot |
 | Highlight identity spoof or collision | Server-derived author/time, reading-and-verse validation, immutable events, owner-only removal, idempotent request IDs, and script lock | Both readers may intentionally highlight the same verse; a Sheet Editor can still alter rows outside the app |
-| Accidental Git publication | ignore rules, staged-content hook, safety scanner, code-only build inspection | Heuristic ESV detection cannot prove absence; human diff review remains required |
+| Accidental Git/Pages publication | ignore rules, staged-content hook, safety scanner, code-only Pages/Apps Script build inspection, exact published-release verification | Heuristic ESV detection cannot prove absence; human diff review remains required |
 | Browser persistence | Seven-day private-content ceiling, reader-bound bootstrap record, separate mock/production cache contexts, writes gated on current server confirmation, explicit-denial purge, total ESV persistence refusal, plan-versioned reading/completion caches, no service worker, clear-data control, inspectable counts | Offline revocation is not instantaneous; anyone with an unlocked authorized device and its browser storage can read the saved copy; completion reveals whether either reader commented; browser/OS backups are outside application control; use device passcodes and clear site data on loss/revocation |
 | Comment collision/retry | script lock, append-only revisions, base revision, server timestamps, idempotent request ID | Conflicting edit is rejected and requires refresh/manual merge; a Sheet Editor can still alter rows outside the app |
 | Calendar activity inference | Server-derived author ID, maximum 42 plan-validated IDs, active-event materialization, body-free response, and plan-versioned local state | A device holder can see which days either authorized reader completed until downloaded data is cleared |
 | Drive sharing error | configured-ID-only access, active-user execution, explicit allowlist, no “anyone with link” | Owner must periodically audit folder and Sheet sharing |
-| Stale installed client | Deterministic client/server build IDs, restricted versioned deployment URL, user-initiated top navigation | iOS may retain the old shell until the user accepts the update; RPC migrations must preserve the bootstrap handshake for one version |
+| Stale or substituted client asset | Fixed Pages origin/path, deterministic release ID, no-store manifest lookup, immutable release paths, SHA-384 integrity, locally remembered last-valid manifest, published-output/source verification | Pages availability is now a runtime dependency; a compromised repository owner could publish a matching malicious manifest and asset, so GitHub account security and protected `main` remain operational controls |
 
 ## Identity and authorization
 
@@ -55,7 +55,7 @@ Before online private reads/writes, `ScriptApp.getAuthorizationInfo` confirms al
 
 ## CSP and rendering
 
-The local server sends a restrictive CSP (`default-src 'self'`, no objects, no frames, no form submissions). The generated Apps Script HTML uses a best-effort meta policy limited to Google script origins and the inline code required by HTML service. Apps Script's iframe sandbox remains part of the boundary. Deployment testing must confirm compatibility; XSS safety does not depend on CSP because all untrusted material is rendered through `textContent` and an allowlisted Markdown renderer.
+The local server sends a restrictive CSP (`default-src 'self'`, no objects, no frames, no form submissions). The generated Apps Script HTML uses a best-effort meta policy limited to Google script origins plus the one exact GitHub Pages origin needed for its manifest, JavaScript, CSS, and public icon. The loader rejects any asset origin/path outside the configured immutable release prefix and applies SHA-384 integrity. Apps Script's iframe sandbox remains part of the boundary. XSS safety does not depend on CSP because all untrusted material is rendered through `textContent` and an allowlisted Markdown renderer.
 
 ## Revocation, rotation, backup
 

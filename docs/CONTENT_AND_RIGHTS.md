@@ -4,7 +4,7 @@ This project makes source use traceable and conservative; it does not declare th
 
 ## Storage boundaries
 
-- Git: schemas, tools, bibliographic metadata safe to publish, and fabricated fixtures only.
+- Git/Pages: source, schemas, tools, safe bibliographic metadata, fabricated fixtures, and built code/style releases only. Pages never receives commentary, source notes/extracts, ESV wording, comments, or deployment configuration.
 - Ignored local research workspace: lawfully accessed research inputs and working notes. Do not sync this folder to the friend or include it in logs/builds.
 - Private Drive publication: original synthesis, source metadata, coverage report, and short justified quotations only. No ESV passages and no raw commentary library.
 - Browser: the published synthesis and comment data; current ESV responses remain network-only in page memory.

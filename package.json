@@ -5,6 +5,8 @@
   "description": "Private two-person daily ESV reader with Drive-hosted commentary and revision-aware shared comments.",
   "scripts": {
     "build": "node scripts/build-apps-script.mjs",
+    "publish:pages": "node scripts/publish-pages-assets.mjs",
+    "verify:pages": "node scripts/verify-pages-assets.mjs",
     "dev": "node scripts/dev-server.mjs",
     "reader-codes": "node scripts/generate-reader-codes.mjs",
     "build:private-properties": "node scripts/build-private-script-properties.mjs",
@@ -14,7 +16,7 @@
     "validate:private": "node scripts/validate-private-content.mjs",
     "bundle:private": "node scripts/build-private-content-bundle.mjs",
     "test": "node --test tests/*.test.js",
-    "check": "npm run safety && npm run validate && npm run validate:sources && npm run validate:private && npm test && npm run build"
+    "check": "npm run safety && npm run validate && npm run validate:sources && npm run validate:private && npm test && npm run build && npm run verify:pages"
   },
   "engines": {
     "node": ">=22"

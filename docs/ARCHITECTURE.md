@@ -4,7 +4,7 @@ Status: operating pilot plus temporary Celebration bridge, 2026-08-08.
 
 ## Hosting decision
 
-Use a Google Apps Script HTML-service web app, deployed for signed-in Google accounts and configured to execute as the user accessing the app (`access: ANYONE`, `executeAs: USER_ACCESSING`). This is the only current primary hosting design. A private GitHub repository stores reviewed source, schemas, tests, release history, and code-only CI results; it is not a runtime dependency. GitHub Pages remains disabled, so the phone does not contact GitHub and no public shell is created.
+Use a hybrid delivery model. A Google Apps Script HTML-service web app remains the signed-in top-level launcher and authenticated backend, deployed with `access: ANYONE` and `executeAs: USER_ACCESSING`. GitHub Pages serves content-addressed, code-only JavaScript and CSS. The launcher contains stable semantic HTML plus a small watchdog and fixed-origin loader; the full application core is no longer processed or delivered inline by HTML Service.
 
 The app requires all three:
 
@@ -12,27 +12,29 @@ The app requires all three:
 2. a per-reader code whose SHA-256 hash is bound to that exact allowlist record; and
 3. successful access, under the active user's identity, to the configured private Drive manifest and its allowlisted files.
 
-Any failure returns only a generic closed state. A code is a second factor and display-name selector, not a replacement for Google authentication or Drive permissions: Dustin's code cannot authorize Shane's account and vice versa. The owner-executed/anonymous deployment used by Fractured Fate is explicitly rejected for private reads. A GitHub Pages shell is not justified because Apps Script currently supports the required execution identity and HTML service. Revisit Pages only after a concrete Apps Script limitation is reproduced across both accounts; a fallback shell would contain code only and would still require validated Google authentication and server-side authorization.
+Any failure returns only a generic closed state. A code is a second factor and display-name selector, not a replacement for Google authentication or Drive permissions: Dustin's code cannot authorize Shane's account and vice versa. The owner-executed/anonymous deployment used by Fractured Fate is explicitly rejected for private reads. Pages is not an authorization boundary and never receives the Apps Script deployment URL. Keeping the top-level document in Apps Script preserves `google.script.run` and user-accessing execution without cross-origin application tokens, third-party authentication cookies, or an owner-executed public endpoint. A Pages-top-level PWA remains a later fallback only if the thin Apps Script launcher is itself unreliable.
 
 Google documents both execution modes and notes that user-accessing deployments run under the active user's identity: <https://developers.google.com/apps-script/guides/web>. The Apps Script manifest values are documented at <https://developers.google.com/apps-script/manifest/web-app-api-executable>.
 
 ## Minimal stack
 
 - Plain semantic HTML, CSS, and JavaScript.
-- A single browser application shared by local mocks and the Apps Script bundle.
+- A single browser application shared by local mocks and the code-only Pages release.
 - `google.script.run` for authenticated same-app RPC in production.
 - Node built-ins for validation, safety, local serving, and tests, plus exact-version esbuild for Safari-targeted production minification.
 - No framework, package install, runtime database, service worker, or runtime AI.
-- `clasp` pushes only the inspected generated code bundle from a trusted maintainer environment. GitHub Actions validates a clean checkout but has no Google deployment credential and cannot deploy by itself.
+- GitHub Pages publishes `web/release.json` and immutable `web/releases/<releaseId>/` assets from `main`. `clasp` pushes only the small inspected launcher plus server code from a trusted maintainer environment. GitHub Actions verifies that the published Pages release exactly matches the current source build; it has no Google deployment credential.
 
 ## Data ownership and flow
 
 ```text
-Git (code/schemas/tests) ──build──> Apps Script HTML + server code
-                                           │ runs as accessing user
-                                           ├── configured Drive file IDs (private content)
-                                           ├── configured Google Sheet (comment + highlight events)
-                                           └── ESV API (server-held key)
+Git source ──build──> GitHub Pages code-only assets
+     │                         │
+     └──────────> tiny Apps Script launcher + server code
+                                  │ runs as accessing user
+                                  ├── configured Drive file IDs (private content)
+                                  ├── configured Google Sheet (comment + highlight events)
+                                  └── ESV API (server-held key)
 
 Browser memory  <── live policy-checked ESV response (never persisted)
 Browser IndexedDB <── private content cache / comment state
@@ -133,13 +135,13 @@ The final-page **Finished** action returns to the calendar but does not invent a
 
 ## Installed web app and version replacement
 
-The Apps Script `/exec` URL is the initial iPhone Home Screen target. Apps Script HTML Service runs in an iframe and does not provide a stable same-origin asset endpoint suitable for a conventional service-worker-controlled shell; Content Service responses also redirect through one-time `script.googleusercontent.com` URLs. The pilot therefore does not pretend to guarantee a cold offline launch. Already retrieved private content, comment snapshots, drafts, and the outbox can work offline while the installed shell remains resident; ESV always requires a connection under the current policy, and iOS may still require a connection to relaunch the shell.
+The Apps Script `/exec` URL remains the iPhone Home Screen target. Apps Script HTML Service runs in an iframe and does not provide a stable same-origin asset endpoint suitable for a conventional service worker. The thin launcher instead retrieves a code-only release manifest from one exact GitHub Pages origin and loads immutable JavaScript/CSS paths with SHA-384 integrity. A unique no-store manifest request discovers updates; a remembered last-valid manifest permits a prior immutable release to be requested when the current manifest is temporarily unavailable. That record contains no private data.
 
-Every local build computes a deterministic content hash across the frontend and server sources and injects it into both sides. Bootstrap returns the current server build ID. When an installed old client detects a mismatch, it exposes a user-initiated `_top` navigation to the allowlisted Apps Script deployment URL with an `appBuild=<hash>` query parameter. This escapes the HTML-service iframe and defeats ordinary URL-cache reuse without permitting open redirects. Deployments must preserve the bootstrap signature across one transition when an RPC contract changes, so an older shell can still learn that it is stale.
+Frontend and backend now have separate deterministic identities. The Pages release ID covers frontend sources and appears in the immutable asset path; the Apps Script build ID covers the launcher and backend. Routine frontend updates change `web/release.json` and add a new immutable directory without redeploying Apps Script. Backend/RPC or launcher changes still require an immutable Apps Script version and preserve the bootstrap signature across one transition.
 
-The August 2026 incidents contain two distinct failure classes. Versions 16–18 reached or plausibly entered application startup and motivated bounded IndexedDB/RPC behavior plus version 19's local-first path. Versions 20–21 failed earlier: version 21's independent watchdog executed, but the core never reached its first marker. Exact Google-stored artifact measurements show the working version-19 core's longest minified line at 49,022 characters and both pre-core failures above 50,000, while total HTML size does not correlate. Version 22 is a one-variable A/B canary with identical parsed application logic and a maximum generated line of 817 characters. The build now uses esbuild's supported line wrapping and hard-rejects lines over 1,200; see `docs/RELEASE_STABILITY.md` for the evidence and release matrix. Startup also handles an already-fired `DOMContentLoaded`, exposes pre-storage/core-started phases, bounds IndexedDB operations, and times out Apps Script RPCs rather than waiting forever.
+The August 2026 incidents contain two failure classes. Versions 16–18 reached or plausibly entered application startup and motivated bounded IndexedDB/RPC behavior plus version 19's local-first path. Versions 20–22 failed before the core reached its first marker even after version 22 reduced every line below 817 characters. Commentary schema, Drive, ESV, authorization, IndexedDB, total HTML size, and long generated lines are therefore not sufficient explanations. The hybrid removes the 73 KB core from HTML Service's inline delivery path rather than relying on another undocumented size heuristic; see `docs/RELEASE_STABILITY.md`.
 
-This is robust update recovery, not a promise of invisible background replacement. If bounded-line canaries remain unreliable, the first fallback is a nearly frozen Apps Script authentication shell loading versioned code-only assets from stable HTTPS hosting while retaining same-app `google.script.run`; only if that cannot meet the authentication/cache contract does the design advance to a public code-only PWA shell with Google Identity Services and server-side identity validation. No private content, comments, ESV text, or credentials may enter either public artifact.
+The hybrid is not yet a service-worker-controlled PWA, so iOS may still require a connection for a cold launcher load and ESV always requires one. Already retrieved commentary, comment snapshots, drafts, and the outbox keep their existing offline behavior. If the thin launcher remains unreliable or unacceptably slow, the next design is a Pages-top-level PWA with Google Identity Services and server-side identity validation—not a public owner-executed Apps Script endpoint.
 
 Relevant platform behavior is documented by Google for [HTML-service restrictions](https://developers.google.com/apps-script/guides/html/restrictions), [supported HtmlOutput meta tags](https://developers.google.com/apps-script/reference/html/html-output), and [Content Service redirects](https://developers.google.com/apps-script/guides/content).
 

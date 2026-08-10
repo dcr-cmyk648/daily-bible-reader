@@ -15,13 +15,13 @@ The immutable Apps Script versions were downloaded back from Google and measured
 | 19 | Loaded; current production control | 106,260 | 70,662 | 49,022 |
 | 20 | Main application never started | 119,153 | 80,377 | 56,444 |
 | 21 | Watchdog ran; main application never started | 119,412 | 1,537 + 73,394 + 5,660 | 50,482 in the core |
-| 22 | Reflow-only A/B canary | 119,556 | 1,539 + 73,506 + 5,668 | 817 maximum |
+| 22 | Reflow-only A/B canary; failed on first iPhone open | 119,556 | 1,539 + 73,506 + 5,668 | 817 maximum |
 
-There are at least two failure classes. Versions 16–18 reached or plausibly entered application startup and motivated bounded IndexedDB/RPC behavior plus version 19's local-first shell. Versions 20–21 fail earlier: version 21's independent watchdog executed, but the core did not reach its first marker. That excludes commentary schema, Drive, ESV, authorization, and IndexedDB for the latest failure.
+There are at least two failure classes. Versions 16–18 reached or plausibly entered application startup and motivated bounded IndexedDB/RPC behavior plus version 19's local-first shell. Versions 20–22 fail earlier: the independent watchdog executes, but the core does not reach its first marker. That excludes commentary schema, Drive, ESV, authorization, and IndexedDB for the latest failure.
 
-Versions 19–21 create a sharp empirical boundary: the working core's longest minified line is 49,022 characters, while both pre-core failures exceed 50,000. Total HTML size does not correlate: the much larger version 15 loaded. Google and WebKit do not document a 50,000-character application limit, so the responsible internal layer remains unspecified; it may be HTML Service sanitization/delivery, iframe handling, or iPhone WebKit compilation. The project treats the deployed behavior—not an undocumented vendor promise—as the compatibility contract.
+Versions 19–21 initially suggested a sharp line-length boundary: the working core's longest minified line is 49,022 characters, while both pre-core failures exceeded 50,000. Version 22 disproved that as a sufficient explanation by failing on its first iPhone open with an 817-character maximum. Total HTML size also does not correlate: the much larger version 15 loaded. The responsible HTML Service/iPhone failure remains unspecified; commentary schema, Drive, ESV, authorization, IndexedDB, total shell size, and generated line length are not sufficient explanations.
 
-Version 22 is the decisive one-variable test. After parsing and reminifying versions 21 and 22, their three scripts are identical except for the injected build ID; the application logic is unchanged. Only generated line wrapping differs. A successful phone launch therefore establishes long-line delivery as causal for the version 20–21 failure in this deployment.
+Version 22 was a decisive one-variable test. After parsing and reminifying versions 21 and 22, their three scripts were identical except for the injected build ID; only line wrapping differed. Its failure rejects the long-line hypothesis and activates the external code-only asset architecture below.
 
 ## Permanent build controls
 
@@ -41,9 +41,15 @@ The line ceiling is deliberately far below the observed failure and close to the
 2. A stability canary changes one delivery variable at a time.
 3. `npm run check`, generated-line enforcement, exact artifact inspection, and anonymous no-store/sign-in probing must pass before canary.
 4. A new shell architecture or storage/RPC migration requires an installed-iPhone cold launch, close/reopen, calendar open, one Scripture open, and one write test before promotion.
-5. Ordinary content publication does not redeploy the shell. Once version 22's mechanism is confirmed and the build ceiling is permanent, routine code changes use automated artifact gates; phone testing is reserved for shell, storage, authentication, and deployment changes instead of every small UI edit.
+5. Ordinary content publication does not redeploy the shell. After the hybrid's initial phone gate, routine frontend changes publish a verified immutable Pages release; phone testing is reserved for launcher, storage, authentication, backend-contract, and deployment changes instead of every small UI edit.
 6. Failed canaries are never promoted. Rollback changes only the deployment's immutable version pointer.
 
-## If the bounded-line build is still unreliable
+## External code-only asset architecture
 
-Do not resume feature work. The next architecture candidate is a nearly frozen Apps Script HTML/authentication shell that loads versioned, code-only JavaScript and CSS from a stable HTTPS static host. Apps Script would retain `google.script.run`, user-executed authorization, Drive gating, Sheet writes, and the server-held ESV key; public assets would contain no content, comments, credentials, Google IDs, or ESV text. This removes large application code from HTML Service's inline transformation path without making the private backend public. It requires a separate CSP, cache, availability, and iPhone authentication test before adoption.
+The bounded-line build was unreliable, so the fallback is active. GitHub Pages serves only content-addressed JavaScript and CSS. A small Apps Script HTML document remains the signed-in top-level launcher, which preserves `google.script.run`, user-executed authorization, Drive gating, Sheet writes, User Properties, and the server-held ESV key. No commentary, comments, ESV wording, credentials, Google resource IDs, account emails, or deployment URL enters Pages.
+
+The launcher fetches a fixed-origin `release.json` with `no-store` and a unique query, validates its schema, release path, byte bounds, and exact Pages origin, and loads each immutable asset with SHA-384 Subresource Integrity. It remembers only the last validated code-release manifest in `localStorage`; if the current manifest is temporarily unavailable, it may request that previously successful immutable release. Old release directories remain available. Arbitrary URLs supplied by a manifest are rejected.
+
+Build `c57d948db8fbf838` pairs the initial launcher/server with frontend release `73da95f8a9ec3bb3`. Its Apps Script HTML is 23,837 bytes and contains only the 1,757-byte watchdog and 4,074-byte loader inline; the 73,635-byte application core, 21,566-byte stylesheet, and 5,666-byte optional highlight client are Pages assets. This architecture still requires an installed-iPhone canary before production promotion.
+
+This is not yet a service-worker-controlled PWA because the installed top-level origin remains Apps Script. It should make routine UI releases deterministic and fast without weakening Google identity. If the thin launcher itself remains unreliable or slow, the next boundary is a Pages-top-level PWA using Google Identity Services and server-side token validation; that larger authentication migration is not assumed safe without a separate prototype and two-account authorization test.

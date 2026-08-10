@@ -5,6 +5,7 @@
   var completionTimer = null;
   var coreHasStarted = false;
   var finished = false;
+  var explicitFailure = "";
 
   function element(id) {
     return root.document && root.document.getElementById(id);
@@ -27,9 +28,9 @@
     banner.dataset.state = "error";
     while (banner.firstChild) banner.removeChild(banner.firstChild);
     var message = root.document.createElement("p");
-    message.textContent = coreHasStarted
+    message.textContent = explicitFailure || (coreHasStarted
       ? "The reader started but did not finish secure loading. Close and reopen the Home Screen app; if this repeats, use the recovery link."
-      : "The application code did not start. Close and reopen the Home Screen app; if this repeats, use the recovery link.";
+      : "The application code did not start. Close and reopen the Home Screen app; if this repeats, use the recovery link.");
     banner.appendChild(message);
     var reloadUrl = safeReloadUrl();
     if (reloadUrl) {
@@ -50,6 +51,18 @@
   }
 
   root.DBRBoot = {
+    phase: function phase(message) {
+      if (finished) return;
+      var status = element("syncStatus");
+      if (status && message) status.textContent = String(message);
+    },
+    fail: function fail(message) {
+      if (finished) return;
+      explicitFailure = String(message || "The reader could not start.");
+      if (startupTimer !== null) root.clearTimeout(startupTimer);
+      if (completionTimer !== null) root.clearTimeout(completionTimer);
+      showRecovery();
+    },
     coreStarted: function coreStarted() {
       if (finished || coreHasStarted) return;
       coreHasStarted = true;

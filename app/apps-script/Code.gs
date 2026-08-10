@@ -109,8 +109,7 @@ const DBR_BRIDGE_READING_IDS = [
 ];
 
 function doGet() {
-  const output = HtmlService.createTemplateFromFile("Index")
-    .evaluate()
+  const output = HtmlService.createHtmlOutputFromFile("Index")
     .setTitle("Daily Bible Reader")
     .addMetaTag("viewport", "width=device-width, initial-scale=1, viewport-fit=cover")
     .addMetaTag("apple-mobile-web-app-capable", "yes")

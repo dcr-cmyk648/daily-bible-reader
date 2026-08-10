@@ -1,5 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
@@ -142,9 +143,10 @@ test("shared highlights do not force an IndexedDB schema upgrade on installed re
   }
 });
 
-test("production startup is late-load safe, bounded, and line-limited for iPhone Safari", () => {
+test("production startup uses a bounded code-only Pages loader instead of an inline application core", () => {
   const frontend = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
   const boot = fs.readFileSync(path.join(__dirname, "../app/frontend/boot.js"), "utf8");
+  const loader = fs.readFileSync(path.join(__dirname, "../app/frontend/static-loader.js"), "utf8");
   const buildScript = fs.readFileSync(path.join(__dirname, "../scripts/build-apps-script.mjs"), "utf8");
   assert.match(frontend, /document\.readyState === "loading"/);
   assert.match(frontend, /addEventListener\("DOMContentLoaded", start, \{once: true\}\)/);
@@ -155,16 +157,28 @@ test("production startup is late-load safe, bounded, and line-limited for iPhone
   assert.match(boot, /setTimeout\(showRecovery, 8000\)/);
   assert.match(boot, /setTimeout\(showRecovery, 45000\)/);
   assert.match(boot, /Reload reader safely/);
+  assert.match(boot, /phase: function phase/);
+  assert.match(boot, /fail: function fail/);
+  assert.match(loader, /credentials: "omit"/);
+  assert.match(loader, /cache: "no-store"/);
+  assert.match(loader, /redirect: "error"/);
+  assert.match(loader, /candidate\.origin !== ASSET_ORIGIN/);
+  assert.match(loader, /candidate\.pathname\.startsWith\(expectedPrefix\)/);
+  assert.match(loader, /sha384-/);
+  assert.match(loader, /root\.localStorage\.setItem\(CACHE_KEY/);
+  assert.match(loader, /root\.DailyBibleReader/);
   assert.match(buildScript, /target: "safari15"/);
   assert.match(buildScript, /target: "safari12"/);
   assert.match(buildScript, /const INLINE_SCRIPT_LINE_LIMIT = 800/);
   assert.match(buildScript, /const MAX_GENERATED_LINE_LENGTH = 1200/);
   assert.match(buildScript, /lineLimit: INLINE_SCRIPT_LINE_LIMIT/);
-  assert.match(buildScript, /longestLine > MAX_GENERATED_LINE_LENGTH/);
+  assert.match(buildScript, /maximum > MAX_GENERATED_LINE_LENGTH/);
   assert.match(buildScript, /Buffer\.byteLength\(html, "utf8"\)/);
   assert.doesNotMatch(buildScript, /MAX_PRODUCTION_HTML_BYTES/);
-  assert.match(buildScript, /replace\('<script src="app\.js"><\/script>', \(\) =>/);
-  assert.match(buildScript, /inlineScripts\.length !== 3/);
+  assert.match(buildScript, /const PAGES_ORIGIN = "https:\/\/dcr-cmyk648\.github\.io"/);
+  assert.match(buildScript, /delivery:pages-assets-v1/);
+  assert.match(buildScript, /static application loader/);
+  assert.match(buildScript, /inlineScripts\.length !== 2/);
   assert.match(buildScript, /inlineScripts\.forEach/);
 });
 
@@ -200,15 +214,34 @@ test("HTML shell is semantic, mobile-ready, and includes calendar plus ESV contr
   assert.match(css, /\[hidden\]\s*\{[^}]*display:\s*none\s*!important/s);
 });
 
-test("iOS Home Screen icon is declared locally and applied through Apps Script HtmlOutput", () => {
+test("iOS Home Screen icon is declared locally and the Apps Script shell uses its exact Pages URL", () => {
   const html = fs.readFileSync(path.join(__dirname, "../app/frontend/index.html"), "utf8");
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "../app/frontend/manifest.webmanifest"), "utf8"));
   const buildScript = fs.readFileSync(path.join(__dirname, "../scripts/build-apps-script.mjs"), "utf8");
   assert.match(html, /rel="apple-touch-icon" sizes="180x180" href="assets\/apple-touch-icon-180\.png"/);
   assert.ok(manifest.icons.some((icon) => icon.sizes === "192x192" && /maskable/.test(icon.purpose)));
   assert.ok(manifest.icons.some((icon) => icon.sizes === "512x512" && /maskable/.test(icon.purpose)));
-  assert.match(buildScript, /data:image\/png;base64/);
+  assert.match(buildScript, /PAGES_FAVICON_URL = `\$\{PAGES_ORIGIN\}\/daily-bible-reader\/app\/frontend\/assets\/apple-touch-icon-180\.png`/);
+  assert.doesNotMatch(buildScript, /data:image\/png;base64/);
   assert.match(buildScript, /__DBR_FAVICON_DATA_URL__/);
+});
+
+test("published Pages release is code-only, content-addressed, and integrity-checked", () => {
+  const manifestPath = path.join(__dirname, "../web/release.json");
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  assert.equal(manifest.schemaVersion, "dbr-static-release/v1");
+  assert.equal(manifest.loaderVersion, 1);
+  assert.match(manifest.releaseId, /^[a-f0-9]{16}$/);
+  for (const [name, asset] of Object.entries(manifest.assets)) {
+    assert.equal(asset.name, name);
+    assert.match(asset.path, new RegExp(`^releases/${manifest.releaseId}/[^/]+$`));
+    const bytes = fs.readFileSync(path.join(__dirname, "../web", asset.path));
+    assert.equal(bytes.length, asset.bytes);
+    assert.equal(`sha384-${crypto.createHash("sha384").update(bytes).digest("base64")}`, asset.integrity);
+  }
+  const core = fs.readFileSync(path.join(__dirname, "../web", manifest.assets.core.path), "utf8");
+  assert.doesNotMatch(core, /privateDraft|\/__private\/|fixtures\//);
+  assert.doesNotMatch(core, /__DBR_BUILD_ID__|__DBR_DELIVERY_MODE__/);
 });
 
 test("Apps Script source uses user identity, configured IDs, locking, and no payload logging", () => {
@@ -266,7 +299,7 @@ test("Apps Script doGet uses only HtmlOutput-supported meta tags", () => {
   };
   const context = vm.createContext({
     HtmlService: {
-      createTemplateFromFile() {
+      createHtmlOutputFromFile() {
         return output;
       }
     }

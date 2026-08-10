@@ -21,7 +21,7 @@ Google documents both execution modes and notes that user-accessing deployments 
 - Plain semantic HTML, CSS, and JavaScript.
 - A single browser application shared by local mocks and the Apps Script bundle.
 - `google.script.run` for authenticated same-app RPC in production.
-- Node built-ins for build, validation, safety, server, and tests.
+- Node built-ins for validation, safety, local serving, and tests, plus exact-version esbuild for Safari-targeted production minification.
 - No framework, package install, runtime database, service worker, or runtime AI.
 - `clasp` pushes only the inspected generated code bundle from a trusted maintainer environment. GitHub Actions validates a clean checkout but has no Google deployment credential and cannot deploy by itself.
 
@@ -95,14 +95,20 @@ Direct Sheet editing is a separate Google interface. Native Sheet access is cont
 - `localStorage`: the selected test reading and future lightweight, non-sensitive preferences only.
 - IndexedDB `deviceCredentials`: the successful raw reader code as a device fallback. It is never placed in `localStorage`, URLs, logs, or exports. The client requests persistent browser storage where supported, but iOS remains free to evict site data.
 - Apps Script User Properties: after a successful code check, a versioned record containing only the verified SHA-256 hash and server-derived `authorId`. It is scoped to the accessing Google user, so loss of iPhone web-app storage does not normally require re-entry. A configured-hash rotation or author mismatch invalidates it.
-- IndexedDB `privateContent`: network-first, plan-versioned private reading payloads, expiring after at most seven days.
+- IndexedDB `privateContent`: cache-first, plan-versioned private reading payloads plus one sanitized bootstrap snapshot, expiring after at most seven days. The bootstrap record is bound to the locally saved server-derived `authorId`; mock-fixture, ignored private-preview, and production records use separate cache contexts.
 - IndexedDB `scriptureCache`: retained as a policy-enforcement store, but the current ESV policy disables writes and deletes legacy records; never a service-worker cache.
 - IndexedDB `commentDrafts` and `commentOutbox`: offline drafts/events with unique request IDs.
 - IndexedDB `commentSnapshot`: last server materialization for offline context.
 - IndexedDB `calendarCompletion`: one plan-versioned record per reading containing body-free completion booleans for the two configured `authorId` values plus a synchronization timestamp; no comment body or email address is duplicated here.
 - IndexedDB `commentEvents`: local-mock revision history only; production history remains in the Sheet.
 
-The app targets the next seven available readings for offline private-content use. The current bridge has seven. ESV remains network-only even when private commentary is downloaded; this is an explicit provider-policy decision, not an accidental cache miss. Explicit authentication, authorization, or reader-code failures never fall back to cached private content. A fully offline device cannot observe a later revocation until it reconnects; revocation therefore includes asking the user to clear downloaded data.
+The app targets the next seven available readings for offline private-content use. Missing private records are retrieved through one authorization and one batched Apps Script response; the source registry and plan are not reread seven times. The current bridge has seven. ESV remains network-only even when private commentary is downloaded; this is an explicit provider-policy decision, not an accidental cache miss. Explicit authentication, authorization, reader-code, or manifest-permission failures clear and close the local private interface. Transient network/server failures may use the identity-bound snapshot, while every comment write remains in the local outbox until the current Google/Drive check succeeds. A fully offline device cannot observe a later revocation until it reconnects; revocation therefore includes asking the user to clear downloaded data.
+
+## Local-first daily startup
+
+After one confirmed launch, the installed app stores a sanitized bootstrap snapshot containing the plan, schedule configuration, provider policy, two display identities, and no email, credential, Google ID, comment body, ESV text, or API key. On a later launch the app validates the record's age and saved `authorId`, renders the month and saved progress immediately, and begins a lightweight `confirmReaderAccess` RPC. That RPC repeats Google identity, allowlist, reader enrollment/code, scopes, and a real read of the configured Drive manifest under the accessing user's identity. Only then are network writes and synchronization enabled.
+
+The full bootstrap refresh, shared-comment activity, and seven-reading preparation run after the visible shell is usable. Apps Script reuses a 30-second per-user parsed manifest/config/plan cache during that burst but still checks access to all three Drive files; the cache is an optimization, never an authorization source. Opening a downloaded reading renders commentary first, refreshes it in the background, and retrieves ESV independently. A deterministic readiness line distinguishes downloaded placeholders from substantive study content and warns when fewer than three consecutive studies are prepared from the current plan day.
 
 The pilot registers no service worker, so HTTP caching cannot silently become an ESV corpus. “Clear downloaded data” removes any legacy Scripture-cache records plus private content, drafts, outbox, and snapshots while preserving reader access. A separate two-step “Forget reader code” action deletes both the account enrollment and the local fallback. Debug status reports counts, build IDs, policy dates, and whether a credential exists, never bodies or the code itself.
 

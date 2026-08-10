@@ -27,6 +27,10 @@ const DBR_READER_ENROLLMENT = {
   propertyKey: "DBR_READER_ENROLLMENT",
   version: "reader-enrollment/v1"
 };
+const DBR_PRIVATE_STATE_CACHE = {
+  key: "private-state-v1",
+  ttlSeconds: 30
+};
 
 const DBR_COMMENT_COLUMNS = [
   "event_id",
@@ -120,6 +124,24 @@ function getBootstrapData(readerCode) {
   });
 }
 
+function confirmReaderAccess(readerCode) {
+  return dbrRpc_(function () {
+    const context = dbrAuthorizedContext_(readerCode);
+    const manifestId = PropertiesService.getScriptProperties().getProperty(DBR_PROPERTIES.manifestFileId);
+    if (!manifestId) throw dbrError_("CONTENT_ACCESS_DENIED", "Private manifest is not configured.");
+    // Reading and parsing the configured manifest proves that Drive still grants
+    // this accessing user the content gate; no plan or commentary is returned.
+    DBRServerCore.parseManifest(dbrReadJsonFile_(manifestId, 150000, "CONTENT_ACCESS_DENIED"));
+    return {
+      appBuildId: DBR_BUILD_ID,
+      appUrl: ScriptApp.getService().getUrl(),
+      session: context.identity,
+      participants: context.participants,
+      readerEnrollmentRemembered: context.readerEnrollmentRemembered
+    };
+  });
+}
+
 function forgetReaderEnrollment(readerCode) {
   return dbrRpc_(function () {
     dbrAuthorizedContext_(readerCode);
@@ -133,24 +155,52 @@ function getReadingPayload(readerCode, readingId) {
     const context = dbrAuthorizedContext_(readerCode);
     dbrEnforceRateLimit_("reading", 120, 60);
     const privateState = dbrReadPrivateState_(context);
-    const entry = DBRServerCore.getPlanEntry(privateState.plan, readingId);
-    const files = DBRServerCore.resolveReadingFiles(privateState.manifest, readingId);
-    const contentMarkdown = dbrReadTextFile_(files.contentFileId, 800000);
-    if (/<\/?(?:script|iframe|object|embed|style)\b/i.test(contentMarkdown)) {
-      throw dbrError_("CONTENT_INVALID", "Private commentary contains unsupported raw HTML.");
-    }
-    const metadata = dbrReadJsonFile_(files.metadataFileId, 500000, "CONTENT_INVALID");
-    if (!metadata || metadata.readingId !== entry.readingId ||
-        !DBR_COMMENTARY_SCHEMA_VERSIONS.includes(metadata.schemaVersion)) {
-      throw dbrError_("CONTENT_MISMATCH", "Private commentary did not match the selected reading.");
-    }
-    metadata.verseOfTheDay = DBRServerCore.validateVerseOfTheDay(metadata.verseOfTheDay, entry);
-    const commentary = dbrMergeCommentaryMarkdown_(metadata, contentMarkdown);
     const registry = dbrReadJsonFile_(privateState.manifest.sourceRegistryFileId, 1000000, "SOURCE_REGISTRY_INVALID");
-    const sourceIds = dbrCommentarySourceIds_(commentary, entry);
-    const sources = dbrFilterAndValidateSources_(registry, sourceIds);
-    return {commentary: commentary, sources: sources};
+    return dbrBuildReadingPayload_(privateState, registry, readingId);
   });
+}
+
+function getReadingPayloads(readerCode, readingIds) {
+  return dbrRpc_(function () {
+    const context = dbrAuthorizedContext_(readerCode);
+    dbrEnforceRateLimit_("reading-batch", 20, 60);
+    const privateState = dbrReadPrivateState_(context);
+    if (!Array.isArray(readingIds) || readingIds.length < 1 || readingIds.length > 7) {
+      throw dbrError_("INVALID_READING", "Reading batch is invalid.");
+    }
+    const normalized = readingIds.map(function (readingId) { return String(readingId || ""); });
+    if (new Set(normalized).size !== normalized.length) {
+      throw dbrError_("INVALID_READING", "Reading batch is invalid.");
+    }
+    normalized.forEach(function (readingId) {
+      DBRServerCore.getPlanEntry(privateState.plan, readingId);
+    });
+    const registry = dbrReadJsonFile_(privateState.manifest.sourceRegistryFileId, 1000000, "SOURCE_REGISTRY_INVALID");
+    const payloads = {};
+    normalized.forEach(function (readingId) {
+      payloads[readingId] = dbrBuildReadingPayload_(privateState, registry, readingId);
+    });
+    return {planVersion: privateState.plan.planVersion, payloads: payloads};
+  });
+}
+
+function dbrBuildReadingPayload_(privateState, registry, readingId) {
+  const entry = DBRServerCore.getPlanEntry(privateState.plan, readingId);
+  const files = DBRServerCore.resolveReadingFiles(privateState.manifest, readingId);
+  const contentMarkdown = dbrReadTextFile_(files.contentFileId, 800000);
+  if (/<\/?(?:script|iframe|object|embed|style)\b/i.test(contentMarkdown)) {
+    throw dbrError_("CONTENT_INVALID", "Private commentary contains unsupported raw HTML.");
+  }
+  const metadata = dbrReadJsonFile_(files.metadataFileId, 500000, "CONTENT_INVALID");
+  if (!metadata || metadata.readingId !== entry.readingId ||
+      !DBR_COMMENTARY_SCHEMA_VERSIONS.includes(metadata.schemaVersion)) {
+    throw dbrError_("CONTENT_MISMATCH", "Private commentary did not match the selected reading.");
+  }
+  metadata.verseOfTheDay = DBRServerCore.validateVerseOfTheDay(metadata.verseOfTheDay, entry);
+  const commentary = dbrMergeCommentaryMarkdown_(metadata, contentMarkdown);
+  const sourceIds = dbrCommentarySourceIds_(commentary, entry);
+  const sources = dbrFilterAndValidateSources_(registry, sourceIds);
+  return {commentary: commentary, sources: sources};
 }
 
 function getScripture(readerCode, readingId) {
@@ -446,10 +496,40 @@ function dbrReadPrivateState_() {
   const manifestId = PropertiesService.getScriptProperties().getProperty(DBR_PROPERTIES.manifestFileId);
   if (!manifestId) throw dbrError_("CONTENT_ACCESS_DENIED", "Private manifest is not configured.");
   try {
+    let userCache = null;
+    let cached = null;
+    try {
+      userCache = CacheService.getUserCache();
+      const raw = userCache.get(DBR_PRIVATE_STATE_CACHE.key);
+      cached = raw ? JSON.parse(raw) : null;
+    } catch (_) {
+      cached = null;
+    }
+    if (cached && cached.manifestFileId === manifestId && cached.manifest && cached.config && cached.plan) {
+      // Cache avoids reparsing three Drive blobs during a burst of related RPCs,
+      // but file access is still checked under the accessing user's identity.
+      [manifestId, cached.manifest.appConfigFileId, cached.manifest.planFileId].forEach(function (fileId) {
+        DriveApp.getFileById(fileId).getId();
+      });
+      dbrValidatePrivateConfig_(cached.config, cached.plan);
+      return {manifest: cached.manifest, config: cached.config, plan: cached.plan};
+    }
     const manifest = DBRServerCore.parseManifest(dbrReadJsonFile_(manifestId, 150000, "CONTENT_ACCESS_DENIED"));
     const config = dbrReadJsonFile_(manifest.appConfigFileId, 150000, "CONTENT_ACCESS_DENIED");
     const plan = dbrReadJsonFile_(manifest.planFileId, 500000, "CONTENT_ACCESS_DENIED");
     dbrValidatePrivateConfig_(config, plan);
+    if (userCache) {
+      try {
+        userCache.put(DBR_PRIVATE_STATE_CACHE.key, JSON.stringify({
+          manifestFileId: manifestId,
+          manifest: manifest,
+          config: config,
+          plan: plan
+        }), DBR_PRIVATE_STATE_CACHE.ttlSeconds);
+      } catch (_) {
+        // Cache is an optimization only; Drive remains canonical.
+      }
+    }
     return {manifest: manifest, config: config, plan: plan};
   } catch (error) {
     if (error && error.code) throw error;

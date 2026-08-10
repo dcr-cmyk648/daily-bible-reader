@@ -4,6 +4,7 @@ import {mkdir, readFile, rm, writeFile} from "node:fs/promises";
 import {createHash} from "node:crypto";
 import path from "node:path";
 import process from "node:process";
+import {Script} from "node:vm";
 import {transform, version as esbuildVersion} from "esbuild";
 import {inspectPaths} from "./check-repository-safety.mjs";
 
@@ -100,14 +101,30 @@ async function main() {
   html = html.replace(/\s*<link rel="manifest" href="manifest\.webmanifest">/, "");
   html = html.replace(/\s*<link rel="apple-touch-icon"[^>]+>/, "");
   html = html.replace(/\s*<link rel="icon"[^>]+>/, "");
-  html = assertSingleReplacement(html, html.replace('<link rel="stylesheet" href="styles.css">', `<style>\n${productionCss}\n</style>`), "stylesheet");
+  html = assertSingleReplacement(
+    html,
+    html.replace('<link rel="stylesheet" href="styles.css">', () => `<style>\n${productionCss}\n</style>`),
+    "stylesheet"
+  );
   html = html.replace(/\s*<script src="\.\.\/shared\/provider-policy\.js"><\/script>/, "");
   html = html.replace(/\s*<script src="\.\.\/shared\/server-core\.js"><\/script>/, "");
   html = assertSingleReplacement(
     html,
-    html.replace('<script src="app.js"></script>', `<script>\n${productionJavaScript}\n</script>`),
+    // A replacement callback is mandatory: minified JavaScript can contain `$&`,
+    // which String.replace would otherwise expand to the matched script tag.
+    html.replace('<script src="app.js"></script>', () => `<script>\n${productionJavaScript}\n</script>`),
     "frontend scripts"
   );
+
+  const inlineScripts = Array.from(html.matchAll(/<script>([\s\S]*?)<\/script>/g), (match) => match[1]);
+  if (inlineScripts.length !== 1) {
+    throw new Error(`Expected one production inline script; found ${inlineScripts.length}.`);
+  }
+  try {
+    new Script(inlineScripts[0], {filename: "Index.inline.js"});
+  } catch (error) {
+    throw new Error(`Generated inline JavaScript is invalid: ${error.message}`);
+  }
 
   await rm(OUTPUT, {recursive: true, force: true});
   await mkdir(OUTPUT, {recursive: true});

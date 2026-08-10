@@ -17,6 +17,8 @@
   const CLIENT_BUILD_ID = "__DBR_BUILD_ID__";
   const DB_NAME = "dailyBibleReaderPilot";
   const DB_VERSION = 4;
+  const BOOTSTRAP_CACHE_KEY = "__app-bootstrap__";
+  const BOOTSTRAP_CACHE_SCHEMA = "bootstrap-cache/v1";
   const STORE_DEFINITIONS = {
     calendarCompletion: "readingId",
     scriptureCache: "cacheKey",
@@ -37,6 +39,8 @@
 
   const state = {
     adapter: null,
+    authorizationPromise: null,
+    serverAccessConfirmed: false,
     bootstrap: null,
     calendarMonthDate: null,
     calendarParticipants: [],
@@ -50,6 +54,7 @@
     currentPage: 0,
     policy: null,
     plan: null,
+    prefetchScheduled: false,
     readerCode: "",
     readerCodeSubmitting: false,
     schedule: null,
@@ -551,6 +556,7 @@
     const core = root.DBRServerCore;
     return {
       kind: "mock",
+      cacheContext: privateDraftMode() ? "mock-private-draft" : "mock-fixture",
       async getBootstrapData() {
         const registryPath = privateDraftMode()
           ? "/__private/registry.json"
@@ -589,6 +595,11 @@
           verseOfTheDay: {bookId: firstPassage.bookId, chapter: firstPassage.chapter, verse: 1}
         };
         return {commentary, sources: []};
+      },
+      async getReadingPayloads(readingIds) {
+        const payloads = {};
+        for (const readingId of readingIds) payloads[readingId] = await this.getReadingPayload(readingId);
+        return {planVersion: state.plan.planVersion, payloads};
       },
       async getScripture(readingId) {
         const entry = state.plan.entries.find((candidate) => candidate.readingId === readingId);
@@ -694,8 +705,11 @@
   function productionAdapter() {
     return {
       kind: "apps-script",
+      cacheContext: "apps-script",
       getBootstrapData: () => appsScriptRpc("getBootstrapData", state.readerCode).then(unwrapRpc),
+      confirmReaderAccess: () => appsScriptRpc("confirmReaderAccess", state.readerCode).then(unwrapRpc),
       getReadingPayload: (readingId) => appsScriptRpc("getReadingPayload", state.readerCode, readingId).then(unwrapRpc),
+      getReadingPayloads: (readingIds) => appsScriptRpc("getReadingPayloads", state.readerCode, readingIds).then(unwrapRpc),
       getScripture: (readingId) => appsScriptRpc("getScripture", state.readerCode, readingId).then(unwrapRpc),
       listComments: (readingId) => appsScriptRpc("listComments", state.readerCode, readingId).then(unwrapRpc),
       listCommentActivity: (readingIds) => appsScriptRpc("listCommentActivity", state.readerCode, readingIds).then(unwrapRpc),
@@ -1343,9 +1357,71 @@
       Date.parse(record.expiresAt) > now && (!planVersion || record.planVersion === planVersion));
   }
 
+  function privateCacheContext() {
+    return state.adapter && state.adapter.cacheContext || "apps-script";
+  }
+
+  function readingContentIsPrepared(payload) {
+    const commentary = payload && (payload.commentary || payload.metadata);
+    return Boolean(commentary && commentary.readingId && commentary.publicationStatus &&
+      commentary.publicationStatus !== "placeholder");
+  }
+
+  function bootstrapRecordIsFresh(record, nowInput, credential) {
+    const now = Number.isFinite(nowInput) ? nowInput : Date.now();
+    return Boolean(record && record.readingId === BOOTSTRAP_CACHE_KEY &&
+      record.schemaVersion === BOOTSTRAP_CACHE_SCHEMA && record.payload &&
+      record.authorId && credential && credential.authorId === record.authorId &&
+      Number.isFinite(Date.parse(record.expiresAt)) && Date.parse(record.expiresAt) > now &&
+      record.payload.session && record.payload.session.authorId === record.authorId);
+  }
+
+  async function cachedBootstrapForCredential(credential) {
+    const record = await state.store.get("privateContent", BOOTSTRAP_CACHE_KEY);
+    if (!bootstrapRecordIsFresh(record, Date.now(), credential)) {
+      if (record) await state.store.delete("privateContent", BOOTSTRAP_CACHE_KEY);
+      return null;
+    }
+    return record.payload;
+  }
+
+  async function persistBootstrap(bootstrap) {
+    const maxAgeSeconds = Number(bootstrap && bootstrap.config &&
+      bootstrap.config.privateContentCacheMaxAgeSeconds || 0);
+    if (!Number.isInteger(maxAgeSeconds) || maxAgeSeconds <= 0 || maxAgeSeconds > 604800) return;
+    const cachedAt = new Date();
+    const session = bootstrap.session || {};
+    const payload = {
+      mode: bootstrap.mode,
+      appBuildId: bootstrap.appBuildId,
+      appUrl: bootstrap.appUrl,
+      config: bootstrap.config,
+      plan: bootstrap.plan,
+      providerPolicy: bootstrap.providerPolicy,
+      session: {authorId: session.authorId, displayName: session.displayName},
+      participants: (bootstrap.participants || []).map((participant) => ({
+        authorId: participant.authorId,
+        displayName: participant.displayName
+      })),
+      sources: bootstrap.sources || []
+    };
+    await state.store.put("privateContent", {
+      readingId: BOOTSTRAP_CACHE_KEY,
+      schemaVersion: BOOTSTRAP_CACHE_SCHEMA,
+      authorId: session.authorId,
+      planVersion: bootstrap.plan.planVersion,
+      cachedAt: cachedAt.toISOString(),
+      expiresAt: new Date(cachedAt.getTime() + maxAgeSeconds * 1000).toISOString(),
+      payload
+    });
+  }
+
   async function cachedPrivatePayload(readingId) {
     const record = await state.store.get("privateContent", readingId);
-    if (!privateRecordIsFresh(record, Date.now(), state.plan && state.plan.planVersion)) {
+    const context = privateCacheContext();
+    const contextMatches = record && (record.cacheContext === context ||
+      (!record.cacheContext && context === "apps-script"));
+    if (!contextMatches || !privateRecordIsFresh(record, Date.now(), state.plan && state.plan.planVersion)) {
       if (record) await state.store.delete("privateContent", readingId);
       return null;
     }
@@ -1358,6 +1434,7 @@
     const cachedAt = new Date();
     await state.store.put("privateContent", {
       readingId,
+      cacheContext: privateCacheContext(),
       planVersion: state.plan.planVersion,
       cachedAt: cachedAt.toISOString(),
       expiresAt: new Date(cachedAt.getTime() + maxAgeSeconds * 1000).toISOString(),
@@ -1370,16 +1447,37 @@
       "READER_CODE_INVALID", "CONTENT_ACCESS_DENIED"].includes(error.code);
   }
 
+  function explicitAccessFailure(error) {
+    return Boolean(error && ["AUTH_REQUIRED", "ACCESS_DENIED", "WRONG_EXECUTION_IDENTITY",
+      "READER_CODE_REQUIRED", "READER_CODE_INVALID", "CONTENT_ACCESS_DENIED"].includes(error.code));
+  }
+
+  function serverCallsAllowed() {
+    return Boolean(state.adapter && (state.adapter.kind === "mock" || state.serverAccessConfirmed));
+  }
+
   async function readingPayloadWithCache(readingId) {
+    const cached = await cachedPrivatePayload(readingId);
+    if (cached) {
+      if (serverCallsAllowed() && (!root.navigator || root.navigator.onLine !== false)) {
+        state.adapter.getReadingPayload(readingId)
+          .then((payload) => persistPrivatePayload(readingId, payload))
+          .catch(() => {});
+      }
+      return {payload: cached, source: "cache"};
+    }
+    if (!serverCallsAllowed()) {
+      throw appError("This reading has not been downloaded and secure access is not yet confirmed.", "OFFLINE_CONTENT_UNAVAILABLE");
+    }
     try {
       const payload = await state.adapter.getReadingPayload(readingId);
       await persistPrivatePayload(readingId, payload);
       return {payload, source: "network"};
     } catch (error) {
       if (!mayUseOfflineFallback(error)) throw error;
-      const cached = await cachedPrivatePayload(readingId);
-      if (!cached) throw error;
-      return {payload: cached, source: "cache"};
+      const fallback = await cachedPrivatePayload(readingId);
+      if (!fallback) throw error;
+      return {payload: fallback, source: "cache"};
     }
   }
 
@@ -1393,6 +1491,10 @@
       : "Retrieving official ESV text through the authenticated server…";
     element("scriptureContent").replaceChildren();
     prepareVerseOfTheDay();
+    if (!serverCallsAllowed()) {
+      renderScriptureUnavailable("ESV Scripture requires a confirmed connection. Saved commentary is available while access is checked in the background.");
+      return;
+    }
     try {
       const scripture = await state.adapter.getScripture(entry.readingId);
       if (token !== state.scriptureRequestToken || state.currentEntry.readingId !== entry.readingId) return;
@@ -1649,6 +1751,12 @@
 
   async function syncCalendarCompletion() {
     if (!state.plan || !state.session || !state.calendarWindow) return;
+    if (!serverCallsAllowed()) {
+      await hydrateCalendarCompletion();
+      element("calendarStatus").textContent = "Saved progress is ready · confirming shared comments in the background.";
+      setSyncStatus("Saved data ready · confirming access");
+      return;
+    }
     if (state.calendarSyncPromise) return state.calendarSyncPromise;
     const run = async () => {
       const button = element("refreshCalendar");
@@ -1764,7 +1872,7 @@
     setBanner("");
     renderCalendar();
     if ((!options || options.sync !== false) && (!root.navigator || root.navigator.onLine !== false)) {
-      syncCalendarCompletion().catch(() => {});
+      resumeOnlineWork();
     }
     if (root.scrollTo) root.scrollTo({top: 0, behavior: "auto"});
     if (!options || options.focus !== false) element("calendarHeading").focus({preventScroll: true});
@@ -1861,19 +1969,42 @@
     let contentCount = 0;
     let scriptureCount = 0;
     let scriptureEligible = 0;
+    const missingEntries = [];
+    const payloadByReadingId = new Map();
 
     for (const entry of windowEntries) {
-      try {
-        let payload = await cachedPrivatePayload(entry.readingId);
-        if (!payload) {
-          payload = await state.adapter.getReadingPayload(entry.readingId);
-          await persistPrivatePayload(entry.readingId, payload);
-        }
-        if (payload) contentCount += 1;
-      } catch {
-        // A partial pack is preferable to failing the active reading.
+      const payload = await cachedPrivatePayload(entry.readingId);
+      if (payload) {
+        contentCount += 1;
+        payloadByReadingId.set(entry.readingId, payload);
       }
+      else missingEntries.push(entry);
+    }
 
+    if (missingEntries.length && serverCallsAllowed()) {
+      try {
+        const readingIds = missingEntries.map((entry) => entry.readingId);
+        const batch = await state.adapter.getReadingPayloads(readingIds);
+        if (!batch || batch.planVersion !== state.plan.planVersion ||
+            !batch.payloads || typeof batch.payloads !== "object") {
+          throw appError("Offline reading batch did not match the active plan.", "CONTENT_MISMATCH");
+        }
+        for (const entry of missingEntries) {
+          const payload = batch.payloads[entry.readingId];
+          const commentary = payload && (payload.commentary || payload.metadata);
+          if (!commentary || commentary.readingId !== entry.readingId) {
+            throw appError("Offline reading batch contained mismatched content.", "CONTENT_MISMATCH");
+          }
+          await persistPrivatePayload(entry.readingId, payload);
+          payloadByReadingId.set(entry.readingId, payload);
+          contentCount += 1;
+        }
+      } catch {
+        // A partial pack is preferable to delaying the active reading.
+      }
+    }
+
+    for (const entry of windowEntries) {
       if (entry.kind === "chapter" && state.policy.offlinePersistenceAllowed) {
         scriptureEligible += 1;
         try {
@@ -1892,9 +2023,34 @@
     const scriptureStatus = state.policy.offlinePersistenceAllowed
       ? `${scriptureCount}/${scriptureEligible} chapter text records available offline`
       : "ESV text stays network-only by provider policy";
-    element("offlinePackStatus").textContent = `${contentCount}/${windowEntries.length} reading records prepared · ` +
-      `${scriptureStatus} · target ${target} readings.`;
+    let consecutivePrepared = 0;
+    for (const entry of entries.slice(calendarIndex)) {
+      if (!readingContentIsPrepared(payloadByReadingId.get(entry.readingId))) break;
+      consecutivePrepared += 1;
+    }
+    const preparationTarget = Math.min(3, entries.length - calendarIndex);
+    const readinessMessage = consecutivePrepared < preparationTarget
+      ? `Preparation alert: ${consecutivePrepared}/${preparationTarget} consecutive full studies are ready from today.`
+      : `${consecutivePrepared} consecutive full studies are ready from today.`;
+    const offlineStatus = element("offlinePackStatus");
+    offlineStatus.dataset.state = consecutivePrepared < preparationTarget ? "warning" : "ready";
+    offlineStatus.textContent = `${contentCount}/${windowEntries.length} reading records downloaded · ` +
+      `${scriptureStatus} · ${readinessMessage}`;
     await updateCacheInspector();
+  }
+
+  function scheduleOfflinePrefetch() {
+    if (state.prefetchScheduled || !serverCallsAllowed()) return;
+    state.prefetchScheduled = true;
+    const run = () => {
+      state.prefetchScheduled = false;
+      prefetchOfflineWindow().catch(() => {});
+    };
+    if (typeof root.requestIdleCallback === "function") {
+      root.requestIdleCallback(run, {timeout: 6000});
+    } else {
+      root.setTimeout(run, 4000);
+    }
   }
 
   async function loadDraft(readingId) {
@@ -2090,6 +2246,11 @@
     if (!readingId) return;
     const token = ++state.commentSyncToken;
     const background = Boolean(options && options.background);
+    if (!serverCallsAllowed()) {
+      await loadCachedDiscussion(readingId);
+      if (!background) setSyncStatus("Saved discussion ready · writes will sync after access is confirmed");
+      return;
+    }
     if (!background) setSyncStatus("Syncing discussion…");
     try {
       const comments = await state.adapter.listComments(readingId);
@@ -2182,6 +2343,13 @@
   }
 
   async function flushOutbox() {
+    if (!serverCallsAllowed()) {
+      const queued = compactOutbox(await state.store.getAll("commentOutbox"));
+      setSyncStatus(queued.length
+        ? `${queued.length} comment update${queued.length === 1 ? "" : "s"} saved locally · awaiting secure access`
+        : "Saved data ready · confirming access");
+      return;
+    }
     if (root.navigator && root.navigator.onLine === false && state.adapter.kind !== "mock") {
       setSyncStatus("Offline · writes remain queued");
       return;
@@ -2223,9 +2391,18 @@
       state.store.get("deviceCredentials", "reader-code")
     ]);
     const freshContent = [];
+    let bootstrapCached = false;
+    const cacheContext = privateCacheContext();
     for (const record of content) {
-      if (privateRecordIsFresh(record, Date.now(), state.plan && state.plan.planVersion)) freshContent.push(record);
-      else await state.store.delete("privateContent", record.readingId);
+      if (record.readingId === BOOTSTRAP_CACHE_KEY) {
+        bootstrapCached = bootstrapRecordIsFresh(record, Date.now(), credential);
+        if (!bootstrapCached) await state.store.delete("privateContent", record.readingId);
+      } else if ((record.cacheContext === cacheContext || (!record.cacheContext && cacheContext === "apps-script")) &&
+          privateRecordIsFresh(record, Date.now(), state.plan && state.plan.planVersion)) {
+        freshContent.push(record);
+      } else {
+        await state.store.delete("privateContent", record.readingId);
+      }
     }
     const policyState = root.DBRProviderPolicy.inspectCache(scripture, state.policy);
     element("cacheInspector").textContent = JSON.stringify({
@@ -2234,6 +2411,8 @@
       serverBuildId: state.bootstrap && state.bootstrap.appBuildId,
       providerPolicy: policyState,
       offlineReadingWindowDays: state.config.offlineReadingWindowDays,
+      bootstrapCached,
+      serverAccessConfirmed: state.serverAccessConfirmed,
       privateContentEntries: freshContent.length,
       calendarCompletionEntries: completion.length,
       cachedCommentSnapshots: snapshots.length,
@@ -2274,10 +2453,11 @@
     await renderComments([]);
     await updateCacheInspector();
     renderCalendar();
+    delete element("offlinePackStatus").dataset.state;
     element("offlinePackStatus").textContent = "Downloaded reading data cleared. Reader access remains remembered; reconnect to prepare the offline window again.";
     setSyncStatus("Downloaded data cleared");
     if (state.currentEntry && state.currentEntry.kind === "chapter") await loadScripture(state.currentEntry);
-    if (state.view === "home" && (!root.navigator || root.navigator.onLine !== false)) syncCalendarCompletion().catch(() => {});
+    if (state.view === "home" && (!root.navigator || root.navigator.onLine !== false)) resumeOnlineWork();
   }
 
   async function forgetReaderAccess() {
@@ -2299,8 +2479,7 @@
     button.disabled = true;
     try {
       await state.adapter.forgetReaderEnrollment();
-      await state.store.delete("deviceCredentials", "reader-code");
-      state.readerCode = "";
+      await clearPrivateDataAfterAccessFailure();
       showReaderCodeGate(appError("Reader access was forgotten. Enter your code to enroll this account again.", "READER_CODE_REQUIRED"));
     } catch {
       setSyncStatus("Reader access could not be forgotten; reconnect and retry");
@@ -2310,6 +2489,16 @@
       button.removeAttribute("aria-label");
       button.disabled = false;
     }
+  }
+
+  function resumeOnlineWork() {
+    if (state.adapter && state.adapter.kind === "apps-script" && !state.serverAccessConfirmed && state.plan && state.session) {
+      confirmServerAccess({expectedAuthorId: state.session.authorId, hadCachedShell: true}).catch(handleFatalError);
+      return;
+    }
+    if (!serverCallsAllowed()) return;
+    flushOutbox().catch(() => setSyncStatus("Sync retry failed"));
+    if (state.view === "home") syncCalendarCompletion().catch(() => {});
   }
 
   function wireEvents() {
@@ -2347,19 +2536,16 @@
     element("syncOutbox").addEventListener("click", flushOutbox);
     element("clearDownloadedData").addEventListener("click", clearDownloadedData);
     element("forgetReaderAccess").addEventListener("click", forgetReaderAccess);
-    root.addEventListener("online", () => {
-      flushOutbox().catch(() => setSyncStatus("Sync retry failed"));
-      if (state.view === "home") syncCalendarCompletion().catch(() => {});
-    });
+    root.addEventListener("online", resumeOnlineWork);
     root.addEventListener("pageshow", () => {
       if (state.view === "home" && (!root.navigator || root.navigator.onLine !== false)) {
-        syncCalendarCompletion().catch(() => {});
+        resumeOnlineWork();
       }
     });
     root.document.addEventListener("visibilitychange", () => {
       if (root.document.visibilityState === "visible" && state.view === "home" &&
           (!root.navigator || root.navigator.onLine !== false)) {
-        syncCalendarCompletion().catch(() => {});
+        resumeOnlineWork();
       }
     });
     root.addEventListener("offline", () => setSyncStatus("Offline · drafts remain local"));
@@ -2384,9 +2570,7 @@
     element("appMain").hidden = false;
   }
 
-  async function startAuthorizedApplication() {
-    setSyncStatus("Authorizing…");
-    const bootstrap = await state.adapter.getBootstrapData();
+  function applyBootstrapState(bootstrap) {
     state.bootstrap = bootstrap;
     state.config = bootstrap.config;
     state.plan = validatePlan(bootstrap.plan);
@@ -2407,32 +2591,179 @@
       throw appError("The server did not provide the expected two-reader roster.", "AUTH_REQUIRED");
     }
     state.calendarParticipants = participants;
-    if (state.adapter.kind === "apps-script") {
-      const persistentStorage = await requestPersistentStorage();
-      if (state.readerCode) {
-        await state.store.put("deviceCredentials", {
-          credentialId: "reader-code",
-          readerCode: state.readerCode,
-          verifiedAt: new Date().toISOString(),
-          authorId: state.session.authorId,
-          persistentStorage: persistentStorage
-        });
-      }
-    }
+  }
+
+  async function installBootstrap(bootstrap, options) {
+    const hadApplication = Boolean(state.plan && state.session);
+    const previousPlanVersion = state.plan && state.plan.planVersion;
+    applyBootstrapState(bootstrap);
     hideReaderCodeGate();
-    element("authStatus").textContent = state.adapter.kind === "mock" ? "Local mock · fabricated data" : `Signed in as ${state.session.displayName}`;
+    element("authStatus").textContent = state.adapter.kind === "mock"
+      ? "Local mock · fabricated data"
+      : options && options.cached
+        ? `Saved copy for ${state.session.displayName} · checking access`
+        : `Signed in as ${state.session.displayName}`;
     const esvNotice = state.policy.requiredAttribution.notice || FALLBACK_ESV_NOTICE;
     element("esvNotice").textContent = esvNotice;
     element("verseOfDayNotice").textContent = esvNotice;
     wireEvents();
     state.schedule = calculateSchedule(state.plan, state.config, new Date());
     await hydrateCalendarCompletion();
-    showHome({focus: false, sync: false});
-    configureBuildUpdate(bootstrap);
-    await syncCalendarCompletion();
-    await flushOutbox();
+    if (!hadApplication || previousPlanVersion !== state.plan.planVersion || state.view === "home") {
+      showHome({focus: false, sync: false});
+    }
+    if (!options || !options.cached) configureBuildUpdate(bootstrap);
+  }
+
+  async function rememberConfirmedDevice() {
+    if (state.adapter.kind !== "apps-script" || !state.session) return;
+    const prior = await state.store.get("deviceCredentials", "reader-code");
+    const record = {
+      credentialId: "reader-code",
+      readerCode: state.readerCode || prior && prior.readerCode || "",
+      verifiedAt: new Date().toISOString(),
+      authorId: state.session.authorId,
+      persistentStorage: Boolean(prior && prior.persistentStorage)
+    };
+    await state.store.put("deviceCredentials", record);
+    requestPersistentStorage().then(async (persistentStorage) => {
+      await state.store.put("deviceCredentials", {...record, persistentStorage});
+    }).catch(() => {});
+  }
+
+  async function clearPrivateDataAfterAccessFailure() {
+    await state.store.clearAll();
+    state.readerCode = "";
+    state.bootstrap = null;
+    state.config = null;
+    state.plan = null;
+    state.policy = null;
+    state.session = null;
+    state.sources = [];
+    state.calendarParticipants = [];
+    state.completionByReadingId = new Map();
+    state.completedReadingIds = new Set();
+  }
+
+  function startConfirmedBackgroundWork() {
     syncCalendarCompletion().catch(() => {});
-    prefetchOfflineWindow().catch(() => {});
+    flushOutbox().catch(() => {});
+    if (state.view === "reading" && state.currentEntry) {
+      refreshComments({background: true, readingId: state.currentEntry.readingId}).catch(() => {});
+      if (state.currentEntry.kind === "chapter") loadScripture(state.currentEntry).catch(() => {});
+    }
+    scheduleOfflinePrefetch();
+  }
+
+  async function refreshBootstrapAfterConfirmation(expectedAuthorId) {
+    try {
+      const bootstrap = await state.adapter.getBootstrapData();
+      if (!bootstrap.session || bootstrap.session.authorId !== expectedAuthorId) {
+        throw appError("The signed-in account changed while refreshing private data.", "AUTH_REQUIRED");
+      }
+      await installBootstrap(bootstrap, {cached: false});
+      await persistBootstrap(bootstrap);
+      startConfirmedBackgroundWork();
+    } catch (error) {
+      if (explicitAccessFailure(error)) {
+        state.serverAccessConfirmed = false;
+        await clearPrivateDataAfterAccessFailure();
+        handleFatalError(error);
+        return;
+      }
+      setSyncStatus("Saved data ready · background refresh will retry later");
+      startConfirmedBackgroundWork();
+    }
+  }
+
+  async function confirmServerAccess(options) {
+    if (state.authorizationPromise) return state.authorizationPromise;
+    const expectedAuthorId = options && options.expectedAuthorId;
+    const hadCachedShell = Boolean(options && options.hadCachedShell);
+    const run = async () => {
+      setSyncStatus(hadCachedShell ? "Saved data ready · confirming access" : "Authorizing…");
+      try {
+        if (hadCachedShell) {
+          const confirmation = await state.adapter.confirmReaderAccess();
+          if (!confirmation.session || confirmation.session.authorId !== expectedAuthorId) {
+            throw appError("The signed-in account does not match this device's saved reader.", "AUTH_REQUIRED");
+          }
+          const confirmedParticipants = Array.isArray(confirmation.participants)
+            ? confirmation.participants.map((participant) => participant && participant.authorId)
+            : [];
+          const cachedParticipants = state.calendarParticipants.map((participant) => participant.authorId);
+          if (JSON.stringify(confirmedParticipants) !== JSON.stringify(cachedParticipants)) {
+            throw appError("The authorized reader roster changed.", "AUTH_REQUIRED");
+          }
+          state.serverAccessConfirmed = true;
+          state.bootstrap = {...state.bootstrap, appBuildId: confirmation.appBuildId, appUrl: confirmation.appUrl};
+          configureBuildUpdate(confirmation);
+          element("authStatus").textContent = `Signed in as ${state.session.displayName}`;
+          await rememberConfirmedDevice();
+          setBanner("");
+          setSyncStatus("Ready · refreshing saved data in the background");
+          refreshBootstrapAfterConfirmation(expectedAuthorId).catch(() => {});
+          return true;
+        }
+        const bootstrap = await state.adapter.getBootstrapData();
+        if (expectedAuthorId && (!bootstrap.session || bootstrap.session.authorId !== expectedAuthorId)) {
+          throw appError("The signed-in account does not match this device's saved reader.", "AUTH_REQUIRED");
+        }
+        state.serverAccessConfirmed = true;
+        await installBootstrap(bootstrap, {cached: false});
+        await rememberConfirmedDevice();
+        await persistBootstrap(bootstrap);
+        setBanner("");
+        setSyncStatus("Ready");
+        startConfirmedBackgroundWork();
+        return true;
+      } catch (error) {
+        state.serverAccessConfirmed = false;
+        if (explicitAccessFailure(error)) {
+          await clearPrivateDataAfterAccessFailure();
+          throw error;
+        }
+        if (!hadCachedShell) throw error;
+        element("authStatus").textContent = state.session
+          ? `Offline copy for ${state.session.displayName}`
+          : "Offline saved copy";
+        setBanner("Saved readings are available while the secure Google connection is unavailable. New comments stay on this device until access is confirmed.", "info");
+        setSyncStatus("Offline · saved readings and drafts available");
+        return false;
+      }
+    };
+    const promise = run();
+    state.authorizationPromise = promise;
+    try {
+      return await promise;
+    } finally {
+      if (state.authorizationPromise === promise) state.authorizationPromise = null;
+    }
+  }
+
+  async function startAuthorizedApplication(options) {
+    if (state.adapter.kind === "mock") {
+      state.serverAccessConfirmed = true;
+      const bootstrap = await state.adapter.getBootstrapData();
+      await installBootstrap(bootstrap, {cached: false});
+      startConfirmedBackgroundWork();
+      return;
+    }
+    const credential = options && options.credential;
+    if (options && options.allowCached && credential) {
+      const cached = await cachedBootstrapForCredential(credential);
+      if (cached) {
+        state.serverAccessConfirmed = false;
+        await installBootstrap(cached, {cached: true});
+        confirmServerAccess({expectedAuthorId: credential.authorId, hadCachedShell: true})
+          .catch(handleFatalError);
+        return;
+      }
+    }
+    await confirmServerAccess({
+      expectedAuthorId: options && options.expectedAuthorId,
+      hadCachedShell: false
+    });
   }
 
   function updateReaderCodeSubmitState() {
@@ -2461,7 +2792,7 @@
       element("readerCodeStatus").textContent = "Checking Google identity, Drive permission, and reader code…";
       state.readerCode = code;
       try {
-        await startAuthorizedApplication();
+        await startAuthorizedApplication({allowCached: false});
       } catch (error) {
         state.readerCode = "";
         await state.store.delete("deviceCredentials", "reader-code");
@@ -2488,7 +2819,7 @@
       const credential = await state.store.get("deviceCredentials", "reader-code");
       state.readerCode = credential && credential.readerCode ? credential.readerCode : "";
       try {
-        await startAuthorizedApplication();
+        await startAuthorizedApplication({allowCached: true, credential});
       } catch (error) {
         if (["READER_CODE_REQUIRED", "READER_CODE_INVALID"].includes(error.code)) {
           state.readerCode = "";
@@ -2500,13 +2831,16 @@
       }
       return;
     }
-    await startAuthorizedApplication();
+    await startAuthorizedApplication({allowCached: false});
   }
 
   function handleFatalError(error) {
     const code = error && error.code ? error.code : "UNAVAILABLE";
-    if (["READER_CODE_REQUIRED", "READER_CODE_INVALID"].includes(code) && state.adapter && state.adapter.kind === "apps-script") {
-      showReaderCodeGate(error);
+    if (explicitAccessFailure(error) && state.adapter && state.adapter.kind === "apps-script") {
+      const message = ["READER_CODE_REQUIRED", "READER_CODE_INVALID"].includes(code)
+        ? error.message
+        : "Access could not be confirmed. Sign in with an authorized Google account and grant the required permissions.";
+      showReaderCodeGate(appError(message, code));
       return;
     }
     const publicMessage = ["AUTH_REQUIRED", "ACCESS_DENIED", "WRONG_EXECUTION_IDENTITY"].includes(code)
@@ -2520,6 +2854,7 @@
   }
 
   return {
+    bootstrapRecordIsFresh,
     buildMonthCalendar,
     calculateSchedule,
     civilDayNumber,
@@ -2534,6 +2869,7 @@
     init,
     parseDateOnly,
     privateRecordIsFresh,
+    readingContentIsPrepared,
     readingHasActiveComment,
     readerCodeLooksReady,
     normalizedDraftBody,

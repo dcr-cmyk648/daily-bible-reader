@@ -278,6 +278,14 @@ h3 {
   font-size: 0.9rem;
 }
 
+#offlinePackStatus[data-state="warning"] {
+  color: #f3c98f;
+}
+
+#offlinePackStatus[data-state="ready"] {
+  color: var(--complete);
+}
+
 .state-banner,
 .inline-state {
   padding: 0.75rem 0.9rem;

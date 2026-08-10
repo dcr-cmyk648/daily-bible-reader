@@ -41,6 +41,12 @@ The full 92-day Celebration chapter assignment is factual reference metadata onl
 - The long-term plan will interweave four streams: OT outside Psalms/Proverbs, NT, Psalms, and Proverbs. Remaining units are scheduled proportionally so all four finish together while preserving chronology as far as practical. Every book introduction is its own daily unit and must be followed immediately by that book's chapter 1. The introduction's middle page contains the book overview instead of ESV text. One day remains one focused unit; Proverbs may use bounded verse ranges.
 - The final canon, launch date, future-lock behavior, browsing horizon, and recurring commentary length still require confirmation before the full plan is generated.
 
+## Approved backlog and design candidates
+
+- Add the selected reading's **verse of the day** to the card below the calendar, above the date-specific open button. The validated reference should appear immediately from private commentary metadata. If the exact ESV wording is shown there, retrieve it server-side without blocking calendar selection, keep it memory-only, and include the required ESV identification, link, and notice; do not copy the wording into plan/commentary metadata or IndexedDB.
+- Use Matthew Henry's *Complete Commentary on the Whole Bible* as the default foundational commentary pass, then build outward with independent sources suited to the passage. The preferred exact research edition is CrossWire `MHC` version 2.2, explicitly marked public domain; preserve the normal edition, provenance, independence, and claim-level citation controls.
+- Evaluate a Pages-top-level PWA only through a separate two-account canary. Expected gains are faster and more deterministic shell launch, true public-asset offline caching, correct iOS icon/manifest behavior, and tighter version control—not faster live Drive, Sheets, ESV, or write operations. The preferred prototype uses Google Identity Services plus an Apps Script API executable running under the caller's OAuth authority. Creating the standard Cloud project, OAuth client, or API deployment remains approval-gated, and production stays on version 23 until the complete phone/security gate passes.
+
 ## Completed work
 
 - Inspected this repository and Fractured Fate read-only; Fractured Fate remains unchanged.
@@ -90,4 +96,4 @@ The full 92-day Celebration chapter assignment is factual reference metadata onl
 
 ## Next concrete action
 
-Have Dustin reopen the existing Home Screen app and confirm that highlight/unhighlight now feels immediate; no reinstall is needed. Then choose whether the custom icon justifies an explicitly installed, removable iOS Web Clip profile; otherwise retain the Apps Script-generated `D` monogram for now and move on to the approved content-automation work.
+Keep the stable hybrid in production while deciding whether to authorize a separate Pages-top-level/GIS/API-executable canary. Independently, implement the selected-day verse preview as a normal frontend/data-contract release and apply the Matthew Henry foundational pass to future commentary research before beginning the approved content-automation work.

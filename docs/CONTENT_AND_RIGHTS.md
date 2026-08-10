@@ -31,6 +31,8 @@ The active bridge registry lives in ignored `research/working/bridge-source-regi
 
 Verify the exact edition/transcription and host terms. An old author does not make a modern translation, annotation, database, or transcription automatically public domain. Record license wording and allowed uses. Deduplicate mirrors and derivative aggregations against the underlying work.
 
+For the foundational Matthew Henry pass, prefer CrossWire's exact `MHC` module version 2.2 (2022-08-29), whose module record states `Distribution License Public Domain`. Record that module and access date rather than treating every modern Matthew Henry PDF, website, or database as interchangeable. CCEL-generated files and other modern containers may carry separate formatting or distribution terms even when the underlying commentary is historical. The public-domain status permits local research use; it does not justify padding the synthesis with source-like wording or publishing a raw commentary library.
+
 ## Copyrighted modern works
 
 - Do not bypass paywalls, DRM, authentication, rate limits, download controls, robots restrictions, or publisher terms.

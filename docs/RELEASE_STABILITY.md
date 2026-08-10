@@ -16,6 +16,7 @@ The immutable Apps Script versions were downloaded back from Google and measured
 | 20 | Main application never started | 119,153 | 80,377 | 56,444 |
 | 21 | Watchdog ran; main application never started | 119,412 | 1,537 + 73,394 + 5,660 | 50,482 in the core |
 | 22 | Reflow-only A/B canary; failed on first iPhone open | 119,556 | 1,539 + 73,506 + 5,668 | 817 maximum |
+| 23 | Hybrid Pages-loader canary; phone gate pending | 23,837 | 1,757 + 4,074 | 807 maximum |
 
 There are at least two failure classes. Versions 16–18 reached or plausibly entered application startup and motivated bounded IndexedDB/RPC behavior plus version 19's local-first shell. Versions 20–22 fail earlier: the independent watchdog executes, but the core does not reach its first marker. That excludes commentary schema, Drive, ESV, authorization, and IndexedDB for the latest failure.
 
@@ -50,6 +51,6 @@ The bounded-line build was unreliable, so the fallback is active. GitHub Pages s
 
 The launcher fetches a fixed-origin `release.json` with `no-store` and a unique query, validates its schema, release path, byte bounds, and exact Pages origin, and loads each immutable asset with SHA-384 Subresource Integrity. It remembers only the last validated code-release manifest in `localStorage`; if the current manifest is temporarily unavailable, it may request that previously successful immutable release. Old release directories remain available. Arbitrary URLs supplied by a manifest are rejected.
 
-Build `c57d948db8fbf838` pairs the initial launcher/server with frontend release `73da95f8a9ec3bb3`. Its Apps Script HTML is 23,837 bytes and contains only the 1,757-byte watchdog and 4,074-byte loader inline; the 73,635-byte application core, 21,566-byte stylesheet, and 5,666-byte optional highlight client are Pages assets. This architecture still requires an installed-iPhone canary before production promotion.
+Build `c57d948db8fbf838` pairs the initial launcher/server with frontend release `73da95f8a9ec3bb3`. Its Apps Script HTML is 23,837 bytes and contains only the 1,757-byte watchdog and 4,074-byte loader inline; the 73,635-byte application core, 21,566-byte stylesheet, and 5,666-byte optional highlight client are Pages assets. The release manifest and every immutable asset passed live HTTPS status, content-type, CORS, size, and exact-byte readback. Immutable Apps Script version 23 was also downloaded from Google and exactly matched the inspected build. This architecture still requires an installed-iPhone canary before production promotion.
 
 This is not yet a service-worker-controlled PWA because the installed top-level origin remains Apps Script. It should make routine UI releases deterministic and fast without weakening Google identity. If the thin launcher itself remains unreliable or slow, the next boundary is a Pages-top-level PWA using Google Identity Services and server-side token validation; that larger authentication migration is not assumed safe without a separate prototype and two-account authorization test.

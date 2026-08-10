@@ -143,6 +143,8 @@ The August 2026 incidents contain two failure classes. Versions 16–18 reached 
 
 The hybrid is not yet a service-worker-controlled PWA, so iOS may still require a connection for a cold launcher load and ESV always requires one. Already retrieved commentary, comment snapshots, drafts, and the outbox keep their existing offline behavior. If the thin launcher remains unreliable or unacceptably slow, the next design is a Pages-top-level PWA with Google Identity Services and server-side identity validation—not a public owner-executed Apps Script endpoint.
 
+Apps Script can set an outer-document favicon but has no API for an outer Web App Manifest or `apple-touch-icon`. Because iOS requires one of those Home Screen icon declarations, the phone-tested Apps Script URL receives WebKit's generated **D** monogram even though the intended PNG is valid and publicly reachable. This cannot be corrected by another frontend Pages release: the Pages document is not the installed top-level document. The two technically sound alternatives are an explicitly user-approved, removable iOS Web Clip configuration profile that names the production URL and embeds the icon, or the larger Pages-top-level/GIS migration. A cross-origin Pages redirect is not used because out-of-scope navigation opens Safari UI and would weaken the installed-app experience.
+
 Relevant platform behavior is documented by Google for [HTML-service restrictions](https://developers.google.com/apps-script/guides/html/restrictions), [supported HtmlOutput meta tags](https://developers.google.com/apps-script/reference/html/html-output), and [Content Service redirects](https://developers.google.com/apps-script/guides/content).
 
 ## Fractured Fate findings

@@ -65,6 +65,8 @@ The audit deployment remains the authenticated Apps Script `/exec` URL opened in
 
 No service worker controls the Apps Script top-level origin, so iOS still controls cold launcher retention. Once the application starts, an identity-bound seven-day bootstrap/commentary snapshot paints the calendar before the Drive refresh; ESV remains network-only. The shared-highlight enhancement remains optional and cannot block the core. Deployment permissions and the exact acceptance test are in `docs/GOOGLE_SETUP.md`.
 
+The tracked open-Bible icon works for the conventional local/Pages shell and as the Apps Script browser favicon, but Apps Script exposes no Home Screen manifest or `apple-touch-icon` API. On the tested iPhone, iOS therefore installs the Apps Script URL with its fallback **D** monogram. Repeatedly removing and re-adding the same URL will not change that platform result. The authenticated launcher remains unchanged because replacing it only for icon control would require either an explicitly installed Web Clip profile or the larger Pages-top-level authentication migration documented in `docs/ARCHITECTURE.md`.
+
 ## Safety boundary
 
 Git contains code, schemas, documentation, tests, and fabricated fixtures only. Real commentary drafts belong in ignored local working directories until reviewed and uploaded to private Drive. ESV passage text must never be written into this repository, including temporarily.

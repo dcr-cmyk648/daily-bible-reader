@@ -51,6 +51,19 @@ test("numbered Scripture rendering supports isolated shared highlights and parti
   assert.ok(html.indexOf('<script src="app.js"></script>') < html.indexOf('<script src="highlights.js"></script>'));
 });
 
+test("highlight toggles paint immediately and reconcile from the write response", () => {
+  const highlights = fs.readFileSync(path.join(__dirname, "../app/frontend/highlights.js"), "utf8");
+  const toggle = highlights.slice(
+    highlights.indexOf("async function toggleHighlight"),
+    highlights.indexOf("function render(nextContext)")
+  );
+  assert.ok(toggle.indexOf("applyHighlightState();") < toggle.indexOf("await api.submitCurrentHighlightEvent(payload)"));
+  assert.match(toggle, /pending:\s*true/);
+  assert.match(toggle, /result\s*&&\s*result\.event/);
+  assert.match(toggle, /highlights\s*=\s*priorHighlights/);
+  assert.doesNotMatch(toggle, /await\s+refreshHighlights\s*\(/);
+});
+
 test("a signed-in reader's active or queued comment marks only that reading complete", () => {
   const comments = [
     {commentId: "comment:1234567890123456", readingId: "intro-GEN", authorId: "dustin", deletedAt: null},
@@ -214,7 +227,7 @@ test("HTML shell is semantic, mobile-ready, and includes calendar plus ESV contr
   assert.match(css, /\[hidden\]\s*\{[^}]*display:\s*none\s*!important/s);
 });
 
-test("iOS Home Screen icon is declared locally and the Apps Script shell uses its exact Pages URL", () => {
+test("icon assets are complete while Apps Script exposes only its supported favicon fallback", () => {
   const html = fs.readFileSync(path.join(__dirname, "../app/frontend/index.html"), "utf8");
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "../app/frontend/manifest.webmanifest"), "utf8"));
   const buildScript = fs.readFileSync(path.join(__dirname, "../scripts/build-apps-script.mjs"), "utf8");
@@ -222,6 +235,8 @@ test("iOS Home Screen icon is declared locally and the Apps Script shell uses it
   assert.ok(manifest.icons.some((icon) => icon.sizes === "192x192" && /maskable/.test(icon.purpose)));
   assert.ok(manifest.icons.some((icon) => icon.sizes === "512x512" && /maskable/.test(icon.purpose)));
   assert.match(buildScript, /PAGES_FAVICON_URL = `\$\{PAGES_ORIGIN\}\/daily-bible-reader\/app\/frontend\/assets\/apple-touch-icon-180\.png`/);
+  assert.match(buildScript, /html\.replace\(\/\\s\*<link rel="manifest"/);
+  assert.match(buildScript, /html\.replace\(\/\\s\*<link rel="apple-touch-icon"/);
   assert.doesNotMatch(buildScript, /data:image\/png;base64/);
   assert.match(buildScript, /__DBR_FAVICON_DATA_URL__/);
 });

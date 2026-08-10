@@ -8,7 +8,9 @@
   var highlights = [];
   var selectedReference = null;
   var refreshToken = 0;
+  var writeToken = 0;
   var writing = false;
+  var statusMessage = "";
 
   function element(id) {
     return root.document.getElementById(id);
@@ -159,7 +161,7 @@
         var name = root.document.createElement("strong");
         name.textContent = highlight.displayName;
         var time = root.document.createElement("span");
-        time.textContent = "Highlighted " + formatTimestamp(highlight.updatedAt);
+        time.textContent = highlight.pending ? "Saving…" : "Highlighted " + formatTimestamp(highlight.updatedAt);
         copy.append(name, time);
         row.append(swatch, copy);
         list.appendChild(row);
@@ -172,9 +174,11 @@
     action.textContent = own ? "Remove my highlight" : "Highlight this verse";
     action.dataset.action = own ? "delete" : "create";
     action.disabled = writing || !context.online;
-    element("highlightStatus").textContent = context.online
-      ? "Highlights are shared with both readers; each person keeps their own color."
-      : "Shared highlights require a confirmed connection.";
+    element("highlightStatus").textContent = writing
+      ? "Saving this change…"
+      : statusMessage || (context.online
+        ? "Highlights are shared with both readers; each person keeps their own color."
+        : "Shared highlights require a confirmed connection.");
     popover.hidden = false;
   }
 
@@ -196,10 +200,19 @@
 
   async function toggleHighlight() {
     if (writing || !context || !context.online || !selectedReference) return;
+    var operationContext = context;
+    var operationReference = {
+      bookId: selectedReference.bookId,
+      chapter: selectedReference.chapter,
+      verse: selectedReference.verse
+    };
+    var operationToken = ++writeToken;
+    ++refreshToken;
     writing = true;
-    renderPopover();
+    statusMessage = "";
+    var priorHighlights = highlights.slice();
     try {
-      var active = activeAt(selectedReference);
+      var active = activeAt(operationReference);
       var own = active.find(function currentReader(highlight) {
         return context.session && highlight.authorId === context.session.authorId;
       });
@@ -218,25 +231,64 @@
         eventType: "create",
         planVersion: context.planVersion,
         readingId: context.readingId,
-        bookId: selectedReference.bookId,
-        chapter: selectedReference.chapter,
-        verse: selectedReference.verse,
+        bookId: operationReference.bookId,
+        chapter: operationReference.chapter,
+        verse: operationReference.verse,
         baseRevision: 0
       };
-      await api.submitCurrentHighlightEvent(payload);
-      await refreshHighlights();
+      var pendingId = "pending:" + payload.clientRequestId;
+      highlights = own
+        ? highlights.filter(function removeOptimisticHighlight(highlight) {
+          return highlight.highlightId !== own.highlightId;
+        })
+        : highlights.concat({
+          highlightId: pendingId,
+          clientRequestId: payload.clientRequestId,
+          planVersion: payload.planVersion,
+          readingId: payload.readingId,
+          eventType: "create",
+          bookId: payload.bookId,
+          chapter: payload.chapter,
+          verse: payload.verse,
+          authorId: context.session.authorId,
+          displayName: context.session.displayName,
+          revision: 0,
+          createdAt: "",
+          updatedAt: "",
+          deletedAt: null,
+          pending: true
+        });
+      applyHighlightState();
+
+      var result = await api.submitCurrentHighlightEvent(payload);
+      if (operationToken !== writeToken || context !== operationContext) return;
+      var serverEvent = result && result.event;
+      if (!serverEvent || !serverEvent.highlightId) throw new Error("Highlight write returned no event.");
+      highlights = highlights.filter(function replaceOptimisticHighlight(highlight) {
+        return highlight.highlightId !== pendingId &&
+          highlight.highlightId !== serverEvent.highlightId &&
+          (!own || highlight.highlightId !== own.highlightId);
+      });
+      if (!serverEvent.deletedAt) highlights.push(serverEvent);
     } catch (_) {
-      element("highlightStatus").textContent = "The highlight could not be changed. Check the connection and retry.";
+      if (operationToken !== writeToken || context !== operationContext) return;
+      highlights = priorHighlights;
+      statusMessage = "The highlight could not be changed. Check the connection and retry.";
     } finally {
-      writing = false;
-      renderPopover();
+      if (operationToken === writeToken && context === operationContext) {
+        writing = false;
+        applyHighlightState();
+      }
     }
   }
 
   function render(nextContext) {
+    ++writeToken;
     context = nextContext;
     highlights = [];
     selectedReference = null;
+    writing = false;
+    statusMessage = "";
     closePopover();
     var help = element("highlightHelp");
     if (help) help.hidden = true;

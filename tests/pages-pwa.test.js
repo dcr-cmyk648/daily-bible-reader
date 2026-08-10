@@ -223,6 +223,18 @@ test("Pages PWA build keeps the canary isolated from the stable frontend release
   assert.doesNotMatch(publish, /\brm\s*\(/);
 });
 
+test("Pages startup timing stays in memory and records only named milestones", () => {
+  const client = fs.readFileSync(path.join(__dirname, "../app/pages-pwa/client.js"), "utf8");
+  const frontend = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
+  assert.match(client, /markStartupMilestone\("shellVisible"\)/);
+  assert.match(client, /markStartupMilestone\("applicationCodeLoaded"\)/);
+  assert.match(frontend, /markStartupMilestone\(options && options\.cached \? "cachedCalendarVisible" : "calendarVisible"\)/);
+  assert.match(frontend, /markStartupMilestone\("authorizationConfirmed"\)/);
+  assert.match(frontend, /markStartupMilestone\("freshDataSynchronized"\)/);
+  assert.match(frontend, /markStartupMilestone\("scriptureVisible"\)/);
+  assert.doesNotMatch(client, /localStorage.*DBRStartupMetrics|fetch\([^\n]*DBRStartupMetrics/);
+});
+
 test("token web-app build is separate from the production USER_ACCESSING manifest", () => {
   const production = JSON.parse(fs.readFileSync(path.join(__dirname, "../app/apps-script/appsscript.json"), "utf8"));
   const builder = fs.readFileSync(path.join(__dirname, "../scripts/build-apps-script-token-canary.mjs"), "utf8");

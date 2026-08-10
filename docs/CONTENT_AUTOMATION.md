@@ -1,6 +1,6 @@
 # Advance-content automation proposal
 
-Status: generation scheduling remains proposed and not enabled. The first deterministic reader-side warning is implemented locally: after the seven-reading private batch is inspected, placeholders do not count and the UI warns when fewer than three consecutive substantive studies exist from the current plan day. Checked against the official OpenAI scheduled-tasks documentation on 2026-08-09: <https://learn.chatgpt.com/docs/automations?surface=app>.
+Status: generation scheduling remains proposed and not enabled. The deterministic reader-side warning is implemented: after the seven-reading private batch is inspected, the calendar warns when fewer than three consecutive full studies exist from the current plan day. Dustin sees the exact first gap; Shane sees a generic delay message. Checked against the official OpenAI scheduled-tasks documentation on 2026-08-09: <https://learn.chatgpt.com/docs/automations?surface=app>.
 
 ## Recommendation
 
@@ -20,6 +20,8 @@ Use two independent horizons rather than treating an unreviewed model draft as r
 | Published buffer | 5 consecutive days | fewer than 3 | today or tomorrow missing | Human-reviewed content is in the live manifest and passes runtime validation. |
 
 The count is consecutive from the current shared-plan date in `America/Detroit`; a later prepared day cannot hide a gap tomorrow. Book-introduction days count exactly like chapter days. A placeholder, an inaccessible file, a hash mismatch, a missing source ID, or `humanReviewStatus` other than an approved value does not count as published-ready.
+
+The current pre-launch bridge has a temporary compatibility distinction: its three manually accepted live studies still carry `humanReviewStatus: in_review`. The reader's three-day operational warning therefore accepts `in_review` or `approved` when the record is substantive, reading-bound, and has a content hash; it rejects `not_started`, `changes_requested`, placeholders, missing records, mismatched reading IDs, and missing hashes. This does not relax the future staging-to-publication gate: automation-created material must be explicitly approved before it counts toward the five-day published buffer.
 
 The values should become private configuration rather than hard-coded policy:
 
@@ -65,7 +67,7 @@ After several weeks of clean runs, auto-publication could be reconsidered, but i
 
 ## Deterministic health signal in the reader
 
-Apps Script should compute content readiness during authenticated bootstrap from the active plan, allowlisted manifest, and metadata it already reads. No AI call or scheduled trigger is needed for this check. Return only:
+The first implementation computes operational readiness in the authenticated browser from the same validated, reader-bound seven-reading payload batch already downloaded for offline commentary. This adds no RPC or Drive scan and keeps the warning available from the local snapshot. A future staging-aware server check should return only:
 
 - `publishedReadyDays`
 - `publishedReadyThrough`
@@ -75,7 +77,7 @@ Apps Script should compute content readiness during authenticated bootstrap from
 
 The calendar should show a compact, non-dismissable warning when the published buffer falls below three days. Dustin may see the exact gap and a link to the review workflow; Shane should see only that upcoming study notes are delayed, without internal file or generation details. If today's commentary is missing, the reading must still show its ESV Scripture and comments while labeling commentary unavailable; it must not substitute generated text at runtime.
 
-The same pure readiness function should have tests for missing manifest entries, placeholders, unreviewed drafts, invalid source IDs, hash mismatches, nonconsecutive prepared dates, book-introduction days, timezone boundaries, and a plan start-date change. A later optional Apps Script time trigger could send a proactive owner alert, but the in-app calculation plus the scheduled task's unread result is enough for the first implementation and adds no new OAuth scope.
+The current pure readiness function tests missing records, placeholders, unreviewed/requested-change records, missing hash metadata, reading-ID mismatches, nonconsecutive preparation, and end-of-plan windows; schedule tests separately cover book introductions, timezone boundaries, and start-date changes. The staging-aware server expansion must add exact content-hash and source-registry verification before those stronger states can count as published-ready. A later optional Apps Script time trigger could send a proactive owner alert, but the in-app calculation plus the scheduled task's unread result is enough for the first implementation and adds no new OAuth scope.
 
 ## Failure behavior
 

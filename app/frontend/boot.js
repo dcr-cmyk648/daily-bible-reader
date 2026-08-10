@@ -7,6 +7,19 @@
   var finished = false;
   var explicitFailure = "";
 
+  function markStartupMilestone(name) {
+    var metrics = root.DBRStartupMetrics;
+    if (!metrics || metrics.schemaVersion !== "startup-timing/v1" ||
+        !metrics.milestones || typeof metrics.milestones !== "object") {
+      metrics = {schemaVersion: "startup-timing/v1", milestones: {}};
+      root.DBRStartupMetrics = metrics;
+    }
+    if (Number.isFinite(metrics.milestones[name])) return;
+    if (root.performance && typeof root.performance.now === "function") {
+      metrics.milestones[name] = Math.max(0, Math.round(root.performance.now()));
+    }
+  }
+
   function element(id) {
     return root.document && root.document.getElementById(id);
   }
@@ -45,6 +58,7 @@
   }
 
   function arm() {
+    markStartupMilestone("shellVisible");
     var status = element("syncStatus");
     if (status && status.textContent === "Starting…") status.textContent = "Loading application…";
     startupTimer = root.setTimeout(showRecovery, 8000);
@@ -65,6 +79,7 @@
     },
     coreStarted: function coreStarted() {
       if (finished || coreHasStarted) return;
+      markStartupMilestone("applicationCodeLoaded");
       coreHasStarted = true;
       if (startupTimer !== null) root.clearTimeout(startupTimer);
       completionTimer = root.setTimeout(showRecovery, 45000);

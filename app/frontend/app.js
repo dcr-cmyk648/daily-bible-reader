@@ -27,6 +27,16 @@
   const DB_VERSION = 4;
   const BOOTSTRAP_CACHE_KEY = "__app-bootstrap__";
   const BOOTSTRAP_CACHE_SCHEMA = "bootstrap-cache/v1";
+  const STARTUP_TIMING_SCHEMA = "startup-timing/v1";
+  const STARTUP_MILESTONE_ORDER = [
+    "shellVisible",
+    "applicationCodeLoaded",
+    "cachedCalendarVisible",
+    "calendarVisible",
+    "authorizationConfirmed",
+    "freshDataSynchronized",
+    "scriptureVisible"
+  ];
   const STORE_DEFINITIONS = {
     calendarCompletion: "readingId",
     scriptureCache: "cacheKey",
@@ -63,6 +73,8 @@
     policy: null,
     plan: null,
     prefetchScheduled: false,
+    privatePayloadByReadingId: new Map(),
+    privatePayloadRequestByReadingId: new Map(),
     readerCode: "",
     readerCodeSubmitting: false,
     schedule: null,
@@ -72,12 +84,68 @@
     sources: [],
     commentSyncToken: 0,
     scriptureRequestToken: 0,
+    selectedVerseRequestToken: 0,
     currentScripture: null,
     highlightEnhancer: null,
     verseOfTheDay: null,
     uiWired: false,
     view: "home"
   };
+
+  function startupNow() {
+    return root.performance && typeof root.performance.now === "function"
+      ? Math.max(0, Math.round(root.performance.now()))
+      : null;
+  }
+
+  function startupMetricsRecord() {
+    const existing = root.DBRStartupMetrics;
+    if (existing && existing.schemaVersion === STARTUP_TIMING_SCHEMA &&
+        existing.milestones && typeof existing.milestones === "object") return existing;
+    const created = {schemaVersion: STARTUP_TIMING_SCHEMA, milestones: {}};
+    root.DBRStartupMetrics = created;
+    return created;
+  }
+
+  function markStartupMilestone(name) {
+    if (!STARTUP_MILESTONE_ORDER.includes(name)) return;
+    const record = startupMetricsRecord();
+    if (Number.isFinite(record.milestones[name])) return;
+    const elapsed = startupNow();
+    if (elapsed !== null) record.milestones[name] = elapsed;
+  }
+
+  function startupTimingSnapshot(input) {
+    const source = input && input.milestones ? input : startupMetricsRecord();
+    const elapsedMs = {};
+    STARTUP_MILESTONE_ORDER.forEach((name) => {
+      const value = source.milestones && source.milestones[name];
+      if (Number.isFinite(value) && value >= 0) elapsedMs[name] = Math.round(value);
+    });
+    const phaseDurationsMs = {};
+    const phases = [
+      ["shellToApplicationCode", "shellVisible", "applicationCodeLoaded"],
+      ["shellToCachedCalendar", "shellVisible", "cachedCalendarVisible"],
+      ["shellToCalendar", "shellVisible", "calendarVisible"],
+      ["calendarToAuthorization", elapsedMs.cachedCalendarVisible === undefined ? "calendarVisible" : "cachedCalendarVisible", "authorizationConfirmed"],
+      ["authorizationToCalendar", "authorizationConfirmed", "calendarVisible"],
+      ["authorizationToFreshSync", "authorizationConfirmed", "freshDataSynchronized"],
+      ["authorizationToScripture", "authorizationConfirmed", "scriptureVisible"]
+    ];
+    phases.forEach(([label, start, end]) => {
+      if (Number.isFinite(elapsedMs[start]) && Number.isFinite(elapsedMs[end]) && elapsedMs[end] >= elapsedMs[start]) {
+        phaseDurationsMs[label] = elapsedMs[end] - elapsedMs[start];
+      }
+    });
+    return {
+      schemaVersion: STARTUP_TIMING_SCHEMA,
+      sessionOnly: true,
+      elapsedMs,
+      phaseDurationsMs
+    };
+  }
+
+  markStartupMilestone("applicationCodeLoaded");
 
   function appError(message, code) {
     const error = new Error(message);
@@ -1118,6 +1186,12 @@
     return `${BOOK_NAMES[selection.bookId] || selection.bookId} ${selection.chapter}:${selection.verse}`;
   }
 
+  function selectedDayVerseSelection(payload, entry) {
+    const commentary = payload && (payload.commentary || payload.metadata);
+    if (!commentary || !entry || commentary.readingId !== entry.readingId) return null;
+    return normalizedVerseOfTheDay(commentary && commentary.verseOfTheDay, entry);
+  }
+
   function verseOfDayEsvUrl(selection) {
     const label = verseReferenceLabel(selection);
     return `https://www.esv.org/${label.replace(/\s+/g, "+")}/`;
@@ -1384,6 +1458,7 @@
       });
       renderVerseOfTheDay(scripture);
       notifyHighlightEnhancer();
+      markStartupMilestone("scriptureVisible");
       return;
     }
 
@@ -1410,6 +1485,7 @@
     if (esvUrl && esvUrl.startsWith("https://www.esv.org/")) element("openEsvLink").href = esvUrl;
     renderVerseOfTheDay(scripture);
     notifyHighlightEnhancer();
+    markStartupMilestone("scriptureVisible");
   }
 
   async function persistScripture(scripture) {
@@ -1464,10 +1540,41 @@
     return state.adapter && state.adapter.cacheContext || "apps-script";
   }
 
-  function readingContentIsPrepared(payload) {
+  function readingContentIsPrepared(payload, expectedReadingId) {
     const commentary = payload && (payload.commentary || payload.metadata);
-    return Boolean(commentary && commentary.readingId && commentary.publicationStatus &&
-      commentary.publicationStatus !== "placeholder");
+    const generation = commentary && commentary.generation;
+    return Boolean(commentary && commentary.readingId &&
+      (!expectedReadingId || commentary.readingId === expectedReadingId) &&
+      ["draft", "reviewed", "published"].includes(commentary.publicationStatus) &&
+      generation && ["in_review", "approved"].includes(generation.humanReviewStatus) &&
+      /^[a-f0-9]{64}$/.test(String(generation.contentHash || "")));
+  }
+
+  function evaluateContentReadiness(entriesInput, payloadsInput, startIndexInput, targetInput) {
+    const entries = Array.isArray(entriesInput) ? entriesInput : [];
+    const payloads = payloadsInput instanceof Map
+      ? payloadsInput
+      : new Map(Object.entries(payloadsInput && typeof payloadsInput === "object" ? payloadsInput : {}));
+    const startIndex = Math.min(entries.length, Math.max(0, Number.isInteger(startIndexInput) ? startIndexInput : 0));
+    const remaining = entries.length - startIndex;
+    const target = Math.min(remaining, Math.max(0, Number.isInteger(targetInput) ? targetInput : 3));
+    let consecutiveReady = 0;
+    let nextGapEntry = null;
+    for (let offset = 0; offset < target; offset += 1) {
+      const entry = entries[startIndex + offset];
+      if (!entry || !readingContentIsPrepared(payloads.get(entry.readingId), entry.readingId)) {
+        nextGapEntry = entry || null;
+        break;
+      }
+      consecutiveReady += 1;
+    }
+    return {
+      consecutiveReady,
+      target,
+      readyThroughEntry: consecutiveReady ? entries[startIndex + consecutiveReady - 1] : null,
+      nextGapEntry,
+      state: target === 0 || consecutiveReady >= target ? "green" : consecutiveReady === 0 ? "critical" : "warning"
+    };
   }
 
   function bootstrapRecordIsFresh(record, nowInput, credential) {
@@ -1526,12 +1633,15 @@
       (!record.cacheContext && context === "apps-script"));
     if (!contextMatches || !privateRecordIsFresh(record, Date.now(), state.plan && state.plan.planVersion)) {
       if (record) await state.store.delete("privateContent", readingId);
+      state.privatePayloadByReadingId.delete(readingId);
       return null;
     }
+    state.privatePayloadByReadingId.set(readingId, record.payload);
     return record.payload;
   }
 
   async function persistPrivatePayload(readingId, payload) {
+    state.privatePayloadByReadingId.set(readingId, payload);
     const maxAgeSeconds = Number(state.config && state.config.privateContentCacheMaxAgeSeconds || 0);
     if (!Number.isInteger(maxAgeSeconds) || maxAgeSeconds <= 0 || maxAgeSeconds > 604800) return;
     const cachedAt = new Date();
@@ -1688,6 +1798,96 @@
     legend.appendChild(note);
   }
 
+  function showSelectedDayVerse(selection, entry) {
+    const panel = element("selectedDayVerse");
+    if (!selection || !entry) {
+      panel.hidden = true;
+      return;
+    }
+    panel.hidden = false;
+    const link = element("selectedDayVerseLink");
+    link.textContent = verseReferenceLabel(selection);
+    link.href = verseOfDayEsvUrl(selection);
+    element("selectedDayVerseStatus").textContent = "The exact ESV wording appears after you open the reading.";
+  }
+
+  async function loadSelectedDayVerse(day, token) {
+    let payload = state.privatePayloadByReadingId.get(day.entry.readingId) ||
+      await cachedPrivatePayload(day.entry.readingId);
+    if (token !== state.selectedVerseRequestToken || state.selectedCalendarDate !== day.date) return;
+    if (!payload && serverCallsAllowed()) {
+      try {
+        let pending = state.privatePayloadRequestByReadingId.get(day.entry.readingId);
+        if (!pending) {
+          pending = state.adapter.getReadingPayload(day.entry.readingId)
+            .then(async (result) => {
+              await persistPrivatePayload(day.entry.readingId, result);
+              return result;
+            })
+            .finally(() => state.privatePayloadRequestByReadingId.delete(day.entry.readingId));
+          state.privatePayloadRequestByReadingId.set(day.entry.readingId, pending);
+        }
+        payload = await pending;
+      } catch {
+        payload = null;
+      }
+    }
+    if (token !== state.selectedVerseRequestToken || state.selectedCalendarDate !== day.date) return;
+    const selection = selectedDayVerseSelection(payload, day.entry);
+    if (selection) showSelectedDayVerse(selection, day.entry);
+    else {
+      const panel = element("selectedDayVerse");
+      panel.hidden = false;
+      element("selectedDayVerseLink").removeAttribute("href");
+      element("selectedDayVerseLink").textContent = "Selection unavailable";
+      element("selectedDayVerseStatus").textContent = "The verse selection will appear when this reading's study notes are available.";
+    }
+  }
+
+  function renderSelectedDayVerse(day) {
+    const token = ++state.selectedVerseRequestToken;
+    const panel = element("selectedDayVerse");
+    if (!day || !day.entry || day.entry.kind !== "chapter") {
+      panel.hidden = true;
+      return;
+    }
+    panel.hidden = false;
+    element("selectedDayVerseLink").removeAttribute("href");
+    element("selectedDayVerseLink").textContent = "Loading selection…";
+    element("selectedDayVerseStatus").textContent = "Checking the private study metadata saved on this device.";
+    loadSelectedDayVerse(day, token).catch(() => {});
+  }
+
+  function contentDiagnosticsArePrivateToOwner() {
+    return Boolean(state.session && String(state.session.authorId || "").toLowerCase() === "dustin");
+  }
+
+  function renderContentReadiness(readiness) {
+    const alert = element("contentReadinessAlert");
+    if (!readiness || readiness.state === "green" || readiness.target === 0) {
+      alert.hidden = true;
+      return;
+    }
+    alert.hidden = false;
+    alert.dataset.state = readiness.state;
+    element("contentReadinessTitle").textContent = readiness.state === "critical" && readiness.currentPlanDay
+      ? "Today's study notes need attention"
+      : "Upcoming study notes need attention";
+    if (contentDiagnosticsArePrivateToOwner()) {
+      const gap = readiness.nextGapEntry;
+      const gapDescription = gap ? `${titleForEntry(gap)} (${gap.readingId})` : "the next scheduled reading";
+      element("contentReadinessMessage").textContent = readiness.state === "critical"
+        ? `${gapDescription} does not yet have a full study. Scripture and discussion remain available.`
+        : `${readiness.consecutiveReady} of the next ${readiness.target} full studies are ready. ${gapDescription} is the first gap.`;
+    } else {
+      element("contentReadinessMessage").textContent = readiness.state === "critical"
+        ? readiness.currentPlanDay
+          ? "Today's commentary is delayed. Scripture and discussion remain available."
+          : "An upcoming commentary is still being prepared."
+        : "An upcoming commentary is still being prepared; today's available reading is unaffected.";
+    }
+  }
+
   function renderSelectedDay(day) {
     const button = element("openSelectedReading");
     element("selectedDayDate").textContent = fullCalendarDate(day.date);
@@ -1723,6 +1923,7 @@
       : day.entry ? `Reading unavailable on ${shortOpenDate(day.date)}` : `No reading on ${shortOpenDate(day.date)}`;
     if (canOpen) button.setAttribute("aria-label", `Open ${fullCalendarDate(day.date)} reading: ${titleForEntry(day.entry)}`);
     else button.removeAttribute("aria-label");
+    renderSelectedDayVerse(day);
   }
 
   function renderCalendar() {
@@ -1908,6 +2109,7 @@
         state.completedReadingIds = deriveCurrentReaderCompletion();
         await persistCalendarCompletion(readingIds, completionByReadingId);
         renderCalendar();
+        markStartupMilestone("freshDataSynchronized");
         element("calendarStatus").textContent = "Dustin and Shane’s progress is synchronized from shared comments.";
         setSyncStatus("Calendar synchronized");
       } catch {
@@ -2130,17 +2332,19 @@
     const scriptureStatus = state.policy.offlinePersistenceAllowed
       ? `${scriptureCount}/${scriptureEligible} chapter text records available offline`
       : "ESV text stays network-only by provider policy";
-    let consecutivePrepared = 0;
-    for (const entry of entries.slice(calendarIndex)) {
-      if (!readingContentIsPrepared(payloadByReadingId.get(entry.readingId))) break;
-      consecutivePrepared += 1;
-    }
-    const preparationTarget = Math.min(3, entries.length - calendarIndex);
-    const readinessMessage = consecutivePrepared < preparationTarget
-      ? `Preparation alert: ${consecutivePrepared}/${preparationTarget} consecutive full studies are ready from today.`
-      : `${consecutivePrepared} consecutive full studies are ready from today.`;
+    const scheduleComplete = state.schedule.status === "pilot_complete";
+    const readinessStartIndex = scheduleComplete ? entries.length : calendarIndex;
+    const preparationTarget = scheduleComplete ? 0 : Math.min(3, entries.length - readinessStartIndex);
+    const readiness = {
+      ...evaluateContentReadiness(entries, payloadByReadingId, readinessStartIndex, preparationTarget),
+      currentPlanDay: state.schedule.status === "active"
+    };
+    renderContentReadiness(readiness);
+    const readinessMessage = readiness.consecutiveReady < readiness.target
+      ? `Preparation alert: ${readiness.consecutiveReady}/${readiness.target} consecutive full studies are ready from today.`
+      : `${readiness.consecutiveReady} consecutive full studies are ready from today.`;
     const offlineStatus = element("offlinePackStatus");
-    offlineStatus.dataset.state = consecutivePrepared < preparationTarget ? "warning" : "ready";
+    offlineStatus.dataset.state = readiness.state === "green" ? "ready" : "warning";
     offlineStatus.textContent = `${contentCount}/${windowEntries.length} reading records downloaded · ` +
       `${scriptureStatus} · ${readinessMessage}`;
     await updateCacheInspector();
@@ -2530,7 +2734,9 @@
       pendingCommentEvents: outbox.length,
       highlightsPersistedLocally: false,
       readerCodeStored: Boolean(credential && credential.readerCode),
-      serviceWorkerRegistered: false
+      serviceWorkerRegistered: Boolean(root.document && root.document.documentElement &&
+        root.document.documentElement.dataset.pwaServiceWorker === "registered"),
+      startupTiming: startupTimingSnapshot()
     }, null, 2);
   }
 
@@ -2558,6 +2764,8 @@
     if (credential && credential.readerCode) await state.store.put("deviceCredentials", credential);
     element("commentBody").value = "";
     state.comments = [];
+    state.privatePayloadByReadingId = new Map();
+    state.privatePayloadRequestByReadingId = new Map();
     state.completionByReadingId = new Map();
     state.completedReadingIds = new Set();
     await renderComments([]);
@@ -2722,6 +2930,7 @@
     wireEvents();
     state.schedule = calculateSchedule(state.plan, state.config, new Date());
     await hydrateCalendarCompletion();
+    markStartupMilestone(options && options.cached ? "cachedCalendarVisible" : "calendarVisible");
     if (!hadApplication || previousPlanVersion !== state.plan.planVersion || state.view === "home") {
       showHome({focus: false, sync: false});
     }
@@ -2755,6 +2964,8 @@
     state.session = null;
     state.sources = [];
     state.comments = [];
+    state.privatePayloadByReadingId = new Map();
+    state.privatePayloadRequestByReadingId = new Map();
     state.currentScripture = null;
     notifyHighlightEnhancer();
     state.calendarParticipants = [];
@@ -2816,6 +3027,7 @@
             throw appError("The authorized reader roster changed.", "AUTH_REQUIRED");
           }
           state.serverAccessConfirmed = true;
+          markStartupMilestone("authorizationConfirmed");
           state.bootstrap = {...state.bootstrap, appBuildId: confirmation.appBuildId, appUrl: confirmation.appUrl};
           configureBuildUpdate(confirmation);
           element("authStatus").textContent = `Reading as ${state.session.displayName}`;
@@ -2830,6 +3042,7 @@
           throw appError("The authorized reader does not match this device's saved reader.", "AUTH_REQUIRED");
         }
         state.serverAccessConfirmed = true;
+        markStartupMilestone("authorizationConfirmed");
         await installBootstrap(bootstrap, {cached: false});
         await rememberConfirmedDevice();
         await persistBootstrap(bootstrap);
@@ -2864,6 +3077,7 @@
   async function startAuthorizedApplication(options) {
     if (state.adapter.kind === "mock") {
       state.serverAccessConfirmed = true;
+      markStartupMilestone("authorizationConfirmed");
       const bootstrap = await state.adapter.getBootstrapData();
       await installBootstrap(bootstrap, {cached: false});
       startConfirmedBackgroundWork();
@@ -2984,6 +3198,7 @@
     createBrowserStore,
     dateOnlyForDay,
     datePartsInTimeZone,
+    evaluateContentReadiness,
     extractNumberedVerseText,
     formatReadingDate,
     handleFatalError,
@@ -2999,9 +3214,11 @@
     registerHighlightEnhancer,
     safeExternalUrl,
     safeVersionedAppUrl,
+    selectedDayVerseSelection,
     splitNumberedVerses,
     splitComprehensiveSections,
     submitCurrentHighlightEvent,
+    startupTimingSnapshot,
     titleForEntry,
     verseReferenceLabel,
     verseBelongsToPassage,

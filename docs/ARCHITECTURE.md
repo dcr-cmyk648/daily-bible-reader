@@ -1,6 +1,6 @@
 # Architecture
 
-Status: Pages-top-level token PWA canary in implementation, 2026-08-10.
+Status: Pages-top-level token PWA is the phone-confirmed primary reader; Apps Script version 23 remains rollback, 2026-08-10.
 
 ## Hosting decision
 
@@ -8,7 +8,7 @@ The intended installed app is a GitHub Pages PWA backed by a public Google Apps 
 
 This is a deliberate two-person personal-app tradeoff approved by Dustin on 2026-08-10. It replaces the proposed Google Identity Services/API-executable flow. It does not require a Google OAuth web client, Apps Script API execution, a standard Cloud project association, a consent screen for Shane, or a paid backend. Google documents that a web app may handle `doPost`, execute as the deployer, and be available anonymously; it also cautions developers to handle owner authority carefully: <https://developers.google.com/apps-script/guides/web> (checked 2026-08-10). Manifest values are documented at <https://developers.google.com/apps-script/manifest/web-app-api-executable>.
 
-The current phone-confirmed Apps Script version 23 remains an unchanged rollback during the canary. It still uses `USER_ACCESSING` and Google/Drive authorization. The token PWA is compiled as a separate immutable artifact and receives a separate deployment URL. A phone failure does not move the production deployment pointer.
+The phone-confirmed Apps Script version 23 remains an unchanged rollback. It still uses `USER_ACCESSING` and Google/Drive authorization. The token PWA is compiled as a separate immutable artifact and uses a separate deployment URL. Routine Pages UI releases do not move the production Apps Script deployment pointer.
 
 ### Accepted tradeoffs
 
@@ -114,11 +114,15 @@ Direct native Sheet access is separate from the app. Google sharing—not reader
 
 The PWA paints a valid cached shell/calendar/commentary snapshot immediately, then confirms the stored code in the background. Explicit code denial clears private local state. Transient network failure may retain the unexpired snapshot and queued comment drafts. Offline revocation cannot be instantaneous; a lost device must have its token rotated, and the user should clear site data or remotely protect the device.
 
+Calendar selection reads the verse-of-the-day reference from the already validated private reading payload. It may fetch missing private metadata in the background, but it does not request or persist ESV wording; the exact live ESV verse remains on the opened reading page with the provider notice. The same seven-reading payload batch drives a three-day operational readiness check. Its calculation is consecutive from today's plan entry, so a later prepared day cannot conceal an earlier placeholder or missing record. Dustin receives the exact first gap, while Shane sees only a generic delay state.
+
 The service worker caches only generated public HTML, JavaScript, CSS, icons, and immutable release metadata. It bypasses all non-GET, cross-origin, config, Apps Script, ESV, and private traffic. A complete new public cache installs before activation; the user receives an explicit restart control; the current and newest prior app cache remain for rollback.
 
 ## Versioning and release stability
 
 The Pages document owns the manifest, correct open-Bible icon, standalone display mode, and service-worker scope. This removes Apps Script HTML Service from cold shell startup and should materially improve repeat-launch latency and version determinism. It does not eliminate network time for fresh ESV, Drive, or Sheet operations; cached private content and background synchronization keep those operations off the initial paint where possible.
+
+The cache/build inspector also exposes a field-allowlisted, session-only startup timeline: shell visible, application code loaded, cached or fresh calendar visible, authorization confirmed, fresh calendar data synchronized, and Scripture visible. The values use the browser's monotonic navigation clock, reset on every launch, and are never persisted, transmitted, or written to logs. No identity, passage reference, commentary, comment, token, or private resource ID enters the timeline.
 
 All public assets are content-addressed and integrity-checked. Published release directories are immutable and never deleted. `config.json` is not service-worker cached. A configuration/code change creates a new PWA release ID; installation finishes before the update prompt appears. The repository safety scanner confines the public backend URL to the canary config and generated client/config paths.
 
@@ -134,6 +138,6 @@ Not retained: frontend-selected display names, all-comment `localStorage`, unres
 
 ## Promotion checkpoint
 
-Before replacing the installed production URL, Dustin's iPhone must pass: first code entry; close/reopen without code re-entry; immediate cached calendar; private commentary; live ESV; comment create/edit/retract; highlight add/remove; correct icon; offline shell/commentary/draft behavior; update activation; and recovery after a backend timeout. Inspect Cache Storage and IndexedDB to confirm no ESV, response payload, or API key is present.
+Dustin has confirmed the installed Pages PWA works, including retained code access and the live reader flow, so it is now the recommended installation. The older Apps Script installation remains available as rollback; promotion did not move its production deployment pointer.
 
-Then test Shane's distinct code and cross-token denials. Verify rotation of one test hash blocks only that token. The old Apps Script installation remains available until the Pages PWA passes those checks. Promotion changes the recommended install URL; it does not require moving the existing production deployment pointer.
+Shane's install, live ESV, and overlapping-highlight check remain intentionally deferred until the reader is closer to launch. Cross-token denial, token rotation, offline outbox recovery, downloaded-data clearing, and revocation behavior remain manual security checks rather than reasons to return the primary UI to Apps Script hosting.

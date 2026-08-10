@@ -393,18 +393,99 @@ test("cached bootstrap is time-limited and bound to the saved reader identity", 
   assert.equal(app.bootstrapRecordIsFresh(record, Date.parse(record.expiresAt), {authorId: "dustin"}), false);
 });
 
-test("content readiness distinguishes a full study from a downloaded placeholder", () => {
+test("content readiness requires consecutive reviewed studies and exposes the first gap", () => {
+  const ready = (readingId) => ({commentary: {
+    readingId,
+    publicationStatus: "draft",
+    generation: {humanReviewStatus: "approved", contentHash: "a".repeat(64)}
+  }});
+  const placeholder = {commentary: {
+    readingId: "CC-Y3Q4-D057",
+    publicationStatus: "placeholder",
+    generation: {humanReviewStatus: "not_started", contentHash: null}
+  }};
+  assert.equal(app.readingContentIsPrepared(ready("CC-Y3Q4-D054")), true);
+  assert.equal(app.readingContentIsPrepared(placeholder), false);
   assert.equal(app.readingContentIsPrepared({commentary: {
-    readingId: "CC-Y3Q4-D054",
-    publicationStatus: "draft"
+    readingId: "CC-Y3Q4-D055",
+    publicationStatus: "draft",
+    generation: {humanReviewStatus: "in_review", contentHash: "b".repeat(64)}
   }}), true);
   assert.equal(app.readingContentIsPrepared({commentary: {
-    readingId: "CC-Y3Q4-D057",
-    publicationStatus: "placeholder"
+    readingId: "CC-Y3Q4-D055",
+    publicationStatus: "draft",
+    generation: {humanReviewStatus: "changes_requested", contentHash: "b".repeat(64)}
+  }}), false);
+  assert.equal(app.readingContentIsPrepared({commentary: {
+    readingId: "CC-Y3Q4-D055",
+    publicationStatus: "draft",
+    generation: {humanReviewStatus: "approved", contentHash: null}
   }}), false);
   assert.equal(app.readingContentIsPrepared(null), false);
+
+  const entries = [54, 55, 56, 57].map((day) => ({readingId: `CC-Y3Q4-D0${day}`, dayIndex: day - 53}));
+  const payloads = new Map([
+    [entries[0].readingId, ready(entries[0].readingId)],
+    [entries[1].readingId, ready(entries[1].readingId)],
+    [entries[2].readingId, placeholder],
+    [entries[3].readingId, ready(entries[3].readingId)]
+  ]);
+  const readiness = app.evaluateContentReadiness(entries, payloads, 0, 3);
+  assert.equal(readiness.consecutiveReady, 2);
+  assert.equal(readiness.state, "warning");
+  assert.equal(readiness.nextGapEntry.readingId, entries[2].readingId);
+  assert.equal(app.evaluateContentReadiness(entries, payloads, 2, 3).state, "critical");
+  assert.equal(app.evaluateContentReadiness(entries, payloads, 3, 3).state, "green");
+  assert.deepEqual(app.evaluateContentReadiness(entries, payloads, entries.length, 3), {
+    consecutiveReady: 0,
+    target: 0,
+    readyThroughEntry: null,
+    nextGapEntry: null,
+    state: "green"
+  });
+
   const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
-  assert.match(source, /Preparation alert: \$\{consecutivePrepared\}\/\$\{preparationTarget\}/);
+  assert.match(source, /Preparation alert: \$\{readiness\.consecutiveReady\}\/\$\{readiness\.target\}/);
+  assert.match(source, /contentDiagnosticsArePrivateToOwner/);
+});
+
+test("selected calendar days show a validated reference without storing ESV wording", () => {
+  const entry = {
+    readingId: "CC-Y3Q4-D055",
+    kind: "chapter",
+    passages: [{bookId: "MIC", chapter: 5, verseCount: 15}]
+  };
+  const payload = {commentary: {readingId: entry.readingId, verseOfTheDay: {bookId: "MIC", chapter: 5, verse: 2}}};
+  assert.deepEqual(app.selectedDayVerseSelection(payload, entry), {bookId: "MIC", chapter: 5, verse: 2});
+  assert.equal(app.selectedDayVerseSelection({commentary: {readingId: entry.readingId, verseOfTheDay: {bookId: "MIC", chapter: 6, verse: 1}}}, entry), null);
+  assert.equal(app.selectedDayVerseSelection({commentary: {readingId: "CC-Y3Q4-D054", verseOfTheDay: {bookId: "MIC", chapter: 5, verse: 2}}}, entry), null);
+  const html = fs.readFileSync(path.join(__dirname, "../app/frontend/index.html"), "utf8");
+  assert.match(html, /id="selectedDayVerse"/);
+  assert.ok(html.indexOf('id="selectedDayVerse"') < html.indexOf('id="openSelectedReading"'));
+  assert.match(html, /The exact ESV wording appears after you open the reading|Checking saved study metadata/);
+});
+
+test("startup diagnostics are session-only and strip unapproved fields", () => {
+  const snapshot = app.startupTimingSnapshot({
+    schemaVersion: "startup-timing/v1",
+    milestones: {
+      shellVisible: 10.2,
+      applicationCodeLoaded: 30.6,
+      cachedCalendarVisible: 55.1,
+      authorizationConfirmed: 100.4,
+      freshDataSynchronized: 140.8,
+      scriptureVisible: 190.2,
+      privateCommentBody: 999
+    }
+  });
+  assert.equal(snapshot.sessionOnly, true);
+  assert.equal(snapshot.elapsedMs.shellVisible, 10);
+  assert.equal(snapshot.phaseDurationsMs.shellToApplicationCode, 21);
+  assert.equal(snapshot.phaseDurationsMs.calendarToAuthorization, 45);
+  assert.equal(snapshot.phaseDurationsMs.authorizationToFreshSync, 41);
+  assert.equal(Object.hasOwn(snapshot.elapsedMs, "privateCommentBody"), false);
+  const html = fs.readFileSync(path.join(__dirname, "../app/frontend/index.html"), "utf8");
+  assert.match(html, /Startup timings reset on every launch, stay in memory, and are never sent anywhere/);
 });
 
 test("every production RPC accepts the reader code as its first argument while enrollment may satisfy it", () => {

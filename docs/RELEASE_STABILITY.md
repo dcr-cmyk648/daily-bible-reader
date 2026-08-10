@@ -1,6 +1,6 @@
 # Installed-reader release stability
 
-Status: stable hybrid production plus isolated Pages/token canary, 2026-08-10.
+Status: phone-confirmed Pages/token PWA primary plus immutable Apps Script version-23 rollback, 2026-08-10.
 
 ## What the deployed artifacts show
 
@@ -43,19 +43,19 @@ The line ceiling is deliberately far below the observed failure and close to the
 3. `npm run check`, generated-line enforcement, repository safety, exact artifact inspection, and public-backend status/denial probing must pass before canary.
 4. A new shell architecture or storage/RPC migration requires an installed-iPhone cold launch, close/reopen, calendar open, one Scripture open, and one write test before promotion.
 5. Ordinary content publication does not redeploy the shell. After the hybrid's initial phone gate, routine frontend changes publish a verified immutable Pages release; phone testing is reserved for launcher, storage, authentication, backend-contract, and deployment changes instead of every small UI edit.
-6. Failed canaries are never promoted. The stable production deployment stays pinned to version 23; a token-canary rollback archives its separate endpoint or restores the last good Pages release.
+6. Failed releases are never promoted. The stable production deployment stays pinned to version 23; a Pages/token rollback restores the last good immutable Pages/PWA release or reopens the retained version-23 installation.
 
 ## Stable hybrid control
 
 The bounded-line build was unreliable, so production version 23 uses a small Apps Script launcher and code-only Pages assets. Its immutable server build `c57d948db8fbf838` and initial frontend release `73da95f8a9ec3bb3` passed exact artifact comparison and installed-iPhone open/reopen, ESV, comment, and highlight checks. The later frontend release `ced732908c22c3de` remains the phone-confirmed public-code control.
 
-The stable launcher still uses `google.script.run`, `USER_ACCESSING`, Google identity, Drive gating, and User Properties. It remains installed and available throughout the Pages canary. No token-canary build, push, or deployment may update this production deployment pointer.
+The stable launcher still uses `google.script.run`, `USER_ACCESSING`, Google identity, Drive gating, and User Properties. It remains installed and available as rollback. No token-backend build, push, or deployment may update this production deployment pointer.
 
 Its **D** Home Screen monogram is a confirmed Apps Script hosting limitation: Apps Script provides an outer favicon but no Web App Manifest or Apple touch icon for the installed top-level document. Reinstalling the same Apps Script URL cannot fix it.
 
-## Pages/token canary boundary
+## Pages/token primary boundary
 
-The user approved a lower-friction bearer-token model for this two-person personal app. The isolated `web/pwa-canary/` is now a real top-level PWA: it owns the manifest/open-Bible icon, public-only service worker, immediate shell, and update lifecycle. It replaces the discarded GIS/API-executable prototype and requires no OAuth web client, Cloud billing setup, or Shane consent screen.
+The user approved a lower-friction bearer-token model for this two-person personal app. The isolated-path `web/pwa-canary/` is the installed top-level PWA: it owns the manifest/open-Bible icon, public-only service worker, immediate shell, and update lifecycle. It replaces the discarded GIS/API-executable prototype and requires no OAuth web client, Cloud billing setup, or Shane consent screen. The historical path name remains unchanged to preserve the installed URL.
 
 The Pages client sends one bounded hidden-form POST per RPC to a separate public owner-executed Apps Script web-app deployment. The response is confined by fixed Pages origin, Google response-origin validation, request ID, and a 192-bit nonce. Only eleven methods and exact argument counts are accepted. Reader codes remain in POST bodies/IndexedDB and server-side hashes; no private data or ESV response enters Pages or Cache Storage.
 
@@ -63,4 +63,4 @@ The token backend is built into `dist/apps-script-token-canary/`. It is derived 
 
 Publishing never deletes `web/releases/` or older versioned PWA clients. The service worker controls only `/web/pwa-canary/`, skips config and every non-GET/cross-origin request, installs a complete enumerated public cache before activation, and retains one prior app cache for rollback.
 
-Before recommending the new install URL: run the full check; inspect the four generated Apps Script token files and all generated PWA files; verify live HTTPS MIME types, hashes, bytes, endpoint status, and one sanitized private RPC; inspect Cache Storage; then perform Dustin's cold/warm/offline/update/live-ESV/comment/highlight/code-retention tests. Shane and crossed/wrong-token tests follow. A failure changes nothing about Apps Script production version 23.
+Dustin confirmed the installed Pages reader works after the live browser gate, so the Pages URL is now recommended. Every routine UI release still requires repository safety, the full check, immutable release generation, exact tracked-artifact verification, live HTTPS byte/MIME verification, and a browser smoke. A shell, service-worker, storage, authentication, backend-contract, or deployment change additionally requires a fresh installed-iPhone gate. Shane and crossed/wrong-token tests remain outstanding. A failure changes nothing about Apps Script production version 23.

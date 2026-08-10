@@ -39,6 +39,19 @@
   var updateRegistration = null;
   var reloadingForUpdate = false;
 
+  function markStartupMilestone(name) {
+    var metrics = root.DBRStartupMetrics;
+    if (!metrics || metrics.schemaVersion !== "startup-timing/v1" ||
+        !metrics.milestones || typeof metrics.milestones !== "object") {
+      metrics = {schemaVersion: "startup-timing/v1", milestones: {}};
+      root.DBRStartupMetrics = metrics;
+    }
+    if (Number.isFinite(metrics.milestones[name])) return;
+    if (root.performance && typeof root.performance.now === "function") {
+      metrics.milestones[name] = Math.max(0, Math.round(root.performance.now()));
+    }
+  }
+
   function element(id) {
     return root.document && root.document.getElementById(id);
   }
@@ -57,6 +70,7 @@
         showFatal(message || "The application code did not start.");
       },
       coreStarted: function coreStarted() {
+        markStartupMilestone("applicationCodeLoaded");
         if (!bootFinished) setText("syncStatus", "Opening saved reader…");
       },
       ready: function ready() {
@@ -316,6 +330,7 @@
   }
 
   async function start() {
+    markStartupMilestone("shellVisible");
     installBootBridge();
     var config = validateConfig(BUILD_CONFIG);
     installAppsScriptShim(config);

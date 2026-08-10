@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-pwa-release="d9bcecb7f5b1d5fa">
+<html lang="en" data-pwa-release="644cc0275a7264c0">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -12,7 +12,7 @@
     <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon-180.png">
     <link rel="icon" type="image/png" sizes="192x192" href="assets/bible-reader-icon-192.png">
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="../releases/01e0dce691dd3cc9/styles.css" integrity="sha384-M2TTLYQs3/dPnseAMTT8ny+Qybhk5IBKC6a/7funB34VPqljXn3KD+2aMvHakxsw" crossorigin="anonymous">
+    <link rel="stylesheet" href="../releases/16d564a50f763ab3/styles.css" integrity="sha384-yUIiPKsxikHjGW7a7tyXp+xohXxfk0RZ/cqrmgKS92mK3kbt+mClQ+URYEmecsnD" crossorigin="anonymous">
   </head>
   <body>
     <a id="skipLink" class="skip-link" href="#calendarHeading">Skip to the calendar</a>
@@ -91,6 +91,12 @@
           <div id="calendarParticipantLegend" class="calendar-legend" aria-label="Reader completion colors"></div>
         </section>
 
+        <section id="contentReadinessAlert" class="content-readiness-alert" role="status" aria-live="polite" hidden>
+          <p class="eyebrow">Study preparation</p>
+          <h2 id="contentReadinessTitle">Upcoming study notes need attention</h2>
+          <p id="contentReadinessMessage"></p>
+        </section>
+
         <section id="selectedDayCard" class="selected-day-card" aria-labelledby="selectedDayTitle">
           <div>
             <p id="selectedDayDate" class="eyebrow">Selected date</p>
@@ -98,6 +104,11 @@
             <p id="selectedDayPosition" class="muted"></p>
           </div>
           <div id="selectedDayCompletion" class="selected-day-completion" aria-label="Completion by reader"></div>
+          <div id="selectedDayVerse" class="selected-day-verse" hidden>
+            <span class="eyebrow">Verse of the day</span>
+            <a id="selectedDayVerseLink" target="_blank" rel="noopener noreferrer">Loading selection…</a>
+            <p id="selectedDayVerseStatus" class="muted">Checking saved study metadata.</p>
+          </div>
           <button id="openSelectedReading" class="primary-button" type="button">Open selected reading</button>
         </section>
 
@@ -115,6 +126,7 @@
           </div>
           <details>
             <summary>Cache, policy, and build details</summary>
+            <p class="muted">Startup timings reset on every launch, stay in memory, and are never sent anywhere.</p>
             <pre id="cacheInspector" class="cache-inspector">Loading…</pre>
           </details>
         </section>
@@ -297,6 +309,6 @@
       <p>Private two-person bridge · Seven scheduled days · No runtime AI</p>
     </footer>
 
-    <script src="assets/pwa-client.d9bcecb7f5b1d5fa.js"></script>
+    <script src="assets/pwa-client.644cc0275a7264c0.js"></script>
   </body>
 </html>

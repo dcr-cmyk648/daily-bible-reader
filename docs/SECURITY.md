@@ -3,13 +3,13 @@
 ## Invariants
 
 - No reader code/hash, ESV key/text, private Google resource ID, email, private commentary, comment/highlight export, or raw copyrighted source enters Git or public artifacts.
-- The Pages token canary's Apps Script `/exec` URL is the sole narrow endpoint exception. It is public configuration and is confined to exact config/generated-client paths.
+- The Pages token PWA's Apps Script `/exec` URL is the sole narrow endpoint exception. It is public configuration and is confined to exact config/generated-client paths.
 - Every private RPC requires a valid high-entropy reader code. The server hashes it and maps it to exactly one configured Dustin/Shane identity; frontend identity fields are never trusted.
 - The browser cannot choose display name, author ID, timestamp, server ID, Drive/Sheet/file ID, ESV reference, revision, callable backend function, or response origin.
 - Methods, argument counts, request sizes, reading IDs, verse ranges, and writes are validated server-side. Public errors omit private data and stacks.
 - Comments and Markdown render through text nodes/allowlisted elements, never arbitrary HTML.
 - ESV text is network-only. The service worker caches an exact public-code allowlist and never handles cross-origin/private traffic.
-- The stable `USER_ACCESSING` deployment remains unchanged until the separate owner-executed token PWA passes its installed-iPhone gate.
+- The stable `USER_ACCESSING` deployment remains unchanged as rollback; ordinary primary-PWA releases do not repoint it.
 
 ## Threat model
 

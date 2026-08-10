@@ -1,6 +1,6 @@
 # Google and deployment setup
 
-Status: the current `USER_ACCESSING` production deployment and its private Drive/Sheet/Script Properties are operational. The Pages token PWA uses a separate immutable owner-executed web-app deployment as a canary. No Google OAuth client, OAuth consent-screen project, Apps Script API executable, billing account, or new paid service is required.
+Status: the current `USER_ACCESSING` production deployment and its private Drive/Sheet/Script Properties are operational as rollback. The phone-confirmed Pages token PWA is primary and uses a separate immutable owner-executed web-app deployment. No Google OAuth client, OAuth consent-screen project, Apps Script API executable, billing account, or new paid service is required.
 
 ## Existing private resources
 
@@ -104,7 +104,7 @@ The install URL is:
 
 `https://dcr-cmyk648.github.io/daily-bible-reader/web/pwa-canary/`
 
-Open it first in iPhone Safari, then use **Share → Add to Home Screen → Open as Web App**. Keep the current Apps Script-installed app until the canary passes.
+Open it first in iPhone Safari, then use **Share → Add to Home Screen → Open as Web App**. Dustin has passed this install gate; keep the current Apps Script-installed app as rollback while Shane's later acceptance remains outstanding.
 
 ## Acceptance gate
 

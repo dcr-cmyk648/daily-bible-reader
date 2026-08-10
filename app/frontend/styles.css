@@ -341,6 +341,7 @@ h3 {
 }
 
 .calendar-card,
+.content-readiness-alert,
 .selected-day-card,
 .reading-card,
 .discussion-card,
@@ -350,6 +351,30 @@ h3 {
   border-radius: 0.8rem;
   background: var(--surface-raised);
   box-shadow: var(--shadow);
+}
+
+.content-readiness-alert {
+  margin-top: 1rem;
+  padding: 0.85rem 1rem;
+  border-color: #82683e;
+  color: #f3dfb8;
+  background: #2d281d;
+}
+
+.content-readiness-alert[data-state="critical"] {
+  border-color: #965d5d;
+  color: #ffd1d1;
+  background: #3c2424;
+}
+
+.content-readiness-alert h2 {
+  margin-bottom: 0.2rem;
+  font-size: 1.05rem;
+}
+
+.content-readiness-alert p:last-child {
+  margin-bottom: 0;
+  font-size: 0.82rem;
 }
 
 .calendar-card {
@@ -538,6 +563,36 @@ h3 {
 .selected-day-completion {
   display: grid;
   gap: 0.38rem;
+}
+
+.selected-day-verse {
+  display: grid;
+  gap: 0.12rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid #40574e;
+  border-radius: 0.55rem;
+  background: #101915;
+}
+
+.selected-day-verse .eyebrow,
+.selected-day-verse p {
+  margin: 0;
+}
+
+.selected-day-verse a {
+  width: fit-content;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.selected-day-verse a:not([href]) {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.selected-day-verse .muted {
+  font-size: 0.72rem;
 }
 
 .selected-reader-status {

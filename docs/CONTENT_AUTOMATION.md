@@ -1,6 +1,6 @@
 # Advance-content automation proposal
 
-Status: recurring generation remains proposed and not enabled. The reader already warns when fewer than three consecutive substantive studies remain, showing Dustin the exact first gap and Shane only a generic delay. A read-only local evaluator now models the separate seven-day draft and five-day explicitly approved live buffers and selects at most one earliest gap. The narrower manual Henry precursor resolves today through at most two days ahead, creates private unreviewed Spark-based verse audits, and atomically exports an app-neutral current-window store; it does not create the broader synthesis, satisfy either readiness buffer, update Drive, publish, or recur. Checked against the official OpenAI scheduled-tasks documentation on 2026-08-10: <https://learn.chatgpt.com/docs/automations>.
+Status: recurring generation remains proposed and not enabled. The reader already warns when fewer than three consecutive substantive studies remain, showing Dustin the exact first gap and Shane only a generic delay. A read-only local evaluator models separate seven-day draft and five-day explicitly approved live buffers and selects at most one earliest gap. An explicit generation gate can now turn that one action into a validated `commentary-work-order/v1` packet for the repo-local `$draft-daily-commentary` skill; the tracked policy keeps the gate off. The narrower manual Henry precursor resolves today through at most two days ahead, creates private unreviewed verse audits, and atomically exports an app-neutral current-window store; it does not create the broader synthesis, satisfy either readiness buffer, update Drive, publish, or recur. Checked against the official OpenAI scheduled-tasks documentation on 2026-08-10: <https://learn.chatgpt.com/docs/automations>.
 
 ## Recommendation
 
@@ -45,7 +45,7 @@ Run once each morning, provisionally at 5:00 a.m. Detroit time. Each run should:
 1. Read the canonical active plan, live manifest, source registry, and staging index from the private Drive folder.
 2. Calculate both buffer horizons and identify the earliest missing or invalid reading.
 3. Stop without generating if the seven-day draft target is already met.
-4. Research and draft **exactly one** earliest missing reading. Do not skip ahead, bulk-generate, or alter any other reading.
+4. If generation is privately enabled, emit a schema-validated work order for **exactly one** earliest missing reading and invoke `$draft-daily-commentary` with the unchanged packet. Do not skip ahead, bulk-generate, or alter any other reading.
 5. Follow `COMMENTARY_WORKFLOW.md` and `EDITORIAL_STANCE.md`: broad independent source inventory, honest access status, confessional evidentiary weighting, a concise continuous main article, custom deep-study sections, one reference-only verse selection, and no ESV wording.
 6. Write only to a private staging area. Record workflow/model/tool version, generation time, source-set version, limitations, content hash, and `humanReviewStatus: unreviewed`.
 7. Run every deterministic check available in that environment. Never weaken a failed check or mark a file reviewed to make the buffer look healthy.
@@ -94,7 +94,7 @@ The current pure readiness function tests missing records, placeholders, unrevie
 
 1. Add a versioned private staging index and readiness schema plus deterministic tests.
 2. Add the authenticated Apps Script readiness calculation and calendar warning.
-3. Create and test a dedicated content-generation skill and prompt against one already-completed reading without publishing it.
+3. Test the committed `$draft-daily-commentary` skill and saved scheduler prompt against one already-completed reading without publishing it.
 4. Create a daily scheduled task from ChatGPT/Codex **Scheduled**, with Google Drive and web research access but no deployment authority.
 5. Review the first five runs manually before deciding whether the cadence or buffer thresholds should change.
 

@@ -27,6 +27,7 @@
   const DB_VERSION = 4;
   const BOOTSTRAP_CACHE_KEY = "__app-bootstrap__";
   const BOOTSTRAP_CACHE_SCHEMA = "bootstrap-cache/v1";
+  const HOT_READING_COUNT = 2;
   const STARTUP_TIMING_SCHEMA = "startup-timing/v1";
   const STARTUP_MILESTONE_ORDER = [
     "shellVisible",
@@ -74,6 +75,7 @@
     policy: null,
     plan: null,
     prefetchScheduled: false,
+    priorityPrefetchPromise: null,
     privatePayloadByReadingId: new Map(),
     privatePayloadRequestByReadingId: new Map(),
     readerCode: "",
@@ -85,6 +87,9 @@
     sources: [],
     commentSyncToken: 0,
     scriptureRequestToken: 0,
+    scriptureMemoryEpoch: 0,
+    scriptureMemoryByReadingId: new Map(),
+    scriptureRequestByReadingId: new Map(),
     selectedVerseRequestToken: 0,
     currentScripture: null,
     currentVerseCommentary: null,
@@ -286,6 +291,17 @@
       previousEntry: navigationAccessible(entries[selectedIndex - 1]) ? entries[selectedIndex - 1] : null,
       nextEntry: navigationAccessible(entries[selectedIndex + 1]) ? entries[selectedIndex + 1] : null
     };
+  }
+
+  function priorityReadingEntries(planInput, scheduleInput, limitInput) {
+    const entries = planInput && Array.isArray(planInput.entries) ? planInput.entries : [];
+    const limit = Math.max(0, Math.min(HOT_READING_COUNT, Number.isInteger(limitInput) ? limitInput : HOT_READING_COUNT));
+    if (!entries.length || !scheduleInput || scheduleInput.status === "pilot_complete" || !limit) return [];
+    const calendarDayIndex = Number(scheduleInput.calendarDayIndex);
+    const startIndex = Number.isInteger(calendarDayIndex) && calendarDayIndex > 0
+      ? Math.min(entries.length, calendarDayIndex - 1)
+      : 0;
+    return entries.slice(startIndex, startIndex + limit);
   }
 
   function shortTitleForEntry(entry) {
@@ -1309,6 +1325,21 @@
     return record ? record.text : "";
   }
 
+  function verseTextFromScripture(scripture, selection) {
+    if (!scripture || !selection || !Array.isArray(scripture.passages)) return "";
+    const passage = scripture.passages.find((candidate) =>
+      candidate.bookId === selection.bookId && candidate.chapter === selection.chapter
+    );
+    if (!passage) return "";
+    if (scripture.isMock === true && scripture.translation === "MOCK") {
+      const start = Number.isInteger(passage.verseStart) ? passage.verseStart : 1;
+      return String((passage.verses || [])[selection.verse - start] || "");
+    }
+    return scripture.translation === "ESV"
+      ? extractNumberedVerseText(passage.passage, selection.verse)
+      : "";
+  }
+
   function prepareVerseOfTheDay() {
     const section = element("verseOfDaySection");
     const selection = state.verseOfTheDay;
@@ -1339,15 +1370,7 @@
   function renderVerseOfTheDay(scripture) {
     const selection = state.verseOfTheDay;
     if (!selection) return;
-    const passage = (scripture && scripture.passages || []).find((candidate) =>
-      candidate.bookId === selection.bookId && candidate.chapter === selection.chapter
-    );
-    let verseText = "";
-    if (scripture && scripture.isMock === true && scripture.translation === "MOCK" && passage) {
-      verseText = String((passage.verses || [])[selection.verse - 1] || "");
-    } else if (scripture && scripture.translation === "ESV" && passage) {
-      verseText = extractNumberedVerseText(passage.passage, selection.verse);
-    }
+    const verseText = verseTextFromScripture(scripture, selection);
     if (!verseText) {
       renderVerseOfDayUnavailable("The selected verse could not be isolated from the Scripture response. Retry when connected; no alternate translation will be substituted.");
       return;
@@ -1805,6 +1828,49 @@
     }
   }
 
+  function syncScriptureMemoryWindow() {
+    const entries = priorityReadingEntries(state.plan, state.schedule, HOT_READING_COUNT);
+    const allowed = new Set(entries.filter((entry) => entry.kind === "chapter").map((entry) => entry.readingId));
+    for (const readingId of state.scriptureMemoryByReadingId.keys()) {
+      if (!allowed.has(readingId)) state.scriptureMemoryByReadingId.delete(readingId);
+    }
+    return entries;
+  }
+
+  function resetScriptureMemory() {
+    state.scriptureMemoryEpoch += 1;
+    state.scriptureMemoryByReadingId = new Map();
+    state.scriptureRequestByReadingId = new Map();
+    state.priorityPrefetchPromise = null;
+  }
+
+  async function getScriptureForReading(entry) {
+    syncScriptureMemoryWindow();
+    const remembered = state.scriptureMemoryByReadingId.get(entry.readingId);
+    if (remembered) return {scripture: remembered, source: "memory"};
+    let pending = state.scriptureRequestByReadingId.get(entry.readingId);
+    if (!pending) {
+      const memoryEpoch = state.scriptureMemoryEpoch;
+      pending = state.adapter.getScripture(entry.readingId)
+        .then((scripture) => {
+          if (scripture && scripture.readingId && scripture.readingId !== entry.readingId) {
+            throw appError("Scripture did not match the requested reading.", "CONTENT_MISMATCH");
+          }
+          const currentPriorityIds = new Set(priorityReadingEntries(state.plan, state.schedule, HOT_READING_COUNT)
+            .map((candidate) => candidate.readingId));
+          if (scripture && scripture.available !== false &&
+              ["ESV", "MOCK"].includes(scripture.translation) && memoryEpoch === state.scriptureMemoryEpoch &&
+              currentPriorityIds.has(entry.readingId)) {
+            state.scriptureMemoryByReadingId.set(entry.readingId, scripture);
+          }
+          return {scripture, source: "network"};
+        })
+        .finally(() => state.scriptureRequestByReadingId.delete(entry.readingId));
+      state.scriptureRequestByReadingId.set(entry.readingId, pending);
+    }
+    return pending;
+  }
+
   async function loadScripture(entry) {
     const token = ++state.scriptureRequestToken;
     state.currentScripture = null;
@@ -1822,11 +1888,12 @@
       return;
     }
     try {
-      const scripture = await state.adapter.getScripture(entry.readingId);
+      const result = await getScriptureForReading(entry);
+      const scripture = result.scripture;
       if (token !== state.scriptureRequestToken || state.currentEntry.readingId !== entry.readingId) return;
       if (scripture && scripture.available === false) throw appError("Scripture provider is unavailable.", scripture.code || "ESV_UNAVAILABLE");
-      renderScripture(scripture, "network");
-      await persistScripture(scripture);
+      renderScripture(scripture, result.source);
+      if (result.source !== "memory") await persistScripture(scripture);
     } catch {
       if (token !== state.scriptureRequestToken || state.currentEntry.readingId !== entry.readingId) return;
       const cached = state.adapter.kind === "apps-script" && state.policy.offlinePersistenceAllowed
@@ -1909,7 +1976,7 @@
     legend.appendChild(note);
   }
 
-  function showSelectedDayVerse(selection, entry) {
+  function showSelectedDayVerse(selection, entry, scripture, pendingMessage) {
     const panel = element("selectedDayVerse");
     if (!selection || !entry) {
       panel.hidden = true;
@@ -1917,9 +1984,26 @@
     }
     panel.hidden = false;
     const link = element("selectedDayVerseLink");
-    link.textContent = verseReferenceLabel(selection);
+    const isMock = scripture && scripture.isMock === true && scripture.translation === "MOCK";
+    link.textContent = `${verseReferenceLabel(selection)} · ${isMock ? "MOCK" : "ESV"}`;
     link.href = verseOfDayEsvUrl(selection);
-    element("selectedDayVerseStatus").textContent = "The exact ESV wording appears after you open the reading.";
+    const verseText = verseTextFromScripture(scripture, selection);
+    const quote = element("selectedDayVerseText");
+    const notice = element("selectedDayVerseNoticeDisclosure");
+    if (verseText) {
+      quote.textContent = verseText;
+      quote.hidden = false;
+      element("selectedDayVerseStatus").textContent = isMock
+        ? "FABRICATED DEVELOPMENT TEXT — not ESV and not a Bible translation."
+        : "ESV · prefetched in memory for this session.";
+      notice.hidden = isMock;
+    } else {
+      quote.textContent = "";
+      quote.hidden = true;
+      notice.hidden = true;
+      element("selectedDayVerseStatus").textContent = pendingMessage ||
+        "Open this reading to stream the exact ESV wording; no alternate translation will be substituted.";
+    }
   }
 
   async function loadSelectedDayVerse(day, token) {
@@ -1945,12 +2029,37 @@
     }
     if (token !== state.selectedVerseRequestToken || state.selectedCalendarDate !== day.date) return;
     const selection = selectedDayVerseSelection(payload, day.entry);
-    if (selection) showSelectedDayVerse(selection, day.entry);
-    else {
+    if (selection) {
+      const remembered = state.scriptureMemoryByReadingId.get(day.entry.readingId);
+      if (remembered) {
+        showSelectedDayVerse(selection, day.entry, remembered);
+        return;
+      }
+      const isPriorityReading = priorityReadingEntries(state.plan, state.schedule, HOT_READING_COUNT)
+        .some((entry) => entry.readingId === day.entry.readingId);
+      showSelectedDayVerse(selection, day.entry, null, isPriorityReading
+        ? "Warming the live ESV verse for today and tomorrow…"
+        : "Open this reading to stream the exact ESV wording; no alternate translation will be substituted.");
+      if (!isPriorityReading || !serverCallsAllowed()) return;
+      try {
+        const result = await getScriptureForReading(day.entry);
+        if (token !== state.selectedVerseRequestToken || state.selectedCalendarDate !== day.date) return;
+        if (!result.scripture || result.scripture.available === false) {
+          throw appError("Scripture provider is unavailable.", result.scripture && result.scripture.code || "ESV_UNAVAILABLE");
+        }
+        showSelectedDayVerse(selection, day.entry, result.scripture);
+      } catch {
+        if (token !== state.selectedVerseRequestToken || state.selectedCalendarDate !== day.date) return;
+        showSelectedDayVerse(selection, day.entry, null,
+          "The ESV verse could not be prefetched. Open the reading to retry when connected.");
+      }
+    } else {
       const panel = element("selectedDayVerse");
       panel.hidden = false;
       element("selectedDayVerseLink").removeAttribute("href");
       element("selectedDayVerseLink").textContent = "Selection unavailable";
+      element("selectedDayVerseText").hidden = true;
+      element("selectedDayVerseNoticeDisclosure").hidden = true;
       element("selectedDayVerseStatus").textContent = "The verse selection will appear when this reading's study notes are available.";
     }
   }
@@ -1965,6 +2074,8 @@
     panel.hidden = false;
     element("selectedDayVerseLink").removeAttribute("href");
     element("selectedDayVerseLink").textContent = "Loading selection…";
+    element("selectedDayVerseText").hidden = true;
+    element("selectedDayVerseNoticeDisclosure").hidden = true;
     element("selectedDayVerseStatus").textContent = "Checking the private study metadata saved on this device.";
     loadSelectedDayVerse(day, token).catch(() => {});
   }
@@ -2380,6 +2491,66 @@
       ? "Offline · cached reading and drafts available"
       : "Ready");
     element("readingTitle").focus({preventScroll: true});
+  }
+
+  async function warmPriorityWindow() {
+    if (!serverCallsAllowed() || !state.plan || !state.schedule) return;
+    if (state.priorityPrefetchPromise) return state.priorityPrefetchPromise;
+    const run = async () => {
+      const entries = syncScriptureMemoryWindow();
+      if (!entries.length) return;
+      const missingPayloads = [];
+      for (const entry of entries) {
+        if (await cachedPrivatePayload(entry.readingId)) continue;
+        const pending = state.privatePayloadRequestByReadingId.get(entry.readingId);
+        if (pending) {
+          try {
+            await pending;
+            continue;
+          } catch {
+            // Retry the priority record through the batch below.
+          }
+        }
+        missingPayloads.push(entry);
+      }
+      if (missingPayloads.length) {
+        try {
+          const batch = await state.adapter.getReadingPayloads(missingPayloads.map((entry) => entry.readingId));
+          if (!batch || batch.planVersion !== state.plan.planVersion ||
+              !batch.payloads || typeof batch.payloads !== "object") {
+            throw appError("Priority reading batch did not match the active plan.", "CONTENT_MISMATCH");
+          }
+          for (const entry of missingPayloads) {
+            const payload = batch.payloads[entry.readingId];
+            const commentary = payload && (payload.commentary || payload.metadata);
+            if (!commentary || commentary.readingId !== entry.readingId) {
+              throw appError("Priority reading batch contained mismatched content.", "CONTENT_MISMATCH");
+            }
+            await persistPrivatePayload(entry.readingId, payload);
+          }
+        } catch {
+          // The normal reading loader and seven-day preparation lane remain available for retry.
+        }
+      }
+      await Promise.allSettled(entries.map(async (entry) => {
+        const comments = await state.adapter.listComments(entry.readingId);
+        await replaceCommentSnapshots(entry.readingId, comments);
+      }));
+      await Promise.allSettled(entries
+        .filter((entry) => entry.kind === "chapter")
+        .map((entry) => getScriptureForReading(entry)));
+      const selectedDay = state.calendarWindow && state.calendarWindow.days
+        .find((day) => day.date === state.selectedCalendarDate);
+      if (state.view === "home" && selectedDay) renderSelectedDayVerse(selectedDay);
+      await updateCacheInspector();
+    };
+    const promise = run();
+    state.priorityPrefetchPromise = promise;
+    try {
+      return await promise;
+    } finally {
+      if (state.priorityPrefetchPromise === promise) state.priorityPrefetchPromise = null;
+    }
   }
 
   async function prefetchOfflineWindow() {
@@ -2843,6 +3014,9 @@
       bootstrapCached,
       serverAccessConfirmed: state.serverAccessConfirmed,
       privateContentEntries: freshContent.length,
+      priorityReadingTarget: HOT_READING_COUNT,
+      scriptureMemoryEntries: state.scriptureMemoryByReadingId.size,
+      scriptureMemoryOnly: true,
       calendarCompletionEntries: completion.length,
       cachedCommentSnapshots: snapshots.length,
       localMockRevisionEvents: mockEvents.length,
@@ -2882,6 +3056,7 @@
     state.comments = [];
     state.privatePayloadByReadingId = new Map();
     state.privatePayloadRequestByReadingId = new Map();
+    resetScriptureMemory();
     state.completionByReadingId = new Map();
     state.completedReadingIds = new Set();
     await renderComments([]);
@@ -2932,6 +3107,7 @@
       return;
     }
     if (!serverCallsAllowed()) return;
+    warmPriorityWindow().catch(() => {});
     flushOutbox().catch(() => setSyncStatus("Sync retry failed"));
     notifyHighlightEnhancer();
     if (state.view === "home") syncCalendarCompletion().catch(() => {});
@@ -3033,7 +3209,10 @@
   async function installBootstrap(bootstrap, options) {
     const hadApplication = Boolean(state.plan && state.session);
     const previousPlanVersion = state.plan && state.plan.planVersion;
+    const previousAppBuildId = state.bootstrap && state.bootstrap.appBuildId;
     applyBootstrapState(bootstrap);
+    if (hadApplication && (previousPlanVersion !== state.plan.planVersion ||
+        previousAppBuildId !== bootstrap.appBuildId)) resetScriptureMemory();
     hideReaderCodeGate();
     element("authStatus").textContent = state.adapter.kind === "mock"
       ? "Local mock · fabricated data"
@@ -3043,6 +3222,7 @@
     const esvNotice = state.policy.requiredAttribution.notice || FALLBACK_ESV_NOTICE;
     element("esvNotice").textContent = esvNotice;
     element("verseOfDayNotice").textContent = esvNotice;
+    element("selectedDayVerseNotice").textContent = esvNotice;
     wireEvents();
     state.schedule = calculateSchedule(state.plan, state.config, new Date());
     await hydrateCalendarCompletion();
@@ -3082,6 +3262,7 @@
     state.comments = [];
     state.privatePayloadByReadingId = new Map();
     state.privatePayloadRequestByReadingId = new Map();
+    resetScriptureMemory();
     state.currentScripture = null;
     state.currentVerseCommentary = null;
     notifyHighlightEnhancer();
@@ -3091,6 +3272,7 @@
   }
 
   function startConfirmedBackgroundWork() {
+    warmPriorityWindow().catch(() => {});
     syncCalendarCompletion().catch(() => {});
     flushOutbox().catch(() => {});
     notifyHighlightEnhancer();
@@ -3321,6 +3503,7 @@
     handleFatalError,
     init,
     parseDateOnly,
+    priorityReadingEntries,
     privateRecordIsFresh,
     readingContentIsPrepared,
     readingHasActiveComment,
@@ -3341,6 +3524,7 @@
     titleForEntry,
     verseReferenceLabel,
     verseBelongsToPassage,
+    verseTextFromScripture,
     validatePlan
   };
 });

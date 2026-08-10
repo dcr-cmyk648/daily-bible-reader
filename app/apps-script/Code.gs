@@ -73,7 +73,7 @@ const DBR_HIGHLIGHT_COLUMNS = [
 const DBR_ESV_POLICY = {
   provider: "Crossway ESV API",
   translation: "ESV",
-  policyVersion: "esv-api-2026-08-08-v3-network-only",
+  policyVersion: "esv-api-2026-08-08-v4-session-hot-window",
   verifiedAt: "2026-08-08",
   termsUrl: "https://api.esv.org/",
   maxVersesPerRequest: 500,
@@ -81,7 +81,7 @@ const DBR_ESV_POLICY = {
   maxBookFraction: 0.5,
   maxCacheAgeSeconds: 0,
   offlinePersistenceAllowed: false,
-  refreshBehavior: "network_every_open",
+  refreshBehavior: "session_hot_window",
   downloadAllowed: false,
   bulkCopyAllowed: false,
   apiKeyMayReachClient: false,

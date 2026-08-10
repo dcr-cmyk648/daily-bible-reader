@@ -591,8 +591,33 @@ h3 {
   text-decoration: none;
 }
 
+.selected-day-verse blockquote {
+  margin: 0.35rem 0 0.2rem;
+  padding: 0 0 0 0.7rem;
+  border-left: 2px solid var(--accent);
+  color: var(--text);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
 .selected-day-verse .muted {
   font-size: 0.72rem;
+}
+
+.selected-day-esv-notice {
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.selected-day-esv-notice summary {
+  width: fit-content;
+  cursor: pointer;
+}
+
+.selected-day-esv-notice p {
+  margin-top: 0.45rem;
+  white-space: pre-line;
 }
 
 .selected-reader-status {

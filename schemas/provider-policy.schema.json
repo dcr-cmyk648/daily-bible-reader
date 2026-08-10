@@ -31,7 +31,7 @@
     "maxBookFraction": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
     "maxCacheAgeSeconds": {"type": "integer", "minimum": 0},
     "offlinePersistenceAllowed": {"type": "boolean"},
-    "refreshBehavior": {"enum": ["network_first", "cache_first", "no_persistence", "network_every_open"]},
+    "refreshBehavior": {"enum": ["network_first", "cache_first", "no_persistence", "network_every_open", "session_hot_window"]},
     "downloadAllowed": {"type": "boolean"},
     "bulkCopyAllowed": {"type": "boolean"},
     "apiKeyMayReachClient": {"const": false},

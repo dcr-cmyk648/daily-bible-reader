@@ -2,7 +2,7 @@
   "schemaVersion": "content-automation-policy/v1",
   "generationTimezone": "America/Detroit",
   "generationStrategy": "earliest_gap_only",
-  "generationEnabled": false,
+  "generationEnabled": true,
   "maxReadingsGeneratedPerRun": 1,
   "autoPublish": false,
   "requireValidationPassed": true,

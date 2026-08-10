@@ -101,7 +101,12 @@
           <div id="selectedDayVerse" class="selected-day-verse" hidden>
             <span class="eyebrow">Verse of the day</span>
             <a id="selectedDayVerseLink" target="_blank" rel="noopener noreferrer">Loading selection…</a>
+            <blockquote id="selectedDayVerseText" hidden></blockquote>
             <p id="selectedDayVerseStatus" class="muted">Checking saved study metadata.</p>
+            <details id="selectedDayVerseNoticeDisclosure" class="selected-day-esv-notice" hidden>
+              <summary>ESV copyright notice</summary>
+              <p id="selectedDayVerseNotice"></p>
+            </details>
           </div>
           <button id="openSelectedReading" class="primary-button" type="button">Open selected reading</button>
         </section>
@@ -110,7 +115,7 @@
           <div>
             <p class="eyebrow">Local privacy</p>
             <h2 id="storageHeading">Downloaded data</h2>
-            <p class="muted">The app can prepare seven private commentary records and comment drafts for offline use. ESV Scripture stays network-only and is refreshed from the provider whenever a reading opens.</p>
+            <p class="muted">The app keeps a seven-day private study snapshot and warms today plus tomorrow first. ESV Scripture stays out of persistent storage; those two readings may remain only in session memory.</p>
             <p id="offlinePackStatus" class="muted" aria-live="polite">Offline pack has not been prepared yet.</p>
           </div>
           <div class="storage-actions">

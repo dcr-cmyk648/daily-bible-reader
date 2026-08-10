@@ -1,0 +1,6 @@
+interface:
+  display_name: "Draft Daily Commentary"
+  short_description: "Prepare one validated private study draft"
+  default_prompt: "Use $draft-daily-commentary to prepare the one reading named by the validated work order."
+policy:
+  allow_implicit_invocation: false

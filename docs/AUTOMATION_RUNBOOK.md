@@ -1,8 +1,8 @@
 # Content automation runbook
 
-Status: deterministic local foundation implemented; no recurring task, private Drive staging area, generation run, or publication automation has been enabled.
+Status: deterministic local foundation and one-reading commentary handoff implemented; no recurring task, private Drive staging area, real generation run, or publication automation has been enabled.
 
-The first automation layer is deliberately read-only. It inspects versioned metadata, measures consecutive draft and published buffers, and selects at most one earliest next action. It never opens commentary bodies, invokes a model, writes Drive, changes the live manifest, or deploys the reader.
+The automation controller is deliberately read-only. It inspects versioned metadata, measures consecutive draft and published buffers, and selects at most one earliest next action. When—and only when—a private policy explicitly enables generation, it can emit a schema-validated one-reading work order for the repo-local `$draft-daily-commentary` skill. Neither command opens commentary bodies, invokes a model, writes Drive, changes the live manifest, or deploys the reader.
 
 ## Why use a Codex scheduled task
 
@@ -16,6 +16,9 @@ Use an isolated worktree for the eventual scheduled task. The active repository 
 - `content-staging-index/v1` records only staging metadata: reading/day identity, state, private artifact reference, workflow/model/source-set versions, review state, hashes, validation result codes, prior hashes, and limitations.
 - `content-live-index/v1` records only the metadata needed to prove a reading is live: reading/day identity, publication and review status, live/manifest hashes, manifest presence, and validation state.
 - `content-readiness-report/v1` is the output. It contains consecutive horizons and one action; it contains no commentary, ESV wording, source extracts, credentials, identities, comments, or Google resource IDs.
+- `commentary-work-order/v1` is the scheduler-to-worker packet. It contains the exact plan entry, limited prior-day context IDs, required deliverables, workflow-document paths, and hard guards for one ignored unreviewed draft. Its ID is stable across retries of the same reading/reason.
+
+The tracked example policy deliberately has `generationEnabled: false`. Status remains available in that state; work-order issuance fails closed. Only a private automation policy may enable real generation after the recurring workflow and its authorized reading range are approved.
 
 Private working copies belong under ignored `private-content/automation/`. A future Drive staging index may use the same schemas, but creating the folder/files in Drive is a separate external action.
 
@@ -35,6 +38,19 @@ node scripts/content-automation.mjs status \
 
 For a real local run, substitute the canonical active plan plus ignored policy/staging/live metadata paths. Never point the command at a public build directory. The command validates all three inputs, fails closed on duplicate/mismatched plan identities, and validates its report before printing it.
 
+When the report selects `generate_or_repair_one`, the main scheduled task may request a work packet with the same arguments:
+
+```sh
+node scripts/content-automation.mjs work-order \
+  --plan <active-plan.json> \
+  --app-config <app-config.json> \
+  --policy <private-enabled-policy.json> \
+  --staging-index <private-staging-index.json> \
+  --live-index <private-live-index.json>
+```
+
+The packet explicitly names `$draft-daily-commentary`. The skill works only in `private-content/automation/staging/<readingId>/`, prepares commentary, synthesis, registry/coverage, and validation artifacts, and leaves them `unreviewed`. It cannot publish or select a second reading.
+
 ## Decision rules
 
 1. Count only consecutive readings from the current shared Detroit plan day. Later work never hides an earlier gap.
@@ -52,12 +68,12 @@ The active bridge's legacy accepted studies still use `in_review` metadata in Dr
 
 When Dustin explicitly enables the recurring task:
 
-1. Reconcile and commit the separate Matthew Henry pipeline first.
-2. Create ignored real policy, staging-index, and live-index files; validate them without generating content.
-3. Test `prompts/daily-study-scheduled-task.md` manually against an already completed reading in dry-run mode.
-4. Create a desktop scheduled task in an isolated worktree, provisionally daily at 5:00 a.m. `America/Detroit`.
+1. Create ignored real policy, staging-index, and live-index files; validate them without generating content.
+2. Test status and work-order issuance against fabricated data, then dry-run the saved prompt against an already completed reading without writing a replacement.
+3. In a dedicated clean automation checkout or isolated task worktree, verify that private metadata is available from the configured canonical source; do not assume ignored files from another worktree exist.
+4. Create a desktop scheduled task, provisionally daily at 5:00 a.m. `America/Detroit`, and explicitly invoke `$draft-daily-commentary` in its prompt.
 5. Give it repository and web-research access only. Do not give deployment, Apps Script, Sheet, comment, ESV-key, or live-manifest write authority.
-6. Review the first five run reports manually. A run may prepare one ignored draft; it may not publish it.
+6. Enable `generationEnabled` only in the private policy after the dry run is accepted. Review the first five run reports manually. A run may prepare one ignored draft; it may not publish it.
 7. Create a separate phone-initiated approval/publication workflow only after the draft lane has been reliable.
 
 If the Mac may be asleep, the task can miss its scheduled time. The in-reader readiness warning remains the independent signal that the content buffer needs attention; a scheduled task is operational convenience, not a runtime dependency.

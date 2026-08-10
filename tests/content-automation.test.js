@@ -69,7 +69,8 @@ test("automation fixtures and generated report validate against versioned schema
     policy: json("schemas/content-automation-policy.schema.json"),
     staging: json("schemas/content-staging-index.schema.json"),
     live: json("schemas/content-live-index.schema.json"),
-    report: json("schemas/content-readiness-report.schema.json")
+    report: json("schemas/content-readiness-report.schema.json"),
+    workOrder: json("schemas/commentary-work-order.schema.json")
   };
   assertSchemaValid(base.plan, schemas.plan, {
     label: "Fabricated automation plan",
@@ -185,6 +186,41 @@ test("unsafe automation policy changes fail closed", async () => {
   assert.throws(() => evaluateContentAutomation(wrongZone, {today: "2026-08-10"}), /timezones must match/);
 });
 
+test("a validated one-reading work order is stable and carries the complete schedule unit", async () => {
+  const {buildCommentaryWorkOrder, evaluateContentAutomation} = await automationModule;
+  const {assertSchemaValid} = await schemaModule;
+  const input = clone(base);
+  input.policy.generationEnabled = true;
+  const report = evaluateContentAutomation(input, {
+    today: "2026-08-10",
+    evaluatedAt: "2026-08-10T10:00:00.000Z"
+  });
+  const workOrder = buildCommentaryWorkOrder({plan: input.plan, policy: input.policy, report});
+  assertSchemaValid(workOrder, json("schemas/commentary-work-order.schema.json"), {
+    label: "Fabricated commentary work order",
+    externalSchemas: {"reading.schema.json": json("schemas/reading.schema.json")}
+  });
+  assert.equal(workOrder.reading.readingId, "TST-003");
+  assert.equal(workOrder.reading.passages[0].chapter, 3);
+  assert.equal(workOrder.context.immediatePreviousReadingId, "TST-002");
+  assert.equal(workOrder.pipeline.skillName, "draft-daily-commentary");
+  assert.equal(workOrder.guards.maxReadings, 1);
+  assert.equal(workOrder.guards.autoPublish, false);
+  assert.equal(workOrder.guards.scriptureTextAllowed, false);
+
+  const laterReport = {...report, evaluatedAt: "2026-08-10T11:00:00.000Z"};
+  const retry = buildCommentaryWorkOrder({plan: input.plan, policy: input.policy, report: laterReport});
+  assert.equal(retry.workOrderId, workOrder.workOrderId);
+});
+
+test("the work-order gate refuses generation until a private policy explicitly enables it", async () => {
+  const {buildCommentaryWorkOrder, evaluateContentAutomation} = await automationModule;
+  const input = clone(base);
+  const report = evaluateContentAutomation(input, {today: "2026-08-10"});
+  assert.throws(() => buildCommentaryWorkOrder({plan: input.plan, policy: input.policy, report}),
+    /generation is disabled/);
+});
+
 test("duplicate staging records fail rather than producing an ambiguous action", async () => {
   const {evaluateContentAutomation} = await automationModule;
   const input = clone(base);
@@ -219,4 +255,33 @@ test("the CLI is read-only and emits one machine-readable next action", () => {
   assert.equal(report.nextAction.readingId, "TST-003");
   const source = fs.readFileSync(path.join(root, "scripts/content-automation.mjs"), "utf8");
   assert.doesNotMatch(source, /writeFile|appendFile|unlink|rmSync|fetch\s*\(|DriveApp|SpreadsheetApp/);
+});
+
+test("the CLI can hand one validated work order to the scheduled commentary skill", () => {
+  const commonArgs = [
+    "--plan", "fixtures/automation/plan.json",
+    "--app-config", "fixtures/automation/app-config.json",
+    "--staging-index", "fixtures/automation/staging-index.json",
+    "--live-index", "fixtures/automation/live-index.json",
+    "--today", "2026-08-10",
+    "--compact"
+  ];
+  const enabled = spawnSync(process.execPath, [
+    "scripts/content-automation.mjs", "work-order",
+    "--policy", "fixtures/automation/policy-enabled.json",
+    ...commonArgs
+  ], {cwd: root, encoding: "utf8"});
+  assert.equal(enabled.status, 0, enabled.stderr);
+  const workOrder = JSON.parse(enabled.stdout);
+  assert.equal(workOrder.schemaVersion, "commentary-work-order/v1");
+  assert.equal(workOrder.reading.readingId, "TST-003");
+  assert.equal(workOrder.pipeline.skillName, "draft-daily-commentary");
+
+  const disabled = spawnSync(process.execPath, [
+    "scripts/content-automation.mjs", "work-order",
+    "--policy", "config/content-automation.example.json",
+    ...commonArgs
+  ], {cwd: root, encoding: "utf8"});
+  assert.notEqual(disabled.status, 0);
+  assert.match(disabled.stderr, /generation is disabled/);
 });

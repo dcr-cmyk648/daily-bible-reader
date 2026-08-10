@@ -1,3 +1,5 @@
+import {createHash} from "node:crypto";
+
 const HASH_PATTERN = /^[a-f0-9]{64}$/;
 const CIVIL_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 const DRAFT_STAGES = new Set(["drafted", "ready_for_review", "approved", "published"]);
@@ -57,6 +59,7 @@ export function validateAutomationPolicy(policy) {
   assert(policy.schemaVersion === "content-automation-policy/v1", "Unsupported automation policy version.");
   validateTimeZone(policy.generationTimezone);
   assert(policy.generationStrategy === "earliest_gap_only", "Only earliest_gap_only generation is supported.");
+  assert(typeof policy.generationEnabled === "boolean", "generationEnabled must be explicit.");
   assert(policy.maxReadingsGeneratedPerRun === 1, "Automation may select at most one reading per run.");
   assert(policy.autoPublish === false, "Initial automation must never auto-publish.");
   assert(policy.requireValidationPassed === true, "Automation must require passed validation.");
@@ -69,6 +72,80 @@ export function validateAutomationPolicy(policy) {
   assert(policy.publishedBuffer.allowedReviewStatuses.every((status) => status === "approved"),
     "Published readiness requires explicit approval.");
   return policy;
+}
+
+function stableWorkOrderId(planVersion, readingId, reasonCode) {
+  const digest = createHash("sha256")
+    .update(JSON.stringify({planVersion, readingId, reasonCode, pipelineVersion: "daily-commentary-generation/v1"}))
+    .digest("hex");
+  return `CWO-${digest.slice(0, 24)}`;
+}
+
+export function buildCommentaryWorkOrder(input) {
+  assert(isObject(input), "Work-order input is required.");
+  const {plan, policy, report} = input;
+  validateAutomationPolicy(policy);
+  assert(policy.generationEnabled === true,
+    "Commentary generation is disabled; status may be inspected but no work order may be issued.");
+  const entries = orderedEntries(plan);
+  assert(isObject(report) && report.schemaVersion === "content-readiness-report/v1",
+    "A validated readiness report is required.");
+  assert(report.planVersion === plan.planVersion, "Readiness report planVersion does not match the active plan.");
+  assert(report.nextAction && report.nextAction.kind === "generate_or_repair_one",
+    "A commentary work order requires a generate_or_repair_one action.");
+  const entryIndex = entries.findIndex((entry) => entry.readingId === report.nextAction.readingId);
+  assert(entryIndex >= 0, "The requested commentary reading is not in the active plan.");
+  const entry = entries[entryIndex];
+  const configuredContext = Array.isArray(entry.contextReadingIds) ? [...entry.contextReadingIds] : [];
+  configuredContext.forEach((readingId) =>
+    assert(entries.some((candidate) => candidate.readingId === readingId),
+      `Configured context reading ${readingId} is outside the active plan.`)
+  );
+  const workOrderId = stableWorkOrderId(plan.planVersion, entry.readingId, report.nextAction.reasonCode);
+  return {
+    schemaVersion: "commentary-work-order/v1",
+    workOrderId,
+    issuedAt: report.evaluatedAt,
+    effectiveDate: report.effectiveDate,
+    planVersion: plan.planVersion,
+    actionReasonCode: report.nextAction.reasonCode,
+    reading: JSON.parse(JSON.stringify(entry)),
+    context: {
+      immediatePreviousReadingId: entryIndex > 0 ? entries[entryIndex - 1].readingId : null,
+      configuredReadingIds: configuredContext
+    },
+    pipeline: {
+      skillName: "draft-daily-commentary",
+      pipelineVersion: "daily-commentary-generation/v1",
+      workflowDocuments: [
+        "docs/COMMENTARY_WORKFLOW.md",
+        "docs/EDITORIAL_STANCE.md",
+        "docs/CONTENT_AND_RIGHTS.md",
+        "docs/SECURITY.md",
+        "docs/MATTHEW_HENRY_PIPELINE.md"
+      ],
+      foundationalSourceLane: "matthew_henry_when_exact_reviewed_atoms_are_available"
+    },
+    deliverables: [
+      "dailyIntroduction",
+      "commentarySummary",
+      "verseOfTheDayReference",
+      "practicalTakeaway",
+      "comprehensiveSynthesis",
+      "sourceRegistryUpdates",
+      "coverageReport",
+      "commentaryMetadata",
+      "validationReport"
+    ],
+    guards: {
+      maxReadings: 1,
+      privateIgnoredStagingOnly: true,
+      autoPublish: false,
+      requiredReviewStatus: "unreviewed",
+      scriptureTextAllowed: false,
+      runtimeAiAllowed: false
+    }
+  };
 }
 
 export function civilDateInTimeZone(dateInput, timeZone) {

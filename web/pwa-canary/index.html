@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-pwa-release="644cc0275a7264c0">
+<html lang="en" data-pwa-release="604dfc89f63ca97b">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -12,7 +12,7 @@
     <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon-180.png">
     <link rel="icon" type="image/png" sizes="192x192" href="assets/bible-reader-icon-192.png">
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="../releases/16d564a50f763ab3/styles.css" integrity="sha384-yUIiPKsxikHjGW7a7tyXp+xohXxfk0RZ/cqrmgKS92mK3kbt+mClQ+URYEmecsnD" crossorigin="anonymous">
+    <link rel="stylesheet" href="../releases/0c8367a2904c40b7/styles.css" integrity="sha384-hQdxhrFqprbw5hO6dHP5VnzZmm7PBnWv/d6MzjrX6RVLFKifqR9shfP45ogwucNq" crossorigin="anonymous">
   </head>
   <body>
     <a id="skipLink" class="skip-link" href="#calendarHeading">Skip to the calendar</a>
@@ -107,7 +107,12 @@
           <div id="selectedDayVerse" class="selected-day-verse" hidden>
             <span class="eyebrow">Verse of the day</span>
             <a id="selectedDayVerseLink" target="_blank" rel="noopener noreferrer">Loading selection…</a>
+            <blockquote id="selectedDayVerseText" hidden></blockquote>
             <p id="selectedDayVerseStatus" class="muted">Checking saved study metadata.</p>
+            <details id="selectedDayVerseNoticeDisclosure" class="selected-day-esv-notice" hidden>
+              <summary>ESV copyright notice</summary>
+              <p id="selectedDayVerseNotice"></p>
+            </details>
           </div>
           <button id="openSelectedReading" class="primary-button" type="button">Open selected reading</button>
         </section>
@@ -116,7 +121,7 @@
           <div>
             <p class="eyebrow">Local privacy</p>
             <h2 id="storageHeading">Downloaded data</h2>
-            <p class="muted">The app can prepare seven private commentary records and comment drafts for offline use. ESV Scripture stays network-only and is refreshed from the provider whenever a reading opens.</p>
+            <p class="muted">The app keeps a seven-day private study snapshot and warms today plus tomorrow first. ESV Scripture stays out of persistent storage; those two readings may remain only in session memory.</p>
             <p id="offlinePackStatus" class="muted" aria-live="polite">Offline pack has not been prepared yet.</p>
           </div>
           <div class="storage-actions">
@@ -172,6 +177,13 @@
               <p class="intro-day-note">A scheduled book opener has no Scripture chapter. Its book overview takes the text-page position, and chapter 1 follows on the next plan day.</p>
               <div id="bookIntroductionContent" class="prose-block skeleton-text">Loading book introduction…</div>
               <div id="bookIntroductionSources" class="main-citations"></div>
+              <aside id="bookCommentaryResource" class="book-commentary-resource" aria-labelledby="bookCommentaryHeading" hidden>
+                <p id="bookCommentaryLabel" class="eyebrow">AI-generated summary of Matthew Henry's commentary</p>
+                <h3 id="bookCommentaryHeading">Matthew Henry’s book introduction</h3>
+                <p id="bookCommentaryBlurb"></p>
+                <p id="bookCommentaryReference" class="commentary-resource-reference"></p>
+                <p id="bookCommentaryScope" class="muted"></p>
+              </aside>
             </section>
 
             <section id="scriptureSection" class="content-section scripture-section" aria-labelledby="scriptureHeading" hidden>
@@ -186,7 +198,7 @@
                 </div>
               </div>
               <div id="scriptureState" class="inline-state" role="status" aria-live="polite">Scripture loads when the chapter opens.</div>
-              <p id="highlightHelp" class="highlight-help" hidden>Tap a verse to see or change Dustin and Shane’s shared highlights.</p>
+              <p id="highlightHelp" class="highlight-help" hidden>Tap a verse for its precomputed commentary and shared highlights.</p>
               <div id="scriptureContent" class="scripture-content"></div>
               <div class="esv-attribution" aria-label="ESV copyright and use notice">
                 <strong>ESV</strong>
@@ -291,14 +303,35 @@
         </section>
       </section>
 
-      <aside id="highlightPopover" class="highlight-popover" role="dialog" aria-labelledby="highlightPopoverReference" hidden>
+      <aside id="highlightPopover" class="highlight-popover" role="dialog" aria-modal="false" aria-labelledby="highlightPopoverReference" hidden>
         <div class="highlight-popover-heading">
           <div>
-            <p class="eyebrow">Shared verse highlight</p>
+            <p class="eyebrow">Verse details</p>
             <h2 id="highlightPopoverReference">Selected verse</h2>
           </div>
-          <button id="highlightClose" type="button" aria-label="Close verse highlight details">Close</button>
+          <button id="highlightClose" type="button" aria-label="Close verse details">Close</button>
         </div>
+        <section id="verseCommentarySection" class="verse-commentary-card" aria-labelledby="verseCommentaryLabel">
+          <p id="verseCommentaryLabel" class="verse-commentary-label">Matthew Henry — condensed paraphrase</p>
+          <p id="verseCommentaryBlurb" class="verse-commentary-blurb"></p>
+          <dl id="verseCommentaryDetails" class="verse-commentary-details">
+            <div>
+              <dt>From</dt>
+              <dd id="verseCommentaryReference"></dd>
+            </div>
+            <div id="verseCommentaryScopeRow" hidden>
+              <dt>Scope</dt>
+              <dd id="verseCommentaryScope"></dd>
+            </div>
+          </dl>
+          <details id="verseCommentarySource" class="verse-commentary-source" hidden>
+            <summary>Read Henry</summary>
+            <p id="verseCommentarySourceNote" class="muted"></p>
+            <div id="verseCommentarySourceAtoms" class="verse-commentary-source-atoms"></div>
+          </details>
+          <p id="verseCommentaryUnavailable" class="inline-state" data-state="info" hidden>Matthew Henry commentary is unavailable for this verse.</p>
+        </section>
+        <p class="eyebrow highlight-sharing-label">Shared verse highlights</p>
         <div id="highlightPopoverList" class="highlight-popover-list"></div>
         <p id="highlightStatus" class="muted" role="status" aria-live="polite"></p>
         <button id="highlightAction" class="primary-button" type="button">Highlight this verse</button>
@@ -309,6 +342,6 @@
       <p>Private two-person bridge · Seven scheduled days · No runtime AI</p>
     </footer>
 
-    <script src="assets/pwa-client.644cc0275a7264c0.js"></script>
+    <script src="assets/pwa-client.604dfc89f63ca97b.js"></script>
   </body>
 </html>

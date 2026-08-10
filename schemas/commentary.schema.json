@@ -148,7 +148,7 @@
         "modelOrTool": {"type": ["string", "null"], "maxLength": 300},
         "promptOrWorkflowVersion": {"type": "string", "minLength": 1, "maxLength": 100},
         "sourceSetVersion": {"type": "string", "minLength": 1, "maxLength": 100},
-        "humanReviewStatus": {"enum": ["not_started", "in_review", "approved", "changes_requested"]},
+        "humanReviewStatus": {"enum": ["not_started", "unreviewed", "in_review", "approved", "changes_requested"]},
         "contentHash": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
         "priorVersions": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
         "knownLimitations": {"type": "array", "items": {"type": "string", "maxLength": 4000}}

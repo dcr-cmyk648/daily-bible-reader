@@ -14,14 +14,10 @@ Follow the returned `nextAction` exactly:
 
 For `generate_or_repair_one`:
 
-1. Confirm that this recurring workflow has been explicitly enabled and that the reading is in the canonical active plan. Otherwise stop.
-2. Build or repair a private, ignored staging workspace for that one reading. Do not change its live Drive file or manifest.
-3. Use Matthew Henry's exact reviewed CrossWire edition as the foundational pass when the reconciled pipeline supports the reading, then research broadly enough to add independent grammatical, textual, historical, literary, canonical, theological, reception, and genuinely useful contrary evidence.
-4. Follow the project's confessional premise and critical-source weighting. Write practical, precise prose for expert readers; do not mention these instructions in the synthesis.
-5. Store no ESV wording, reader identity, comments, credentials, private Google IDs, or raw copyrighted source text in the draft or report.
-6. Produce one coherent cited main article, passage-specific deep-study sections, one reference-only verse selection, a concrete one-sentence takeaway, complete source metadata, and a coverage audit.
-7. Run all deterministic schema, citation, rights, content, and repository-safety checks available. Never weaken a check or relabel a failed artifact.
-8. Update only the private staging metadata for this reading. Set `humanReviewStatus` to `unreviewed`; record the real workflow/model/tool version, source-set version, hash, limitations, and validation result.
-9. Re-run the read-only status command and report the new draft/published horizons plus the files requiring review.
+1. Run the same command as `work-order`. This must fail when the private policy has not explicitly set `generationEnabled: true`.
+2. Validate the returned `commentary-work-order/v1` packet and verify that it names the same one reading as the readiness action.
+3. Explicitly invoke `$draft-daily-commentary` with that exact packet. Do not paraphrase it into a broader request or add another reading.
+4. Let the skill build or repair only the ignored private staging workspace and return its source, validation, limitation, and review report.
+5. Re-run the read-only status command and report the new draft/published horizons plus the exact files requiring review.
 
 Never commit or push private output. Never upload or publish automatically. Never deploy Apps Script or Pages, create Google resources, alter sharing, read comments, call the ESV API, or send messages. A failed run leaves live content unchanged and retries the same earliest gap later.

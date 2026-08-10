@@ -505,7 +505,7 @@ test("content readiness requires consecutive reviewed studies and exposes the fi
   assert.match(source, /contentDiagnosticsArePrivateToOwner/);
 });
 
-test("selected calendar days show a validated reference without storing ESV wording", () => {
+test("selected calendar days show a validated reference and may render session-memory ESV", () => {
   const entry = {
     readingId: "CC-Y3Q4-D055",
     kind: "chapter",
@@ -516,9 +516,50 @@ test("selected calendar days show a validated reference without storing ESV word
   assert.equal(app.selectedDayVerseSelection({commentary: {readingId: entry.readingId, verseOfTheDay: {bookId: "MIC", chapter: 6, verse: 1}}}, entry), null);
   assert.equal(app.selectedDayVerseSelection({commentary: {readingId: "CC-Y3Q4-D054", verseOfTheDay: {bookId: "MIC", chapter: 5, verse: 2}}}, entry), null);
   const html = fs.readFileSync(path.join(__dirname, "../app/frontend/index.html"), "utf8");
+  const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
   assert.match(html, /id="selectedDayVerse"/);
   assert.ok(html.indexOf('id="selectedDayVerse"') < html.indexOf('id="openSelectedReading"'));
-  assert.match(html, /The exact ESV wording appears after you open the reading|Checking saved study metadata/);
+  assert.match(html, /id="selectedDayVerseText"/);
+  assert.match(html, /id="selectedDayVerseNotice"/);
+  assert.match(source, /verseTextFromScripture\(scripture, selection\)/);
+  assert.match(source, /ESV · prefetched in memory for this session/);
+  assert.doesNotMatch(source, /The exact ESV wording appears after you open the reading/);
+});
+
+test("today and tomorrow are the only priority warm readings", () => {
+  const entries = [1, 2, 3, 4].map((dayIndex) => ({readingId: `TEST-${dayIndex}`, dayIndex, kind: "chapter"}));
+  const plan = {entries};
+  assert.deepEqual(app.priorityReadingEntries(plan, {status: "active", calendarDayIndex: 2}).map((entry) => entry.readingId), [
+    "TEST-2",
+    "TEST-3"
+  ]);
+  assert.deepEqual(app.priorityReadingEntries(plan, {status: "before_start", calendarDayIndex: -2}).map((entry) => entry.readingId), [
+    "TEST-1",
+    "TEST-2"
+  ]);
+  assert.deepEqual(app.priorityReadingEntries(plan, {status: "pilot_complete", calendarDayIndex: 5}), []);
+
+  const scripture = {
+    translation: "ESV",
+    passages: [{bookId: "MIC", chapter: 5, passage: "[1] First.\n\n[2] Selected verse."}]
+  };
+  assert.equal(app.verseTextFromScripture(scripture, {bookId: "MIC", chapter: 5, verse: 2}), "Selected verse.");
+  assert.equal(app.verseTextFromScripture(scripture, {bookId: "MIC", chapter: 6, verse: 2}), "");
+  const mock = {
+    isMock: true,
+    translation: "MOCK",
+    passages: [{bookId: "PRO", chapter: 31, verseStart: 10, verses: ["Fabricated ten.", "Fabricated eleven."]}]
+  };
+  assert.equal(app.verseTextFromScripture(mock, {bookId: "PRO", chapter: 31, verse: 11}), "Fabricated eleven.");
+
+  const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
+  assert.match(source, /const HOT_READING_COUNT = 2/);
+  assert.match(source, /scriptureMemoryByReadingId: new Map\(\)/);
+  assert.match(source, /async function warmPriorityWindow\(\)/);
+  assert.match(source, /state\.adapter\.getReadingPayloads/);
+  assert.match(source, /state\.adapter\.listComments/);
+  assert.match(source, /getScriptureForReading\(entry\)/);
+  assert.match(source, /scriptureMemoryOnly: true/);
 });
 
 test("startup diagnostics are session-only and strip unapproved fields", () => {

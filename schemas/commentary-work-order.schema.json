@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daily-bible-reader.local/schemas/commentary-work-order.schema.json",
+  "title": "Single-reading commentary generation work order",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "workOrderId",
+    "issuedAt",
+    "effectiveDate",
+    "planVersion",
+    "actionReasonCode",
+    "reading",
+    "context",
+    "pipeline",
+    "deliverables",
+    "guards"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "commentary-work-order/v1"},
+    "workOrderId": {"type": "string", "pattern": "^CWO-[a-f0-9]{24}$"},
+    "issuedAt": {"type": "string", "format": "date-time"},
+    "effectiveDate": {"type": "string", "format": "date"},
+    "planVersion": {"type": "string", "minLength": 1, "maxLength": 80},
+    "actionReasonCode": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{1,99}$"},
+    "reading": {"$ref": "reading.schema.json"},
+    "context": {
+      "type": "object",
+      "required": ["immediatePreviousReadingId", "configuredReadingIds"],
+      "properties": {
+        "immediatePreviousReadingId": {"type": ["string", "null"], "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{1,79}$"},
+        "configuredReadingIds": {
+          "type": "array",
+          "maxItems": 5,
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{1,79}$"}
+        }
+      },
+      "additionalProperties": false
+    },
+    "pipeline": {
+      "type": "object",
+      "required": ["skillName", "pipelineVersion", "workflowDocuments", "foundationalSourceLane"],
+      "properties": {
+        "skillName": {"const": "draft-daily-commentary"},
+        "pipelineVersion": {"const": "daily-commentary-generation/v1"},
+        "workflowDocuments": {
+          "const": [
+            "docs/COMMENTARY_WORKFLOW.md",
+            "docs/EDITORIAL_STANCE.md",
+            "docs/CONTENT_AND_RIGHTS.md",
+            "docs/SECURITY.md",
+            "docs/MATTHEW_HENRY_PIPELINE.md"
+          ]
+        },
+        "foundationalSourceLane": {"const": "matthew_henry_when_exact_reviewed_atoms_are_available"}
+      },
+      "additionalProperties": false
+    },
+    "deliverables": {
+      "const": [
+        "dailyIntroduction",
+        "commentarySummary",
+        "verseOfTheDayReference",
+        "practicalTakeaway",
+        "comprehensiveSynthesis",
+        "sourceRegistryUpdates",
+        "coverageReport",
+        "commentaryMetadata",
+        "validationReport"
+      ]
+    },
+    "guards": {
+      "type": "object",
+      "required": [
+        "maxReadings",
+        "privateIgnoredStagingOnly",
+        "autoPublish",
+        "requiredReviewStatus",
+        "scriptureTextAllowed",
+        "runtimeAiAllowed"
+      ],
+      "properties": {
+        "maxReadings": {"const": 1},
+        "privateIgnoredStagingOnly": {"const": true},
+        "autoPublish": {"const": false},
+        "requiredReviewStatus": {"const": "unreviewed"},
+        "scriptureTextAllowed": {"const": false},
+        "runtimeAiAllowed": {"const": false}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

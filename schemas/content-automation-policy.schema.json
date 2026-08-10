@@ -7,6 +7,7 @@
     "schemaVersion",
     "generationTimezone",
     "generationStrategy",
+    "generationEnabled",
     "maxReadingsGeneratedPerRun",
     "autoPublish",
     "requireValidationPassed",
@@ -23,6 +24,7 @@
       "pattern": "^[A-Za-z_]+(?:/[A-Za-z0-9_+.-]+)+$"
     },
     "generationStrategy": {"const": "earliest_gap_only"},
+    "generationEnabled": {"type": "boolean"},
     "maxReadingsGeneratedPerRun": {"const": 1},
     "autoPublish": {"const": false},
     "requireValidationPassed": {"const": true},

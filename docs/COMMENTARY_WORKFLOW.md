@@ -2,6 +2,8 @@
 
 The synthesis is a prepublication artifact, never a runtime AI response. Work one reading at a time. The temporary Celebration bridge permits only `CC-Y3Q4-D054` through `CC-Y3Q4-D060`; only D054–D056 currently contain substantive main syntheses. D057–D060 remain main-commentary placeholders until individually requested. The separately requested rolling D056–D058 Matthew Henry verse window is an ignored review aid, not a replacement synthesis or publication; it does not authorize D059 or D060 generation.
 
+Scheduled preparation uses the repo-local `$draft-daily-commentary` skill only after `scripts/content-automation.mjs work-order` emits a validated `commentary-work-order/v1` packet from an explicitly enabled private policy. The packet authorizes one ignored `unreviewed` staging draft and nothing else. The status evaluator, work-order generator, and skill are separate gates; none can publish.
+
 ## 1. Create the reading workspace
 
 Instantiate the reading metadata from `commentary.schema.json`. Record reading ID, schema/workflow version, planned categories, generation/tool/model metadata if applicable, and human review status `unreviewed`. Do not copy ESV text into the workspace.

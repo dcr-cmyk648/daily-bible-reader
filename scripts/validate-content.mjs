@@ -160,10 +160,10 @@ async function main() {
     "Local adapter must clearly mark fabricated Scripture.");
 
   const policy = providerPolicy.validatePolicy(policies.policies[0]);
-  assert(policy.policyVersion === "esv-api-2026-08-08-v3-network-only" && policy.maxCacheAgeSeconds === 0,
+  assert(policy.policyVersion === "esv-api-2026-08-08-v4-session-hot-window" && policy.maxCacheAgeSeconds === 0,
     "Verified network-only provider policy version/age.");
   assert(policy.maxTotalCachedVerses === 500 && policy.maxBookFraction === 0.5, "ESV cache maxima.");
-  assert(policy.offlinePersistenceAllowed === false && policy.refreshBehavior === "network_every_open", "Bridge ESV must stay network-only.");
+  assert(policy.offlinePersistenceAllowed === false && policy.refreshBehavior === "session_hot_window", "Bridge ESV must stay session-memory-only.");
   assert(policy.downloadAllowed === false && policy.bulkCopyAllowed === false, "ESV download/bulk-copy controls.");
   assert(policy.requiredAttribution.notice.includes("Users may not copy or download more than 500 verses"), "Required ESV notice.");
 

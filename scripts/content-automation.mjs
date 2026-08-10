@@ -4,17 +4,18 @@ import {readFile} from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import {assertSchemaValid} from "./lib/schema-validator.mjs";
-import {evaluateContentAutomation} from "./lib/content-automation.mjs";
+import {buildCommentaryWorkOrder, evaluateContentAutomation} from "./lib/content-automation.mjs";
 
 function usage() {
   return [
     "Usage:",
-    "  node scripts/content-automation.mjs status \\",
+    "  node scripts/content-automation.mjs <status|work-order> \\",
     "    --plan <plan.json> --app-config <app-config.json> \\",
     "    --policy <policy.json> --staging-index <staging-index.json> \\",
     "    --live-index <live-index.json> [--today YYYY-MM-DD] [--compact]",
     "",
-    "This command is read-only. It selects at most one earliest action and never generates or publishes content."
+    "Both commands are read-only. status selects at most one earliest action.",
+    "work-order emits one schema-validated instruction packet only when generationEnabled is true; neither command generates or publishes content."
   ].join("\n");
 }
 
@@ -22,7 +23,7 @@ function parseArgs(argv) {
   const args = [...argv];
   const command = args.shift();
   if (command === "--help" || command === "-h") return {help: true};
-  if (command !== "status") throw new Error(`Unsupported command ${command || "(missing)"}.\n${usage()}`);
+  if (!["status", "work-order"].includes(command)) throw new Error(`Unsupported command ${command || "(missing)"}.\n${usage()}`);
   const values = {command, compact: false};
   while (args.length) {
     const name = args.shift();
@@ -53,7 +54,8 @@ async function main() {
     process.stdout.write(`${usage()}\n`);
     return;
   }
-  const [plan, appConfig, policy, stagingIndex, liveIndex, policySchema, stagingSchema, liveSchema, reportSchema] =
+  const [plan, appConfig, policy, stagingIndex, liveIndex, policySchema, stagingSchema, liveSchema, reportSchema,
+    workOrderSchema, readingSchema] =
     await Promise.all([
       loadJson(args.plan),
       loadJson(args.app_config),
@@ -63,7 +65,9 @@ async function main() {
       loadJson("schemas/content-automation-policy.schema.json"),
       loadJson("schemas/content-staging-index.schema.json"),
       loadJson("schemas/content-live-index.schema.json"),
-      loadJson("schemas/content-readiness-report.schema.json")
+      loadJson("schemas/content-readiness-report.schema.json"),
+      loadJson("schemas/commentary-work-order.schema.json"),
+      loadJson("schemas/reading.schema.json")
     ]);
   assertSchemaValid(policy, policySchema, {label: "Automation policy"});
   assertSchemaValid(stagingIndex, stagingSchema, {label: "Staging index"});
@@ -72,7 +76,16 @@ async function main() {
     today: args.today
   });
   assertSchemaValid(report, reportSchema, {label: "Readiness report"});
-  process.stdout.write(`${JSON.stringify(report, null, args.compact ? 0 : 2)}\n`);
+  if (args.command === "status") {
+    process.stdout.write(`${JSON.stringify(report, null, args.compact ? 0 : 2)}\n`);
+    return;
+  }
+  const workOrder = buildCommentaryWorkOrder({plan, policy, report});
+  assertSchemaValid(workOrder, workOrderSchema, {
+    label: "Commentary work order",
+    externalSchemas: {"reading.schema.json": readingSchema}
+  });
+  process.stdout.write(`${JSON.stringify(workOrder, null, args.compact ? 0 : 2)}\n`);
 }
 
 main().catch((error) => {

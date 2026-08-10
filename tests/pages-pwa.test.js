@@ -135,7 +135,7 @@ test("google.script.run compatibility runners isolate concurrent response handle
   const {api} = harness((form, emit) => {
     const sent = fields(form);
     const delay = sent.method === "getBootstrapData" ? 8 : 1;
-    setTimeout(() => emit("https://abc.script.googleusercontent.com", {
+    setTimeout(() => emit("https://n-example-app-script.googleusercontent.com", {
       channel: "dbr-rpc-response/v1",
       requestId: sent.request_id,
       responseNonce: sent.response_nonce,
@@ -150,6 +150,16 @@ test("google.script.run compatibility runners isolate concurrent response handle
     new Promise((resolve) => runner.withSuccessHandler((value) => { values.push(`b:${value}`); resolve(); }).listComments("b-long-reader-code", "reading"))
   ]);
   assert.deepEqual(values.sort(), ["a:getBootstrapData", "b:listComments"]);
+});
+
+test("form bridge accepts the Apps Script sandbox host without trusting lookalikes", () => {
+  const {api} = harness();
+  assert.equal(api.allowedResponseOrigin("https://script.google.com"), true);
+  assert.equal(api.allowedResponseOrigin("https://script.googleusercontent.com"), true);
+  assert.equal(api.allowedResponseOrigin("https://n-7q3wu4vxxyue6hjyaynkgp73l4jlih4o3l3nony-0lu-script.googleusercontent.com"), true);
+  assert.equal(api.allowedResponseOrigin("https://abc.script.googleusercontent.com"), false);
+  assert.equal(api.allowedResponseOrigin("https://n-example-script.googleusercontent.com.evil.test"), false);
+  assert.equal(api.allowedResponseOrigin("http://n-example-script.googleusercontent.com"), false);
 });
 
 test("form bridge propagates a bounded public transport error", async () => {

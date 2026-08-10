@@ -44,7 +44,7 @@ This design intentionally does not authenticate Dustin or Shane through Google o
 - HTTPS form POST only; reader code never appears in query parameters.
 - One exact Pages response origin compiled server-side; browser-supplied origin is not treated as authentication.
 - Random 128-bit request ID and 192-bit response nonce per call.
-- Browser accepts responses only from `script.google.com` or an HTTPS `script.googleusercontent.com` host and only for a live ID/nonce pair.
+- Browser accepts responses only from `script.google.com`, the direct `script.googleusercontent.com` host, or Google's generated `n-…-script.googleusercontent.com` Apps Script sandbox host, and only for a live ID/nonce pair.
 - Eleven explicit public methods with exact argument counts; no dynamic function lookup/evaluation from request text.
 - 150 KB request ceiling plus existing response/file/comment limits.
 - Global approximate request limit and per-token operation buckets.

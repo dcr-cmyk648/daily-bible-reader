@@ -103,6 +103,8 @@ test("production startup is late-load safe, bounded, and minified for iPhone Saf
   assert.match(buildScript, /target: "safari15"/);
   assert.match(buildScript, /Buffer\.byteLength\(html, "utf8"\)/);
   assert.doesNotMatch(buildScript, /MAX_PRODUCTION_HTML_BYTES/);
+  assert.match(buildScript, /replace\('<script src="app\.js"><\/script>', \(\) =>/);
+  assert.match(buildScript, /new Script\(inlineScripts\[0\]/);
 });
 
 test("frontend renders untrusted content without innerHTML sinks", () => {
@@ -157,6 +159,10 @@ test("Apps Script source uses user identity, configured IDs, locking, and no pay
   assert.match(code, /LockService\.getScriptLock\(\)/);
   assert.match(code, /PropertiesService\.getScriptProperties\(\)/);
   assert.match(code, /PropertiesService\.getUserProperties\(\)/);
+  assert.match(code, /function confirmReaderAccess\(readerCode\)/);
+  assert.match(code, /CacheService\.getUserCache\(\)/);
+  assert.match(code, /ttlSeconds:\s*30/);
+  assert.match(code, /\[manifestId, cached\.manifest\.appConfigFileId, cached\.manifest\.planFileId\]/);
   assert.match(code, /DBR_READER_ENROLLMENT/);
   assert.match(code, /readerCodeHash:\s*presentedReaderCodeHash/);
   assert.equal(/readerCode:\s*normalizedReaderCode/.test(code), false);
@@ -216,6 +222,16 @@ test("Apps Script accepts both legacy and current commentary metadata during mig
   assert.match(code, /DBR_COMMENTARY_SCHEMA_VERSIONS\.includes\(metadata\.schemaVersion\)/);
 });
 
+test("Apps Script batches the seven-day commentary window behind one authorization", () => {
+  const code = fs.readFileSync(path.join(__dirname, "../app/apps-script/Code.gs"), "utf8");
+  const batch = code.slice(code.indexOf("function getReadingPayloads"), code.indexOf("function dbrBuildReadingPayload_"));
+  assert.match(batch, /dbrAuthorizedContext_\(readerCode\)/);
+  assert.match(batch, /readingIds\.length > 7/);
+  assert.match(batch, /sourceRegistryFileId/);
+  assert.match(batch, /dbrBuildReadingPayload_\(privateState, registry, readingId\)/);
+  assert.equal((batch.match(/dbrReadPrivateState_/g) || []).length, 1);
+});
+
 test("frontend source contains no ESV key, alternate translation, or real passage payload", () => {
   const files = ["app/frontend/index.html", "app/frontend/app.js", "app/frontend/styles.css"];
   const source = files.map((file) => fs.readFileSync(path.join(__dirname, "..", file), "utf8")).join("\n");
@@ -245,11 +261,42 @@ test("private offline commentary expires and is plan-version scoped", () => {
   assert.equal(app.privateRecordIsFresh(record, now, "pilot-genesis-v1"), true);
   assert.equal(app.privateRecordIsFresh(record, now, "different-plan"), false);
   assert.equal(app.privateRecordIsFresh(record, Date.parse("2026-08-15T16:00:00Z"), "pilot-genesis-v1"), false);
+  const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
+  assert.match(source, /mock-private-draft/);
+  assert.match(source, /!record\.cacheContext && context === "apps-script"/);
+});
+
+test("cached bootstrap is time-limited and bound to the saved reader identity", () => {
+  const now = Date.parse("2026-08-08T16:00:00Z");
+  const record = {
+    readingId: "__app-bootstrap__",
+    schemaVersion: "bootstrap-cache/v1",
+    authorId: "dustin",
+    expiresAt: "2026-08-15T16:00:00Z",
+    payload: {session: {authorId: "dustin", displayName: "Dustin"}}
+  };
+  assert.equal(app.bootstrapRecordIsFresh(record, now, {authorId: "dustin"}), true);
+  assert.equal(app.bootstrapRecordIsFresh(record, now, {authorId: "shane"}), false);
+  assert.equal(app.bootstrapRecordIsFresh(record, Date.parse(record.expiresAt), {authorId: "dustin"}), false);
+});
+
+test("content readiness distinguishes a full study from a downloaded placeholder", () => {
+  assert.equal(app.readingContentIsPrepared({commentary: {
+    readingId: "CC-Y3Q4-D054",
+    publicationStatus: "draft"
+  }}), true);
+  assert.equal(app.readingContentIsPrepared({commentary: {
+    readingId: "CC-Y3Q4-D057",
+    publicationStatus: "placeholder"
+  }}), false);
+  assert.equal(app.readingContentIsPrepared(null), false);
+  const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
+  assert.match(source, /Preparation alert: \$\{consecutivePrepared\}\/\$\{preparationTarget\}/);
 });
 
 test("every production RPC accepts the reader code as its first argument while enrollment may satisfy it", () => {
   const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
-  ["getBootstrapData", "getReadingPayload", "getScripture", "listComments", "listCommentActivity", "submitCommentEvent", "forgetReaderEnrollment"].forEach((name) => {
+  ["getBootstrapData", "getReadingPayload", "getReadingPayloads", "getScripture", "listComments", "listCommentActivity", "submitCommentEvent", "forgetReaderEnrollment"].forEach((name) => {
     assert.match(source, new RegExp(`appsScriptRpc\\(\"${name}\", state\\.readerCode`));
   });
 });
@@ -382,14 +429,27 @@ test("calendar completion is batched and each opened reading background-syncs it
   assert.match(frontend, /state\.calendarParticipants/);
 });
 
-test("calendar refreshes shared completion before offline prefetch and whenever home becomes active", () => {
+test("confirmed access refreshes progress before a delayed batched offline preparation", () => {
   const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
-  const startup = source.slice(source.indexOf("async function startAuthorizedApplication()"), source.indexOf("function updateReaderCodeSubmitState()"));
-  assert.ok(startup.indexOf("await syncCalendarCompletion();") < startup.indexOf("prefetchOfflineWindow().catch"));
-  assert.match(source, /function showHome\(options\)[\s\S]*?syncCalendarCompletion\(\)\.catch/);
-  assert.match(source, /addEventListener\("pageshow"[\s\S]*?syncCalendarCompletion\(\)\.catch/);
-  assert.match(source, /addEventListener\("visibilitychange"[\s\S]*?visibilityState === "visible"[\s\S]*?syncCalendarCompletion\(\)\.catch/);
+  const startup = source.slice(source.indexOf("function startConfirmedBackgroundWork()"), source.indexOf("async function confirmServerAccess"));
+  assert.ok(startup.indexOf("syncCalendarCompletion().catch") < startup.indexOf("scheduleOfflinePrefetch();"));
+  assert.match(source, /getReadingPayloads: \(readingIds\) => appsScriptRpc\("getReadingPayloads"/);
+  assert.match(source, /state\.adapter\.getReadingPayloads\(readingIds\)/);
+  assert.match(source, /function scheduleOfflinePrefetch\(\)[\s\S]*?requestIdleCallback[\s\S]*?setTimeout/);
+  assert.match(source, /function showHome\(options\)[\s\S]*?resumeOnlineWork\(\)/);
+  assert.match(source, /addEventListener\("pageshow"[\s\S]*?resumeOnlineWork\(\)/);
+  assert.match(source, /addEventListener\("visibilitychange"[\s\S]*?visibilityState === "visible"[\s\S]*?resumeOnlineWork\(\)/);
   assert.match(source, /if \(state\.calendarSyncPromise\) return state\.calendarSyncPromise/);
+});
+
+test("cached calendar and commentary render before background authorization while writes stay gated", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
+  assert.match(source, /cachedBootstrapForCredential\(credential\)[\s\S]*?installBootstrap\(cached, \{cached: true\}\)[\s\S]*?confirmServerAccess/);
+  assert.match(source, /function serverCallsAllowed\(\)/);
+  assert.match(source, /async function flushOutbox\(\) \{\s*if \(!serverCallsAllowed\(\)\)/);
+  const cacheFlow = source.slice(source.indexOf("async function readingPayloadWithCache"), source.indexOf("async function loadScripture"));
+  assert.ok(cacheFlow.indexOf("cachedPrivatePayload(readingId)") < cacheFlow.indexOf("state.adapter.getReadingPayload(readingId)"));
+  assert.match(source, /clearPrivateDataAfterAccessFailure\(\)/);
 });
 
 test("calendar uses a compact monthly selector with two-reader dots and a date-specific action", () => {

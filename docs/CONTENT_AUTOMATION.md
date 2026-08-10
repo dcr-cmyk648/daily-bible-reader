@@ -1,6 +1,6 @@
 # Advance-content automation proposal
 
-Status: proposed, not enabled. Checked against the official OpenAI scheduled-tasks documentation on 2026-08-09: <https://learn.chatgpt.com/docs/automations?surface=app>.
+Status: generation scheduling remains proposed and not enabled. The first deterministic reader-side warning is implemented locally: after the seven-reading private batch is inspected, placeholders do not count and the UI warns when fewer than three consecutive substantive studies exist from the current plan day. Checked against the official OpenAI scheduled-tasks documentation on 2026-08-09: <https://learn.chatgpt.com/docs/automations?surface=app>.
 
 ## Recommendation
 

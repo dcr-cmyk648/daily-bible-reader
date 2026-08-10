@@ -7,7 +7,7 @@
 - The browser cannot choose identity, display name, timestamps, author ID, Drive IDs, Sheet ID, ESV reference, revision number, or redirect target.
 - Every private RPC repeats authorization. Errors reveal no private file names, IDs, emails, comment bodies, or provider response bodies.
 - Comments and Markdown are rendered as text/allowlisted elements, never arbitrary HTML.
-- The current ESV policy forbids persistent Scripture storage. Private content has a separate seven-day IndexedDB store, and no service worker caches either category.
+- The current ESV policy forbids persistent Scripture storage. Private content and a sanitized reader-bound bootstrap have a separate seven-day IndexedDB store, and no service worker caches either category.
 - The temporary owner-only phone setup Sheet may contain Shane's exact Google account and no other input. It must never contain API keys, reader codes or hashes, passwords, tokens, or Google file IDs.
 
 ## Threat model
@@ -22,7 +22,7 @@
 | Leaked ESV key | Script Properties only, never browser/log/build; rotate immediately and review provider usage | Script editors can access project configuration; do not grant friend script edit access |
 | Malicious comment/Markdown | length/type validation, control-character rejection, text-only DOM rendering, no raw HTML | Plain-text links are not automatically activated in the pilot |
 | Accidental Git publication | ignore rules, staged-content hook, safety scanner, code-only build inspection | Heuristic ESV detection cannot prove absence; human diff review remains required |
-| Browser persistence | Seven-day private-content ceiling, total ESV persistence refusal under the live policy, synthetic half-book/500-verse policy tests, plan-versioned private cache, body-free two-reader calendar-completion cache with sanitized IDs/display names only, no service worker, clear-data control, inspectable counts | Offline revocation is not instantaneous; completion reveals whether each of the two authorized readers has commented; browser/OS backups are outside application control; use device passcodes and clear site data on loss/revocation |
+| Browser persistence | Seven-day private-content ceiling, reader-bound bootstrap record, separate mock/production cache contexts, writes gated on current server confirmation, explicit-denial purge, total ESV persistence refusal, plan-versioned reading/completion caches, no service worker, clear-data control, inspectable counts | Offline revocation is not instantaneous; anyone with an unlocked authorized device and its browser storage can read the saved copy; completion reveals whether either reader commented; browser/OS backups are outside application control; use device passcodes and clear site data on loss/revocation |
 | Comment collision/retry | script lock, append-only revisions, base revision, server timestamps, idempotent request ID | Conflicting edit is rejected and requires refresh/manual merge; a Sheet Editor can still alter rows outside the app |
 | Calendar activity inference | Server-derived author ID, maximum 42 plan-validated IDs, active-event materialization, body-free response, and plan-versioned local state | A device holder can see which days either authorized reader completed until downloaded data is cleared |
 | Drive sharing error | configured-ID-only access, active-user execution, explicit allowlist, no “anyone with link” | Owner must periodically audit folder and Sheet sharing |
@@ -38,7 +38,7 @@ After successful verification, Apps Script writes a versioned enrollment to `Pro
 
 For a computer-free initial handoff, the temporary owner setup version may embed AES-GCM ciphertext of both raw reader codes. The encryption key is derived from the expiring setup token, which is not embedded in source; decryption happens only in the owner's browser after the independent Google/Drive owner check. The normal project HEAD, immutable reader deployment, Drive files, Script Properties, and chat never contain either raw code. Remove the temporary deployment immediately after handoff.
 
-Before private reads/writes, `ScriptApp.getAuthorizationInfo` confirms all explicit scopes. Missing consent returns an authorization-required state before accessing content. Drive access to the manifest is then exercised as the content gate.
+Before online private reads/writes, `ScriptApp.getAuthorizationInfo` confirms all explicit scopes. Missing consent returns an authorization-required state before accessing content. Drive access to the manifest is then exercised as the content gate. A later installed-app launch may paint an unexpired, locally reader-bound offline copy first, but no write leaves the device until the current server check succeeds; an explicit identity, allowlist, code, or Drive denial clears the cached private state and hides the interface.
 
 ## Input and abuse controls
 

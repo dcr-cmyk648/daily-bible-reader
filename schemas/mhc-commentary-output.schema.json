@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daily-bible-reader.local/schemas/mhc-commentary-output.schema.json",
+  "title": "Atom-grounded Matthew Henry verse-commentary worker output",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "job_id",
+    "source_id",
+    "source_version",
+    "source_manifest_ref",
+    "source_hash",
+    "worker_model",
+    "prompt_version",
+    "generation_timestamp",
+    "validation_status",
+    "review_status",
+    "book_id",
+    "chapter",
+    "records"
+  ],
+  "properties": {
+    "schema_version": {"type": "string", "const": "mhc-commentary/v2"},
+    "job_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,159}$"},
+    "source_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,99}$"},
+    "source_version": {"type": "string", "minLength": 1, "maxLength": 80},
+    "source_manifest_ref": {"type": "string", "minLength": 1, "maxLength": 500},
+    "source_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "worker_model": {"type": "string", "minLength": 1, "maxLength": 100},
+    "prompt_version": {"type": "string", "minLength": 1, "maxLength": 100},
+    "generation_timestamp": {"type": "string", "format": "date-time"},
+    "validation_status": {"type": "string", "const": "unvalidated"},
+    "review_status": {"type": "string", "const": "unreviewed"},
+    "book_id": {"type": "string", "pattern": "^[A-Z0-9]{2,8}$"},
+    "chapter": {"type": "integer", "minimum": 1, "maximum": 200},
+    "records": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 200,
+      "items": {
+        "type": "object",
+        "required": [
+          "verse_id",
+          "blurb",
+          "coverage_type",
+          "scope_note",
+          "source_unit_ids",
+          "source_atom_ids",
+          "source_reference_label"
+        ],
+        "properties": {
+          "verse_id": {"type": "string", "pattern": "^[A-Z0-9]{2,8}\\.[1-9][0-9]{0,2}\\.[1-9][0-9]{0,2}$"},
+          "blurb": {"type": "string", "minLength": 1, "maxLength": 1200},
+          "coverage_type": {"type": "string", "enum": ["direct", "range-derived", "no-distinct-comment"]},
+          "scope_note": {"type": "string", "minLength": 1, "maxLength": 400},
+          "source_unit_ids": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 8,
+            "items": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,159}$"}
+          },
+          "source_atom_ids": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 12,
+            "items": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,199}$"}
+          },
+          "source_reference_label": {"type": "string", "minLength": 1, "maxLength": 200}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -193,7 +193,7 @@ async function main() {
   assert(!/Logger\.log\s*\(/.test(code), "Apps Script must not log reader codes or private payloads.");
 
   const ignore = await readFile(path.join(ROOT, ".gitignore"), "utf8");
-  ["private-content/", "research/raw/", ".clasp.json", "config/*.local.json", "dist/"].forEach((entry) =>
+  ["private-content/", "private-commentary/", "research/raw/", ".clasp.json", "config/*.local.json", "dist/"].forEach((entry) =>
     assert(ignore.includes(entry), `.gitignore missing ${entry}`)
   );
 

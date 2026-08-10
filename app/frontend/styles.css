@@ -903,6 +903,106 @@ h3 {
   margin: 0.45rem 0 0.75rem;
 }
 
+.verse-commentary-card,
+.book-commentary-resource {
+  padding: 0.8rem;
+  border: 1px solid rgb(139 200 177 / 32%);
+  border-radius: 0.6rem;
+  background: rgb(139 200 177 / 8%);
+}
+
+.book-commentary-resource {
+  max-width: var(--reading-width);
+  margin-top: 1rem;
+}
+
+.book-commentary-resource h3 {
+  margin: 0.2rem 0 0.55rem;
+}
+
+.verse-commentary-label {
+  margin: 0;
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+.verse-commentary-blurb {
+  margin: 0.55rem 0 0;
+  line-height: 1.55;
+}
+
+.verse-commentary-details {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0.75rem 0 0;
+}
+
+.verse-commentary-details div {
+  display: grid;
+  grid-template-columns: 5.4rem minmax(0, 1fr);
+  gap: 0.55rem;
+}
+
+.verse-commentary-details dt {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.verse-commentary-details dd {
+  margin: 0;
+}
+
+.verse-commentary-source {
+  margin-top: 0.8rem;
+  border-top: 1px solid rgb(139 200 177 / 24%);
+  padding-top: 0.65rem;
+}
+
+.verse-commentary-source summary {
+  width: fit-content;
+  color: var(--accent-bright);
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 800;
+}
+
+.verse-commentary-source > .muted {
+  margin: 0.65rem 0;
+  font-size: 0.76rem;
+}
+
+.verse-commentary-source-atoms {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.verse-commentary-source-atom {
+  margin: 0;
+  padding-left: 0.75rem;
+  border-left: 2px solid rgb(139 200 177 / 42%);
+  color: var(--text);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 0.92rem;
+  line-height: 1.58;
+  white-space: pre-line;
+}
+
+.commentary-resource-reference {
+  margin-bottom: 0.25rem;
+  color: var(--accent);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.highlight-sharing-label {
+  margin-top: 1rem;
+}
+
 .highlight-person {
   display: grid;
   grid-template-columns: 0.7rem minmax(0, 1fr);

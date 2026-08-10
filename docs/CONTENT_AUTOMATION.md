@@ -1,6 +1,6 @@
 # Advance-content automation proposal
 
-Status: generation scheduling remains proposed and not enabled. The deterministic reader-side warning is implemented: after the seven-reading private batch is inspected, the calendar warns when fewer than three consecutive full studies exist from the current plan day. Dustin sees the exact first gap; Shane sees a generic delay message. Checked against the official OpenAI scheduled-tasks documentation on 2026-08-09: <https://learn.chatgpt.com/docs/automations?surface=app>.
+Status: recurring generation remains proposed and not enabled. The reader already warns when fewer than three consecutive substantive studies remain, showing Dustin the exact first gap and Shane only a generic delay. A read-only local evaluator now models the separate seven-day draft and five-day explicitly approved live buffers and selects at most one earliest gap. The narrower manual Henry precursor resolves today through at most two days ahead, creates private unreviewed Spark-based verse audits, and atomically exports an app-neutral current-window store; it does not create the broader synthesis, satisfy either readiness buffer, update Drive, publish, or recur. Checked against the official OpenAI scheduled-tasks documentation on 2026-08-10: <https://learn.chatgpt.com/docs/automations>.
 
 ## Recommendation
 
@@ -9,6 +9,8 @@ Use a two-layer buffer system. A scheduled Codex/ChatGPT task prepares private c
 For the phone-first workflow, the preferred generator is a recurring scheduled task in a dedicated project chat with the Google Drive connector, web research, and a purpose-built content skill. Official documentation says web scheduled tasks can use connected tools, skills, and plugins, but cannot work directly in a folder on the computer. A local-project scheduled task is the stronger validation option when the Mac can remain powered on with the ChatGPT desktop app running; it can work in this repository and run the real validators. The cloud/Drive task is therefore the continuity path, and the local task is an optional stricter second pass.
 
 Scheduled-task availability and run limits depend on the ChatGPT account/workspace and must be confirmed in the **Scheduled** interface before relying on the workflow. The first several runs should be reviewed manually, as OpenAI's documentation recommends.
+
+The current `npm run mhc:window:spark` command is deliberately narrower than this proposal. It is useful for organically troubleshooting Henry atomization, verse grounding, audit reports, portable storage, and the **Read Henry** interaction over today plus two days. Its output remains a source-specific review layer attached only by the localhost adapter; it is neither the multi-source daily synthesis nor a published-ready reading. The content-addressed manifest/readings format is a candidate interchange boundary for another private app, but no external consumer or recurrence has been configured.
 
 ## Buffer contract
 

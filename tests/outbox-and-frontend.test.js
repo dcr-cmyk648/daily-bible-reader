@@ -40,6 +40,10 @@ test("numbered Scripture rendering supports isolated shared highlights and parti
   const highlights = fs.readFileSync(path.join(__dirname, "../app/frontend/highlights.js"), "utf8");
   assert.match(html, /id="highlightPopover"/);
   assert.match(html, /id="highlightAction"/);
+  assert.match(html, /id="verseCommentaryBlurb"/);
+  assert.match(html, /id="verseCommentarySource"/);
+  assert.match(html, />Read Henry</);
+  assert.match(html, /Matthew Henry — condensed paraphrase/);
   assert.match(css, /data-highlight-reader-0/);
   assert.match(css, /data-highlight-reader-1/);
   assert.match(frontend, /const DB_VERSION = 4/);
@@ -48,7 +52,59 @@ test("numbered Scripture rendering supports isolated shared highlights and parti
   assert.match(highlights, /api\.registerHighlightEnhancer/);
   assert.match(highlights, /api\.listCurrentHighlights/);
   assert.match(highlights, /api\.submitCurrentHighlightEvent/);
+  assert.match(highlights, /context\.verseCommentary/);
+  assert.match(highlights, /sourceAtoms\.appendChild/);
+  assert.match(highlights, /paragraph\.textContent = atom\.text/);
+  assert.match(highlights, /selectedTrigger/);
   assert.ok(html.indexOf('<script src="app.js"></script>') < html.indexOf('<script src="highlights.js"></script>'));
+});
+
+test("precomputed Matthew Henry shards are accepted only with complete chapter-local coverage", () => {
+  const entry = {kind: "chapter", bookId: "GEN", passages: [{bookId: "GEN", chapter: 1, verseCount: 2}]};
+  const atomId = "fabricated-source:GEN:001:001-002:a001";
+  const record = (verse) => ({
+    blurb: `Fabricated commentary summary ${verse} for schema testing only.`,
+    coverage_type: "range-derived",
+    scope_note: "Henry treats verses 1–2 together.",
+    source_unit_ids: ["fabricated-source:GEN:001:001-002"],
+    source_atom_ids: [atomId],
+    source_reference_label: "Genesis 1:1–2"
+  });
+  const shard = {
+    schema_version: "mhc-runtime/v1",
+    source_id: "fabricated-source",
+    source_version: "test",
+    source_archive_sha256: "a".repeat(64),
+    source_manifest_ref: "source-manifest.json",
+    worker_model: "fabricated-model",
+    prompt_version: "fabricated-prompt/v1",
+    generation_timestamp: "2026-08-10T12:00:00.000Z",
+    validation_status: "valid",
+    review_status: "unreviewed",
+    label: "Matthew Henry — condensed paraphrase",
+    book_id: "GEN",
+    chapter: 1,
+    source_layer_note: "Fabricated exact commentary excerpt for interface schema testing only.",
+    source_atoms: {
+      [atomId]: {
+        source_atom_id: atomId,
+        source_unit_id: "fabricated-source:GEN:001:001-002",
+        source_reference_label: "Genesis 1:1–2",
+        sequence: 1,
+        atom_type: "commentary",
+        text: "FABRICATED COMMENTARY SOURCE ATOM FOR INTERFACE TESTING ONLY.",
+        text_sha256: "b".repeat(64)
+      }
+    },
+    records: {"GEN.1.1": record(1), "GEN.1.2": record(2)}
+  };
+  assert.equal(app.normalizedVerseCommentaryShard(shard, entry), shard);
+  assert.equal(app.normalizedVerseCommentaryShard({...shard, records: {"GEN.1.1": record(1)}}, entry), null);
+  assert.equal(app.normalizedVerseCommentaryShard({...shard, validation_status: "unvalidated"}, entry), null);
+  assert.equal(app.normalizedVerseCommentaryShard({...shard, records: {
+    "GEN.1.1": {...record(1), source_atom_ids: ["fabricated:unknown"]},
+    "GEN.1.2": record(2)
+  }}, entry), null);
 });
 
 test("highlight toggles paint immediately and reconcile from the write response", () => {
@@ -697,5 +753,14 @@ test("local private-draft preview is localhost-only and restricted to the seven 
   assert.match(server, /\^\\\/__private\\\/reading\\\/\(CC-Y3Q4-D05\[4-9\]\|CC-Y3Q4-D060\)\\\.json\$/);
   assert.match(frontend, /\/\* DBR_LOCAL_ADAPTER_START \*\/[\s\S]*privateDraftMode\(\)[\s\S]*\/\* DBR_LOCAL_ADAPTER_END \*\//);
   assert.match(builder, /DBR_LOCAL_ADAPTER_START[\s\S]*DBR_LOCAL_ADAPTER_END/);
-  assert.match(builder, /privateDraft\|\\\/__private\\\//);
+  assert.match(server, /\^\\\/__mhc\\\/reading\\\/\(intro-GEN\|GEN-001\)\\\.json\$/);
+  assert.match(server, /FABRICATED UI TEST — not Matthew Henry commentary/);
+  assert.match(server, /mhcRuntimeOrFabricated/);
+  assert.match(server, /private-commentary", "mhc", "stores", "current-window/);
+  assert.match(server, /\/__mhc\/window\/manifest\.json/);
+  assert.match(server, /Matthew Henry window-store checksum mismatch/);
+  assert.match(server, /portable\.chapters\.length === 1/);
+  assert.match(frontend, /\/\* DBR_LOCAL_ADAPTER_START \*\/[\s\S]*mhcPilotMode\(\)[\s\S]*\/\* DBR_LOCAL_ADAPTER_END \*\//);
+  assert.match(builder, /privateDraft\|mhcPilot/);
+  assert.match(builder, /__\(\?:private\|mhc\)/);
 });

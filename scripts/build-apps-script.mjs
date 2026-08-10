@@ -117,7 +117,7 @@ async function main() {
   if (productionApp.includes("__DBR_BUILD_ID__") || productionApp.includes("__DBR_DELIVERY_MODE__")) {
     throw new Error("Could not inject the static frontend release identity.");
   }
-  if (/fixtures\/|GEN-001\.mock|privateDraft|\/__private\//i.test(productionApp)) {
+  if (/fixtures\/|GEN-001\.mock|privateDraft|mhcPilot|\/__(?:private|mhc)\//i.test(productionApp)) {
     throw new Error("Production frontend still contains a development/private route.");
   }
 
@@ -271,7 +271,7 @@ async function main() {
   ];
   const violations = await inspectPaths(outputPaths);
   if (violations.length) throw new Error(`Generated bundle safety failure:\n- ${violations.join("\n- ")}`);
-  if (/fixtures\/|GEN-001\.mock|private-content|privateDraft|\/__private\/|ESV_API_KEY\s*[=:]\s*["'][^"']{12,}/i.test(html + productionJavaScript)) {
+  if (/fixtures\/|GEN-001\.mock|private-content|privateDraft|mhcPilot|\/__(?:private|mhc)\/|ESV_API_KEY\s*[=:]\s*["'][^"']{12,}/i.test(html + productionJavaScript)) {
     throw new Error("Generated public output contains a fixture/private/secret indicator.");
   }
 

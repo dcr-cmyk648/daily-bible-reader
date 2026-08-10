@@ -54,7 +54,7 @@ Browser IndexedDB <── seven-day private commentary/calendar snapshot
         └── offline comment drafts + idempotent outbox
 ```
 
-Git never receives real ESV passages, private commentary, comments, source extracts, credentials, user emails, Drive IDs, Sheet IDs, or code hashes. Drive remains canonical after publication. Ignored local working folders may contain drafts during preparation and are inspected before upload.
+Git never receives real ESV passages, private commentary, comments, source extracts, credentials, user emails, Drive IDs, Sheet IDs, or code hashes. Drive remains canonical after publication. Ignored local working folders may contain drafts during preparation and are inspected before upload. The offline Henry pipeline may also export a checksum-addressed, app-neutral current-window store in ignored local storage; it explicitly contains no Scripture, remains `not_published`, and reaches the reader or another local consumer only through localhost-only adapters removed from production builds.
 
 ## Token identity
 

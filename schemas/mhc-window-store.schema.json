@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daily-bible-reader.local/schemas/mhc-window-store.schema.json",
+  "title": "Portable Matthew Henry rolling-window store",
+  "$defs": {
+    "reviewStatus": {
+      "type": "string",
+      "enum": ["unreviewed", "in_review", "approved", "changes_requested"]
+    },
+    "humanReviewStatus": {
+      "type": "string",
+      "enum": ["required", "in_review", "approved", "changes_requested"]
+    },
+    "manifestReading": {
+      "type": "object",
+      "required": [
+        "reading_id",
+        "schedule_date",
+        "day_index",
+        "source_plan_day",
+        "file",
+        "sha256",
+        "passage_count",
+        "review_status",
+        "human_review_status"
+      ],
+      "properties": {
+        "reading_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,159}$"},
+        "schedule_date": {"type": "string", "format": "date"},
+        "day_index": {"type": "integer", "minimum": 1, "maximum": 100000},
+        "source_plan_day": {"type": "integer", "minimum": 1, "maximum": 100000},
+        "file": {"type": "string", "pattern": "^readings/[A-Za-z0-9][A-Za-z0-9._:-]{2,159}\\.[a-f0-9]{16}\\.json$"},
+        "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "passage_count": {"type": "integer", "minimum": 1, "maximum": 5},
+        "review_status": {"$ref": "#/$defs/reviewStatus"},
+        "human_review_status": {"$ref": "#/$defs/humanReviewStatus"}
+      },
+      "additionalProperties": false
+    },
+    "manifest": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "store_id",
+        "plan_version",
+        "generated_at",
+        "prepared_on",
+        "timezone",
+        "days_ahead",
+        "window_start_date",
+        "window_end_date",
+        "worker_model",
+        "prompt_version",
+        "publication_status",
+        "contains_scripture",
+        "readings"
+      ],
+      "properties": {
+        "schema_version": {"type": "string", "const": "mhc-window-store/v1"},
+        "store_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,199}$"},
+        "plan_version": {"type": "string", "minLength": 1, "maxLength": 200},
+        "generated_at": {"type": "string", "format": "date-time"},
+        "prepared_on": {"type": "string", "format": "date"},
+        "timezone": {"type": "string", "minLength": 1, "maxLength": 100},
+        "days_ahead": {"type": "integer", "minimum": 0, "maximum": 2},
+        "window_start_date": {"type": "string", "format": "date"},
+        "window_end_date": {"type": "string", "format": "date"},
+        "worker_model": {"type": "string", "const": "gpt-5.3-codex-spark"},
+        "prompt_version": {"type": "string", "minLength": 1, "maxLength": 100},
+        "publication_status": {"type": "string", "const": "not_published"},
+        "contains_scripture": {"type": "boolean", "const": false},
+        "readings": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "items": {"$ref": "#/$defs/manifestReading"}
+        }
+      },
+      "additionalProperties": false
+    },
+    "chapter": {
+      "type": "object",
+      "required": ["book_id", "chapter", "verse_count", "runtime"],
+      "properties": {
+        "book_id": {"type": "string", "pattern": "^[A-Z0-9]{2,8}$"},
+        "chapter": {"type": "integer", "minimum": 1, "maximum": 200},
+        "verse_count": {"type": "integer", "minimum": 1, "maximum": 500},
+        "runtime": {"$ref": "mhc-runtime.schema.json#/$defs/chapterShard"}
+      },
+      "additionalProperties": false
+    },
+    "reading": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "plan_version",
+        "reading_id",
+        "schedule_date",
+        "day_index",
+        "source_plan_day",
+        "timezone",
+        "worker_model",
+        "prompt_version",
+        "review_status",
+        "human_review_status",
+        "publication_status",
+        "contains_scripture",
+        "chapters"
+      ],
+      "properties": {
+        "schema_version": {"type": "string", "const": "mhc-portable-reading/v1"},
+        "plan_version": {"type": "string", "minLength": 1, "maxLength": 200},
+        "reading_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,159}$"},
+        "schedule_date": {"type": "string", "format": "date"},
+        "day_index": {"type": "integer", "minimum": 1, "maximum": 100000},
+        "source_plan_day": {"type": "integer", "minimum": 1, "maximum": 100000},
+        "timezone": {"type": "string", "minLength": 1, "maxLength": 100},
+        "worker_model": {"type": "string", "const": "gpt-5.3-codex-spark"},
+        "prompt_version": {"type": "string", "minLength": 1, "maxLength": 100},
+        "review_status": {"$ref": "#/$defs/reviewStatus"},
+        "human_review_status": {"$ref": "#/$defs/humanReviewStatus"},
+        "publication_status": {"type": "string", "const": "not_published"},
+        "contains_scripture": {"type": "boolean", "const": false},
+        "chapters": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5,
+          "items": {"$ref": "#/$defs/chapter"}
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$ref": "#/$defs/manifest"
+}

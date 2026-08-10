@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "mhc-source-boundaries/v1",
+  "sourceId": "crosswire-mhc-2.2",
+  "archiveSha256": "6bcb936873ca144e317805e5c1677940fd86e2403f7c14517752e44f25c8882b",
+  "moduleVersion": "2.2",
+  "books": {
+    "GEN": {
+      "bookIntroStartMilestoneId": "gen15",
+      "bookIntroEndMilestoneId": "gen19",
+      "note": "CrossWire attaches the Volume I preface, Genesis introduction, and Genesis 1 chapter introduction to the Genesis 1:1 preverse. These source-version-specific OSIS milestones isolate only CCEL's explicit Genesis Introduction section. A source hash change invalidates this boundary map."
+    }
+  }
+}

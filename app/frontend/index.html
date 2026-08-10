@@ -166,6 +166,13 @@
               <p class="intro-day-note">A scheduled book opener has no Scripture chapter. Its book overview takes the text-page position, and chapter 1 follows on the next plan day.</p>
               <div id="bookIntroductionContent" class="prose-block skeleton-text">Loading book introduction…</div>
               <div id="bookIntroductionSources" class="main-citations"></div>
+              <aside id="bookCommentaryResource" class="book-commentary-resource" aria-labelledby="bookCommentaryHeading" hidden>
+                <p id="bookCommentaryLabel" class="eyebrow">AI-generated summary of Matthew Henry's commentary</p>
+                <h3 id="bookCommentaryHeading">Matthew Henry’s book introduction</h3>
+                <p id="bookCommentaryBlurb"></p>
+                <p id="bookCommentaryReference" class="commentary-resource-reference"></p>
+                <p id="bookCommentaryScope" class="muted"></p>
+              </aside>
             </section>
 
             <section id="scriptureSection" class="content-section scripture-section" aria-labelledby="scriptureHeading" hidden>
@@ -180,7 +187,7 @@
                 </div>
               </div>
               <div id="scriptureState" class="inline-state" role="status" aria-live="polite">Scripture loads when the chapter opens.</div>
-              <p id="highlightHelp" class="highlight-help" hidden>Tap a verse to see or change Dustin and Shane’s shared highlights.</p>
+              <p id="highlightHelp" class="highlight-help" hidden>Tap a verse for its precomputed commentary and shared highlights.</p>
               <div id="scriptureContent" class="scripture-content"></div>
               <div class="esv-attribution" aria-label="ESV copyright and use notice">
                 <strong>ESV</strong>
@@ -285,14 +292,35 @@
         </section>
       </section>
 
-      <aside id="highlightPopover" class="highlight-popover" role="dialog" aria-labelledby="highlightPopoverReference" hidden>
+      <aside id="highlightPopover" class="highlight-popover" role="dialog" aria-modal="false" aria-labelledby="highlightPopoverReference" hidden>
         <div class="highlight-popover-heading">
           <div>
-            <p class="eyebrow">Shared verse highlight</p>
+            <p class="eyebrow">Verse details</p>
             <h2 id="highlightPopoverReference">Selected verse</h2>
           </div>
-          <button id="highlightClose" type="button" aria-label="Close verse highlight details">Close</button>
+          <button id="highlightClose" type="button" aria-label="Close verse details">Close</button>
         </div>
+        <section id="verseCommentarySection" class="verse-commentary-card" aria-labelledby="verseCommentaryLabel">
+          <p id="verseCommentaryLabel" class="verse-commentary-label">Matthew Henry — condensed paraphrase</p>
+          <p id="verseCommentaryBlurb" class="verse-commentary-blurb"></p>
+          <dl id="verseCommentaryDetails" class="verse-commentary-details">
+            <div>
+              <dt>From</dt>
+              <dd id="verseCommentaryReference"></dd>
+            </div>
+            <div id="verseCommentaryScopeRow" hidden>
+              <dt>Scope</dt>
+              <dd id="verseCommentaryScope"></dd>
+            </div>
+          </dl>
+          <details id="verseCommentarySource" class="verse-commentary-source" hidden>
+            <summary>Read Henry</summary>
+            <p id="verseCommentarySourceNote" class="muted"></p>
+            <div id="verseCommentarySourceAtoms" class="verse-commentary-source-atoms"></div>
+          </details>
+          <p id="verseCommentaryUnavailable" class="inline-state" data-state="info" hidden>Matthew Henry commentary is unavailable for this verse.</p>
+        </section>
+        <p class="eyebrow highlight-sharing-label">Shared verse highlights</p>
         <div id="highlightPopoverList" class="highlight-popover-list"></div>
         <p id="highlightStatus" class="muted" role="status" aria-live="polite"></p>
         <button id="highlightAction" class="primary-button" type="button">Highlight this verse</button>

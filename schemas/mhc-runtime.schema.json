@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daily-bible-reader.local/schemas/mhc-runtime.schema.json",
+  "title": "Compact Matthew Henry runtime resources",
+  "$defs": {
+    "provenance": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "source_id",
+        "source_version",
+        "source_archive_sha256",
+        "source_manifest_ref",
+        "worker_model",
+        "prompt_version",
+        "generation_timestamp",
+        "validation_status",
+        "review_status",
+        "label"
+      ],
+      "properties": {
+        "schema_version": {"const": "mhc-runtime/v1"},
+        "source_id": {"type": "string", "minLength": 1, "maxLength": 100},
+        "source_version": {"type": "string", "minLength": 1, "maxLength": 80},
+        "source_archive_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "source_manifest_ref": {"type": "string", "minLength": 1, "maxLength": 500},
+        "worker_model": {"type": "string", "minLength": 1, "maxLength": 100},
+        "prompt_version": {"type": "string", "minLength": 1, "maxLength": 100},
+        "generation_timestamp": {"type": "string", "format": "date-time"},
+        "validation_status": {"const": "valid"},
+        "review_status": {"enum": ["unreviewed", "in_review", "approved", "changes_requested"]},
+        "label": {"enum": ["AI-generated summary of Matthew Henry's commentary", "Matthew Henry — condensed paraphrase"]}
+      }
+    },
+    "sourceAtom": {
+      "type": "object",
+      "required": ["source_atom_id", "source_unit_id", "source_reference_label", "sequence", "atom_type", "text", "text_sha256"],
+      "properties": {
+        "source_atom_id": {"type": "string", "minLength": 1, "maxLength": 200},
+        "source_unit_id": {"type": "string", "minLength": 1, "maxLength": 160},
+        "source_reference_label": {"type": "string", "minLength": 1, "maxLength": 200},
+        "sequence": {"type": "integer", "minimum": 1, "maximum": 200},
+        "atom_type": {"enum": ["heading", "commentary"]},
+        "text": {"type": "string", "minLength": 1, "maxLength": 100000},
+        "text_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      },
+      "additionalProperties": false
+    },
+    "verseRecord": {
+      "type": "object",
+      "required": ["blurb", "coverage_type", "scope_note", "source_unit_ids", "source_reference_label"],
+      "properties": {
+        "blurb": {"type": "string", "minLength": 1, "maxLength": 1200},
+        "coverage_type": {"enum": ["direct", "range-derived", "no-distinct-comment"]},
+        "scope_note": {"type": "string", "minLength": 1, "maxLength": 400},
+        "source_unit_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": {"type": "string", "minLength": 1, "maxLength": 160},
+          "uniqueItems": true
+        },
+        "source_atom_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 12,
+          "items": {"type": "string", "minLength": 1, "maxLength": 200},
+          "uniqueItems": true
+        },
+        "source_reference_label": {"type": "string", "minLength": 1, "maxLength": 200}
+      },
+      "additionalProperties": false
+    },
+    "chapterShard": {
+      "allOf": [
+        {"$ref": "#/$defs/provenance"},
+        {
+          "type": "object",
+          "required": ["book_id", "chapter", "records"],
+          "properties": {
+            "schema_version": {"const": "mhc-runtime/v1"},
+            "source_id": {"type": "string"},
+            "source_version": {"type": "string"},
+            "source_archive_sha256": {"type": "string"},
+            "source_manifest_ref": {"type": "string"},
+            "worker_model": {"type": "string"},
+            "prompt_version": {"type": "string"},
+            "generation_timestamp": {"type": "string"},
+            "validation_status": {"const": "valid"},
+            "review_status": {"type": "string"},
+            "label": {"type": "string"},
+            "book_id": {"type": "string", "pattern": "^[A-Z0-9]{2,8}$"},
+            "chapter": {"type": "integer", "minimum": 1, "maximum": 200},
+            "source_layer_note": {"type": "string", "minLength": 1, "maxLength": 500},
+            "source_atoms": {
+              "type": "object",
+              "additionalProperties": {"$ref": "#/$defs/sourceAtom"}
+            },
+            "records": {"type": "object", "additionalProperties": {"$ref": "#/$defs/verseRecord"}}
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "bookIntroShard": {
+      "allOf": [
+        {"$ref": "#/$defs/provenance"},
+        {
+          "type": "object",
+          "required": ["resource"],
+          "properties": {
+            "schema_version": {"const": "mhc-runtime/v1"},
+            "source_id": {"type": "string"},
+            "source_version": {"type": "string"},
+            "source_archive_sha256": {"type": "string"},
+            "source_manifest_ref": {"type": "string"},
+            "worker_model": {"type": "string"},
+            "prompt_version": {"type": "string"},
+            "generation_timestamp": {"type": "string"},
+            "validation_status": {"const": "valid"},
+            "review_status": {"type": "string"},
+            "label": {"type": "string"},
+            "resource": {
+              "type": "object",
+              "required": ["resource_id", "book_id", "resource_type", "blurb", "scope_note", "source_unit_ids", "source_reference_label"],
+              "properties": {
+                "resource_id": {"type": "string", "pattern": "^intro-[A-Z0-9]{2,8}$"},
+                "book_id": {"type": "string", "pattern": "^[A-Z0-9]{2,8}$"},
+                "resource_type": {"const": "book_intro"},
+                "blurb": {"type": "string", "minLength": 1, "maxLength": 1600},
+                "scope_note": {"type": "string", "minLength": 1, "maxLength": 400},
+                "source_unit_ids": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 8,
+                  "items": {"type": "string", "minLength": 1, "maxLength": 160},
+                  "uniqueItems": true
+                },
+                "source_reference_label": {"type": "string", "minLength": 1, "maxLength": 200}
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "$ref": "#/$defs/chapterShard"
+}

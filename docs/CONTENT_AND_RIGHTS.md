@@ -6,8 +6,8 @@ This project makes source use traceable and conservative; it does not declare th
 
 - Git/Pages: source, schemas, tools, safe bibliographic metadata, fabricated fixtures, and built code/style releases only. Pages never receives commentary, source notes/extracts, ESV wording, comments, or deployment configuration.
 - Ignored local research workspace: lawfully accessed research inputs and working notes. Do not sync this folder to the friend or include it in logs/builds.
-- Private Drive publication: original synthesis, source metadata, coverage report, and short justified quotations only. No ESV passages and no raw commentary library.
-- Browser: the published synthesis and comment data; current ESV responses remain network-only in page memory.
+- Private Drive publication: original synthesis, source metadata, coverage report, and short justified quotations only. A reviewed Matthew Henry verse shard may additionally contain only the exact cited atoms from the selected public-domain edition for its **Read Henry** disclosure. The ignored portable audit store follows the same rule and declares `contains_scripture: false` plus `publication_status: not_published`; another app must keep it private and must not treat it as approved content. No ESV passages, embedded source-module Scripture transcription, or raw commentary library.
+- Browser: the published synthesis, comments, and any reviewed citation-driven Henry disclosure; current ESV responses remain network-only in page memory.
 
 Private two-person use can reduce practical exposure but does not itself grant permission.
 
@@ -31,7 +31,9 @@ The active bridge registry lives in ignored `research/working/bridge-source-regi
 
 Verify the exact edition/transcription and host terms. An old author does not make a modern translation, annotation, database, or transcription automatically public domain. Record license wording and allowed uses. Deduplicate mirrors and derivative aggregations against the underlying work.
 
-For the foundational Matthew Henry pass, prefer CrossWire's exact `MHC` module version 2.2 (2022-08-29), whose module record states `Distribution License Public Domain`. Record that module and access date rather than treating every modern Matthew Henry PDF, website, or database as interchangeable. CCEL-generated files and other modern containers may carry separate formatting or distribution terms even when the underlying commentary is historical. The public-domain status permits local research use; it does not justify padding the synthesis with source-like wording or publishing a raw commentary library.
+For the foundational Matthew Henry pass, prefer CrossWire's exact `MHC` module version 2.2 (2022-08-29), whose module record states `Distribution License Public Domain`. Record that module and access date rather than treating every modern Matthew Henry PDF, website, or database as interchangeable. CCEL-generated files and other modern containers may carry separate formatting or distribution terms even when the underlying commentary is historical. The exact CrossWire edition may support a narrowly scoped private **Read Henry** layer containing only the atoms cited for a condensation. Public-domain status still does not justify padding the synthesis with source-like wording, shipping the raw module or full normalized library, or treating another transcription as interchangeable.
+
+The reviewed CrossWire archive retrieved 2026-08-10 has SHA-256 `6bcb936873ca144e317805e5c1677940fd86e2403f7c14517752e44f25c8882b`. It and every normalized source-text unit remain ignored. The SWORD module's embedded KJV transcription is hash-accounted for but excluded from model evidence and runtime disclosure. `MATTHEW_HENRY_PIPELINE.md` records the exact download URL, CCEL comparison, format assumptions, source atomization, and source-specific boundary controls.
 
 ## Copyrighted modern works
 

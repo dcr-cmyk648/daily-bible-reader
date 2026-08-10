@@ -7,6 +7,7 @@
   var context = null;
   var highlights = [];
   var selectedReference = null;
+  var selectedTrigger = null;
   var refreshToken = 0;
   var writeToken = 0;
   var writing = false;
@@ -50,10 +51,21 @@
     return new Intl.DateTimeFormat(undefined, {dateStyle: "medium", timeStyle: "short"}).format(date);
   }
 
-  function closePopover() {
+  function closePopover(restoreFocus) {
+    var trigger = selectedTrigger;
     selectedReference = null;
+    selectedTrigger = null;
     var popover = element("highlightPopover");
     if (popover) popover.hidden = true;
+    if (restoreFocus !== false && trigger && root.document.contains(trigger)) {
+      trigger.focus({preventScroll: true});
+    }
+  }
+
+  function commentaryFor(reference) {
+    var shard = context && context.verseCommentary;
+    if (!shard || !shard.records) return null;
+    return shard.records[reference.bookId + "." + reference.chapter + "." + reference.verse] || null;
   }
 
   function applyHighlightState() {
@@ -75,7 +87,9 @@
       }).map(function participantName(participant) { return participant.displayName; });
       var verseText = button.lastElementChild ? button.lastElementChild.textContent : "";
       button.setAttribute("aria-label", referenceLabel(reference) + ". " + verseText +
-        (names.length ? " Highlighted by " + names.join(" and ") + "." : " Not highlighted."));
+        (commentaryFor(reference) ? " Precomputed Matthew Henry summary available." : " Commentary unavailable.") +
+        (names.length ? " Highlighted by " + names.join(" and ") + "." : " Not highlighted.") +
+        " Open verse details.");
     });
     if (selectedReference && !element("highlightPopover").hidden) renderPopover();
   }
@@ -96,8 +110,9 @@
     button.append(number, text);
     button.addEventListener("click", function selectVerse() {
       selectedReference = {bookId: passage.bookId, chapter: Number(passage.chapter), verse: record.verse};
+      selectedTrigger = button;
       renderPopover();
-      element("highlightAction").focus({preventScroll: true});
+      element("highlightClose").focus({preventScroll: true});
     });
     return button;
   }
@@ -138,12 +153,13 @@
   }
 
   function renderPopover() {
-    if (!selectedReference || !context) return closePopover();
+    if (!selectedReference || !context) return closePopover(false);
     var popover = element("highlightPopover");
     var active = activeAt(selectedReference).slice().sort(function byParticipant(left, right) {
       return participantIndex(left.authorId) - participantIndex(right.authorId);
     });
     element("highlightPopoverReference").textContent = referenceLabel(selectedReference);
+    renderVerseCommentary();
     var list = element("highlightPopoverList");
     list.replaceChildren();
     if (!active.length) {
@@ -180,6 +196,48 @@
         ? "Highlights are shared with both readers; each person keeps their own color."
         : "Shared highlights require a confirmed connection.");
     popover.hidden = false;
+  }
+
+  function renderVerseCommentary() {
+    var record = commentaryFor(selectedReference);
+    var shard = context && context.verseCommentary;
+    var details = element("verseCommentaryDetails");
+    var unavailable = element("verseCommentaryUnavailable");
+    var source = element("verseCommentarySource");
+    var sourceAtoms = element("verseCommentarySourceAtoms");
+    source.open = false;
+    sourceAtoms.replaceChildren();
+    if (!record) {
+      element("verseCommentaryLabel").textContent = "Matthew Henry commentary";
+      element("verseCommentaryBlurb").textContent = "";
+      element("verseCommentaryReference").textContent = "";
+      element("verseCommentaryScope").textContent = "";
+      element("verseCommentaryScopeRow").hidden = true;
+      element("verseCommentarySourceNote").textContent = "";
+      source.hidden = true;
+      details.hidden = true;
+      unavailable.hidden = false;
+      return;
+    }
+    element("verseCommentaryLabel").textContent = shard.label;
+    element("verseCommentaryBlurb").textContent = record.blurb;
+    element("verseCommentaryReference").textContent = record.source_reference_label;
+    element("verseCommentaryScope").textContent = record.scope_note;
+    element("verseCommentaryScopeRow").hidden = record.coverage_type !== "no-distinct-comment";
+    var atoms = (record.source_atom_ids || []).map(function resolveAtom(atomId) {
+      return shard.source_atoms && shard.source_atoms[atomId];
+    }).filter(Boolean);
+    source.hidden = atoms.length === 0;
+    element("verseCommentarySourceNote").textContent = shard.source_layer_note ||
+      "Exact public-domain commentary excerpt used for this condensation; embedded Scripture transcription is omitted.";
+    atoms.forEach(function appendAtom(atom) {
+      var paragraph = root.document.createElement("p");
+      paragraph.className = "verse-commentary-source-atom";
+      paragraph.textContent = atom.text;
+      sourceAtoms.appendChild(paragraph);
+    });
+    details.hidden = false;
+    unavailable.hidden = true;
   }
 
   async function refreshHighlights() {
@@ -287,9 +345,10 @@
     context = nextContext;
     highlights = [];
     selectedReference = null;
+    selectedTrigger = null;
     writing = false;
     statusMessage = "";
-    closePopover();
+    closePopover(false);
     var help = element("highlightHelp");
     if (help) help.hidden = true;
     if (!context || !context.scripture) return;
@@ -297,10 +356,10 @@
     refreshHighlights();
   }
 
-  element("highlightClose").addEventListener("click", closePopover);
+  element("highlightClose").addEventListener("click", function closeFromButton() { closePopover(true); });
   element("highlightAction").addEventListener("click", toggleHighlight);
   root.document.addEventListener("keydown", function closeOnEscape(event) {
-    if (event.key === "Escape" && !element("highlightPopover").hidden) closePopover();
+    if (event.key === "Escape" && !element("highlightPopover").hidden) closePopover(true);
   });
   api.registerHighlightEnhancer({render: render});
 })(typeof globalThis !== "undefined" ? globalThis : this);

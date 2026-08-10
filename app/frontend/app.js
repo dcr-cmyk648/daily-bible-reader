@@ -48,6 +48,7 @@
     deviceCredentials: "credentialId"
   };
   const BOOK_NAMES = {
+    GEN: "Genesis",
     "1PE": "1 Peter",
     MIC: "Micah",
     NAM: "Nahum",
@@ -86,6 +87,7 @@
     scriptureRequestToken: 0,
     selectedVerseRequestToken: 0,
     currentScripture: null,
+    currentVerseCommentary: null,
     highlightEnhancer: null,
     verseOfTheDay: null,
     uiWired: false,
@@ -660,6 +662,14 @@
     }
   }
 
+  function mhcPilotMode() {
+    try {
+      return new URLSearchParams(root.location && root.location.search || "").get("mhcPilot") === "1";
+    } catch {
+      return false;
+    }
+  }
+
   async function fetchJson(path) {
     const response = await root.fetch(path, {cache: "no-store", credentials: "same-origin"});
     if (!response.ok) throw appError("Local pilot fixture could not be loaded.", "FIXTURE_UNAVAILABLE");
@@ -671,14 +681,18 @@
     const highlightEvents = [];
     return {
       kind: "mock",
-      cacheContext: privateDraftMode() ? "mock-private-draft" : "mock-fixture",
+      cacheContext: mhcPilotMode() ? "mock-mhc-pilot" : privateDraftMode() ? "mock-private-draft" : "mock-fixture",
       async getBootstrapData() {
-        const registryPath = privateDraftMode()
-          ? "/__private/registry.json"
-          : "../../fixtures/pilot-content/source-registry.json";
+        const configPath = mhcPilotMode() ? "/__mhc/config.json" : "../../fixtures/pilot-content/app-config.json";
+        const planPath = mhcPilotMode() ? "/__mhc/plan.json" : "../../fixtures/pilot-content/plan.json";
+        const registryPath = mhcPilotMode()
+          ? "/__mhc/registry.json"
+          : privateDraftMode()
+            ? "/__private/registry.json"
+            : "../../fixtures/pilot-content/source-registry.json";
         const [config, plan, policySet, registry] = await Promise.all([
-          fetchJson("../../fixtures/pilot-content/app-config.json"),
-          fetchJson("../../fixtures/pilot-content/plan.json"),
+          fetchJson(configPath),
+          fetchJson(planPath),
           fetchJson("../../config/provider-policies.example.json"),
           fetchJson(registryPath)
         ]);
@@ -700,6 +714,7 @@
       async getReadingPayload(readingId) {
         const entry = state.plan.entries.find((candidate) => candidate.readingId === readingId);
         if (!entry) throw appError("Unknown bridge reading.", "READING_NOT_FOUND");
+        if (mhcPilotMode()) return fetchJson(`/__mhc/reading/${readingId}.json`);
         if (privateDraftMode()) return fetchJson(`/__private/reading/${readingId}.json`);
         const template = await fetchJson("../../fixtures/pilot-content/bridge-placeholder.commentary.json");
         const firstPassage = entry.passages[0];
@@ -1181,6 +1196,98 @@
     return {bookId: selection.bookId, chapter: selection.chapter, verse: selection.verse};
   }
 
+  function validMhcRuntimeProvenance(shard) {
+    return Boolean(shard && typeof shard === "object" &&
+      shard.schema_version === "mhc-runtime/v1" && shard.validation_status === "valid" &&
+      ["unreviewed", "in_review", "approved", "changes_requested"].includes(shard.review_status) &&
+      typeof shard.source_id === "string" && shard.source_id &&
+      typeof shard.source_version === "string" && shard.source_version &&
+      /^[a-f0-9]{64}$/.test(String(shard.source_archive_sha256 || "")) &&
+      typeof shard.source_manifest_ref === "string" && shard.source_manifest_ref &&
+      typeof shard.worker_model === "string" && shard.worker_model &&
+      typeof shard.prompt_version === "string" && shard.prompt_version &&
+      typeof shard.generation_timestamp === "string" && Number.isFinite(Date.parse(shard.generation_timestamp)) &&
+      typeof shard.label === "string" && shard.label.trim());
+  }
+
+  function normalizedVerseCommentaryShard(shard, entry) {
+    if (!validMhcRuntimeProvenance(shard) || !entry || entry.kind !== "chapter" ||
+        typeof shard.label !== "string" || !shard.label.trim() ||
+        !/^[A-Z0-9]{2,8}$/.test(String(shard.book_id || "")) ||
+        !Number.isInteger(shard.chapter) || !shard.records || typeof shard.records !== "object" ||
+        Array.isArray(shard.records)) return null;
+    const passage = (entry.passages || []).find((candidate) =>
+      candidate.bookId === shard.book_id && candidate.chapter === shard.chapter
+    );
+    if (!passage) return null;
+    const verseStart = Number.isInteger(passage.verseStart) ? passage.verseStart : 1;
+    const verseEnd = Number.isInteger(passage.verseEnd) ? passage.verseEnd : verseStart + passage.verseCount - 1;
+    if (!Number.isInteger(passage.verseCount) || verseEnd - verseStart + 1 !== passage.verseCount) return null;
+    const expectedIds = Array.from({length: passage.verseCount}, (_, index) =>
+      `${shard.book_id}.${shard.chapter}.${verseStart + index}`
+    );
+    if (Object.keys(shard.records).length !== expectedIds.length) return null;
+    const sourceAtoms = shard.source_atoms;
+    const hasSourceLayer = sourceAtoms && typeof sourceAtoms === "object" && !Array.isArray(sourceAtoms);
+    if (sourceAtoms !== undefined && !hasSourceLayer) return null;
+    if (hasSourceLayer) {
+      if (typeof shard.source_layer_note !== "string" || !shard.source_layer_note.trim() || shard.source_layer_note.length > 500) return null;
+      for (const [atomId, atom] of Object.entries(sourceAtoms)) {
+        if (!atom || typeof atom !== "object" || atom.source_atom_id !== atomId ||
+            typeof atom.source_unit_id !== "string" || !atom.source_unit_id ||
+            typeof atom.source_reference_label !== "string" || !atom.source_reference_label ||
+            !Number.isInteger(atom.sequence) || atom.sequence < 1 ||
+            !["heading", "commentary"].includes(atom.atom_type) ||
+            typeof atom.text !== "string" || !atom.text.trim() || atom.text.length > 100000 ||
+            !/^[a-f0-9]{64}$/.test(String(atom.text_sha256 || ""))) return null;
+      }
+    }
+    for (const verseId of expectedIds) {
+      const record = shard.records[verseId];
+      if (!record || typeof record !== "object" ||
+          typeof record.blurb !== "string" || !record.blurb.trim() || record.blurb.length > 1200 ||
+          !["direct", "range-derived", "no-distinct-comment"].includes(record.coverage_type) ||
+          typeof record.scope_note !== "string" || !record.scope_note.trim() || record.scope_note.length > 400 ||
+          !Array.isArray(record.source_unit_ids) || !record.source_unit_ids.length ||
+          record.source_unit_ids.some((sourceUnitId) => typeof sourceUnitId !== "string" || !sourceUnitId) ||
+          typeof record.source_reference_label !== "string" || !record.source_reference_label.trim()) return null;
+      if (hasSourceLayer) {
+        if (!Array.isArray(record.source_atom_ids) || !record.source_atom_ids.length ||
+            new Set(record.source_atom_ids).size !== record.source_atom_ids.length ||
+            record.source_atom_ids.some((atomId) => !sourceAtoms[atomId] ||
+              !record.source_unit_ids.includes(sourceAtoms[atomId].source_unit_id))) return null;
+      } else if (record.source_atom_ids !== undefined) return null;
+    }
+    return shard;
+  }
+
+  function normalizedBookCommentaryResource(shard, entry) {
+    const resource = shard && shard.resource;
+    if (!validMhcRuntimeProvenance(shard) || !entry || entry.kind !== "book_intro" ||
+        !resource || resource.resource_type !== "book_intro" || resource.resource_id !== `intro-${entry.bookId}` ||
+        resource.book_id !== entry.bookId || typeof resource.blurb !== "string" || !resource.blurb.trim() ||
+        typeof resource.scope_note !== "string" || !resource.scope_note.trim() ||
+        typeof resource.source_reference_label !== "string" || !resource.source_reference_label.trim() ||
+        !Array.isArray(resource.source_unit_ids) || !resource.source_unit_ids.length) return null;
+    return shard;
+  }
+
+  function renderBookCommentaryResource(shard) {
+    const container = element("bookCommentaryResource");
+    const valid = normalizedBookCommentaryResource(shard, state.currentEntry);
+    container.hidden = !valid;
+    if (!valid) {
+      element("bookCommentaryBlurb").textContent = "";
+      element("bookCommentaryReference").textContent = "";
+      element("bookCommentaryScope").textContent = "";
+      return;
+    }
+    element("bookCommentaryLabel").textContent = valid.label;
+    element("bookCommentaryBlurb").textContent = valid.resource.blurb;
+    element("bookCommentaryReference").textContent = `Source: ${valid.resource.source_reference_label}`;
+    element("bookCommentaryScope").textContent = valid.resource.scope_note;
+  }
+
   function verseReferenceLabel(selection) {
     if (!selection) return "Selected verse";
     return `${BOOK_NAMES[selection.bookId] || selection.bookId} ${selection.chapter}:${selection.verse}`;
@@ -1278,6 +1385,9 @@
       bookIntroduction.replaceChildren();
       element("bookIntroductionSources").replaceChildren();
     }
+    renderBookCommentaryResource(commentary.bookCommentary);
+
+    state.currentVerseCommentary = normalizedVerseCommentaryShard(commentary.verseCommentary, state.currentEntry);
 
     const commentarySummary = normalizedCommentarySummary(commentary);
     const practicalTakeaway = commentary.practicalTakeaway || {markdown: "Practical takeaway unavailable.", sourceIds: []};
@@ -1386,6 +1496,7 @@
       planVersion: state.plan && state.plan.planVersion,
       entry: state.currentEntry,
       scripture: state.currentScripture,
+      verseCommentary: state.currentVerseCommentary,
       participants: state.calendarParticipants.slice(),
       session: state.session ? {authorId: state.session.authorId, displayName: state.session.displayName} : null,
       online: serverCallsAllowed()
@@ -2173,6 +2284,7 @@
     state.scriptureRequestToken += 1;
     state.commentSyncToken += 1;
     state.currentScripture = null;
+    state.currentVerseCommentary = null;
     notifyHighlightEnhancer();
     element("readingView").hidden = true;
     element("homeView").hidden = false;
@@ -2201,6 +2313,9 @@
   function renderReadingShell(schedule) {
     const entry = schedule.selectedEntry;
     state.currentEntry = entry;
+    state.currentScripture = null;
+    state.currentVerseCommentary = null;
+    notifyHighlightEnhancer();
     element("readingDate").textContent = formatReadingDate(schedule.readingDate);
     element("readingPosition").textContent = entry.sourcePlanDay
       ? `Original plan day ${entry.sourcePlanDay} of 92 · Bridge day ${entry.dayIndex} of ${state.plan.entries.length}`
@@ -2217,6 +2332,7 @@
     setReadingPage(0, {focus: false});
 
     if (schedule.locked) {
+      state.currentVerseCommentary = null;
       setBanner("This future reading is locked by the shared plan configuration.", "info");
     } else if (schedule.usingTestingOverride) {
       setBanner("Development override is active. The shared calendar has not been changed.", "info");
@@ -2967,6 +3083,7 @@
     state.privatePayloadByReadingId = new Map();
     state.privatePayloadRequestByReadingId = new Map();
     state.currentScripture = null;
+    state.currentVerseCommentary = null;
     notifyHighlightEnhancer();
     state.calendarParticipants = [];
     state.completionByReadingId = new Map();
@@ -3209,6 +3326,8 @@
     readingHasActiveComment,
     readerCodeLooksReady,
     normalizedDraftBody,
+    normalizedBookCommentaryResource,
+    normalizedVerseCommentaryShard,
     normalizedVerseOfTheDay,
     listCurrentHighlights,
     registerHighlightEnhancer,

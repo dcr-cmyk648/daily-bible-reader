@@ -76,6 +76,14 @@
       "additionalProperties": false,
       "description": "Editorial selection only. Store the reference, never ESV wording; the client derives the exact text from the live provider response."
     },
+    "verseCommentary": {
+      "$ref": "mhc-runtime.schema.json#/$defs/chapterShard",
+      "description": "Optional precomputed private chapter shard. The browser performs local verse lookup with no runtime AI call; a reviewed shard may include only the exact cited public-domain commentary atoms used by its condensations."
+    },
+    "bookCommentary": {
+      "$ref": "mhc-runtime.schema.json#/$defs/bookIntroShard",
+      "description": "Optional precomputed private book-level resource; never represented as a fabricated verse."
+    },
     "overview": {"type": "string", "minLength": 1, "maxLength": 12000},
     "sections": {
       "type": "array",

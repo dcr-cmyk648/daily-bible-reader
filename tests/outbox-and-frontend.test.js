@@ -25,25 +25,7 @@ test("offline create followed by delete disappears before sync", () => {
   assert.deepEqual(app.compactOutbox(items), []);
 });
 
-test("offline verse highlights compact and remain visible until synchronized", () => {
-  const queued = [
-    {
-      clientRequestId: "highlight:1234567890abcdef", localTempId: "highlight-local:1234567890", eventType: "create",
-      planVersion: "plan-v1", readingId: "MIC-003", bookId: "MIC", chapter: 3, verse: 1, baseRevision: 0,
-      queuedAt: "2026-08-10T12:00:00.000Z"
-    }
-  ];
-  const effective = app.effectiveHighlights([], queued, {authorId: "dustin", displayName: "Dustin"});
-  assert.equal(effective.length, 1);
-  assert.equal(effective[0].pending, true);
-  assert.equal(effective[0].authorId, "dustin");
-  assert.deepEqual(app.compactHighlightOutbox([...queued, {
-    clientRequestId: "highlight:2234567890abcdef", localTempId: queued[0].localTempId, eventType: "delete",
-    queuedAt: "2026-08-10T12:01:00.000Z"
-  }]), []);
-});
-
-test("numbered Scripture rendering supports shared highlights and partial verse units", () => {
+test("numbered Scripture rendering supports isolated shared highlights and partial verse units", () => {
   assert.deepEqual(app.splitNumberedVerses("[7] First line.\n\n[8] Second line.\nContinued."), [
     {verse: 7, text: "First line."},
     {verse: 8, text: "Second line.\nContinued."}
@@ -54,12 +36,18 @@ test("numbered Scripture rendering supports shared highlights and partial verse 
   const html = fs.readFileSync(path.join(__dirname, "../app/frontend/index.html"), "utf8");
   const css = fs.readFileSync(path.join(__dirname, "../app/frontend/styles.css"), "utf8");
   const frontend = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
+  const highlights = fs.readFileSync(path.join(__dirname, "../app/frontend/highlights.js"), "utf8");
   assert.match(html, /id="highlightPopover"/);
   assert.match(html, /id="highlightAction"/);
   assert.match(css, /data-highlight-reader-0/);
   assert.match(css, /data-highlight-reader-1/);
-  assert.match(frontend, /function refreshHighlights/);
-  assert.match(frontend, /state\.adapter\.submitHighlightEvent/);
+  assert.match(frontend, /const DB_VERSION = 4/);
+  assert.doesNotMatch(frontend, /highlightOutbox|highlightSnapshot|highlightEvents: "eventId"/);
+  assert.match(frontend, /registerHighlightEnhancer/);
+  assert.match(highlights, /api\.registerHighlightEnhancer/);
+  assert.match(highlights, /api\.listCurrentHighlights/);
+  assert.match(highlights, /api\.submitCurrentHighlightEvent/);
+  assert.ok(html.indexOf('<script src="app.js"></script>') < html.indexOf('<script src="highlights.js"></script>'));
 });
 
 test("a signed-in reader's active or queued comment marks only that reading complete", () => {
@@ -130,18 +118,50 @@ test("blocked iPhone IndexedDB startup falls back instead of freezing the reader
   }
 });
 
+test("shared highlights do not force an IndexedDB schema upgrade on installed readers", async () => {
+  const priorIndexedDb = globalThis.indexedDB;
+  const request = {};
+  let requestedVersion = null;
+  globalThis.indexedDB = {
+    open(_name, version) {
+      requestedVersion = version;
+      setTimeout(() => {
+        request.result = {close() {}, transaction() { throw new Error("Not used in this probe."); }};
+        request.onsuccess();
+      }, 0);
+      return request;
+    }
+  };
+  try {
+    const store = await app.createBrowserStore(100);
+    assert.equal(requestedVersion, 4);
+    assert.equal(store.mode, "indexeddb");
+  } finally {
+    if (priorIndexedDb === undefined) delete globalThis.indexedDB;
+    else globalThis.indexedDB = priorIndexedDb;
+  }
+});
+
 test("production startup is late-load safe, bounded, and minified for iPhone Safari", () => {
   const frontend = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
+  const boot = fs.readFileSync(path.join(__dirname, "../app/frontend/boot.js"), "utf8");
   const buildScript = fs.readFileSync(path.join(__dirname, "../scripts/build-apps-script.mjs"), "utf8");
   assert.match(frontend, /document\.readyState === "loading"/);
   assert.match(frontend, /addEventListener\("DOMContentLoaded", start, \{once: true\}\)/);
+  assert.match(frontend, /document\.getElementById\("appMain"\)\) start\(\)/);
   assert.match(frontend, /setSyncStatus\("Preparing…"\)/);
   assert.match(frontend, /"SERVER_TIMEOUT"/);
+  assert.match(boot, /Loading application…/);
+  assert.match(boot, /setTimeout\(showRecovery, 8000\)/);
+  assert.match(boot, /setTimeout\(showRecovery, 45000\)/);
+  assert.match(boot, /Reload reader safely/);
   assert.match(buildScript, /target: "safari15"/);
+  assert.match(buildScript, /target: "safari12"/);
   assert.match(buildScript, /Buffer\.byteLength\(html, "utf8"\)/);
   assert.doesNotMatch(buildScript, /MAX_PRODUCTION_HTML_BYTES/);
   assert.match(buildScript, /replace\('<script src="app\.js"><\/script>', \(\) =>/);
-  assert.match(buildScript, /new Script\(inlineScripts\[0\]/);
+  assert.match(buildScript, /inlineScripts\.length !== 3/);
+  assert.match(buildScript, /inlineScripts\.forEach/);
 });
 
 test("frontend renders untrusted content without innerHTML sinks", () => {

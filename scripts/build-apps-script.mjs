@@ -25,17 +25,19 @@ function assertSingleReplacement(before, after, label) {
 }
 
 async function main() {
-  const [sourceHtml, css, providerPolicy, serverCore, app, code, manifest, touchIcon] = await Promise.all([
+  const [sourceHtml, css, providerPolicy, serverCore, boot, app, highlights, code, manifest, touchIcon] = await Promise.all([
     text("app/frontend/index.html"),
     text("app/frontend/styles.css"),
     text("app/shared/provider-policy.js"),
     text("app/shared/server-core.js"),
+    text("app/frontend/boot.js"),
     text("app/frontend/app.js"),
+    text("app/frontend/highlights.js"),
     text("app/apps-script/Code.gs"),
     text("app/apps-script/appsscript.json"),
     binary("app/frontend/assets/apple-touch-icon-180.png")
   ]);
-  for (const [label, source] of [["provider policy", providerPolicy], ["server core", serverCore], ["frontend", app]]) {
+  for (const [label, source] of [["provider policy", providerPolicy], ["server core", serverCore], ["boot", boot], ["frontend", app], ["highlights", highlights]]) {
     if (/<\/script/i.test(source)) throw new Error(`${label} contains a closing script token and cannot be inlined safely.`);
   }
 
@@ -46,7 +48,9 @@ async function main() {
       css,
       providerPolicy,
       serverCore,
+      boot,
       app,
+      highlights,
       code,
       manifest,
       touchIcon.toString("base64")
@@ -77,12 +81,24 @@ async function main() {
     throw new Error("Production frontend still contains a development fixture reference.");
   }
 
-  const [{code: productionJavaScript}, {code: productionCss}] = await Promise.all([
+  const [{code: productionBoot}, {code: productionJavaScript}, {code: productionHighlights}, {code: productionCss}] = await Promise.all([
+    transform(boot, {
+      legalComments: "none",
+      loader: "js",
+      minify: true,
+      target: "safari12"
+    }),
     transform(`${providerPolicy}\n${productionApp}`, {
       legalComments: "none",
       loader: "js",
       minify: true,
       target: "safari15"
+    }),
+    transform(highlights, {
+      legalComments: "none",
+      loader: "js",
+      minify: true,
+      target: "safari12"
     }),
     transform(css, {
       legalComments: "none",
@@ -110,21 +126,33 @@ async function main() {
   html = html.replace(/\s*<script src="\.\.\/shared\/server-core\.js"><\/script>/, "");
   html = assertSingleReplacement(
     html,
+    html.replace('<script src="boot.js"></script>', () => `<script>\n${productionBoot}\n</script>`),
+    "startup watchdog"
+  );
+  html = assertSingleReplacement(
+    html,
     // A replacement callback is mandatory: minified JavaScript can contain `$&`,
     // which String.replace would otherwise expand to the matched script tag.
     html.replace('<script src="app.js"></script>', () => `<script>\n${productionJavaScript}\n</script>`),
     "frontend scripts"
   );
+  html = assertSingleReplacement(
+    html,
+    html.replace('<script src="highlights.js"></script>', () => `<script>\n${productionHighlights}\n</script>`),
+    "optional highlight enhancement"
+  );
 
   const inlineScripts = Array.from(html.matchAll(/<script>([\s\S]*?)<\/script>/g), (match) => match[1]);
-  if (inlineScripts.length !== 1) {
-    throw new Error(`Expected one production inline script; found ${inlineScripts.length}.`);
+  if (inlineScripts.length !== 3) {
+    throw new Error(`Expected three isolated production inline scripts; found ${inlineScripts.length}.`);
   }
-  try {
-    new Script(inlineScripts[0], {filename: "Index.inline.js"});
-  } catch (error) {
-    throw new Error(`Generated inline JavaScript is invalid: ${error.message}`);
-  }
+  inlineScripts.forEach((source, index) => {
+    try {
+      new Script(source, {filename: `Index.inline-${index + 1}.js`});
+    } catch (error) {
+      throw new Error(`Generated inline JavaScript ${index + 1} is invalid: ${error.message}`);
+    }
+  });
 
   await rm(OUTPUT, {recursive: true, force: true});
   await mkdir(OUTPUT, {recursive: true});

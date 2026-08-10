@@ -24,7 +24,7 @@ The bridge uses a fixed `sharedStartDate` of 2026-08-08 interpreted in `America/
 
 The bridge permits six days of lookahead so all seven entries can be tested immediately. Past readings remain available. The internal development override is restricted to the same seven IDs but is not exposed as a reader-facing control. The home calendar starts weeks on Sunday and shows one complete month. A date click selects it and updates the passage/progress card below; opening requires the separate date-specific action. Completion is per reader and derives from an active comment, including a queued offline create; two colored dots make Dustin’s and Shane’s independent progress visible without exposing either account email.
 
-The seven-reading offline target applies to private commentary payloads, comment drafts, and synchronized highlight state. ESV is network-only under the current provider policy, so “offline week” does not mean seven persisted Scripture passages.
+The seven-reading offline target applies to private commentary payloads and comment drafts. ESV and shared highlights are network-only, so “offline week” does not mean seven persisted Scripture passages or offline highlight changes.
 
 ## Preserved Genesis calibration
 

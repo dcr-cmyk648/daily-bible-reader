@@ -2,7 +2,7 @@
 
 External setup was approved on 2026-08-08. The private Drive hierarchy/content, native comments Sheet, Script Properties, owner-entered ESV key, and signed-in/user-executed Apps Script deployment exist. The active private config now selects the seven-day Celebration bridge; the full 92-day source schedule is stored separately as factual reference metadata; only days 54–56 have synthesis, while days 57–60 are explicit placeholders. The fourteen active reading files are exact-byte verified and individually shared with Shane as Viewer; a post-write audit found only the owner and Shane, with no link or domain access. Existing shared config/plan/registry/manifest files were updated in place without deleting the preserved Genesis files. The 92-day reference file remains owner-only because the app does not retrieve it. Shane's authenticated access, reader-code binding, and comment creation have passed; his live ESV and Home Screen installation checks remain pending.
 
-The unchanged production URL is deliberately rolled back to immutable version 15, the most recent build confirmed to load on Dustin's installed iPhone. Versions 16 and 17 stalled before startup; version 18 still stalled after minification to 98,373 bytes and visibly reached **Authorizing…**. That result rules out commentary-schema rejection, ordinary stale-URL behavior, and shell size as sufficient explanations. Local-first version 19 (`cca294f8dcae4900`) is deployed on a separate canary URL while production stays on version 15. It renders an identity-bound saved calendar before the slow full bootstrap, confirms identity/allowlist/enrollment/scopes/manifest access with a lightweight RPC, gates writes until confirmation, batches the seven-reading private window, and parses the final generated artifact before deployment. Server enrollment, private Drive content, ESV retrieval, comments, Google resources, scopes, execution identity, production deployment access, and sharing remain unchanged. Version 10 incorrectly required `commentary/v1`; version 15 and the canary accept v1, v2, and v3 while the active substantive readings use v3.
+The unchanged production URL serves immutable version 20 (`8ef4415179bf0447`); version 19 is the immediate rollback and remains on the canary URL. Version 19 established local-first rendering of an identity-bound saved calendar before the slow full bootstrap, followed by a lightweight identity/allowlist/enrollment/scopes/manifest check and a batched seven-reading refresh. Version 20 preserves that startup contract and adds shared verse highlights plus plan/editorial validation. Versions 16–18 remain useful incident history: they showed that commentary-schema rejection, ordinary stale-URL behavior, and shell size alone did not explain the prior iPhone stalls. Server enrollment, private Drive content, ESV retrieval, comments, scopes, execution identity, deployment access, and sharing remain unchanged; version 20 adds only a frozen `highlight-events` tab to the existing restricted Sheet. The server accepts commentary schemas v1, v2, and v3 while active substantive readings use v3.
 
 ## Phone-only setup handoff
 
@@ -28,7 +28,7 @@ Create a private owner-controlled folder. Do not use “anyone with the link.”
 
 The Celebration bridge uses `sharedStartDateMode: "fixed"`, start date 2026-08-08, `futureLookaheadDays: 6`, and a seven-ID testing override so every bridge reading can be audited now. The later new plan receives its own agreed start date and may reduce or disable the override. Reading IDs and comments do not change when dates change.
 
-The separate comments Sheet has been created with the `comment-events` tab and shared directly with Shane's exact account as Editor. The permission and absence of link/domain sharing were read back after the write. The Sheet is not the content permission gate.
+The separate comments Sheet has been created with `comment-events` and `highlight-events` tabs and shared directly with Shane's exact account as Editor. The permission and absence of link/domain sharing were read back after the write. The Sheet is not the content permission gate.
 
 The prior eight manifest/config/plan/source/Genesis files and all fourteen active bridge reading/metadata files are individually shared with Shane as Viewer. The bridge files remain in their original private parent folder; the post-share audit confirmed exactly one owner plus Shane as reader on every file and no broad permission. The 92-day factual reference file remains owner-only and is not requested by the runtime. Do not use link sharing. A future move to an inherited dedicated-folder ACL requires a separate migration and a fresh manifest, parent, and permission audit.
 
@@ -39,6 +39,14 @@ event_id | comment_id | client_request_id | plan_version | reading_id | event_ty
 ```
 
 Freeze the header and leave appended rows under application control. The app writes each row as plain text and JSON-encodes the comment body to prevent spreadsheet formula interpretation. Because Shane must be a Sheet Editor for a `USER_ACCESSING` deployment, app-level revision history does not prevent either user from editing rows directly; review the tradeoff in `docs/ARCHITECTURE.md` before production. Reader codes protect the app RPCs but cannot gate Google's native Sheet editor. Direct Sheet access is limited by the Sheet's Google-account sharing list, so “valid code” must never be treated as permission to link-share it.
+
+The exact `highlight-events` header row in columns A–Q is:
+
+```text
+event_id | highlight_id | client_request_id | plan_version | reading_id | event_type | author_id | display_name | book_id | chapter | verse | base_revision | revision | created_at | updated_at | deleted_at | received_at
+```
+
+Freeze this header too. Preserve both event tabs during backup and restore; the app never accepts a tab name from the browser.
 
 ## 2. Create the standalone Apps Script project
 
@@ -57,6 +65,7 @@ Set these Script Properties in the Apps Script UI:
 - `PRIVATE_MANIFEST_FILE_ID` — private manifest Drive file ID
 - `COMMENTS_SPREADSHEET_ID` — separately shared comment Sheet ID
 - `COMMENTS_SHEET_NAME` — `comment-events`
+- `HIGHLIGHTS_SHEET_NAME` — optional; defaults to `highlight-events`
 - `AUTHORIZED_USERS_JSON` — exactly two records. Replace the example emails and hash placeholders in the Apps Script UI only:
 
   ```json
@@ -92,8 +101,8 @@ The source manifest encodes `USER_ACCESSING` / `ANYONE`; verify the deployment U
 
 In clean browser profiles:
 
-1. Dustin grants all required scopes, enters Dustin's code, sees `Dustin`, reads all seven bridge entries, gets each live ESV chapter group, and creates/edits/deletes a comment.
-2. Shane grants scopes, enters Shane's code, sees `Shane`, reads only because the Drive folder is shared, and writes only because the Sheet is shared.
+1. Dustin grants all required scopes, enters Dustin's code, sees `Dustin`, reads all seven bridge entries, gets each live ESV chapter group, creates/edits/deletes a comment, and highlights/unhighlights a verse.
+2. Shane grants scopes, enters Shane's code, sees `Shane`, reads only because the Drive folder is shared, and writes only because the Sheet is shared. Confirm both readers can highlight the same verse in their distinct colors, see both server timestamps, and remove only their own mark.
 3. Confirm Shane's code fails while Dustin is signed in and Dustin's code fails while Shane is signed in.
 4. A third signed-in account is denied before any private metadata is returned, even if it has a copied reader code.
 5. Anonymous/incognito-without-login is denied by Google.
@@ -112,7 +121,7 @@ After the acceptance deployment exists:
 1. Open the exact deployed `/exec` URL in Safari on the iPhone; do not use a copied iframe or `script.googleusercontent.com` redirect URL.
 2. Sign in to the intended Google account and grant only the scopes listed in the consent screen.
 3. Enter that person's assigned reader code. The raw code remains only in that device's IndexedDB as a fallback; Apps Script stores only the verified hash and author binding in that user's private User Properties so future browser-storage loss does not normally require re-entry.
-4. Test Micah 3–4 and Micah 5–7 as single daily Scripture pages, a placeholder day, a comment draft, synchronization, and “Clear downloaded data.”
+4. Test Micah 3–4 and Micah 5–7 as single daily Scripture pages, a placeholder day, a comment draft, a verse highlight, synchronization, and “Clear downloaded data.”
 5. In Safari, choose Share → Add to Home Screen, enable **Open as Web App**, choose the name, and add it. Apple documents this flow at <https://support.apple.com/en-ie/guide/iphone/iphea86e5236/ios>.
 6. Launch the new Home Screen icon and repeat the bridge and comment tests at least once before relying on offline private commentary.
 

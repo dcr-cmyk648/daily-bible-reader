@@ -67,3 +67,25 @@ test("duplicate locators and raw-source fields are rejected", async () => {
     /forbidden raw-source or quotation field/
   );
 });
+
+test("critical sources require an affiliation and a bounded synthesis role", async () => {
+  const {validateRegistryProvenance} = await validator();
+  const critical = {
+    traditionOrPerspective: ["modern critical scholarship"],
+    affiliationContext: "christian_academic",
+    synthesisPriority: "major_counterposition"
+  };
+  assert.equal(validateRegistryProvenance({sources: [source(critical)]}).total, 1);
+  assert.throws(
+    () => validateRegistryProvenance({sources: [source({traditionOrPerspective: ["historical-critical"]})]}),
+    /requires verified or explicitly unclear affiliation context/
+  );
+  assert.throws(
+    () => validateRegistryProvenance({sources: [source({
+      ...critical,
+      affiliationContext: "secular_academic",
+      synthesisPriority: "core"
+    })]}),
+    /may supply context or a major counterposition/
+  );
+});

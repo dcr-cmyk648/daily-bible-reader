@@ -24,14 +24,22 @@ The bridge uses a fixed `sharedStartDate` of 2026-08-08 interpreted in `America/
 
 The bridge permits six days of lookahead so all seven entries can be tested immediately. Past readings remain available. The internal development override is restricted to the same seven IDs but is not exposed as a reader-facing control. The home calendar starts weeks on Sunday and shows one complete month. A date click selects it and updates the passage/progress card below; opening requires the separate date-specific action. Completion is per reader and derives from an active comment, including a queued offline create; two colored dots make Dustin’s and Shane’s independent progress visible without exposing either account email.
 
-The seven-reading offline target applies to private commentary payloads and comment drafts. ESV is network-only under the current provider policy, so “offline week” does not mean seven persisted Scripture passages.
+The seven-reading offline target applies to private commentary payloads, comment drafts, and synchronized highlight state. ESV is network-only under the current provider policy, so “offline week” does not mean seven persisted Scripture passages.
 
 ## Preserved Genesis calibration
 
 The previous `intro-GEN` and `GEN-001` private drafts remain preserved in local ignored storage and Drive history/files, but they are no longer entries in the active manifest or plan. Existing comments retain their stable reading IDs and are not deleted or reassigned.
 
-## Long-term principle
+## Long-term four-stream principle
 
-The new launch plan remains separate from this bridge. Its intended model is one book-introduction day before each biblical book, then contiguous chapters. Primary placement is approximate event chronology; where that is unclear or unsuitable, composition, traditional placement, or a pragmatic decision may be used and labeled. Each entry records rationale, basis, confidence, notes, and sources. This is a transparent editorial model, not a claim that one undisputed chronology exists.
+The new launch plan remains separate from this bridge and is not generated yet. Its default design has four internally ordered streams: Old Testament narrative/prophets, New Testament, Psalms, and Proverbs. The calendar still assigns exactly one reading unit per day. Interweaving changes which stream supplies that day; it never creates a four-part daily assignment.
 
-The provisional default is a configurable 66-book Protestant canon. Canon, start date, full ordering, disputed placements, and introduction days still require confirmation before the complete new plan is generated.
+Within the Old and New Testament streams, books retain an approximate chronological sequence and normally remain contiguous once begun. Primary placement is event chronology; where that is unclear or unsuitable, composition, traditional placement, or a pragmatic decision may be used and labeled. Psalms form their own stream so they can be paced across the complete plan; strong historical associations may inform placement, but disputed superscriptions are not converted into false certainty. Proverbs forms a fourth stream of deliberately sized verse chunks so its dense material receives the same commentary depth as a narrative chapter.
+
+Every biblical book receives a stable `book_intro` unit. That unit occupies the normal daily slot, places the portable book overview on page 2, and reserves page 3 for the book's purpose, structure, theology, interpretive questions, and sources. The next calendar day must be that book's chapter 1 (or Proverbs' first configured chapter-1 chunk). No other stream may be inserted between the introduction and its opening text.
+
+Each stream records its complete unit count before interleaving. The scheduler compares each stream's completed fraction with the plan's overall completed fraction and normally chooses the stream furthest behind, subject to book contiguity and the mandatory introduction–chapter-1 pair. This proportional pacing is preferable to a rigid weekly rotation because the streams have very different lengths. The target is for Old Testament, New Testament, Psalms, and Proverbs to reach their final units together or within the smallest feasible final window, while preserving one substantial reading and commentary per day.
+
+`streamId` and `streamSequence` preserve each stream's internal order. `contextReadingIds` may identify up to five earlier readings that materially illuminate the current unit; commentary may restate and build on those links without making today's writing dependent on memory. Partial Proverbs units use `verseStart`, `verseEnd`, and an exact `verseCount`; other entries continue to request complete chapters. Each entry still records rationale, chronology basis, confidence, notes, and supporting sources. This is a transparent editorial model, not a claim that one undisputed chronology exists.
+
+The provisional default remains a configurable 66-book Protestant canon. Canon, launch date, exact OT/NT book ordering, Psalm order, Proverbs chunk boundaries, and the final stream-balancing tolerance still require confirmation before the complete plan is generated.

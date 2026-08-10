@@ -16,6 +16,7 @@ const DBR_PROPERTIES = {
   manifestFileId: "PRIVATE_MANIFEST_FILE_ID",
   commentsSpreadsheetId: "COMMENTS_SPREADSHEET_ID",
   commentsSheetName: "COMMENTS_SHEET_NAME",
+  highlightsSheetName: "HIGHLIGHTS_SHEET_NAME",
   authorizedUsers: "AUTHORIZED_USERS_JSON",
   esvApiKey: "ESV_API_KEY"
 };
@@ -42,6 +43,25 @@ const DBR_COMMENT_COLUMNS = [
   "author_id",
   "display_name",
   "body_json",
+  "base_revision",
+  "revision",
+  "created_at",
+  "updated_at",
+  "deleted_at",
+  "received_at"
+];
+const DBR_HIGHLIGHT_COLUMNS = [
+  "event_id",
+  "highlight_id",
+  "client_request_id",
+  "plan_version",
+  "reading_id",
+  "event_type",
+  "book_id",
+  "chapter",
+  "verse",
+  "author_id",
+  "display_name",
   "base_revision",
   "revision",
   "created_at",
@@ -218,9 +238,12 @@ function getScripture(readerCode, readingId) {
     }
     const versesByBook = {};
     requestedPassages.forEach(function (passage) {
+      const hasRange = Number.isInteger(passage && passage.verseStart) || Number.isInteger(passage && passage.verseEnd);
       if (!passage || !DBR_BOOK_NAMES[passage.bookId] || !Number.isInteger(passage.chapter) ||
           !Number.isInteger(passage.verseCount) || passage.verseCount < 1 ||
-          passage.verseCount > DBR_ESV_POLICY.maxVersesPerRequest) {
+          passage.verseCount > DBR_ESV_POLICY.maxVersesPerRequest ||
+          (hasRange && (!Number.isInteger(passage.verseStart) || !Number.isInteger(passage.verseEnd) ||
+            passage.verseEnd < passage.verseStart || passage.verseCount !== passage.verseEnd - passage.verseStart + 1))) {
         throw dbrError_("CONTENT_INVALID", "A daily Scripture reference is invalid.");
       }
       const metrics = privateState.plan.bookMetrics && privateState.plan.bookMetrics[passage.bookId];
@@ -239,7 +262,8 @@ function getScripture(readerCode, readingId) {
     const apiKey = PropertiesService.getScriptProperties().getProperty(DBR_PROPERTIES.esvApiKey);
     if (!apiKey) return {available: false, code: "ESV_NOT_CONFIGURED"};
     const requests = requestedPassages.map(function (passage) {
-      const reference = DBR_BOOK_NAMES[passage.bookId] + " " + passage.chapter;
+      const reference = DBR_BOOK_NAMES[passage.bookId] + " " + passage.chapter +
+        (Number.isInteger(passage.verseStart) ? ":" + passage.verseStart + "-" + passage.verseEnd : "");
       const query = [
         "q=" + encodeURIComponent(reference),
         "include-passage-references=true",
@@ -270,12 +294,19 @@ function getScripture(readerCode, readingId) {
     try {
       validatedPassages = responses.map(function (response, index) {
         const requested = requestedPassages[index];
-        const reference = DBR_BOOK_NAMES[requested.bookId] + " " + requested.chapter;
+        const reference = DBR_BOOK_NAMES[requested.bookId] + " " + requested.chapter +
+          (Number.isInteger(requested.verseStart) ? ":" + requested.verseStart + "-" + requested.verseEnd : "");
         const parsed = JSON.parse(response.getContentText("UTF-8"));
-        const validated = DBRServerCore.validateEsvPayload(parsed, {verseCount: requested.verseCount});
+        const validated = DBRServerCore.validateEsvPayload(parsed, {
+          verseCount: requested.verseCount,
+          startVerse: Number.isInteger(requested.verseStart) ? requested.verseStart : 1,
+          endVerse: Number.isInteger(requested.verseEnd) ? requested.verseEnd : requested.verseCount
+        });
         return {
           bookId: requested.bookId,
           chapter: requested.chapter,
+          verseStart: Number.isInteger(requested.verseStart) ? requested.verseStart : 1,
+          verseEnd: Number.isInteger(requested.verseEnd) ? requested.verseEnd : requested.verseCount,
           canonical: validated.canonical,
           passage: validated.passage,
           verseCount: validated.verseCount,
@@ -372,6 +403,45 @@ function submitCommentEvent(readerCode, payload) {
   });
 }
 
+function listHighlights(readerCode, readingId) {
+  return dbrRpc_(function () {
+    const context = dbrAuthorizedContext_(readerCode);
+    dbrEnforceRateLimit_("highlights-read", 120, 60);
+    const privateState = dbrReadPrivateState_(context);
+    DBRServerCore.getPlanEntry(privateState.plan, readingId);
+    const events = dbrReadHighlightEvents_().filter(function (event) {
+      return event.readingId === readingId && event.planVersion === privateState.plan.planVersion;
+    });
+    return DBRServerCore.materializeHighlightEvents(events);
+  });
+}
+
+function submitHighlightEvent(readerCode, payload) {
+  return dbrRpc_(function () {
+    const context = dbrAuthorizedContext_(readerCode);
+    dbrEnforceRateLimit_("highlights-write", 60, 60);
+    const privateState = dbrReadPrivateState_(context);
+    DBRServerCore.validateHighlightRequest(payload, privateState.plan);
+    const lock = LockService.getScriptLock();
+    if (!lock.tryLock(5000)) throw dbrError_("HIGHLIGHT_STORE_BUSY", "Highlights are busy; retry shortly.");
+    try {
+      const events = dbrReadHighlightEvents_();
+      const result = DBRServerCore.applyHighlightEvent({
+        payload: payload,
+        plan: privateState.plan,
+        identity: context.identity,
+        existingEvents: events,
+        now: new Date().toISOString(),
+        idFactory: function (kind) { return kind + ":" + Utilities.getUuid(); }
+      });
+      if (!result.idempotent) dbrAppendHighlightEvent_(result.event);
+      return result;
+    } finally {
+      lock.releaseLock();
+    }
+  });
+}
+
 function dbrRpc_(operation) {
   try {
     return {ok: true, data: operation()};
@@ -404,6 +474,15 @@ function dbrPublicError_(error) {
     REVISION_CONFLICT: "Comment changed on another client; refresh before editing.",
     COMMENT_STORE_BUSY: "Discussion is busy; retry shortly.",
     COMMENT_STORE_UNAVAILABLE: "Discussion storage is unavailable.",
+    INVALID_HIGHLIGHT_REQUEST: "Highlight request is invalid.",
+    INVALID_HIGHLIGHT_EVENT: "Highlight action is invalid.",
+    INVALID_HIGHLIGHT_REFERENCE: "Highlighted verse is not part of this reading.",
+    INVALID_HIGHLIGHT_ID: "Highlight identifier is invalid.",
+    HIGHLIGHT_NOT_FOUND: "Highlight is unavailable or already removed.",
+    HIGHLIGHT_FORBIDDEN: "Only the reader who added a highlight may remove it.",
+    HIGHLIGHT_ASSOCIATION_MISMATCH: "Highlight belongs to a different verse or reading.",
+    HIGHLIGHT_STORE_BUSY: "Highlights are busy; retry shortly.",
+    HIGHLIGHT_STORE_UNAVAILABLE: "Shared highlight storage is unavailable.",
     RATE_LIMITED: "Too many requests; retry shortly.",
     ESV_RANGE_MISMATCH: "Scripture response did not match the configured chapter.",
     INVALID_ESV_RESPONSE: "Scripture provider returned an invalid response.",
@@ -551,6 +630,11 @@ function dbrValidatePrivateConfig_(config, plan) {
   if (!plan || plan.schemaVersion !== "plan/v1" || plan.planVersion !== "celebration-y3q4-bridge-2026-v1" ||
       !Array.isArray(plan.entries) || plan.entries.length !== DBR_BRIDGE_READING_IDS.length) {
     throw dbrError_("CONTENT_INVALID", "Bridge plan must contain exactly the approved seven readings.");
+  }
+  try {
+    DBRServerCore.validatePlanStructure(plan);
+  } catch (error) {
+    throw dbrError_("CONTENT_INVALID", "Reading-plan structure is invalid.");
   }
   plan.entries.forEach(function (entry, index) {
     if (!entry || entry.readingId !== DBR_BRIDGE_READING_IDS[index] || entry.dayIndex !== index + 1 ||
@@ -765,6 +849,88 @@ function dbrAppendCommentEvent_(event) {
     event.authorId,
     event.displayName,
     JSON.stringify(event.body),
+    event.baseRevision,
+    event.revision,
+    event.createdAt,
+    event.updatedAt,
+    event.deletedAt || "",
+    new Date().toISOString()
+  ];
+  const range = sheet.getRange(sheet.getLastRow() + 1, 1, 1, row.length);
+  range.setNumberFormat("@");
+  range.setValues([row]);
+  SpreadsheetApp.flush();
+}
+
+function dbrHighlightSheet_() {
+  const props = PropertiesService.getScriptProperties();
+  const spreadsheetId = props.getProperty(DBR_PROPERTIES.commentsSpreadsheetId);
+  const sheetName = props.getProperty(DBR_PROPERTIES.highlightsSheetName) || "highlight-events";
+  if (!spreadsheetId) throw dbrError_("HIGHLIGHT_STORE_UNAVAILABLE", "Shared Sheet is not configured.");
+  try {
+    const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+    const sheet = spreadsheet.getSheetByName(sheetName);
+    if (!sheet) throw dbrError_("HIGHLIGHT_STORE_UNAVAILABLE", "Highlight Sheet tab is unavailable.");
+    dbrAssertHighlightHeader_(sheet);
+    return sheet;
+  } catch (error) {
+    if (error && error.code) throw error;
+    throw dbrError_("HIGHLIGHT_STORE_UNAVAILABLE", "Shared highlights are unavailable to this account.");
+  }
+}
+
+function dbrAssertHighlightHeader_(sheet) {
+  if (sheet.getLastRow() < 1) throw dbrError_("HIGHLIGHT_STORE_UNAVAILABLE", "Highlight Sheet header is missing.");
+  const header = sheet.getRange(1, 1, 1, DBR_HIGHLIGHT_COLUMNS.length).getDisplayValues()[0];
+  if (header.some(function (value, index) { return value !== DBR_HIGHLIGHT_COLUMNS[index]; })) {
+    throw dbrError_("HIGHLIGHT_STORE_UNAVAILABLE", "Highlight Sheet header does not match the application schema.");
+  }
+}
+
+function dbrReadHighlightEvents_() {
+  const sheet = dbrHighlightSheet_();
+  const rowCount = sheet.getLastRow() - 1;
+  if (rowCount <= 0) return [];
+  if (rowCount > 20000) throw dbrError_("HIGHLIGHT_STORE_UNAVAILABLE", "Highlight history exceeds the personal-app limit.");
+  const rows = sheet.getRange(2, 1, rowCount, DBR_HIGHLIGHT_COLUMNS.length).getValues();
+  return rows.map(dbrHighlightRowToEvent_).filter(function (event) { return event.eventId && event.highlightId; });
+}
+
+function dbrHighlightRowToEvent_(row) {
+  return {
+    eventId: String(row[0] || ""),
+    highlightId: String(row[1] || ""),
+    clientRequestId: String(row[2] || ""),
+    planVersion: String(row[3] || ""),
+    readingId: String(row[4] || ""),
+    eventType: String(row[5] || ""),
+    bookId: String(row[6] || ""),
+    chapter: Number(row[7]),
+    verse: Number(row[8]),
+    authorId: String(row[9] || ""),
+    displayName: String(row[10] || ""),
+    baseRevision: Number(row[11]),
+    revision: Number(row[12]),
+    createdAt: String(row[13] || ""),
+    updatedAt: String(row[14] || ""),
+    deletedAt: row[15] ? String(row[15]) : null
+  };
+}
+
+function dbrAppendHighlightEvent_(event) {
+  const sheet = dbrHighlightSheet_();
+  const row = [
+    event.eventId,
+    event.highlightId,
+    event.clientRequestId,
+    event.planVersion,
+    event.readingId,
+    event.eventType,
+    event.bookId,
+    event.chapter,
+    event.verse,
+    event.authorId,
+    event.displayName,
     event.baseRevision,
     event.revision,
     event.createdAt,

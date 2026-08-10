@@ -158,6 +158,66 @@
     return entry;
   }
 
+  function validatePlanStructure(plan) {
+    if (!plan || !plan.planVersion || !Array.isArray(plan.entries) || !plan.entries.length) {
+      throw domainError("INVALID_PLAN", "Reading plan is unavailable.");
+    }
+    const seenReadingIds = new Set();
+    plan.entries.forEach((entry, index) => {
+      if (!entry || entry.planVersion !== plan.planVersion || entry.dayIndex !== index + 1 ||
+          !READING_ID.test(String(entry.readingId || "")) || seenReadingIds.has(entry.readingId)) {
+        throw domainError("INVALID_PLAN", "Reading plan order or identifiers are invalid.");
+      }
+      const earlierIds = new Set(plan.entries.slice(0, index).map((candidate) => candidate && candidate.readingId));
+      const contextReadingIds = Array.isArray(entry.contextReadingIds) ? entry.contextReadingIds : [];
+      if (contextReadingIds.some((readingId) => !earlierIds.has(readingId))) {
+        throw domainError("INVALID_PLAN", "Context readings must refer only to earlier plan entries.");
+      }
+      (Array.isArray(entry.passages) ? entry.passages : []).forEach((passage) => {
+        const hasStart = Number.isInteger(passage && passage.verseStart);
+        const hasEnd = Number.isInteger(passage && passage.verseEnd);
+        if (hasStart !== hasEnd || (hasStart && (
+          passage.verseEnd < passage.verseStart ||
+          passage.verseEnd - passage.verseStart + 1 !== passage.verseCount
+        ))) {
+          throw domainError("INVALID_PLAN", "A partial passage range does not match its verse count.");
+        }
+      });
+      seenReadingIds.add(entry.readingId);
+    });
+
+    if (!plan.structure) return plan;
+    const expectedStreams = ["old_testament", "new_testament", "psalms", "proverbs"];
+    const configuredStreams = Array.isArray(plan.structure.streams)
+      ? plan.structure.streams.map((stream) => stream && stream.streamId)
+      : [];
+    if (configuredStreams.length !== expectedStreams.length ||
+        new Set(configuredStreams).size !== expectedStreams.length ||
+        expectedStreams.some((streamId) => !configuredStreams.includes(streamId))) {
+      throw domainError("INVALID_PLAN", "The long-term plan must configure each of the four reading streams exactly once.");
+    }
+    const nextSequence = new Map(expectedStreams.map((streamId) => [streamId, 1]));
+    plan.entries.forEach((entry, index) => {
+      if (!nextSequence.has(entry.streamId) || entry.streamSequence !== nextSequence.get(entry.streamId)) {
+        throw domainError("INVALID_PLAN", "Reading stream sequences must be contiguous in scheduled order.");
+      }
+      nextSequence.set(entry.streamId, entry.streamSequence + 1);
+      const next = plan.entries[index + 1];
+      if (entry.kind === "book_intro" && (!next || next.kind !== "chapter" || next.bookId !== entry.bookId ||
+          next.chapter !== 1 || next.streamId !== entry.streamId)) {
+        throw domainError("INVALID_PLAN", "Every book introduction must be followed immediately by chapter 1.");
+      }
+      if (entry.kind === "chapter" && entry.chapter === 1) {
+        const previous = plan.entries[index - 1];
+        if (!previous || previous.kind !== "book_intro" || previous.bookId !== entry.bookId ||
+            previous.streamId !== entry.streamId) {
+          throw domainError("INVALID_PLAN", "Chapter 1 of every book must follow its book introduction.");
+        }
+      }
+    });
+    return plan;
+  }
+
   function validateVerseOfTheDay(selection, entry) {
     if (!entry || entry.kind !== "chapter") {
       if (selection === undefined || selection === null) return null;
@@ -173,7 +233,7 @@
     const passage = (Array.isArray(entry.passages) ? entry.passages : []).find(function (candidate) {
       return candidate && candidate.bookId === selection.bookId && candidate.chapter === selection.chapter;
     });
-    if (!passage || !Number.isInteger(passage.verseCount) || selection.verse > passage.verseCount) {
+    if (!passageContainsVerse(passage, selection.verse)) {
       throw domainError("CONTENT_INVALID", "Verse of the day must belong to the configured reading.");
     }
     return {
@@ -181,6 +241,17 @@
       chapter: selection.chapter,
       verse: selection.verse
     };
+  }
+
+  function passageContainsVerse(passage, verse) {
+    if (!passage || !Number.isInteger(passage.verseCount) || passage.verseCount < 1 ||
+        !Number.isInteger(verse) || verse < 1) return false;
+    const hasRange = Number.isInteger(passage.verseStart) || Number.isInteger(passage.verseEnd);
+    if (!hasRange) return verse <= passage.verseCount;
+    return Number.isInteger(passage.verseStart) && Number.isInteger(passage.verseEnd) &&
+      passage.verseStart >= 1 && passage.verseEnd >= passage.verseStart &&
+      passage.verseCount === passage.verseEnd - passage.verseStart + 1 &&
+      verse >= passage.verseStart && verse <= passage.verseEnd;
   }
 
   function normalizeCommentBody(value, allowEmpty) {
@@ -381,6 +452,140 @@
     return {event, idempotent: false};
   }
 
+  function validateHighlightRequest(payload, plan) {
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+      throw domainError("INVALID_HIGHLIGHT_REQUEST", "Highlight request must be an object.");
+    }
+    const eventType = String(payload.eventType || "");
+    if (!["create", "delete"].includes(eventType)) {
+      throw domainError("INVALID_HIGHLIGHT_EVENT", "Highlight event type is invalid.");
+    }
+    const readingId = String(payload.readingId || "");
+    if (!READING_ID.test(readingId)) throw domainError("INVALID_READING", "Reading ID is invalid.");
+    const entry = getPlanEntry(plan, readingId);
+    if (entry.kind !== "chapter") throw domainError("INVALID_HIGHLIGHT_REFERENCE", "Only Scripture verses can be highlighted.");
+    const planVersion = String(payload.planVersion || "");
+    if (!planVersion || planVersion !== entry.planVersion || planVersion !== plan.planVersion) {
+      throw domainError("PLAN_VERSION_MISMATCH", "Highlight plan version does not match the active plan.");
+    }
+    const clientRequestId = String(payload.clientRequestId || "");
+    if (!REQUEST_ID.test(clientRequestId)) throw domainError("INVALID_REQUEST_ID", "Client request ID is invalid.");
+    const bookId = String(payload.bookId || "");
+    const chapter = Number(payload.chapter);
+    const verse = Number(payload.verse);
+    const passage = (Array.isArray(entry.passages) ? entry.passages : []).find((candidate) =>
+      candidate && candidate.bookId === bookId && candidate.chapter === chapter
+    );
+    if (!/^[A-Z0-9]{2,8}$/.test(bookId) || !Number.isInteger(chapter) || chapter < 1 ||
+        !Number.isInteger(verse) || !passageContainsVerse(passage, verse)) {
+      throw domainError("INVALID_HIGHLIGHT_REFERENCE", "Highlighted verse is not part of this reading.");
+    }
+    const baseRevision = Number(payload.baseRevision);
+    if (!Number.isInteger(baseRevision) || baseRevision < 0 || (eventType === "create" && baseRevision !== 0)) {
+      throw domainError("INVALID_REVISION", "Highlight revision is invalid.");
+    }
+    const highlightId = payload.highlightId ? String(payload.highlightId) : "";
+    if (eventType === "delete" && !REQUEST_ID.test(highlightId)) {
+      throw domainError("INVALID_HIGHLIGHT_ID", "Existing highlight ID is required.");
+    }
+    return {eventType, readingId, planVersion, clientRequestId, highlightId, bookId, chapter, verse, baseRevision};
+  }
+
+  function sortHighlightEvents(events) {
+    return (Array.isArray(events) ? events : []).slice().sort((left, right) => {
+      if (left.highlightId === right.highlightId && left.revision !== right.revision) {
+        return left.revision - right.revision;
+      }
+      return String(left.updatedAt || "").localeCompare(String(right.updatedAt || ""));
+    });
+  }
+
+  function latestHighlightEventFor(events, highlightId) {
+    const matching = sortHighlightEvents(events).filter((event) => event.highlightId === highlightId);
+    return matching.length ? matching[matching.length - 1] : null;
+  }
+
+  function materializeHighlightEvents(events, options) {
+    const latest = new Map();
+    sortHighlightEvents(events).forEach((event) => latest.set(event.highlightId, event));
+    const includeDeleted = Boolean(options && options.includeDeleted);
+    return Array.from(latest.values())
+      .filter((event) => includeDeleted || !event.deletedAt)
+      .sort((left, right) => {
+        const reference = String(left.bookId).localeCompare(String(right.bookId)) ||
+          left.chapter - right.chapter || left.verse - right.verse;
+        return reference || String(left.createdAt).localeCompare(String(right.createdAt));
+      });
+  }
+
+  function applyHighlightEvent(input) {
+    const payload = validateHighlightRequest(input && input.payload, input && input.plan);
+    const identity = input && input.identity;
+    const existingEvents = Array.isArray(input && input.existingEvents) ? input.existingEvents : [];
+    if (!identity || !identity.authorId || !identity.displayName) {
+      throw domainError("AUTH_REQUIRED", "Server-authorized identity is required.");
+    }
+    const existingRequest = existingEvents.find((event) =>
+      event.clientRequestId === payload.clientRequestId && event.authorId === identity.authorId
+    );
+    if (existingRequest) return {event: existingRequest, idempotent: true};
+
+    const now = typeof input.now === "string" ? input.now : new Date(input.now || Date.now()).toISOString();
+    const idFactory = typeof input.idFactory === "function"
+      ? input.idFactory
+      : () => `server-${Date.now()}-${Math.random().toString(36).slice(2, 14)}`;
+
+    if (payload.eventType === "create") {
+      const alreadyActive = materializeHighlightEvents(existingEvents).find((event) =>
+        event.planVersion === payload.planVersion && event.readingId === payload.readingId &&
+        event.bookId === payload.bookId && event.chapter === payload.chapter && event.verse === payload.verse &&
+        event.authorId === identity.authorId
+      );
+      if (alreadyActive) return {event: alreadyActive, idempotent: true};
+      const event = {
+        eventId: String(idFactory("highlight-event")),
+        highlightId: String(idFactory("highlight")),
+        clientRequestId: payload.clientRequestId,
+        planVersion: payload.planVersion,
+        readingId: payload.readingId,
+        eventType: "create",
+        bookId: payload.bookId,
+        chapter: payload.chapter,
+        verse: payload.verse,
+        authorId: String(identity.authorId),
+        displayName: String(identity.displayName),
+        baseRevision: 0,
+        revision: 1,
+        createdAt: now,
+        updatedAt: now,
+        deletedAt: null
+      };
+      return {event, idempotent: false};
+    }
+
+    const current = latestHighlightEventFor(existingEvents, payload.highlightId);
+    if (!current || current.deletedAt) throw domainError("HIGHLIGHT_NOT_FOUND", "Highlight is unavailable or already removed.");
+    if (current.authorId !== identity.authorId) throw domainError("HIGHLIGHT_FORBIDDEN", "Only the author may remove this highlight.");
+    if (current.planVersion !== payload.planVersion || current.readingId !== payload.readingId ||
+        current.bookId !== payload.bookId || current.chapter !== payload.chapter || current.verse !== payload.verse) {
+      throw domainError("HIGHLIGHT_ASSOCIATION_MISMATCH", "Highlight belongs to a different verse or reading.");
+    }
+    if (current.revision !== payload.baseRevision) {
+      throw domainError("REVISION_CONFLICT", "Highlight changed on another client. Refresh before retrying.");
+    }
+    const event = {
+      ...current,
+      eventId: String(idFactory("highlight-event")),
+      clientRequestId: payload.clientRequestId,
+      eventType: "delete",
+      baseRevision: current.revision,
+      revision: current.revision + 1,
+      updatedAt: now,
+      deletedAt: now
+    };
+    return {event, idempotent: false};
+  }
+
   function countParsedVerses(parsedRanges) {
     if (!Array.isArray(parsedRanges) || !parsedRanges.length) {
       throw domainError("INVALID_ESV_RESPONSE", "ESV response did not include a parsed range.");
@@ -415,6 +620,12 @@
     if (expected && expected.verseCount && verseCount !== expected.verseCount) {
       throw domainError("ESV_RANGE_MISMATCH", "ESV response did not match the configured chapter range.");
     }
+    if (expected && Number.isInteger(expected.startVerse) && Number.isInteger(expected.endVerse)) {
+      const parsedRange = payload.parsed.length === 1 ? payload.parsed[0] : null;
+      if (!parsedRange || parsedRange[0] % 1000 !== expected.startVerse || parsedRange[1] % 1000 !== expected.endVerse) {
+        throw domainError("ESV_RANGE_MISMATCH", "ESV response did not match the requested verse boundaries.");
+      }
+    }
     return {
       canonical: String(payload.canonical || ""),
       passage,
@@ -426,6 +637,7 @@
     MAX_COMMENT_LENGTH,
     allowedManifestFileIds,
     applyCommentEvent,
+    applyHighlightEvent,
     assertAllowedFileId,
     authorizeIdentity,
     completedReadingIds,
@@ -433,15 +645,19 @@
     countParsedVerses,
     domainError,
     getPlanEntry,
+    materializeHighlightEvents,
     materializeCommentEvents,
     normalizeCommentBody,
     normalizeEmail,
     parseManifest,
+    passageContainsVerse,
     participantCommentActivity,
     publicParticipants,
     resolveReadingFiles,
     validateCommentRequest,
     validateEsvPayload,
+    validateHighlightRequest,
+    validatePlanStructure,
     validateVerseOfTheDay
   };
 });

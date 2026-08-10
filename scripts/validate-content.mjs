@@ -184,7 +184,7 @@ async function main() {
   new vm.Script(code, {filename: "Code.gs"});
   assert(!/console\.(?:log|warn|error)\s*\(/.test(code), "Apps Script code must not log private payloads.");
   assert(!/USER_DEPLOYING|ANYONE_ANONYMOUS/.test(code), "Apps Script code must not suggest unsafe deployment mode.");
-  ["getBootstrapData", "getReadingPayload", "getScripture", "listComments", "submitCommentEvent", "forgetReaderEnrollment"].forEach((functionName) =>
+  ["getBootstrapData", "getReadingPayload", "getScripture", "listComments", "submitCommentEvent", "listHighlights", "submitHighlightEvent", "forgetReaderEnrollment"].forEach((functionName) =>
     assert(new RegExp(`function ${functionName}\\(readerCode(?:,|\\))`).test(code), `${functionName} must require the reader code first`)
   );
   assert(/presentedReaderCodeHash:\s*presentedReaderCodeHash/.test(code), "Apps Script must hash and bind the reader code server-side.");

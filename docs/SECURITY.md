@@ -21,6 +21,7 @@
 | Leaked Apps Script URL | URL is not a credential; all RPCs reauthorize and never accept arbitrary IDs | Authorization prompts may reveal the owner's support identity as Google documents |
 | Leaked ESV key | Script Properties only, never browser/log/build; rotate immediately and review provider usage | Script editors can access project configuration; do not grant friend script edit access |
 | Malicious comment/Markdown | length/type validation, control-character rejection, text-only DOM rendering, no raw HTML | Plain-text links are not automatically activated in the pilot |
+| Highlight identity spoof or collision | Server-derived author/time, reading-and-verse validation, immutable events, owner-only removal, idempotent request IDs, and script lock | Both readers may intentionally highlight the same verse; a Sheet Editor can still alter rows outside the app |
 | Accidental Git publication | ignore rules, staged-content hook, safety scanner, code-only build inspection | Heuristic ESV detection cannot prove absence; human diff review remains required |
 | Browser persistence | Seven-day private-content ceiling, reader-bound bootstrap record, separate mock/production cache contexts, writes gated on current server confirmation, explicit-denial purge, total ESV persistence refusal, plan-versioned reading/completion caches, no service worker, clear-data control, inspectable counts | Offline revocation is not instantaneous; anyone with an unlocked authorized device and its browser storage can read the saved copy; completion reveals whether either reader commented; browser/OS backups are outside application control; use device passcodes and clear site data on loss/revocation |
 | Comment collision/retry | script lock, append-only revisions, base revision, server timestamps, idempotent request ID | Conflicting edit is rejected and requires refresh/manual merge; a Sheet Editor can still alter rows outside the app |
@@ -47,7 +48,8 @@ Before online private reads/writes, `ScriptApp.getAuthorizationInfo` confirms al
 - Comment body: 1–8,000 Unicode characters after newline normalization; NUL and unsupported controls rejected.
 - Display name/identity: server configuration only.
 - Client request ID: UUID-like, 16–100 safe characters.
-- Comment writes: rate-limited per Google user and serialized with a script lock.
+- Comment and highlight writes: rate-limited per Google user and serialized with a script lock.
+- Highlight references: the reading must exist in the private plan and the exact book/chapter/verse must fall inside one of its allowlisted passage ranges.
 - Content files and response sizes have explicit maxima.
 - No private bodies are sent to `console`, Apps Script logs, Stackdriver messages, analytics, or AI services.
 
@@ -63,7 +65,7 @@ To rotate a reader code: generate a new pair locally (or generate only the affec
 
 To rotate the ESV key: replace `ESV_API_KEY` in Script Properties, revoke the old key with the provider, and inspect provider usage. Never paste it into chat or a local tracked file.
 
-Back up Drive content and the comments Sheet with owner-controlled, access-restricted exports. Restore into new private files, update only the manifest/Script Properties IDs, re-audit sharing, and test authorization with all three account classes. Backups containing commentary/comments stay outside Git.
+Back up Drive content and both event tabs in the comments Sheet with owner-controlled, access-restricted exports. Restore into new private files, update only the manifest/Script Properties IDs, re-audit sharing, and test authorization with all three account classes. Backups containing commentary, comments, or highlights stay outside Git.
 
 The comment log is revision-aware, not tamper-proof. In the preferred `USER_ACCESSING` model the friend needs direct Sheet edit permission, so Google Sheet version history and sharing audit are the available operational evidence. If direct row modification is outside the accepted trust model, deployment must pause for the GIS/server-validated mediated-write fallback described in `docs/ARCHITECTURE.md`.
 

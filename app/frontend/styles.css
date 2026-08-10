@@ -751,6 +751,138 @@ h3 {
   white-space: pre-wrap;
 }
 
+.highlight-help {
+  max-width: var(--reading-width);
+  margin: 0.65rem 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.scripture-verse-list {
+  display: grid;
+  gap: 0.08rem;
+}
+
+.scripture-verse {
+  display: grid;
+  width: 100%;
+  min-height: 2.65rem;
+  grid-template-columns: 1.55rem minmax(0, 1fr);
+  gap: 0.3rem;
+  align-items: start;
+  padding: 0.32rem 0.35rem 0.38rem 0.15rem;
+  border: 0;
+  border-radius: 0.38rem;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  line-height: inherit;
+  text-align: left;
+  white-space: pre-wrap;
+}
+
+.scripture-verse:hover:not(:disabled),
+.scripture-verse:active:not(:disabled) {
+  border: 0;
+  color: inherit;
+  background: rgb(139 200 177 / 9%);
+}
+
+.scripture-verse[data-highlight-reader-0="true"] {
+  background: rgb(68 151 199 / 18%);
+  box-shadow: inset 3px 0 #79c8f2;
+}
+
+.scripture-verse[data-highlight-reader-1="true"] {
+  background: rgb(189 127 50 / 18%);
+  box-shadow: inset -3px 0 #e7b36c;
+}
+
+.scripture-verse[data-highlight-reader-0="true"][data-highlight-reader-1="true"] {
+  background: linear-gradient(90deg, rgb(68 151 199 / 18%) 0 50%, rgb(189 127 50 / 18%) 50% 100%);
+  box-shadow: inset 3px 0 #79c8f2, inset -3px 0 #e7b36c;
+}
+
+.scripture-verse-number {
+  padding-top: 0.18em;
+  color: var(--accent);
+  font-family: Inter, ui-sans-serif, sans-serif;
+  font-size: 0.62em;
+  font-weight: 800;
+  text-align: center;
+}
+
+.highlight-popover {
+  position: fixed;
+  z-index: 70;
+  right: max(0.75rem, env(safe-area-inset-right));
+  bottom: max(0.75rem, env(safe-area-inset-bottom));
+  left: max(0.75rem, env(safe-area-inset-left));
+  width: min(32rem, calc(100vw - 1.5rem));
+  max-height: min(70vh, 34rem);
+  overflow-y: auto;
+  padding: 1rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 0.8rem;
+  margin: 0 auto;
+  color: var(--ink);
+  background: #17221e;
+  box-shadow: 0 22px 65px rgb(0 0 0 / 58%);
+}
+
+.highlight-popover-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.highlight-popover-heading h2 {
+  margin-bottom: 0.4rem;
+  font-size: 1.35rem;
+}
+
+.highlight-popover-list {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0.45rem 0 0.75rem;
+}
+
+.highlight-person {
+  display: grid;
+  grid-template-columns: 0.7rem minmax(0, 1fr);
+  gap: 0.55rem;
+  align-items: center;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 0.45rem;
+  background: var(--surface);
+}
+
+.highlight-person-swatch {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 999px;
+}
+
+.highlight-person-swatch.participant-color-0 {
+  background: #79c8f2;
+}
+
+.highlight-person-swatch.participant-color-1 {
+  background: #e7b36c;
+}
+
+.highlight-person strong,
+.highlight-person span {
+  display: block;
+}
+
+.highlight-person span {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
 .scripture-passage + .scripture-passage {
   padding-top: 1.5rem;
   border-top: 1px solid var(--line);

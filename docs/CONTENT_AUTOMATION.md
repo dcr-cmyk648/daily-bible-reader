@@ -1,6 +1,6 @@
 # Advance-content automation proposal
 
-Status: recurring generation remains proposed and not enabled. The reader already warns when fewer than three consecutive substantive studies remain, showing Dustin the exact first gap and Shane only a generic delay. A read-only local evaluator models separate seven-day draft and five-day explicitly approved live buffers and selects at most one earliest gap. An explicit generation gate can now turn that one action into a validated `commentary-work-order/v1` packet for the repo-local `$draft-daily-commentary` skill; the tracked policy keeps the gate off. The narrower manual Henry precursor resolves today through at most two days ahead, creates private unreviewed verse audits, and atomically exports an app-neutral current-window store; it does not create the broader synthesis, satisfy either readiness buffer, update Drive, publish, or recur. Checked against the official OpenAI scheduled-tasks documentation on 2026-08-10: <https://learn.chatgpt.com/docs/automations>.
+Status: recurring generation remains proposed and not enabled. The reader already warns when fewer than three consecutive substantive studies remain, showing Dustin the exact first gap and Shane only a generic delay. A read-only local evaluator models separate seven-day draft and five-day explicitly approved live buffers and selects at most one earliest gap. On 2026-08-10 the private gate was enabled for one run, issued stable work order `CWO-97d561207a0ce92132472661` for D057 only, and was immediately disabled again after its validated Spark-assisted staging draft completed. No D058 work order was issued. The narrower manual Henry precursor resolves today through at most two days ahead, creates private unreviewed verse audits, and atomically exports an app-neutral current-window store; it does not create the broader synthesis, satisfy either readiness buffer, update Drive, publish, or recur. Checked against the official OpenAI scheduled-tasks documentation on 2026-08-10: <https://learn.chatgpt.com/docs/automations>.
 
 ## Recommendation
 
@@ -11,6 +11,8 @@ For the phone-first workflow, the preferred generator is a recurring scheduled t
 Scheduled-task availability and run limits depend on the ChatGPT account/workspace and must be confirmed in the **Scheduled** interface before relying on the workflow. The first several runs should be reviewed manually, as OpenAI's documentation recommends.
 
 The current `npm run mhc:window:spark` command is deliberately narrower than this proposal. It is useful for organically troubleshooting Henry atomization, verse grounding, audit reports, portable storage, and the **Read Henry** interaction over today plus two days. Its output remains a source-specific review layer attached only by the localhost adapter; it is neither the multi-source daily synthesis nor a published-ready reading. The content-addressed manifest/readings format is a candidate interchange boundary for another private app, but no external consumer or recurrence has been configured.
+
+For the broader synthesis, Dustin has authorized the exact ChatGPT-authenticated `gpt-5.3-codex-spark` model as a bounded drafting worker. The main scheduled task—not Spark—must select the work order, conduct or supervise actual research, prepare a Scripture-free source packet, and enforce rights and source status. Spark runs read-only for one packet with a strict JSON schema and multi-agent features disabled. Its output remains private and `unreviewed`; deterministic validation and human approval remain separate gates.
 
 ## Buffer contract
 
@@ -45,7 +47,7 @@ Run once each morning, provisionally at 5:00 a.m. Detroit time. Each run should:
 1. Read the canonical active plan, live manifest, source registry, and staging index from the private Drive folder.
 2. Calculate both buffer horizons and identify the earliest missing or invalid reading.
 3. Stop without generating if the seven-day draft target is already met.
-4. If generation is privately enabled, emit a schema-validated work order for **exactly one** earliest missing reading and invoke `$draft-daily-commentary` with the unchanged packet. Do not skip ahead, bulk-generate, or alter any other reading.
+4. If generation is privately enabled, emit a schema-validated work order for **exactly one** earliest missing reading and invoke `$draft-daily-commentary` with the unchanged packet. The skill may invoke the fixed Spark worker only after a rights-safe source packet exists. Do not skip ahead, bulk-generate, or alter any other reading.
 5. Follow `COMMENTARY_WORKFLOW.md` and `EDITORIAL_STANCE.md`: broad independent source inventory, honest access status, confessional evidentiary weighting, a concise continuous main article, custom deep-study sections, one reference-only verse selection, and no ESV wording.
 6. Write only to a private staging area. Record workflow/model/tool version, generation time, source-set version, limitations, content hash, and `humanReviewStatus: unreviewed`.
 7. Run every deterministic check available in that environment. Never weaken a failed check or mark a file reviewed to make the buffer look healthy.
@@ -94,7 +96,7 @@ The current pure readiness function tests missing records, placeholders, unrevie
 
 1. Add a versioned private staging index and readiness schema plus deterministic tests.
 2. Add the authenticated Apps Script readiness calculation and calendar warning.
-3. Test the committed `$draft-daily-commentary` skill and saved scheduler prompt against one already-completed reading without publishing it.
+3. Treat the completed D057 work-order/Spark staging run as the first real one-reading test; retain its work order, source packet, raw draft, edited draft, coverage audit, and validation report privately.
 4. Create a daily scheduled task from ChatGPT/Codex **Scheduled**, with Google Drive and web research access but no deployment authority.
 5. Review the first five runs manually before deciding whether the cadence or buffer thresholds should change.
 

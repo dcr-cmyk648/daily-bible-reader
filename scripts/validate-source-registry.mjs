@@ -21,7 +21,16 @@ function normalizedLocator(value) {
   return value.trim().toLowerCase().replace(/^https?:\/\/(?:www\.)?/, "").replace(/\/$/, "");
 }
 
+export function supportsSourceSetVersion(registry, version) {
+  return version === registry.registryVersion ||
+    (registry.compatibleSourceSetVersions || []).includes(version);
+}
+
 export function validateRegistryProvenance(registry) {
+  const compatibleVersions = registry.compatibleSourceSetVersions || [];
+  assert(!compatibleVersions.includes(registry.registryVersion),
+    "compatible source-set versions must not repeat the current registry version");
+
   const ids = new Set();
   const locators = new Map();
 

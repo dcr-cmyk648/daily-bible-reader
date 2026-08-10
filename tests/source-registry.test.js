@@ -28,6 +28,27 @@ test("source inventory accepts evidenced consultation without claiming inclusion
   assert.deepEqual(report.byStatus, {consulted: 1});
 });
 
+test("additive registries may name prior source-set versions without repeating the current version", async () => {
+  const {supportsSourceSetVersion, validateRegistryProvenance} = await validator();
+  const registry = {
+    registryVersion: "registry-v2",
+    compatibleSourceSetVersions: ["registry-v1"],
+    sources: [source()]
+  };
+  assert.equal(validateRegistryProvenance(registry).total, 1);
+  assert.equal(supportsSourceSetVersion(registry, "registry-v2"), true);
+  assert.equal(supportsSourceSetVersion(registry, "registry-v1"), true);
+  assert.equal(supportsSourceSetVersion(registry, "registry-v0"), false);
+  assert.throws(
+    () => validateRegistryProvenance({
+      registryVersion: "registry-v2",
+      compatibleSourceSetVersions: ["registry-v2"],
+      sources: [source()]
+    }),
+    /must not repeat the current registry version/
+  );
+});
+
 test("search snippets and publisher metadata cannot establish consultation", async () => {
   const {validateRegistryProvenance} = await validator();
   assert.throws(

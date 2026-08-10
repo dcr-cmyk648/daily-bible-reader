@@ -16,7 +16,7 @@ The active app schedule is a seven-day excerpt from Celebration Church's 92-day 
 
 Days with multiple chapters remain one scheduled reading, one Scripture page, and one discussion keyed to the daily reading ID. The server requests each chapter separately from ESV and combines the returned chapters only in memory for the page.
 
-The complete 92-day sequence is stored as factual reference metadata in `config/reference-plans/celebration-y3q4.json` and a private Drive reference file. It contains passage assignments and provenance, not Celebration's devotional prose, ESV text, commentary, or 92 generated reading payloads. Only days 54–60 are active. Only days 54–56 have substantive synthesis; days 57–60 are explicit preparation placeholders.
+The complete 92-day sequence is stored as factual reference metadata in `config/reference-plans/celebration-y3q4.json` and a private Drive reference file. It contains passage assignments and provenance, not Celebration's devotional prose, ESV text, commentary, or 92 generated reading payloads. Only days 54–60 are active. Days 54–57 are the only individually authorized substantive syntheses; days 58–60 remain explicit preparation placeholders.
 
 ## Shared calendar model
 

@@ -684,6 +684,8 @@ test("editorial contract requires practical prose and confessional evidentiary w
   assert.match(workflow, /do not repeat the same background dispute chapter after chapter/);
   assert.match(validator, /DEPENDENT_CROSS_REFERENCE/);
   assert.match(validator, /assertStandalone\(paragraph\.markdown/);
+  assert.match(validator, /CC-Y3Q4-D057[^\n]+substantive: true/);
+  assert.match(validator, /4 syntheses; 3 explicit placeholders/);
   assert.doesNotMatch(validator, /main all-sources synthesis must cite every included source/);
 });
 

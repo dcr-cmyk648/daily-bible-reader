@@ -1,6 +1,6 @@
 # Content automation runbook
 
-Status: deterministic local foundation and one-reading commentary handoff implemented; no recurring task, private Drive staging area, real generation run, or publication automation has been enabled.
+Status: deterministic local foundation and one-reading commentary handoff implemented. One real D057 staging run completed under a stable work order and the gate was disabled again before D058. No recurring task, private Drive staging area, or publication automation is enabled.
 
 The automation controller is deliberately read-only. It inspects versioned metadata, measures consecutive draft and published buffers, and selects at most one earliest next action. When—and only when—a private policy explicitly enables generation, it can emit a schema-validated one-reading work order for the repo-local `$draft-daily-commentary` skill. Neither command opens commentary bodies, invokes a model, writes Drive, changes the live manifest, or deploys the reader.
 
@@ -49,7 +49,7 @@ node scripts/content-automation.mjs work-order \
   --live-index <private-live-index.json>
 ```
 
-The packet explicitly names `$draft-daily-commentary`. The skill works only in `private-content/automation/staging/<readingId>/`, prepares commentary, synthesis, registry/coverage, and validation artifacts, and leaves them `unreviewed`. It cannot publish or select a second reading.
+The packet explicitly names `$draft-daily-commentary`. The skill works only in `private-content/automation/staging/<readingId>/`, prepares commentary, synthesis, registry/coverage, and validation artifacts, and leaves them `unreviewed`. It cannot publish or select a second reading. Dustin authorizes the exact ChatGPT-authenticated `gpt-5.3-codex-spark` model as the skill's optional drafting worker after the main task has assembled an actually consulted, rights-audited, Scripture-free source packet. Run Spark sequentially, read-only, with a strict schema and multi-agent features disabled; preserve its raw draft for audit and never let it research by snippet, approve, or publish.
 
 ## Decision rules
 
@@ -68,12 +68,12 @@ The active bridge's legacy accepted studies still use `in_review` metadata in Dr
 
 When Dustin explicitly enables the recurring task:
 
-1. Create ignored real policy, staging-index, and live-index files; validate them without generating content.
-2. Test status and work-order issuance against fabricated data, then dry-run the saved prompt against an already completed reading without writing a replacement.
+1. Reuse the validated ignored policy, staging-index, and live-index files; the policy must begin disabled.
+2. Reuse the completed D057 manual run as the real work-order/Spark handoff test; confirm its private audit files and exact hash remain available.
 3. In a dedicated clean automation checkout or isolated task worktree, verify that private metadata is available from the configured canonical source; do not assume ignored files from another worktree exist.
 4. Create a desktop scheduled task, provisionally daily at 5:00 a.m. `America/Detroit`, and explicitly invoke `$draft-daily-commentary` in its prompt.
 5. Give it repository and web-research access only. Do not give deployment, Apps Script, Sheet, comment, ESV-key, or live-manifest write authority.
-6. Enable `generationEnabled` only in the private policy after the dry run is accepted. Review the first five run reports manually. A run may prepare one ignored draft; it may not publish it.
+6. Enable `generationEnabled` only for the scheduled lane after its prompt and authorized horizon are accepted. Review the first five run reports manually. A run may prepare one ignored draft; it may not publish it.
 7. Create a separate phone-initiated approval/publication workflow only after the draft lane has been reliable.
 
 If the Mac may be asleep, the task can miss its scheduled time. The in-reader readiness warning remains the independent signal that the content buffer needs attention; a scheduled task is operational convenience, not a runtime dependency.

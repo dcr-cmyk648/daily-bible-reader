@@ -1,8 +1,10 @@
 # Commentary research and publication workflow
 
-The synthesis is a prepublication artifact, never a runtime AI response. Work one reading at a time. The temporary Celebration bridge permits only `CC-Y3Q4-D054` through `CC-Y3Q4-D060`; only D054–D056 currently contain substantive main syntheses. D057–D060 remain main-commentary placeholders until individually requested. The separately requested rolling D056–D058 Matthew Henry verse window is an ignored review aid, not a replacement synthesis or publication; it does not authorize D059 or D060 generation.
+The synthesis is a prepublication artifact, never a runtime AI response. Work one reading at a time. The temporary Celebration bridge permits only `CC-Y3Q4-D054` through `CC-Y3Q4-D060`; Dustin individually authorized D057 (Nahum 1) on 2026-08-10, so D054–D057 may contain substantive main syntheses. D058–D060 remain main-commentary placeholders. The separately requested rolling D056–D058 Matthew Henry verse window is an ignored review aid, not a replacement synthesis or publication; it does not authorize a D058 main synthesis, D059, or D060 generation.
 
 Scheduled preparation uses the repo-local `$draft-daily-commentary` skill only after `scripts/content-automation.mjs work-order` emits a validated `commentary-work-order/v1` packet from an explicitly enabled private policy. The packet authorizes one ignored `unreviewed` staging draft and nothing else. The status evaluator, work-order generator, and skill are separate gates; none can publish.
+
+Dustin authorized the exact authenticated `gpt-5.3-codex-spark` worker for future work-order-bound commentary drafting. Spark may run only after the main task has built an actually consulted, rights-audited, Scripture-free source packet. Invoke it sequentially, read-only, with multi-agent features disabled and a strict output schema. Its output remains `unreviewed`; the main task must verify every citation, remove workflow-facing prose, validate the final hash and rights boundaries, and hand the reading back for review. Spark does not research by title or snippet, broaden the reading range, approve, upload, publish, or recur by itself.
 
 ## 1. Create the reading workspace
 
@@ -25,6 +27,8 @@ npm run validate:sources -- research/working/bridge-source-registry.json
 ```
 
 Passing validation proves status/metadata consistency, not that a source has been read deeply enough or should be used. Move a record to `included` only after claim-level notes, drafting, and rights review; `includedReadings` must stay empty before then.
+
+The registry version identifies the exact inventory used for new work. When an expanded registry is strictly additive and preserves every older source record unchanged, list the prior inventory in `compatibleSourceSetVersions`; existing readings can then retain honest generation provenance without a metadata-only rewrite. Never declare compatibility after removing or materially changing an older record.
 
 ## 3. Consult and take claim-level notes
 
@@ -80,7 +84,7 @@ node scripts/validate-source-registry.mjs research/working/bridge-source-registr
 node scripts/validate-private-content.mjs --require
 ```
 
-The private validator requires exactly the seven bridge readings, `commentary/v3` with one comprehensive Markdown synthesis for the three substantive days, legacy `commentary/v2` fixed-section placeholders for the four ungenerated days, matching content hashes, multiple independent sources in each substantive main synthesis, every included source represented across the complete substantive package, accurate single-source flags, and no likely stored ESV passage or unsafe raw HTML.
+The private validator requires exactly the seven bridge readings, `commentary/v3` with one comprehensive Markdown synthesis for the four individually authorized substantive days, legacy `commentary/v2` fixed-section placeholders for the three ungenerated days, matching content hashes, multiple independent sources in each substantive main synthesis, every included source represented across the complete substantive package, accurate single-source flags, and no likely stored ESV passage or unsafe raw HTML.
 
 ## 8. Publish one reading
 
@@ -96,4 +100,4 @@ Before publication, the ignored drafts can be rendered through the localhost-onl
 
 ## Review checkpoint
 
-After the three bridge syntheses, stop unless the user explicitly authorizes a bounded audit window. The current authorization covers only the private Henry layer for D056–D058; those audits remain unapproved and do not authorize D059–D060, replacement Nahum syntheses, recurring automation, or publication. The preserved Genesis calibration and this bridge inform the later launch plan, but additional commentary and the complete new chronology still require a separate review decision.
+After D057, stop unless the user explicitly authorizes another reading. The current main-synthesis authorization ends at D057. The private Henry layer for D056–D058 remains unapproved and does not authorize a D058 synthesis, D059–D060, recurring publication, or the complete chronology. The preserved Genesis calibration and this bridge inform the later launch plan, but every additional commentary reading still requires the one-reading gate.

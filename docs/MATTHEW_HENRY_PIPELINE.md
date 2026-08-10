@@ -5,7 +5,7 @@ This is an offline, resumable source-preprocessing workflow. It never runs AI in
 - the preserved Genesis book-introduction/Genesis 1 Spark-versus-Luna calibration; and
 - a schedule-aware Spark audit lane that resolves the active reading from today through at most two days ahead.
 
-The rolling lane was explicitly exercised on 2026-08-10 for `CC-Y3Q4-D056` (1 Peter 5), `CC-Y3Q4-D057` (Nahum 1), and `CC-Y3Q4-D058` (Nahum 2). The two Nahum readings retain their tracked main-commentary placeholders. Every generated Henry shard, audit, and portable-store file remains ignored, private, and unapproved; D059 was not generated.
+The rolling lane was explicitly exercised on 2026-08-10 for `CC-Y3Q4-D056` (1 Peter 5), `CC-Y3Q4-D057` (Nahum 1), and `CC-Y3Q4-D058` (Nahum 2). D057 now has a separately staged multi-source main draft, while D058 retains its main-commentary placeholder. Every generated Henry shard, audit, and portable-store file remains ignored, private, and unapproved; none is automatically attached to the main draft, and D059 was not generated.
 
 ## Selected source and rights record
 

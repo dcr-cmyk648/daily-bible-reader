@@ -7,6 +7,11 @@
   "properties": {
     "schemaVersion": {"const": "source-registry/v1"},
     "registryVersion": {"type": "string", "minLength": 1, "maxLength": 80},
+    "compatibleSourceSetVersions": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1, "maxLength": 80},
+      "uniqueItems": true
+    },
     "updatedAt": {"type": ["string", "null"], "format": "date-time"},
     "sources": {
       "type": "array",

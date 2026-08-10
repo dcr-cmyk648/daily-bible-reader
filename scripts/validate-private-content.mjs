@@ -5,7 +5,7 @@ import {access, readFile, readdir} from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import {assertSchemaValid} from "./lib/schema-validator.mjs";
-import {validateRegistryProvenance} from "./validate-source-registry.mjs";
+import {supportsSourceSetVersion, validateRegistryProvenance} from "./validate-source-registry.mjs";
 
 const ROOT = process.cwd();
 const REQUIRE_PRIVATE = process.argv.includes("--require");
@@ -18,7 +18,7 @@ const READINGS = [
   {readingId: "CC-Y3Q4-D054", markdown: "CC-Y3Q4-D054.md", metadata: "CC-Y3Q4-D054.metadata.json", substantive: true},
   {readingId: "CC-Y3Q4-D055", markdown: "CC-Y3Q4-D055.md", metadata: "CC-Y3Q4-D055.metadata.json", substantive: true},
   {readingId: "CC-Y3Q4-D056", markdown: "CC-Y3Q4-D056.md", metadata: "CC-Y3Q4-D056.metadata.json", substantive: true},
-  {readingId: "CC-Y3Q4-D057", markdown: "CC-Y3Q4-D057.md", metadata: "CC-Y3Q4-D057.metadata.json", substantive: false},
+  {readingId: "CC-Y3Q4-D057", markdown: "CC-Y3Q4-D057.md", metadata: "CC-Y3Q4-D057.metadata.json", substantive: true},
   {readingId: "CC-Y3Q4-D058", markdown: "CC-Y3Q4-D058.md", metadata: "CC-Y3Q4-D058.metadata.json", substantive: false},
   {readingId: "CC-Y3Q4-D059", markdown: "CC-Y3Q4-D059.md", metadata: "CC-Y3Q4-D059.metadata.json", substantive: false},
   {readingId: "CC-Y3Q4-D060", markdown: "CC-Y3Q4-D060.md", metadata: "CC-Y3Q4-D060.metadata.json", substantive: false}
@@ -149,7 +149,8 @@ async function main() {
     assert(reading.substantive ? commentary.generation.humanReviewStatus !== "not_started" : commentary.generation.humanReviewStatus === "not_started",
       `${reading.readingId}: review state does not match content status`);
     assert(commentary.generation.contentHash === hash(markdown), `${reading.readingId}: Markdown content hash mismatch`);
-    assert(commentary.generation.sourceSetVersion === registry.registryVersion, `${reading.readingId}: source-set version mismatch`);
+    assert(supportsSourceSetVersion(registry, commentary.generation.sourceSetVersion),
+      `${reading.readingId}: source-set version is not supported by the current additive registry`);
     const entry = plan.entries.find((candidate) => candidate.readingId === reading.readingId);
     const selectedVerse = commentary.verseOfTheDay;
     const selectedPassage = entry && entry.passages.find((passage) =>
@@ -262,7 +263,7 @@ async function main() {
     });
   }
 
-  process.stdout.write(`Private content validation passed (3 syntheses; 4 explicit placeholders; ${registry.sources.length} registered sources; no stored Scripture).\n`);
+  process.stdout.write(`Private content validation passed (4 syntheses; 3 explicit placeholders; ${registry.sources.length} registered sources; no stored Scripture).\n`);
 }
 
 main().catch((error) => {

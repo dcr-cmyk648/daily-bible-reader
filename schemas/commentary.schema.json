@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daily-bible-reader.local/schemas/commentary.schema.json",
+  "title": "Layered commentary synthesis",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "commentaryVersion",
+    "readingId",
+    "publicationStatus",
+    "dailyIntroduction",
+    "commentarySummary",
+    "practicalTakeaway",
+    "overview",
+    "claims",
+    "sourceNotes",
+    "coverage",
+    "generation"
+  ],
+  "properties": {
+    "schemaVersion": {"enum": ["commentary/v2", "commentary/v3"]},
+    "commentaryVersion": {"type": "string", "minLength": 1, "maxLength": 80},
+    "readingId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{1,79}$"},
+    "publicationStatus": {"enum": ["placeholder", "draft", "reviewed", "published"]},
+    "dailyIntroduction": {
+      "type": "object",
+      "required": ["markdown", "sourceIds"],
+      "properties": {
+        "markdown": {"type": "string", "minLength": 1, "maxLength": 3000},
+        "sourceIds": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+      },
+      "additionalProperties": false
+    },
+    "commentarySummary": {
+      "type": "object",
+      "required": ["paragraphs"],
+      "properties": {
+        "paragraphs": {
+          "type": "array",
+          "maxItems": 12,
+          "items": {
+            "type": "object",
+            "required": ["markdown", "sourceIds"],
+            "properties": {
+              "markdown": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4000,
+                "description": "One paragraph of the coherent main article. In commentary/v3, place {{cite:source_id,source_id}} immediately after the supported claim."
+              },
+              "sourceIds": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "practicalTakeaway": {
+      "type": "object",
+      "required": ["markdown", "sourceIds"],
+      "properties": {
+        "markdown": {"type": "string", "minLength": 1, "maxLength": 600},
+        "sourceIds": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+      },
+      "additionalProperties": false
+    },
+    "verseOfTheDay": {
+      "type": "object",
+      "required": ["bookId", "chapter", "verse"],
+      "properties": {
+        "bookId": {"type": "string", "pattern": "^[A-Z0-9]{2,5}$"},
+        "chapter": {"type": "integer", "minimum": 1, "maximum": 200},
+        "verse": {"type": "integer", "minimum": 1, "maximum": 200}
+      },
+      "additionalProperties": false,
+      "description": "Editorial selection only. Store the reference, never ESV wording; the client derives the exact text from the live provider response."
+    },
+    "overview": {"type": "string", "minLength": 1, "maxLength": 12000},
+    "sections": {
+      "type": "array",
+      "minItems": 12,
+      "items": {
+        "type": "object",
+        "required": ["sectionId", "title", "markdown", "sourceIds"],
+        "properties": {
+          "sectionId": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,79}$"},
+          "title": {"type": "string", "minLength": 1, "maxLength": 200},
+          "markdown": {"type": "string", "minLength": 1, "maxLength": 100000},
+          "sourceIds": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+        },
+        "additionalProperties": false
+      }
+    },
+    "comprehensiveSynthesis": {
+      "type": "object",
+      "required": ["markdown", "sourceIds"],
+      "properties": {
+        "markdown": {"type": "string", "minLength": 1, "maxLength": 300000},
+        "sourceIds": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+      },
+      "additionalProperties": false
+    },
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["claimId", "text", "sourceIds", "confidence", "singleSource"],
+        "properties": {
+          "claimId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{1,99}$"},
+          "text": {"type": "string", "minLength": 1, "maxLength": 4000},
+          "sourceIds": {"type": "array", "minItems": 1, "items": {"type": "string"}, "uniqueItems": true},
+          "confidence": {"enum": ["high", "medium", "low"]},
+          "singleSource": {"type": "boolean"}
+        },
+        "additionalProperties": false
+      }
+    },
+    "sourceNotes": {"type": "array", "items": {"type": "string", "maxLength": 4000}},
+    "coverage": {
+      "type": "object",
+      "required": ["representedCategories", "missingCategories", "consultedCount", "includedCount", "majorDisagreements", "singleSourceClaimIds", "inaccessibleSourceIds", "limitations"],
+      "properties": {
+        "representedCategories": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "missingCategories": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "consultedCount": {"type": "integer", "minimum": 0},
+        "includedCount": {"type": "integer", "minimum": 0},
+        "majorDisagreements": {"type": "array", "items": {"type": "string", "maxLength": 4000}},
+        "singleSourceClaimIds": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "inaccessibleSourceIds": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "limitations": {"type": "array", "items": {"type": "string", "maxLength": 4000}}
+      },
+      "additionalProperties": false
+    },
+    "generation": {
+      "type": "object",
+      "required": ["generatedAt", "modelOrTool", "promptOrWorkflowVersion", "sourceSetVersion", "humanReviewStatus", "contentHash", "priorVersions", "knownLimitations"],
+      "properties": {
+        "generatedAt": {"type": ["string", "null"], "format": "date-time"},
+        "modelOrTool": {"type": ["string", "null"], "maxLength": 300},
+        "promptOrWorkflowVersion": {"type": "string", "minLength": 1, "maxLength": 100},
+        "sourceSetVersion": {"type": "string", "minLength": 1, "maxLength": 100},
+        "humanReviewStatus": {"enum": ["not_started", "in_review", "approved", "changes_requested"]},
+        "contentHash": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+        "priorVersions": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "knownLimitations": {"type": "array", "items": {"type": "string", "maxLength": 4000}}
+      },
+      "additionalProperties": false
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"schemaVersion": {"const": "commentary/v2"}},
+        "required": ["schemaVersion"]
+      },
+      "then": {
+        "required": ["sections"],
+        "not": {"required": ["comprehensiveSynthesis"]}
+      }
+    },
+    {
+      "if": {
+        "properties": {"schemaVersion": {"const": "commentary/v3"}},
+        "required": ["schemaVersion"]
+      },
+      "then": {
+        "required": ["comprehensiveSynthesis"],
+        "not": {"required": ["sections"]}
+      }
+    }
+  ],
+  "additionalProperties": false
+}

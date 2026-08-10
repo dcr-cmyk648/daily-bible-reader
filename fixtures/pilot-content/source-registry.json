@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "source-registry/v1",
+  "registryVersion": "bridge-public-metadata-v1",
+  "updatedAt": "2026-08-08T00:00:00-04:00",
+  "sources": [
+    {
+      "sourceId": "youversion_celebration_y3q4_plan_3805",
+      "title": "A Chapter A Day: Reading the Bible in 3 Years (Year 3, Quarter 4)",
+      "authorOrOrganization": "Celebration Church; hosted by YouVersion",
+      "edition": "YouVersion reading plan 3805",
+      "publicationDate": null,
+      "publisher": "Celebration Church / YouVersion",
+      "resourceType": "reading-plan schedule",
+      "traditionOrPerspective": ["Protestant", "pastoral"],
+      "scope": "Ninety-two-day chapter schedule; reference metadata only.",
+      "urlOrCitation": "https://www.bible.com/reading-plans/3805-reading-the-bible-in-3-years-year-3-quarter-4",
+      "accessDate": "2026-08-08",
+      "accessMethod": "The official plan page and day sequence were inspected; only day-to-chapter references were recorded.",
+      "rightsStatus": "copyrighted",
+      "license": null,
+      "allowedUses": ["Record factual chapter schedule with attribution", "Link to the original plan"],
+      "rawTextStorageAllowed": false,
+      "summaryUseStatus": "included",
+      "qualityTier": "primary",
+      "includedReadings": [
+        "CC-Y3Q4-D054", "CC-Y3Q4-D055", "CC-Y3Q4-D056", "CC-Y3Q4-D057",
+        "CC-Y3Q4-D058", "CC-Y3Q4-D059", "CC-Y3Q4-D060"
+      ],
+      "notes": "No devotional prose or Scripture from the plan is stored. The provider page identifies Celebration Church and states the plan has 92 days."
+    }
+  ]
+}

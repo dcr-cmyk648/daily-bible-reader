@@ -1,0 +1,28 @@
+.DS_Store
+node_modules/
+coverage/
+test-results/
+playwright-report/
+dist/
+
+# Local credentials and deployment bindings.
+.clasp.json
+.env
+.env.*
+!.env.example
+config/*.local.json
+config/*.private.json
+
+# Private/generated research and Drive-bound content must never enter Git.
+private-content/
+private-commentary/
+local-private/
+research/raw/
+research/working/
+research/exports/
+uploads/
+
+# Local browser/test state.
+.cache/
+tmp/
+

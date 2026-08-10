@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#0b1110">
+    <meta name="color-scheme" content="dark">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
+    <title>Daily Bible Reader</title>
+    <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon-180.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="assets/bible-reader-icon-192.png">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <a id="skipLink" class="skip-link" href="#calendarHeading">Skip to the calendar</a>
+
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">Private two-person study</p>
+        <button id="brandHomeButton" class="brand-button" type="button" aria-label="Daily Bible Reader home">Daily Bible Reader</button>
+      </div>
+      <div class="header-status">
+        <span id="authStatus" class="status-pill">Local mock</span>
+        <span id="syncStatus" class="sync-label" aria-live="polite">Starting…</span>
+      </div>
+    </header>
+
+    <section id="readerCodeGate" class="access-gate" aria-labelledby="readerCodeHeading" hidden>
+      <div class="access-card">
+        <p class="eyebrow">Private reader</p>
+        <h1 id="readerCodeHeading">Enter your reader code</h1>
+        <p>Your Google account and Drive access are checked separately. Dustin's and Shane's codes are not interchangeable.</p>
+        <form id="readerCodeForm" class="comment-form">
+          <label for="readerCodeInput">Reader code</label>
+          <input id="readerCodeInput" type="password" minlength="12" maxlength="128" autocomplete="one-time-code" autocapitalize="none" spellcheck="false" required>
+          <p id="readerCodeStatus" class="muted" role="status" aria-live="polite">After verification, the code stays in this app's private browser storage and the script remembers enrollment for this Google account.</p>
+          <button id="readerCodeSubmit" type="submit" disabled>Unlock reader</button>
+        </form>
+      </div>
+    </section>
+
+    <main id="appMain" class="page-shell">
+      <section id="stateBanner" class="state-banner global-panel" role="status" aria-live="polite" hidden></section>
+
+      <section id="updatePanel" class="update-panel global-panel" aria-labelledby="updateHeading" hidden>
+        <div>
+          <p class="eyebrow">Update available</p>
+          <h2 id="updateHeading">A newer reader build is ready</h2>
+          <p>This installed copy detected newer server code. Reload through the versioned app URL to bypass an old iPhone web-app document.</p>
+        </div>
+        <a id="updateLink" class="button-link" href="#" target="_top" rel="noopener">Load latest version</a>
+      </section>
+
+      <section id="homeView" class="home-view" aria-labelledby="calendarHeading">
+        <header class="home-heading">
+          <p class="eyebrow">Shared reading plan</p>
+          <h1 id="calendarHeading" tabindex="-1">Calendar</h1>
+          <p id="calendarSummary" class="home-summary">Select a date to see its reading and both readers’ progress.</p>
+        </header>
+
+        <section class="calendar-card" aria-labelledby="calendarMonthHeading">
+          <div class="section-heading-row calendar-card-heading">
+            <button id="previousMonth" class="month-button" type="button" aria-label="Previous month">‹</button>
+            <div class="calendar-month-title">
+              <p class="eyebrow">Shared progress</p>
+              <h2 id="calendarMonthHeading">Loading month…</h2>
+            </div>
+            <div class="calendar-heading-actions">
+              <button id="nextMonth" class="month-button" type="button" aria-label="Next month">›</button>
+              <button id="refreshCalendar" type="button">Sync</button>
+            </div>
+          </div>
+
+          <div class="calendar-weekdays" aria-hidden="true">
+            <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+          </div>
+          <div id="calendarWeeks" class="calendar-weeks" aria-label="Monthly reading calendar"></div>
+          <p id="calendarStatus" class="muted calendar-status" role="status" aria-live="polite">Checking your completed readings…</p>
+          <div id="calendarParticipantLegend" class="calendar-legend" aria-label="Reader completion colors"></div>
+        </section>
+
+        <section id="selectedDayCard" class="selected-day-card" aria-labelledby="selectedDayTitle">
+          <div>
+            <p id="selectedDayDate" class="eyebrow">Selected date</p>
+            <h2 id="selectedDayTitle">Loading reading…</h2>
+            <p id="selectedDayPosition" class="muted"></p>
+          </div>
+          <div id="selectedDayCompletion" class="selected-day-completion" aria-label="Completion by reader"></div>
+          <button id="openSelectedReading" class="primary-button" type="button">Open selected reading</button>
+        </section>
+
+        <section class="storage-card" aria-labelledby="storageHeading">
+          <div>
+            <p class="eyebrow">Local privacy</p>
+            <h2 id="storageHeading">Downloaded data</h2>
+            <p class="muted">The app can prepare seven private commentary records and comment drafts for offline use. ESV Scripture stays network-only and is refreshed from the provider whenever a reading opens.</p>
+            <p id="offlinePackStatus" class="muted" aria-live="polite">Offline pack has not been prepared yet.</p>
+          </div>
+          <div class="storage-actions">
+            <button id="syncOutbox" type="button">Sync pending comments</button>
+            <button id="clearDownloadedData" class="danger-button" type="button">Clear downloaded data</button>
+            <button id="forgetReaderAccess" class="danger-button" type="button">Forget reader code</button>
+          </div>
+          <details>
+            <summary>Cache, policy, and build details</summary>
+            <pre id="cacheInspector" class="cache-inspector">Loading…</pre>
+          </details>
+        </section>
+      </section>
+
+      <section id="readingView" class="reading-view" aria-labelledby="readingTitle" hidden>
+        <nav class="reading-toolbar" aria-label="Reading controls">
+          <button id="calendarHomeButton" type="button">← Calendar</button>
+          <div class="reading-position">
+            <span id="readingDate">Loading date…</span>
+            <strong id="readingPosition">Loading plan…</strong>
+          </div>
+        </nav>
+
+        <article class="reading-card">
+          <header class="reading-header">
+            <p id="readingKind" class="eyebrow">Reading</p>
+            <h1 id="readingTitle" tabindex="-1">Loading…</h1>
+            <p id="readingRationale" class="reading-rationale"></p>
+          </header>
+
+          <nav class="reading-progress" aria-label="Pages in this reading">
+            <button id="pageStep0" class="reading-progress-step" type="button" data-reading-page="0" aria-current="step"><span>1</span><b>Orientation</b></button>
+            <button id="pageStep1" class="reading-progress-step" type="button" data-reading-page="1"><span>2</span><b id="pageStep1Label">Scripture</b></button>
+            <button id="pageStep2" class="reading-progress-step" type="button" data-reading-page="2"><span>3</span><b>Commentary</b></button>
+          </nav>
+
+          <section id="readingPageIntro" class="reading-page" data-reading-page-panel="0" aria-labelledby="overviewHeading">
+            <div class="content-section overview-section">
+              <p class="eyebrow">Page 1 · Before the text</p>
+              <h2 id="overviewHeading" tabindex="-1">Today’s orientation</h2>
+              <div id="overviewContent" class="prose-block skeleton-text">Loading orientation…</div>
+              <div id="overviewSources" class="main-citations"></div>
+            </div>
+          </section>
+
+          <section id="readingPageText" class="reading-page" data-reading-page-panel="1" aria-labelledby="textPageHeading" hidden>
+            <h2 id="textPageHeading" class="visually-hidden" tabindex="-1">Reading text</h2>
+
+            <section id="bookIntroductionSection" class="content-section book-introduction-section" aria-labelledby="bookIntroductionHeading" hidden>
+              <p class="eyebrow">Page 2 · Book introduction day</p>
+              <h2 id="bookIntroductionHeading" tabindex="-1">Book at a glance</h2>
+              <p class="intro-day-note">A scheduled book opener has no Scripture chapter. Its book overview takes the text-page position, and chapter 1 follows on the next plan day.</p>
+              <div id="bookIntroductionContent" class="prose-block skeleton-text">Loading book introduction…</div>
+              <div id="bookIntroductionSources" class="main-citations"></div>
+            </section>
+
+            <section id="scriptureSection" class="content-section scripture-section" aria-labelledby="scriptureHeading" hidden>
+              <div class="section-heading-row">
+                <div>
+                  <p id="translationLabel" class="eyebrow">Page 2 · ESV Scripture</p>
+                  <h2 id="scriptureHeading" tabindex="-1">Scripture</h2>
+                </div>
+                <div class="section-actions">
+                  <button id="retryScripture" type="button">Retry</button>
+                  <a id="openEsvLink" href="https://www.esv.org/" target="_blank" rel="noopener noreferrer">Open on ESV.org</a>
+                </div>
+              </div>
+              <div id="scriptureState" class="inline-state" role="status" aria-live="polite">Scripture loads when the chapter opens.</div>
+              <div id="scriptureContent" class="scripture-content"></div>
+              <div class="esv-attribution" aria-label="ESV copyright and use notice">
+                <strong>ESV</strong>
+                <p id="esvNotice"></p>
+                <a href="https://www.esv.org/" target="_blank" rel="noopener noreferrer">ESV.org</a>
+              </div>
+            </section>
+          </section>
+
+          <section id="readingPageCommentary" class="reading-page" data-reading-page-panel="2" aria-labelledby="commentarySummaryHeading" hidden>
+            <section class="content-section commentary-summary-section">
+              <p class="eyebrow">Page 3 · Across the consulted sources</p>
+              <h2 id="commentarySummaryHeading" tabindex="-1">Main commentary synthesis</h2>
+              <article id="commentarySummary" class="commentary-summary"></article>
+            </section>
+
+            <section class="content-section for-today-section" aria-label="Verse and practical takeaway for today">
+              <div class="for-today-grid">
+                <section id="verseOfDaySection" class="verse-of-day-card" aria-labelledby="verseOfDayReference" hidden>
+                  <p class="eyebrow">Verse of the day</p>
+                  <h2 id="verseOfDayReference">Selected verse</h2>
+                  <p id="verseOfDayState" class="inline-state" role="status" aria-live="polite">The selected ESV verse loads with Scripture.</p>
+                  <blockquote id="verseOfDayText" class="verse-of-day-text" hidden></blockquote>
+                  <div id="verseOfDayAttribution" class="verse-of-day-attribution" hidden>
+                    <strong>ESV®</strong>
+                    <a id="verseOfDayEsvLink" href="https://www.esv.org/" target="_blank" rel="noopener noreferrer">Open on ESV.org</a>
+                    <details>
+                      <summary>ESV copyright and use notice</summary>
+                      <p id="verseOfDayNotice"></p>
+                    </details>
+                  </div>
+                </section>
+
+                <section class="takeaway-card" aria-labelledby="takeawayHeading">
+                  <p class="eyebrow">For today</p>
+                  <h2 id="takeawayHeading">Practical takeaway</h2>
+                  <div id="practicalTakeaway" class="takeaway-content"></div>
+                </section>
+              </div>
+            </section>
+
+            <details id="mainSourceDisclosure" class="main-source-disclosure">
+              <summary id="mainSourceSummary">Sources cited in the main synthesis</summary>
+              <ol id="mainSourceNotes" class="main-source-notes"></ol>
+            </details>
+          </section>
+        </article>
+
+        <section id="discussionCard" class="discussion-card" aria-labelledby="discussionHeading" data-shared-across-pages="true">
+          <div class="section-heading-row">
+            <div>
+              <p id="discussionPageContext" class="eyebrow">Comments for this day · all pages</p>
+              <h2 id="discussionHeading">Discussion</h2>
+            </div>
+            <button id="refreshComments" type="button">Sync</button>
+          </div>
+          <p id="discussionHelp" class="muted">The same reading-level discussion appears below every page. Posting from any page marks this day complete for you.</p>
+          <div id="commentList" class="comment-list" aria-live="polite"></div>
+          <form id="commentForm" class="comment-form">
+            <label for="commentBody">Add a comment for this day</label>
+            <textarea id="commentBody" rows="5" maxlength="8000" required placeholder="Write a question, observation, or response…"></textarea>
+            <div class="form-row">
+              <span id="draftStatus" class="muted">Drafts and pending writes use IndexedDB.</span>
+              <button id="submitComment" type="submit">Post comment</button>
+            </div>
+          </form>
+        </section>
+
+        <nav class="reading-page-navigation" aria-label="Move between reading pages">
+          <button id="previousPage" type="button">← Previous page</button>
+          <span id="pagePosition" aria-live="polite">Page 1 of 3</span>
+          <button id="nextPage" class="primary-button" type="button">Next page →</button>
+          <button id="finishReading" class="primary-button" type="button" hidden>Finished · Calendar</button>
+        </nav>
+
+        <section id="extendedStudy" class="extended-study" aria-labelledby="synthesisHeading" hidden>
+          <div class="extended-study-panel">
+            <div class="extended-study-heading">
+              <div>
+                <p class="eyebrow">Optional deeper study</p>
+                <h2 id="synthesisHeading">Comprehensive synthesis</h2>
+              </div>
+              <span id="reviewBadge" class="status-pill">Loading</span>
+            </div>
+            <p class="muted deep-study-help">Choose a section to read further.</p>
+            <div id="comprehensiveSynthesis" class="comprehensive-synthesis"></div>
+            <details id="sourceAuditDisclosure" class="deep-dive-disclosure source-audit-disclosure">
+              <summary>Research coverage and full source list</summary>
+              <section class="embedded-source-audit" aria-labelledby="coverageHeading">
+                <div class="section-heading-row">
+                  <div>
+                    <p class="eyebrow">Research audit</p>
+                    <h2 id="coverageHeading">Source coverage</h2>
+                  </div>
+                  <span id="coverageIndicator" class="coverage-indicator">Loading</span>
+                </div>
+                <div id="coverageSummary" class="coverage-grid"></div>
+                <div id="sourceList" class="source-list"></div>
+              </section>
+            </details>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <footer class="app-footer">
+      <p>Private two-person bridge · Seven scheduled days · No runtime AI</p>
+    </footer>
+
+    <script src="../shared/provider-policy.js"></script>
+    <script src="../shared/server-core.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

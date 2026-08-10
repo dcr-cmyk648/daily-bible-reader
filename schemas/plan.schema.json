@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daily-bible-reader.local/schemas/plan.schema.json",
+  "title": "Daily Bible Reader plan",
+  "type": "object",
+  "required": ["schemaVersion", "planVersion", "title", "canonId", "entries", "bookMetrics"],
+  "properties": {
+    "schemaVersion": {"const": "plan/v1"},
+    "planVersion": {"type": "string", "minLength": 1, "maxLength": 80},
+    "title": {"type": "string", "minLength": 1, "maxLength": 200},
+    "canonId": {"type": "string", "minLength": 1, "maxLength": 100},
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "reading.schema.json"}
+    },
+    "bookMetrics": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["verseCount", "chapterCount", "versification"],
+        "properties": {
+          "verseCount": {"type": "integer", "minimum": 1},
+          "chapterCount": {"type": "integer", "minimum": 1},
+          "versification": {"type": "string", "minLength": 1}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
+

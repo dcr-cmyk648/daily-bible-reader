@@ -1,0 +1,2548 @@
+(function attachDailyBibleReader(root, factory) {
+  const api = factory(root);
+  if (typeof module === "object" && module.exports) module.exports = api;
+  root.DailyBibleReader = api;
+  if (root.document) {
+    const start = () => api.init().catch(api.handleFatalError);
+    if (root.document.readyState === "loading") {
+      root.document.addEventListener("DOMContentLoaded", start, {once: true});
+    } else {
+      start();
+    }
+  }
+})(typeof globalThis !== "undefined" ? globalThis : this, function dailyBibleReaderFactory(root) {
+  "use strict";
+
+  const DAY_MS = 86400000;
+  const CLIENT_BUILD_ID = "__DBR_BUILD_ID__";
+  const DB_NAME = "dailyBibleReaderPilot";
+  const DB_VERSION = 4;
+  const STORE_DEFINITIONS = {
+    calendarCompletion: "readingId",
+    scriptureCache: "cacheKey",
+    privateContent: "readingId",
+    commentOutbox: "clientRequestId",
+    commentDrafts: "draftKey",
+    commentSnapshot: "commentId",
+    commentEvents: "eventId",
+    deviceCredentials: "credentialId"
+  };
+  const BOOK_NAMES = {
+    "1PE": "1 Peter",
+    MIC: "Micah",
+    NAM: "Nahum",
+    PRO: "Proverbs"
+  };
+  const FALLBACK_ESV_NOTICE = "Scripture quotations are from the ESV® Bible (The Holy Bible, English Standard Version®), © 2001 by Crossway, a publishing ministry of Good News Publishers. Used by permission. All rights reserved. The ESV text may not be quoted in any publication made available to the public by a Creative Commons license. The ESV may not be translated into any other language.\n\nUsers may not copy or download more than 500 verses of the ESV Bible or more than one half of any book of the ESV Bible.";
+
+  const state = {
+    adapter: null,
+    bootstrap: null,
+    calendarMonthDate: null,
+    calendarParticipants: [],
+    calendarSyncPromise: null,
+    calendarWindow: null,
+    comments: [],
+    completionByReadingId: new Map(),
+    completedReadingIds: new Set(),
+    config: null,
+    currentEntry: null,
+    currentPage: 0,
+    policy: null,
+    plan: null,
+    readerCode: "",
+    readerCodeSubmitting: false,
+    schedule: null,
+    selectedCalendarDate: null,
+    session: null,
+    store: null,
+    sources: [],
+    commentSyncToken: 0,
+    scriptureRequestToken: 0,
+    verseOfTheDay: null,
+    uiWired: false,
+    view: "home"
+  };
+
+  function appError(message, code) {
+    const error = new Error(message);
+    error.code = code || "APP_ERROR";
+    return error;
+  }
+
+  function element(id) {
+    return root.document ? root.document.getElementById(id) : null;
+  }
+
+  function datePartsInTimeZone(dateInput, timeZone) {
+    const date = dateInput instanceof Date ? dateInput : new Date(dateInput);
+    if (Number.isNaN(date.getTime())) throw appError("Current date is invalid.", "INVALID_DATE");
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).formatToParts(date);
+    const values = {};
+    parts.forEach((part) => {
+      if (["year", "month", "day"].includes(part.type)) values[part.type] = Number(part.value);
+    });
+    if (!values.year || !values.month || !values.day) {
+      throw appError("Could not calculate a calendar date in the configured timezone.", "INVALID_TIMEZONE");
+    }
+    return values;
+  }
+
+  function parseDateOnly(value) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ""));
+    if (!match) throw appError("Shared start date must use YYYY-MM-DD.", "INVALID_START_DATE");
+    const parts = {year: Number(match[1]), month: Number(match[2]), day: Number(match[3])};
+    const date = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
+    if (date.getUTCFullYear() !== parts.year || date.getUTCMonth() + 1 !== parts.month || date.getUTCDate() !== parts.day) {
+      throw appError("Shared start date is not a real calendar date.", "INVALID_START_DATE");
+    }
+    return parts;
+  }
+
+  function civilDayNumber(parts) {
+    return Math.floor(Date.UTC(parts.year, parts.month - 1, parts.day) / DAY_MS);
+  }
+
+  function dateOnlyForDay(startDate, zeroBasedOffset) {
+    const start = parseDateOnly(startDate);
+    const date = new Date(Date.UTC(start.year, start.month - 1, start.day + zeroBasedOffset));
+    return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
+  }
+
+  function dateOnlyFromParts(parts) {
+    return `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
+  }
+
+  function validatePlan(plan) {
+    if (!plan || !Array.isArray(plan.entries) || !plan.entries.length) {
+      throw appError("The active reading plan is unavailable.", "INVALID_PLAN");
+    }
+    const ids = new Set();
+    let expectedDay = 1;
+    plan.entries.forEach((entry) => {
+      if (!entry || entry.planVersion !== plan.planVersion || entry.dayIndex !== expectedDay || ids.has(entry.readingId)) {
+        throw appError("The active reading plan has invalid order or duplicate IDs.", "INVALID_PLAN");
+      }
+      ids.add(entry.readingId);
+      expectedDay += 1;
+    });
+    return plan;
+  }
+
+  function calculateSchedule(planInput, config, nowInput, requestedReadingId, options) {
+    const plan = validatePlan(planInput);
+    const now = nowInput instanceof Date ? nowInput : new Date(nowInput === undefined ? Date.now() : nowInput);
+    const today = datePartsInTimeZone(now, config.timezone);
+    const effectiveStartDate = config.sharedStartDateMode === "testing_today"
+      ? dateOnlyFromParts(today)
+      : config.sharedStartDate;
+    const start = parseDateOnly(effectiveStartDate);
+    const calendarDayIndex = civilDayNumber(today) - civilDayNumber(start) + 1;
+    const futureLookaheadDays = Number.isInteger(config.futureLookaheadDays)
+      ? Math.max(0, config.futureLookaheadDays)
+      : 0;
+    const lastUnlockedDayIndex = calendarDayIndex + futureLookaheadDays;
+    const entries = plan.entries;
+    const calendarSelection = calendarDayIndex < 1
+      ? entries[0]
+      : calendarDayIndex > entries.length
+        ? entries[entries.length - 1]
+        : entries[calendarDayIndex - 1];
+    const requested = entries.find((entry) => entry.readingId === requestedReadingId) || null;
+    const testingOverride = Boolean(
+      options && options.testingOverride && config.testingOverrideEnabled && requested &&
+      Array.isArray(config.testingReadingIds) && config.testingReadingIds.includes(requested.readingId)
+    );
+    const requestedIsFuture = requested ? requested.dayIndex > calendarDayIndex : false;
+    const requestedBeyondLookahead = requested ? requested.dayIndex > lastUnlockedDayIndex : false;
+    const requestedIsPast = requested ? requested.dayIndex < calendarDayIndex : false;
+    const requestedAccessible = Boolean(requested) && (
+      testingOverride ||
+      (!requestedBeyondLookahead || !config.futureReadingsLocked) &&
+      (!requestedIsPast || config.pastReadingsAvailable)
+    );
+    const selectedEntry = requestedAccessible ? requested : calendarSelection;
+    const selectedIndex = entries.indexOf(selectedEntry);
+    const selectedIsFuture = selectedEntry.dayIndex > calendarDayIndex;
+    const selectedIsPast = selectedEntry.dayIndex < calendarDayIndex;
+    const locked = !testingOverride && selectedEntry.dayIndex > lastUnlockedDayIndex && Boolean(config.futureReadingsLocked);
+
+    function navigationAccessible(candidate) {
+      if (!candidate) return false;
+      if (testingOverride || (config.testingOverrideEnabled && options && options.testingOverride)) return true;
+      if (candidate.dayIndex > lastUnlockedDayIndex && config.futureReadingsLocked) return false;
+      if (candidate.dayIndex < calendarDayIndex && !config.pastReadingsAvailable) return false;
+      return true;
+    }
+
+    return {
+      calendarDayIndex,
+      effectiveStartDate,
+      futureLookaheadDays,
+      selectedEntry,
+      selectedIsFuture,
+      selectedIsPast,
+      locked,
+      usingTestingOverride: testingOverride,
+      status: calendarDayIndex < 1 ? "before_start" : calendarDayIndex > entries.length ? "pilot_complete" : "active",
+      readingDate: dateOnlyForDay(effectiveStartDate, selectedEntry.dayIndex - 1),
+      previousEntry: navigationAccessible(entries[selectedIndex - 1]) ? entries[selectedIndex - 1] : null,
+      nextEntry: navigationAccessible(entries[selectedIndex + 1]) ? entries[selectedIndex + 1] : null
+    };
+  }
+
+  function shortTitleForEntry(entry) {
+    if (!entry) return "No reading";
+    return titleForEntry(entry);
+  }
+
+  function buildMonthCalendar(planInput, config, nowInput, completedReadingIds, monthDateInput) {
+    const plan = validatePlan(planInput);
+    const now = nowInput instanceof Date ? nowInput : new Date(nowInput === undefined ? Date.now() : nowInput);
+    const todayParts = datePartsInTimeZone(now, config.timezone);
+    const todayDate = dateOnlyFromParts(todayParts);
+    const requestedMonth = monthDateInput ? parseDateOnly(monthDateInput) : todayParts;
+    const monthStart = `${requestedMonth.year}-${String(requestedMonth.month).padStart(2, "0")}-01`;
+    const monthStartParts = parseDateOnly(monthStart);
+    const monthStartWeekday = new Date(Date.UTC(monthStartParts.year, monthStartParts.month - 1, 1)).getUTCDay();
+    const daysInMonth = new Date(Date.UTC(monthStartParts.year, monthStartParts.month, 0)).getUTCDate();
+    const cellCount = Math.ceil((monthStartWeekday + daysInMonth) / 7) * 7;
+    const windowStart = dateOnlyForDay(monthStart, -monthStartWeekday);
+    const effectiveStartDate = config.sharedStartDateMode === "testing_today" ? todayDate : config.sharedStartDate;
+    const start = parseDateOnly(effectiveStartDate);
+    const todayNumber = civilDayNumber(todayParts);
+    const calendarDayIndex = todayNumber - civilDayNumber(start) + 1;
+    const lookahead = Number.isInteger(config.futureLookaheadDays) ? Math.max(0, config.futureLookaheadDays) : 0;
+    const lastUnlockedDayIndex = calendarDayIndex + lookahead;
+    const completed = completedReadingIds instanceof Set
+      ? completedReadingIds
+      : new Set(Array.isArray(completedReadingIds) ? completedReadingIds : []);
+
+    const days = Array.from({length: cellCount}, (_, offset) => {
+      const date = dateOnlyForDay(windowStart, offset);
+      const parts = parseDateOnly(date);
+      const dayNumber = civilDayNumber(parts);
+      const dayIndex = dayNumber - civilDayNumber(start) + 1;
+      const entry = dayIndex >= 1 && dayIndex <= plan.entries.length ? plan.entries[dayIndex - 1] : null;
+      const isPast = dayNumber < todayNumber;
+      const isToday = dayNumber === todayNumber;
+      const isFuture = dayNumber > todayNumber;
+      const beyondLookahead = entry && entry.dayIndex > lastUnlockedDayIndex;
+      const accessible = Boolean(entry) &&
+        (!isPast || Boolean(config.pastReadingsAvailable)) &&
+        (!beyondLookahead || !config.futureReadingsLocked);
+      const complete = Boolean(entry && completed.has(entry.readingId));
+      let status = "none";
+      if (entry && !accessible) status = "locked";
+      else if (complete) status = "complete";
+      else if (entry && isToday) status = "today";
+      else if (entry && isPast) status = "missed";
+      else if (entry) status = "available";
+      return {
+        date,
+        dayIndex,
+        entry,
+        shortTitle: shortTitleForEntry(entry),
+        accessible,
+        complete,
+        isPast,
+        isToday,
+        isFuture,
+        inCurrentMonth: parts.year === monthStartParts.year && parts.month === monthStartParts.month,
+        status
+      };
+    });
+
+    return {
+      calendarDayIndex,
+      effectiveStartDate,
+      monthStart,
+      todayDate,
+      windowStart,
+      windowEnd: days[days.length - 1].date,
+      days,
+      weeks: Array.from({length: cellCount / 7}, (_, index) => days.slice(index * 7, index * 7 + 7))
+    };
+  }
+
+  function readingHasActiveComment(comments, outboxItems, authorId, readingId) {
+    if (!authorId || !readingId) return false;
+    const pending = compactOutbox(outboxItems || []).filter((item) => item.readingId === readingId);
+    const pendingDeletes = new Set(pending.filter((item) => item.eventType === "delete").map((item) => item.commentId));
+    const activeServerComment = (comments || []).some((comment) =>
+      comment && comment.readingId === readingId && comment.authorId === authorId && !comment.deletedAt &&
+      !pendingDeletes.has(comment.commentId)
+    );
+    const pendingCreate = pending.some((item) => item.eventType === "create");
+    return activeServerComment || pendingCreate;
+  }
+
+  function titleForEntry(entry) {
+    if (!entry) return "Reading unavailable";
+    const bookName = BOOK_NAMES[entry.bookId] || entry.bookId;
+    if (entry.kind === "book_intro") return `${bookName}: Book Introduction`;
+    const passages = Array.isArray(entry.passages) && entry.passages.length
+      ? entry.passages
+      : [{bookId: entry.bookId, chapter: entry.chapter}];
+    const sameBook = passages.every((passage) => passage.bookId === passages[0].bookId);
+    const sequential = passages.every((passage, index) => index === 0 || passage.chapter === passages[index - 1].chapter + 1);
+    if (sameBook && sequential) {
+      const first = passages[0].chapter;
+      const last = passages[passages.length - 1].chapter;
+      return `${BOOK_NAMES[passages[0].bookId] || passages[0].bookId} ${first}${last === first ? "" : `–${last}`}`;
+    }
+    return passages.map((passage) => `${BOOK_NAMES[passage.bookId] || passage.bookId} ${passage.chapter}`).join("; ");
+  }
+
+  function formatReadingDate(dateOnly) {
+    const parts = parseDateOnly(dateOnly);
+    return new Intl.DateTimeFormat(undefined, {
+      timeZone: "UTC",
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      year: "numeric"
+    }).format(new Date(Date.UTC(parts.year, parts.month - 1, parts.day, 12)));
+  }
+
+  function createRequestId(prefix) {
+    const random = root.crypto && typeof root.crypto.randomUUID === "function"
+      ? root.crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2, 14)}`;
+    return `${prefix || "request"}:${random}`;
+  }
+
+  function readerCodeLooksReady(value) {
+    const normalized = String(value || "").trim();
+    return normalized.length >= 12 && normalized.length <= 128 && !/[\u0000-\u001F\u007F]/.test(normalized);
+  }
+
+  async function requestPersistentStorage() {
+    try {
+      if (!root.navigator || !root.navigator.storage || typeof root.navigator.storage.persist !== "function") return null;
+      if (typeof root.navigator.storage.persisted === "function" && await root.navigator.storage.persisted()) return true;
+      return Boolean(await root.navigator.storage.persist());
+    } catch {
+      return null;
+    }
+  }
+
+  function compactOutbox(items) {
+    const ordered = (Array.isArray(items) ? items : []).slice().sort((a, b) =>
+      String(a.queuedAt || "").localeCompare(String(b.queuedAt || ""))
+    );
+    const result = [];
+    const pendingCreateByTempId = new Map();
+    ordered.forEach((item) => {
+      if (item.eventType === "create" && item.localTempId) {
+        pendingCreateByTempId.set(item.localTempId, item);
+        result.push(item);
+        return;
+      }
+      if (item.localTempId && pendingCreateByTempId.has(item.localTempId)) {
+        const create = pendingCreateByTempId.get(item.localTempId);
+        if (item.eventType === "edit") create.body = item.body;
+        if (item.eventType === "delete") {
+          const index = result.indexOf(create);
+          if (index >= 0) result.splice(index, 1);
+          pendingCreateByTempId.delete(item.localTempId);
+        }
+        return;
+      }
+      result.push(item);
+    });
+    return result;
+  }
+
+  function safeExternalUrl(value) {
+    try {
+      const url = new URL(String(value || ""));
+      return ["https:", "http:"].includes(url.protocol) ? url.toString() : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function safeVersionedAppUrl(value, buildId) {
+    try {
+      const url = new URL(String(value || ""));
+      if (url.protocol !== "https:" || url.hostname !== "script.google.com" ||
+          !/^\/macros\/s\/[A-Za-z0-9_-]+\/(?:exec|dev)$/.test(url.pathname) ||
+          !/^[a-f0-9]{16}$/.test(String(buildId || ""))) return null;
+      url.searchParams.set("appBuild", buildId);
+      return url.toString();
+    } catch {
+      return null;
+    }
+  }
+
+  function configureBuildUpdate(bootstrap) {
+    const panel = element("updatePanel");
+    if (!panel) return;
+    const serverBuildId = String(bootstrap && bootstrap.appBuildId || "");
+    const updateUrl = safeVersionedAppUrl(bootstrap && bootstrap.appUrl, serverBuildId);
+    const stale = state.adapter.kind === "apps-script" && serverBuildId && serverBuildId !== CLIENT_BUILD_ID;
+    panel.hidden = !(stale && updateUrl);
+    if (stale && updateUrl) {
+      element("updateLink").href = updateUrl;
+      setBanner("A newer application build is available. Use the update control before continuing sensitive work.", "info");
+    }
+  }
+
+  function createMemoryStore() {
+    const stores = new Map(Object.keys(STORE_DEFINITIONS).map((name) => [name, new Map()]));
+    return {
+      async get(storeName, key) { return stores.get(storeName).get(key) || null; },
+      async getAll(storeName) { return Array.from(stores.get(storeName).values()); },
+      async put(storeName, value) {
+        const key = value[STORE_DEFINITIONS[storeName]];
+        stores.get(storeName).set(key, value);
+        return value;
+      },
+      async delete(storeName, key) { stores.get(storeName).delete(key); },
+      async clear(storeName) { stores.get(storeName).clear(); },
+      async clearAll() { stores.forEach((store) => store.clear()); },
+      mode: "memory"
+    };
+  }
+
+  function createBrowserStore(openTimeoutOverride) {
+    if (!root.indexedDB) return Promise.resolve(createMemoryStore());
+    return new Promise((resolve) => {
+      const memory = createMemoryStore();
+      const openTimeoutMs = Number.isInteger(openTimeoutOverride) && openTimeoutOverride > 0
+        ? openTimeoutOverride
+        : 2000;
+      let settled = false;
+      let openTimer = null;
+      const finish = (store) => {
+        if (settled) return false;
+        settled = true;
+        if (openTimer !== null) root.clearTimeout(openTimer);
+        resolve(store);
+        return true;
+      };
+      let request;
+      try {
+        request = root.indexedDB.open(DB_NAME, DB_VERSION);
+      } catch (_) {
+        finish(memory);
+        return;
+      }
+      openTimer = root.setTimeout(() => finish(memory), openTimeoutMs);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        Object.entries(STORE_DEFINITIONS).forEach(([name, keyPath]) => {
+          if (!db.objectStoreNames.contains(name)) db.createObjectStore(name, {keyPath});
+        });
+      };
+      request.onerror = () => finish(memory);
+      request.onblocked = () => finish(memory);
+      request.onsuccess = () => {
+        const db = request.result;
+        db.onversionchange = () => db.close();
+        if (settled) {
+          db.close();
+          return;
+        }
+        let degraded = false;
+        function transaction(storeName, mode, operation) {
+          return new Promise((resolveTransaction, rejectTransaction) => {
+            const tx = db.transaction(storeName, mode);
+            const store = tx.objectStore(storeName);
+            let transactionSettled = false;
+            const transactionTimer = root.setTimeout(() => {
+              if (transactionSettled) return;
+              transactionSettled = true;
+              try { tx.abort(); } catch (_) {}
+              rejectTransaction(new Error("IndexedDB transaction timed out."));
+            }, 2500);
+            const complete = (callback, value) => {
+              if (transactionSettled) return;
+              transactionSettled = true;
+              root.clearTimeout(transactionTimer);
+              callback(value);
+            };
+            let value;
+            try {
+              value = operation(store);
+            } catch (error) {
+              complete(rejectTransaction, error);
+              return;
+            }
+            tx.oncomplete = () => complete(resolveTransaction, value && value.result !== undefined ? value.result : value);
+            tx.onerror = () => complete(rejectTransaction, tx.error || new Error("IndexedDB transaction failed."));
+            tx.onabort = () => complete(rejectTransaction, tx.error || new Error("IndexedDB transaction aborted."));
+          });
+        }
+        async function resilient(databaseOperation, memoryOperation) {
+          if (degraded) return memoryOperation();
+          try {
+            return await databaseOperation();
+          } catch (_) {
+            degraded = true;
+            try { db.close(); } catch (_) {}
+            return memoryOperation();
+          }
+        }
+        finish({
+          async get(storeName, key) {
+            return resilient(async () => {
+              const value = await transaction(storeName, "readonly", (store) => store.get(key));
+              if (value) await memory.put(storeName, value);
+              return value || null;
+            }, () => memory.get(storeName, key));
+          },
+          async getAll(storeName) {
+            return resilient(async () => {
+              const values = await transaction(storeName, "readonly", (store) => store.getAll());
+              for (const value of values || []) await memory.put(storeName, value);
+              return values || [];
+            }, () => memory.getAll(storeName));
+          },
+          async put(storeName, value) {
+            await memory.put(storeName, value);
+            await resilient(() => transaction(storeName, "readwrite", (store) => store.put(value)), () => value);
+            return value;
+          },
+          async delete(storeName, key) {
+            await memory.delete(storeName, key);
+            return resilient(() => transaction(storeName, "readwrite", (store) => store.delete(key)), () => undefined);
+          },
+          async clear(storeName) {
+            await memory.clear(storeName);
+            return resilient(() => transaction(storeName, "readwrite", (store) => store.clear()), () => undefined);
+          },
+          async clearAll() {
+            await memory.clearAll();
+            return resilient(async () => {
+              for (const storeName of Object.keys(STORE_DEFINITIONS)) {
+                await transaction(storeName, "readwrite", (store) => store.clear());
+              }
+            }, () => undefined);
+          },
+          mode: "indexeddb"
+        });
+      };
+    });
+  }
+
+  /* DBR_LOCAL_ADAPTER_START */
+  function privateDraftMode() {
+    try {
+      return new URLSearchParams(root.location && root.location.search || "").get("privateDraft") === "1";
+    } catch {
+      return false;
+    }
+  }
+
+  async function fetchJson(path) {
+    const response = await root.fetch(path, {cache: "no-store", credentials: "same-origin"});
+    if (!response.ok) throw appError("Local pilot fixture could not be loaded.", "FIXTURE_UNAVAILABLE");
+    return response.json();
+  }
+
+  function localAdapter(store) {
+    const core = root.DBRServerCore;
+    return {
+      kind: "mock",
+      async getBootstrapData() {
+        const registryPath = privateDraftMode()
+          ? "/__private/registry.json"
+          : "../../fixtures/pilot-content/source-registry.json";
+        const [config, plan, policySet, registry] = await Promise.all([
+          fetchJson("../../fixtures/pilot-content/app-config.json"),
+          fetchJson("../../fixtures/pilot-content/plan.json"),
+          fetchJson("../../config/provider-policies.example.json"),
+          fetchJson(registryPath)
+        ]);
+        return {
+          mode: "mock",
+          appBuildId: CLIENT_BUILD_ID,
+          appUrl: null,
+          config,
+          plan,
+          providerPolicy: policySet.policies[0],
+          session: {authorId: "dustin", displayName: "Dustin"},
+          participants: [
+            {authorId: "dustin", displayName: "Dustin"},
+            {authorId: "shane", displayName: "Shane"}
+          ],
+          sources: registry.sources
+        };
+      },
+      async getReadingPayload(readingId) {
+        const entry = state.plan.entries.find((candidate) => candidate.readingId === readingId);
+        if (!entry) throw appError("Unknown bridge reading.", "READING_NOT_FOUND");
+        if (privateDraftMode()) return fetchJson(`/__private/reading/${readingId}.json`);
+        const template = await fetchJson("../../fixtures/pilot-content/bridge-placeholder.commentary.json");
+        const firstPassage = entry.passages[0];
+        const commentary = {
+          ...template,
+          commentaryVersion: `${readingId}-placeholder-v1`,
+          readingId,
+          verseOfTheDay: {bookId: firstPassage.bookId, chapter: firstPassage.chapter, verse: 1}
+        };
+        return {commentary, sources: []};
+      },
+      async getScripture(readingId) {
+        const entry = state.plan.entries.find((candidate) => candidate.readingId === readingId);
+        if (!entry || entry.kind !== "chapter") return {available: false, code: "NOT_A_CHAPTER"};
+        return {
+          available: true,
+          isMock: true,
+          translation: "MOCK",
+          readingId,
+          canonical: titleForEntry(entry),
+          notice: "FABRICATED DEVELOPMENT TEXT — not ESV and not a Bible translation.",
+          passages: entry.passages.map((passage) => ({
+            bookId: passage.bookId,
+            chapter: passage.chapter,
+            canonical: `${BOOK_NAMES[passage.bookId] || passage.bookId} ${passage.chapter}`,
+            verses: Array.from({length: passage.verseCount}, (_, index) =>
+              `Fabricated mock verse ${index + 1} for local layout testing in chapter ${passage.chapter}; no licensed Scripture is stored here.`
+            )
+          })),
+          cacheAllowed: false
+        };
+      },
+      async listComments(readingId) {
+        const events = await store.getAll("commentEvents");
+        return core.materializeCommentEvents(events.filter((event) => event.readingId === readingId));
+      },
+      async listCommentActivity(readingIds) {
+        const events = await store.getAll("commentEvents");
+        const activity = core.participantCommentActivity(events, {
+          participants: state.calendarParticipants,
+          planVersion: state.plan.planVersion,
+          readingIds
+        });
+        return {
+          planVersion: state.plan.planVersion,
+          ...activity,
+          completedReadingIds: activity.completedByReadingId
+            ? readingIds.filter((readingId) => activity.completedByReadingId[readingId].includes(state.session.authorId))
+            : []
+        };
+      },
+      async submitCommentEvent(payload) {
+        const events = await store.getAll("commentEvents");
+        const result = core.applyCommentEvent({
+          payload,
+          plan: state.plan,
+          identity: state.session,
+          existingEvents: events,
+          now: new Date().toISOString(),
+          idFactory: (kind) => createRequestId(kind)
+        });
+        if (!result.idempotent) await store.put("commentEvents", result.event);
+        await store.put("commentSnapshot", result.event);
+        return result;
+      },
+      async forgetReaderEnrollment() {
+        return {forgotten: true};
+      }
+    };
+  }
+  /* DBR_LOCAL_ADAPTER_END */
+
+  function appsScriptRpc(method, ...args) {
+    return new Promise((resolve, reject) => {
+      if (!root.google || !root.google.script || !root.google.script.run) {
+        reject(appError("Authenticated Apps Script bridge is unavailable.", "BRIDGE_UNAVAILABLE"));
+        return;
+      }
+      let settled = false;
+      const timeout = root.setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        reject(appError("The server did not respond in time.", "SERVER_TIMEOUT"));
+      }, 30000);
+      const finish = (callback, value) => {
+        if (settled) return;
+        settled = true;
+        root.clearTimeout(timeout);
+        callback(value);
+      };
+      const runner = root.google.script.run
+        .withSuccessHandler((response) => finish(resolve, response))
+        .withFailureHandler((failure) => finish(
+          reject,
+          appError(failure && failure.message ? failure.message : "Server request failed.", "SERVER_ERROR")
+        ));
+      try {
+        runner[method](...args);
+      } catch (error) {
+        finish(reject, appError(error && error.message ? error.message : "Server request failed.", "SERVER_ERROR"));
+      }
+    });
+  }
+
+  function unwrapRpc(response) {
+    if (!response || response.ok !== true) {
+      const details = response && response.error ? response.error : {};
+      throw appError(details.message || "Server request failed.", details.code || "SERVER_UNAVAILABLE");
+    }
+    return response.data;
+  }
+
+  function productionAdapter() {
+    return {
+      kind: "apps-script",
+      getBootstrapData: () => appsScriptRpc("getBootstrapData", state.readerCode).then(unwrapRpc),
+      getReadingPayload: (readingId) => appsScriptRpc("getReadingPayload", state.readerCode, readingId).then(unwrapRpc),
+      getScripture: (readingId) => appsScriptRpc("getScripture", state.readerCode, readingId).then(unwrapRpc),
+      listComments: (readingId) => appsScriptRpc("listComments", state.readerCode, readingId).then(unwrapRpc),
+      listCommentActivity: (readingIds) => appsScriptRpc("listCommentActivity", state.readerCode, readingIds).then(unwrapRpc),
+      submitCommentEvent: (payload) => appsScriptRpc("submitCommentEvent", state.readerCode, payload).then(unwrapRpc),
+      forgetReaderEnrollment: () => appsScriptRpc("forgetReaderEnrollment", state.readerCode).then(unwrapRpc)
+    };
+  }
+
+  function setBanner(message, kind) {
+    const banner = element("stateBanner");
+    if (!banner) return;
+    banner.hidden = !message;
+    banner.textContent = message || "";
+    banner.dataset.state = kind || "info";
+  }
+
+  function setSyncStatus(message) {
+    if (element("syncStatus")) element("syncStatus").textContent = message;
+  }
+
+  function replaceWithText(container, text, tagName) {
+    container.replaceChildren();
+    const node = root.document.createElement(tagName || "p");
+    node.textContent = text;
+    container.appendChild(node);
+  }
+
+  function renderSafeMarkdown(markdown, container) {
+    container.replaceChildren();
+    const lines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
+    let list = null;
+    let listType = null;
+    let paragraph = [];
+
+    function flushParagraph() {
+      if (!paragraph.length) return;
+      const node = root.document.createElement("p");
+      node.textContent = paragraph.join(" ");
+      container.appendChild(node);
+      paragraph = [];
+    }
+
+    function flushList() {
+      list = null;
+      listType = null;
+    }
+
+    lines.forEach((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        flushParagraph();
+        flushList();
+        return;
+      }
+      const heading = /^(#{3,4})\s+(.+)$/.exec(trimmed);
+      if (heading) {
+        flushParagraph();
+        flushList();
+        const level = heading[1].length === 3 ? "h3" : "h4";
+        const node = root.document.createElement(level);
+        node.textContent = heading[2];
+        container.appendChild(node);
+        return;
+      }
+      const bullet = /^[-*]\s+(.+)$/.exec(trimmed);
+      const numbered = /^\d+[.)]\s+(.+)$/.exec(trimmed);
+      if (bullet || numbered) {
+        flushParagraph();
+        const nextListType = numbered ? "ol" : "ul";
+        if (!list || listType !== nextListType) {
+          list = root.document.createElement(nextListType);
+          listType = nextListType;
+          container.appendChild(list);
+        }
+        const item = root.document.createElement("li");
+        item.textContent = (bullet || numbered)[1];
+        list.appendChild(item);
+        return;
+      }
+      flushList();
+      paragraph.push(trimmed);
+    });
+    flushParagraph();
+  }
+
+  function renderSourceCitations(sourceIds, sources, container) {
+    container.replaceChildren();
+    const byId = new Map((sources || []).map((source) => [source.sourceId, source]));
+    const selected = (sourceIds || []).map((sourceId) => byId.get(sourceId)).filter(Boolean);
+    container.hidden = selected.length === 0;
+    if (!selected.length) return;
+    const label = root.document.createElement("span");
+    label.textContent = selected.length === 1 ? "Source:" : "Sources:";
+    container.appendChild(label);
+    selected.forEach((source) => {
+      const url = safeExternalUrl(source.urlOrCitation);
+      if (url) {
+        const link = root.document.createElement("a");
+        link.href = url;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = source.title;
+        container.appendChild(link);
+      } else {
+        const citation = root.document.createElement("span");
+        citation.textContent = [source.title, source.authorOrOrganization].filter(Boolean).join(" — ");
+        container.appendChild(citation);
+      }
+    });
+  }
+
+  function normalizedCommentarySummary(commentary) {
+    if (commentary.commentarySummary && Array.isArray(commentary.commentarySummary.paragraphs)) {
+      return commentary.commentarySummary;
+    }
+    const legacyInsights = Array.isArray(commentary.keyInsights) ? commentary.keyInsights : [];
+    return {
+      paragraphs: legacyInsights.map((insight) => ({
+        markdown: [insight.title, insight.markdown].filter(Boolean).join(". "),
+        sourceIds: insight.sourceIds || []
+      }))
+    };
+  }
+
+  function buildMainCitationIndex(summary, practicalTakeaway, sources) {
+    const sourceById = new Map((sources || []).map((source) => [source.sourceId, source]));
+    const orderedIds = [];
+    const numberById = new Map();
+    const units = [
+      ...((summary && summary.paragraphs) || []),
+      practicalTakeaway || {sourceIds: []}
+    ];
+    units.forEach((unit) => {
+      const sourceIds = [
+        ...inlineCitationIds(unit.markdown),
+        ...(unit.sourceIds || [])
+      ];
+      sourceIds.forEach((sourceId) => {
+        if (!sourceById.has(sourceId) || numberById.has(sourceId)) return;
+        orderedIds.push(sourceId);
+        numberById.set(sourceId, orderedIds.length);
+      });
+    });
+    return {numberById, orderedIds, sourceById};
+  }
+
+  function inlineCitationIds(markdown) {
+    const ids = [];
+    const pattern = /\{\{cite:([A-Za-z0-9_.:-]+(?:\s*,\s*[A-Za-z0-9_.:-]+)*)\}\}/g;
+    let match;
+    while ((match = pattern.exec(String(markdown || "")))) {
+      match[1].split(",").map((sourceId) => sourceId.trim()).forEach((sourceId) => ids.push(sourceId));
+    }
+    return ids;
+  }
+
+  function createNumberedCitations(sourceIds, citationIndex) {
+    const numbers = [...new Set((sourceIds || [])
+      .map((sourceId) => citationIndex.numberById.get(sourceId))
+      .filter(Number.isInteger))].sort((left, right) => left - right);
+    if (!numbers.length) return null;
+    const citations = root.document.createElement("sup");
+    citations.className = "numeric-citations";
+    citations.setAttribute("aria-label", `Sources ${numbers.join(", ")}`);
+    numbers.forEach((number, index) => {
+      if (index) citations.appendChild(root.document.createTextNode(","));
+      const link = root.document.createElement("a");
+      link.href = `#main-source-note-${number}`;
+      link.textContent = String(number);
+      link.setAttribute("aria-label", `Source ${number}`);
+      link.addEventListener("click", (event) => {
+        event.preventDefault();
+        const disclosure = element("mainSourceDisclosure");
+        disclosure.open = true;
+        const note = element(`main-source-note-${number}`);
+        if (note) {
+          note.scrollIntoView({block: "center"});
+          note.focus({preventScroll: true});
+        }
+      });
+      citations.appendChild(link);
+    });
+    return citations;
+  }
+
+  function appendNumberedCitations(container, sourceIds, citationIndex) {
+    const citations = createNumberedCitations(sourceIds, citationIndex);
+    if (!citations) return;
+    const paragraphs = container.querySelectorAll("p");
+    const target = paragraphs.length ? paragraphs[paragraphs.length - 1] : container;
+    target.appendChild(root.document.createTextNode(" "));
+    target.appendChild(citations);
+  }
+
+  function renderInlineCitedParagraph(markdown, sourceIds, citationIndex, container) {
+    const paragraph = root.document.createElement("p");
+    const text = String(markdown || "");
+    const pattern = /\{\{cite:([A-Za-z0-9_.:-]+(?:\s*,\s*[A-Za-z0-9_.:-]+)*)\}\}/g;
+    let cursor = 0;
+    let match;
+    let markerCount = 0;
+    while ((match = pattern.exec(text))) {
+      paragraph.appendChild(root.document.createTextNode(text.slice(cursor, match.index)));
+      const citations = createNumberedCitations(
+        match[1].split(",").map((sourceId) => sourceId.trim()),
+        citationIndex
+      );
+      if (citations) paragraph.appendChild(citations);
+      cursor = pattern.lastIndex;
+      markerCount += 1;
+    }
+    paragraph.appendChild(root.document.createTextNode(text.slice(cursor)));
+    container.appendChild(paragraph);
+    if (!markerCount) appendNumberedCitations(paragraph, sourceIds, citationIndex);
+  }
+
+  function renderMainSourceNotes(citationIndex) {
+    const disclosure = element("mainSourceDisclosure");
+    const list = element("mainSourceNotes");
+    list.replaceChildren();
+    disclosure.open = false;
+    disclosure.hidden = citationIndex.orderedIds.length === 0;
+    element("mainSourceSummary").textContent = citationIndex.orderedIds.length
+      ? `${citationIndex.orderedIds.length} sources cited in the main synthesis`
+      : "Sources cited in the main synthesis";
+    citationIndex.orderedIds.forEach((sourceId, index) => {
+      const source = citationIndex.sourceById.get(sourceId);
+      const item = root.document.createElement("li");
+      const number = index + 1;
+      item.id = `main-source-note-${number}`;
+      item.tabIndex = -1;
+      const author = root.document.createElement("span");
+      author.className = "main-source-author";
+      author.textContent = source.authorOrOrganization ? `${source.authorOrOrganization}. ` : "";
+      item.appendChild(author);
+      const url = safeExternalUrl(source.urlOrCitation);
+      if (url) {
+        const link = root.document.createElement("a");
+        link.href = url;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = source.title;
+        item.appendChild(link);
+      } else {
+        const title = root.document.createElement("span");
+        title.textContent = source.title;
+        item.appendChild(title);
+      }
+      const details = [source.edition, source.publicationDate].filter(Boolean).join(" · ");
+      if (details) item.appendChild(root.document.createTextNode(` (${details})`));
+      list.appendChild(item);
+    });
+  }
+
+  function renderCommentarySummary(summary, citationIndex) {
+    const container = element("commentarySummary");
+    container.replaceChildren();
+    const paragraphs = summary && Array.isArray(summary.paragraphs) ? summary.paragraphs : [];
+    if (!paragraphs.length) {
+      replaceWithText(container, "Commentary research is still being prepared for this reading.");
+      return;
+    }
+    paragraphs.forEach((paragraph) =>
+      renderInlineCitedParagraph(paragraph.markdown, paragraph.sourceIds, citationIndex, container)
+    );
+  }
+
+  function normalizedComprehensiveSynthesis(commentary, isBookIntroduction) {
+    if (commentary.comprehensiveSynthesis && commentary.comprehensiveSynthesis.markdown) {
+      return commentary.comprehensiveSynthesis;
+    }
+    const sections = (commentary.sections || []).filter((section) =>
+      !(isBookIntroduction && section.sectionId === "brief-overview")
+    );
+    return {
+      markdown: sections.map((section) => `### ${section.title}\n\n${section.markdown}`).join("\n\n"),
+      sourceIds: Array.from(new Set(sections.flatMap((section) => section.sourceIds || [])))
+    };
+  }
+
+  function splitComprehensiveSections(markdown) {
+    const sections = [];
+    let title = "";
+    let lines = [];
+    function flush() {
+      const body = lines.join("\n").trim();
+      if (body) sections.push({title: title || "Overview", markdown: body});
+      lines = [];
+    }
+    String(markdown || "").replace(/\r\n?/g, "\n").split("\n").forEach((line) => {
+      const heading = /^###\s+(.+)$/.exec(line.trim());
+      if (heading) {
+        flush();
+        title = heading[1].trim();
+      } else if (!/^##\s+/.test(line.trim())) {
+        lines.push(line);
+      }
+    });
+    flush();
+    return sections;
+  }
+
+  function renderComprehensiveSections(comprehensive) {
+    const container = element("comprehensiveSynthesis");
+    container.replaceChildren();
+    const sections = splitComprehensiveSections(comprehensive.markdown);
+    if (!sections.length) {
+      replaceWithText(container, "Comprehensive synthesis is still being prepared.");
+      return;
+    }
+    sections.forEach((section) => {
+      const disclosure = root.document.createElement("details");
+      disclosure.className = "deep-dive-disclosure";
+      const summary = root.document.createElement("summary");
+      summary.textContent = section.title === "Overview" && state.currentEntry
+        ? `${titleForEntry(state.currentEntry)} in one view`
+        : section.title;
+      const body = root.document.createElement("div");
+      body.className = "commentary-body deep-dive-body";
+      renderSafeMarkdown(section.markdown, body);
+      disclosure.append(summary, body);
+      container.appendChild(disclosure);
+    });
+  }
+
+  function normalizedVerseOfTheDay(selection, entry) {
+    if (!selection || !entry || entry.kind !== "chapter" ||
+        !/^[A-Z0-9]{2,5}$/.test(String(selection.bookId || "")) ||
+        !Number.isInteger(selection.chapter) || !Number.isInteger(selection.verse) ||
+        selection.chapter < 1 || selection.verse < 1) return null;
+    const passage = (entry.passages || []).find((candidate) =>
+      candidate.bookId === selection.bookId && candidate.chapter === selection.chapter
+    );
+    if (!passage || !Number.isInteger(passage.verseCount) || selection.verse > passage.verseCount) return null;
+    return {bookId: selection.bookId, chapter: selection.chapter, verse: selection.verse};
+  }
+
+  function verseReferenceLabel(selection) {
+    if (!selection) return "Selected verse";
+    return `${BOOK_NAMES[selection.bookId] || selection.bookId} ${selection.chapter}:${selection.verse}`;
+  }
+
+  function verseOfDayEsvUrl(selection) {
+    const label = verseReferenceLabel(selection);
+    return `https://www.esv.org/${label.replace(/\s+/g, "+")}/`;
+  }
+
+  function extractNumberedVerseText(passageText, verseNumber) {
+    if (!Number.isInteger(verseNumber) || verseNumber < 1) return "";
+    const text = String(passageText || "");
+    const marker = /\[(\d+)\]\s*/g;
+    let match;
+    while ((match = marker.exec(text))) {
+      if (Number(match[1]) !== verseNumber) continue;
+      const start = marker.lastIndex;
+      const next = marker.exec(text);
+      return text.slice(start, next ? next.index : text.length).trim();
+    }
+    return "";
+  }
+
+  function prepareVerseOfTheDay() {
+    const section = element("verseOfDaySection");
+    const selection = state.verseOfTheDay;
+    section.hidden = !selection;
+    element("verseOfDayText").hidden = true;
+    element("verseOfDayAttribution").hidden = true;
+    if (!selection) return;
+    element("verseOfDayReference").textContent = verseReferenceLabel(selection);
+    element("verseOfDayEsvLink").href = verseOfDayEsvUrl(selection);
+    const status = element("verseOfDayState");
+    status.hidden = false;
+    status.dataset.state = "info";
+    status.textContent = state.adapter && state.adapter.kind === "mock"
+      ? "Loading a fabricated mock verse for layout testing…"
+      : "Loading the selected verse from the live ESV reading…";
+  }
+
+  function renderVerseOfDayUnavailable(message) {
+    if (!state.verseOfTheDay) return;
+    const status = element("verseOfDayState");
+    status.hidden = false;
+    status.dataset.state = "error";
+    status.textContent = message || "The selected ESV verse is unavailable. Retry Scripture when connected; no alternate translation will be substituted.";
+    element("verseOfDayText").hidden = true;
+    element("verseOfDayAttribution").hidden = true;
+  }
+
+  function renderVerseOfTheDay(scripture) {
+    const selection = state.verseOfTheDay;
+    if (!selection) return;
+    const passage = (scripture && scripture.passages || []).find((candidate) =>
+      candidate.bookId === selection.bookId && candidate.chapter === selection.chapter
+    );
+    let verseText = "";
+    if (scripture && scripture.isMock === true && scripture.translation === "MOCK" && passage) {
+      verseText = String((passage.verses || [])[selection.verse - 1] || "");
+    } else if (scripture && scripture.translation === "ESV" && passage) {
+      verseText = extractNumberedVerseText(passage.passage, selection.verse);
+    }
+    if (!verseText) {
+      renderVerseOfDayUnavailable("The selected verse could not be isolated from the Scripture response. Retry when connected; no alternate translation will be substituted.");
+      return;
+    }
+    const quote = element("verseOfDayText");
+    quote.textContent = verseText;
+    quote.hidden = false;
+    const status = element("verseOfDayState");
+    if (scripture.isMock === true) {
+      status.hidden = false;
+      status.dataset.state = "error";
+      status.textContent = "FABRICATED DEVELOPMENT TEXT — not ESV and not a Bible translation.";
+      element("verseOfDayAttribution").hidden = true;
+    } else {
+      status.hidden = true;
+      element("verseOfDayAttribution").hidden = false;
+    }
+  }
+
+  function renderCommentary(commentary, sources) {
+    const overview = element("overviewContent");
+    const dailyIntroduction = commentary.dailyIntroduction || {markdown: commentary.overview, sourceIds: []};
+    renderSafeMarkdown(dailyIntroduction.markdown || "Orientation unavailable.", overview);
+    overview.classList.remove("skeleton-text");
+    renderSourceCitations(dailyIntroduction.sourceIds, sources || [], element("overviewSources"));
+
+    const isBookIntroduction = state.currentEntry && state.currentEntry.kind === "book_intro";
+    const briefOverview = (commentary.sections || []).find((section) => section.sectionId === "brief-overview");
+    const bookIntroduction = element("bookIntroductionContent");
+    if (isBookIntroduction) {
+      renderSafeMarkdown(commentary.overview || (briefOverview && briefOverview.markdown) || "Book introduction unavailable.", bookIntroduction);
+      bookIntroduction.classList.remove("skeleton-text");
+      renderSourceCitations(briefOverview && briefOverview.sourceIds || [], sources || [], element("bookIntroductionSources"));
+    } else {
+      bookIntroduction.replaceChildren();
+      element("bookIntroductionSources").replaceChildren();
+    }
+
+    const commentarySummary = normalizedCommentarySummary(commentary);
+    const practicalTakeaway = commentary.practicalTakeaway || {markdown: "Practical takeaway unavailable.", sourceIds: []};
+    state.verseOfTheDay = normalizedVerseOfTheDay(commentary.verseOfTheDay, state.currentEntry);
+    prepareVerseOfTheDay();
+    const citationIndex = buildMainCitationIndex(commentarySummary, practicalTakeaway, sources || []);
+    renderCommentarySummary(commentarySummary, citationIndex);
+    renderSafeMarkdown(practicalTakeaway.markdown, element("practicalTakeaway"));
+    appendNumberedCitations(element("practicalTakeaway"), practicalTakeaway.sourceIds, citationIndex);
+    renderMainSourceNotes(citationIndex);
+
+    const badge = element("reviewBadge");
+    badge.textContent = commentary.publicationStatus === "placeholder" ? "Commentary being prepared" : commentary.publicationStatus;
+
+    const comprehensive = normalizedComprehensiveSynthesis(commentary, isBookIntroduction);
+    renderComprehensiveSections(comprehensive);
+    element("sourceAuditDisclosure").open = false;
+
+    renderCoverage(commentary.coverage || {}, sources || []);
+  }
+
+  function listNode(items, emptyText) {
+    if (!items || !items.length) {
+      const paragraph = root.document.createElement("p");
+      paragraph.textContent = emptyText;
+      return paragraph;
+    }
+    const list = root.document.createElement("ul");
+    items.forEach((value) => {
+      const item = root.document.createElement("li");
+      item.textContent = value;
+      list.appendChild(item);
+    });
+    return list;
+  }
+
+  function coverageCard(title, contentNode) {
+    const card = root.document.createElement("div");
+    card.className = "coverage-card";
+    const heading = root.document.createElement("strong");
+    heading.textContent = title;
+    card.append(heading, contentNode);
+    return card;
+  }
+
+  function renderCoverage(coverage, sources) {
+    const consulted = Number(coverage.consultedCount || 0);
+    const included = Number(coverage.includedCount || 0);
+    element("coverageIndicator").textContent = `${consulted} consulted · ${included} included`;
+    const summary = element("coverageSummary");
+    summary.replaceChildren(
+      coverageCard("Represented categories", listNode(coverage.representedCategories, "None yet — research has not begun.")),
+      coverageCard("Missing categories", listNode(coverage.missingCategories, "No missing categories recorded.")),
+      coverageCard("Major disagreements", listNode(coverage.majorDisagreements, "Not yet assessed.")),
+      coverageCard("Known limitations", listNode(coverage.limitations, "No limitations recorded."))
+    );
+
+    const sourceList = element("sourceList");
+    sourceList.replaceChildren();
+    if (!sources.length) {
+      replaceWithText(sourceList, "No commentary sources are claimed for this reading yet.");
+      return;
+    }
+    sources.forEach((source) => {
+      const record = root.document.createElement("article");
+      record.className = "source-record";
+      const title = root.document.createElement("strong");
+      title.textContent = source.title;
+      const metadata = root.document.createElement("p");
+      metadata.className = "muted";
+      metadata.textContent = [source.authorOrOrganization, source.edition, source.publicationDate, source.summaryUseStatus]
+        .filter(Boolean).join(" · ");
+      record.append(title, metadata);
+      const url = safeExternalUrl(source.urlOrCitation);
+      if (url) {
+        const link = root.document.createElement("a");
+        link.href = url;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = "Open source record";
+        record.appendChild(link);
+      } else if (source.urlOrCitation) {
+        const citation = root.document.createElement("p");
+        citation.textContent = source.urlOrCitation;
+        record.appendChild(citation);
+      }
+      sourceList.appendChild(record);
+    });
+  }
+
+  function renderScriptureUnavailable(message) {
+    const scriptureState = element("scriptureState");
+    scriptureState.hidden = false;
+    scriptureState.dataset.state = "error";
+    scriptureState.textContent = message || "ESV Scripture is unavailable. Retry or open the passage on ESV.org.";
+    element("scriptureContent").replaceChildren();
+    renderVerseOfDayUnavailable();
+  }
+
+  function renderScripture(scripture, sourceLabel) {
+    const content = element("scriptureContent");
+    const scriptureState = element("scriptureState");
+    content.replaceChildren();
+    scriptureState.hidden = false;
+    scriptureState.dataset.state = "info";
+
+    if (scripture && scripture.isMock === true && scripture.translation === "MOCK") {
+      element("translationLabel").textContent = "MOCK — not ESV";
+      element("scriptureHeading").textContent = scripture.canonical;
+      scriptureState.textContent = scripture.notice;
+      const notice = root.document.createElement("div");
+      notice.className = "mock-notice";
+      notice.textContent = scripture.notice;
+      content.appendChild(notice);
+      (scripture.passages || [{canonical: scripture.canonical, verses: scripture.verses || []}]).forEach((passage) => {
+        const section = root.document.createElement("section");
+        section.className = "scripture-passage";
+        const heading = root.document.createElement("h3");
+        heading.textContent = passage.canonical;
+        const list = root.document.createElement("ol");
+        list.className = "mock-verses";
+        passage.verses.forEach((verse, index) => {
+          const item = root.document.createElement("li");
+          const number = root.document.createElement("span");
+          number.className = "verse-number";
+          number.textContent = String(index + 1);
+          const text = root.document.createElement("span");
+          text.textContent = verse;
+          item.append(number, text);
+          list.appendChild(item);
+        });
+        section.append(heading, list);
+        content.appendChild(section);
+      });
+      renderVerseOfTheDay(scripture);
+      return;
+    }
+
+    const passages = scripture && Array.isArray(scripture.passages) ? scripture.passages : [];
+    if (!scripture || scripture.available === false || scripture.translation !== "ESV" || !passages.length ||
+        passages.some((passage) => !passage.passage)) {
+      renderScriptureUnavailable();
+      return;
+    }
+    element("translationLabel").textContent = "Page 2 · ESV Scripture";
+    element("scriptureHeading").textContent = scripture.canonical || titleForEntry(state.currentEntry);
+    scriptureState.textContent = "Official ESV text retrieved for this screen through the authenticated server. It is not saved for offline use.";
+    passages.forEach((passage) => {
+      const section = root.document.createElement("section");
+      section.className = "scripture-passage";
+      const heading = root.document.createElement("h3");
+      heading.textContent = passage.canonical;
+      const pre = root.document.createElement("pre");
+      pre.textContent = passage.passage;
+      section.append(heading, pre);
+      content.appendChild(section);
+    });
+    const esvUrl = safeExternalUrl(scripture.esvUrl);
+    if (esvUrl && esvUrl.startsWith("https://www.esv.org/")) element("openEsvLink").href = esvUrl;
+    renderVerseOfTheDay(scripture);
+  }
+
+  async function persistScripture(scripture) {
+    if (!scripture || scripture.translation !== "ESV") return;
+    if (scripture.cacheAllowed === false || !state.policy.offlinePersistenceAllowed) {
+      await state.store.delete("scriptureCache", `ESV:${scripture.readingId}`);
+      await updateCacheInspector();
+      return;
+    }
+    if (!scripture.passage) return;
+    const candidate = {
+      cacheKey: `ESV:${scripture.readingId}`,
+      readingId: scripture.readingId,
+      translation: "ESV",
+      bookId: scripture.bookId,
+      chapter: scripture.chapter,
+      canonical: scripture.canonical,
+      passage: scripture.passage,
+      verseCount: scripture.verseCount,
+      bookVerseCount: scripture.bookVerseCount,
+      fetchedAt: scripture.fetchedAt || new Date().toISOString(),
+      esvUrl: scripture.esvUrl
+    };
+    const existing = await state.store.getAll("scriptureCache");
+    const plan = root.DBRProviderPolicy.planCacheWrite(existing, candidate, state.policy);
+    for (const item of plan.evicted || []) await state.store.delete("scriptureCache", item.cacheKey);
+    if (plan.accepted) await state.store.put("scriptureCache", plan.entryToWrite);
+    await updateCacheInspector();
+  }
+
+  async function cachedScripture(readingId) {
+    const entry = await state.store.get("scriptureCache", `ESV:${readingId}`);
+    if (!entry) return null;
+    if (!state.policy.offlinePersistenceAllowed) {
+      await state.store.delete("scriptureCache", entry.cacheKey);
+      return null;
+    }
+    if (root.DBRProviderPolicy.isExpired(entry, state.policy, Date.now())) {
+      await state.store.delete("scriptureCache", entry.cacheKey);
+      return null;
+    }
+    return entry;
+  }
+
+  function privateRecordIsFresh(record, nowInput, planVersion) {
+    const now = Number.isFinite(nowInput) ? nowInput : Date.now();
+    return Boolean(record && record.payload && Number.isFinite(Date.parse(record.expiresAt)) &&
+      Date.parse(record.expiresAt) > now && (!planVersion || record.planVersion === planVersion));
+  }
+
+  async function cachedPrivatePayload(readingId) {
+    const record = await state.store.get("privateContent", readingId);
+    if (!privateRecordIsFresh(record, Date.now(), state.plan && state.plan.planVersion)) {
+      if (record) await state.store.delete("privateContent", readingId);
+      return null;
+    }
+    return record.payload;
+  }
+
+  async function persistPrivatePayload(readingId, payload) {
+    const maxAgeSeconds = Number(state.config && state.config.privateContentCacheMaxAgeSeconds || 0);
+    if (!Number.isInteger(maxAgeSeconds) || maxAgeSeconds <= 0 || maxAgeSeconds > 604800) return;
+    const cachedAt = new Date();
+    await state.store.put("privateContent", {
+      readingId,
+      planVersion: state.plan.planVersion,
+      cachedAt: cachedAt.toISOString(),
+      expiresAt: new Date(cachedAt.getTime() + maxAgeSeconds * 1000).toISOString(),
+      payload
+    });
+  }
+
+  function mayUseOfflineFallback(error) {
+    return !error || !["AUTH_REQUIRED", "ACCESS_DENIED", "WRONG_EXECUTION_IDENTITY", "READER_CODE_REQUIRED",
+      "READER_CODE_INVALID", "CONTENT_ACCESS_DENIED"].includes(error.code);
+  }
+
+  async function readingPayloadWithCache(readingId) {
+    try {
+      const payload = await state.adapter.getReadingPayload(readingId);
+      await persistPrivatePayload(readingId, payload);
+      return {payload, source: "network"};
+    } catch (error) {
+      if (!mayUseOfflineFallback(error)) throw error;
+      const cached = await cachedPrivatePayload(readingId);
+      if (!cached) throw error;
+      return {payload: cached, source: "cache"};
+    }
+  }
+
+  async function loadScripture(entry) {
+    const token = ++state.scriptureRequestToken;
+    const scriptureState = element("scriptureState");
+    scriptureState.hidden = false;
+    scriptureState.dataset.state = "info";
+    scriptureState.textContent = state.adapter.kind === "mock"
+      ? "Loading fabricated development text…"
+      : "Retrieving official ESV text through the authenticated server…";
+    element("scriptureContent").replaceChildren();
+    prepareVerseOfTheDay();
+    try {
+      const scripture = await state.adapter.getScripture(entry.readingId);
+      if (token !== state.scriptureRequestToken || state.currentEntry.readingId !== entry.readingId) return;
+      if (scripture && scripture.available === false) throw appError("Scripture provider is unavailable.", scripture.code || "ESV_UNAVAILABLE");
+      renderScripture(scripture, "network");
+      await persistScripture(scripture);
+    } catch {
+      if (token !== state.scriptureRequestToken || state.currentEntry.readingId !== entry.readingId) return;
+      const cached = state.adapter.kind === "apps-script" && state.policy.offlinePersistenceAllowed
+        ? await cachedScripture(entry.readingId)
+        : null;
+      if (cached) renderScripture(cached, "cache");
+      else renderScriptureUnavailable("ESV Scripture is unavailable. Retry when connected or open the passage on ESV.org; no alternate translation will be substituted.");
+    }
+  }
+
+  function fullCalendarDate(value) {
+    const parts = parseDateOnly(value);
+    return new Intl.DateTimeFormat(undefined, {
+      timeZone: "UTC",
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+      year: "numeric"
+    }).format(new Date(Date.UTC(parts.year, parts.month - 1, parts.day, 12)));
+  }
+
+  function monthHeading(value) {
+    const parts = parseDateOnly(value);
+    return new Intl.DateTimeFormat(undefined, {
+      timeZone: "UTC",
+      month: "long",
+      year: "numeric"
+    }).format(new Date(Date.UTC(parts.year, parts.month - 1, 1, 12)));
+  }
+
+  function shiftMonth(value, offset) {
+    const parts = parseDateOnly(value);
+    const date = new Date(Date.UTC(parts.year, parts.month - 1 + offset, 1));
+    return dateOnlyFromParts({year: date.getUTCFullYear(), month: date.getUTCMonth() + 1, day: 1});
+  }
+
+  function shortOpenDate(value) {
+    const parts = parseDateOnly(value);
+    return new Intl.DateTimeFormat(undefined, {
+      timeZone: "UTC",
+      month: "long",
+      day: "numeric"
+    }).format(new Date(Date.UTC(parts.year, parts.month - 1, parts.day, 12)));
+  }
+
+  function completionSet(readingId) {
+    return state.completionByReadingId.get(readingId) || new Set();
+  }
+
+  function deriveCurrentReaderCompletion() {
+    const completed = new Set();
+    if (!state.session) return completed;
+    state.completionByReadingId.forEach((authors, readingId) => {
+      if (authors.has(state.session.authorId)) completed.add(readingId);
+    });
+    return completed;
+  }
+
+  function selectCalendarDate(date, options) {
+    state.selectedCalendarDate = date;
+    renderCalendar();
+    if (options && options.focus) element("openSelectedReading").focus({preventScroll: true});
+  }
+
+  function renderCalendarLegend() {
+    const legend = element("calendarParticipantLegend");
+    legend.replaceChildren();
+    state.calendarParticipants.forEach((participant, index) => {
+      const item = root.document.createElement("span");
+      const dot = root.document.createElement("span");
+      dot.className = `participant-dot participant-color-${index}`;
+      dot.dataset.complete = "true";
+      dot.setAttribute("aria-hidden", "true");
+      item.append(dot, root.document.createTextNode(participant.displayName));
+      legend.appendChild(item);
+    });
+    const note = root.document.createElement("span");
+    note.className = "calendar-legend-note";
+    note.textContent = "Filled dot = commented";
+    legend.appendChild(note);
+  }
+
+  function renderSelectedDay(day) {
+    const button = element("openSelectedReading");
+    element("selectedDayDate").textContent = fullCalendarDate(day.date);
+    element("selectedDayTitle").textContent = day.entry ? titleForEntry(day.entry) : "No reading scheduled";
+    element("selectedDayPosition").textContent = day.entry
+      ? day.entry.sourcePlanDay
+        ? `Original plan day ${day.entry.sourcePlanDay} of 92 · Bridge day ${day.entry.dayIndex} of ${state.plan.entries.length}`
+        : `Day ${day.entry.dayIndex} of ${state.plan.entries.length}`
+      : "This date is outside the current seven-reading bridge.";
+    const completion = element("selectedDayCompletion");
+    completion.replaceChildren();
+    const completedAuthors = day.entry ? completionSet(day.entry.readingId) : new Set();
+    state.calendarParticipants.forEach((participant, index) => {
+      const row = root.document.createElement("div");
+      row.className = "selected-reader-status";
+      const identity = root.document.createElement("span");
+      const dot = root.document.createElement("span");
+      const complete = completedAuthors.has(participant.authorId);
+      dot.className = `participant-dot participant-color-${index}`;
+      dot.dataset.complete = complete ? "true" : "false";
+      dot.setAttribute("aria-hidden", "true");
+      identity.append(dot, root.document.createTextNode(participant.displayName));
+      const status = root.document.createElement("strong");
+      status.textContent = day.entry ? complete ? "Completed" : "Not completed" : "No reading";
+      row.append(identity, status);
+      completion.appendChild(row);
+    });
+    const canOpen = Boolean(day.entry && day.accessible);
+    button.disabled = !canOpen;
+    button.dataset.readingId = canOpen ? day.entry.readingId : "";
+    button.textContent = canOpen
+      ? `Open ${shortOpenDate(day.date)} reading`
+      : day.entry ? `Reading unavailable on ${shortOpenDate(day.date)}` : `No reading on ${shortOpenDate(day.date)}`;
+    if (canOpen) button.setAttribute("aria-label", `Open ${fullCalendarDate(day.date)} reading: ${titleForEntry(day.entry)}`);
+    else button.removeAttribute("aria-label");
+  }
+
+  function renderCalendar() {
+    if (!state.plan || !state.config) return;
+    if (!state.calendarMonthDate) {
+      const today = datePartsInTimeZone(new Date(), state.config.timezone);
+      state.calendarMonthDate = dateOnlyFromParts({...today, day: 1});
+    }
+    state.completedReadingIds = deriveCurrentReaderCompletion();
+    const calendar = buildMonthCalendar(state.plan, state.config, new Date(), state.completedReadingIds, state.calendarMonthDate);
+    state.calendarWindow = calendar;
+    state.calendarMonthDate = calendar.monthStart;
+    element("calendarMonthHeading").textContent = monthHeading(calendar.monthStart);
+    element("previousMonth").setAttribute("aria-label", `Show ${monthHeading(shiftMonth(calendar.monthStart, -1))}`);
+    element("nextMonth").setAttribute("aria-label", `Show ${monthHeading(shiftMonth(calendar.monthStart, 1))}`);
+    element("calendarSummary").textContent = "Select a date to see its reading and whether Dustin and Shane have completed it.";
+
+    const selectionInMonth = calendar.days.find((day) => day.inCurrentMonth && day.date === state.selectedCalendarDate);
+    if (!selectionInMonth) {
+      const today = calendar.days.find((day) => day.inCurrentMonth && day.isToday);
+      const scheduled = calendar.days.find((day) => day.inCurrentMonth && day.entry);
+      state.selectedCalendarDate = (today || scheduled || calendar.days.find((day) => day.inCurrentMonth)).date;
+    }
+    const weeks = element("calendarWeeks");
+    weeks.replaceChildren();
+    calendar.weeks.forEach((days) => {
+      const row = root.document.createElement("div");
+      row.className = "calendar-week";
+      days.forEach((day) => {
+        const button = root.document.createElement("button");
+        button.type = "button";
+        button.className = "calendar-day";
+        button.dataset.status = day.status;
+        button.dataset.date = day.date;
+        button.dataset.today = day.isToday ? "true" : "false";
+        button.dataset.currentMonth = day.inCurrentMonth ? "true" : "false";
+        button.dataset.hasReading = day.entry ? "true" : "false";
+        button.dataset.selected = day.date === state.selectedCalendarDate ? "true" : "false";
+        button.disabled = !day.inCurrentMonth;
+        button.setAttribute("aria-pressed", day.date === state.selectedCalendarDate ? "true" : "false");
+
+        const number = root.document.createElement("span");
+        number.className = "calendar-day-number";
+        number.textContent = String(parseDateOnly(day.date).day);
+        const dots = root.document.createElement("span");
+        dots.className = "calendar-day-dots";
+        const completedAuthors = day.entry ? completionSet(day.entry.readingId) : new Set();
+        state.calendarParticipants.forEach((participant, index) => {
+          const dot = root.document.createElement("span");
+          dot.className = `participant-dot participant-color-${index}`;
+          dot.dataset.complete = completedAuthors.has(participant.authorId) ? "true" : "false";
+          dot.setAttribute("aria-hidden", "true");
+          dots.appendChild(dot);
+        });
+        button.append(number, dots);
+
+        const descriptors = day.entry
+          ? [fullCalendarDate(day.date), day.shortTitle, day.accessible ? "Reading available" : "Reading locked"]
+          : [fullCalendarDate(day.date), "No scheduled reading"];
+        state.calendarParticipants.forEach((participant) => {
+          descriptors.push(`${participant.displayName}: ${completedAuthors.has(participant.authorId) ? "completed" : "not completed"}`);
+        });
+        if (day.isToday) descriptors.push("Today");
+        button.setAttribute("aria-label", descriptors.join(". "));
+        if (day.inCurrentMonth) button.addEventListener("click", () => selectCalendarDate(day.date));
+        row.appendChild(button);
+      });
+      weeks.appendChild(row);
+    });
+    renderCalendarLegend();
+    renderSelectedDay(calendar.days.find((day) => day.date === state.selectedCalendarDate));
+  }
+
+  async function localCompletionForReadings(readingIds) {
+    const [savedCompletion, snapshots, outbox] = await Promise.all([
+      state.store.getAll("calendarCompletion"),
+      state.store.getAll("commentSnapshot"),
+      state.store.getAll("commentOutbox")
+    ]);
+    const currentSnapshots = snapshots.filter((item) => !item.planVersion || item.planVersion === state.plan.planVersion);
+    const currentOutbox = outbox.filter((item) => !item.planVersion || item.planVersion === state.plan.planVersion);
+    const allowedParticipants = new Set(state.calendarParticipants.map((participant) => participant.authorId));
+    const completionByReadingId = new Map(readingIds.map((readingId) => [readingId, new Set()]));
+    savedCompletion
+      .filter((item) => item.planVersion === state.plan.planVersion && completionByReadingId.has(item.readingId))
+      .forEach((item) => {
+        const authors = completionByReadingId.get(item.readingId);
+        if (item.completionByAuthorId && typeof item.completionByAuthorId === "object") {
+          allowedParticipants.forEach((authorId) => {
+            if (item.completionByAuthorId[authorId] === true) authors.add(authorId);
+          });
+        } else if (allowedParticipants.has(item.authorId) && item.completed) {
+          authors.add(item.authorId);
+        }
+      });
+    const pendingReadingIds = new Set(currentOutbox.map((item) => item.readingId));
+    pendingReadingIds.forEach((readingId) => {
+      if (!completionByReadingId.has(readingId)) return;
+      const authors = completionByReadingId.get(readingId);
+      if (readingHasActiveComment(currentSnapshots, currentOutbox, state.session.authorId, readingId)) authors.add(state.session.authorId);
+      else authors.delete(state.session.authorId);
+    });
+    return {completionByReadingId, snapshots: currentSnapshots, outbox: currentOutbox};
+  }
+
+  async function persistCalendarCompletion(readingIds, completionByReadingId) {
+    const syncedAt = new Date().toISOString();
+    for (const readingId of readingIds) {
+      const authors = completionByReadingId.get(readingId) || new Set();
+      await state.store.put("calendarCompletion", {
+        readingId,
+        planVersion: state.plan.planVersion,
+        completionByAuthorId: Object.fromEntries(
+          state.calendarParticipants.map((participant) => [participant.authorId, authors.has(participant.authorId)])
+        ),
+        syncedAt
+      });
+    }
+  }
+
+  async function hydrateCalendarCompletion() {
+    const ids = state.plan.entries.map((entry) => entry.readingId);
+    const local = await localCompletionForReadings(ids);
+    state.completionByReadingId = local.completionByReadingId;
+    state.completedReadingIds = deriveCurrentReaderCompletion();
+    renderCalendar();
+    element("calendarStatus").textContent = Array.from(state.completionByReadingId.values()).some((authors) => authors.size)
+      ? "Showing both readers’ saved progress while the shared discussion updates."
+      : "Calendar is ready; checking the shared discussion for completed days.";
+  }
+
+  async function syncCalendarCompletion() {
+    if (!state.plan || !state.session || !state.calendarWindow) return;
+    if (state.calendarSyncPromise) return state.calendarSyncPromise;
+    const run = async () => {
+      const button = element("refreshCalendar");
+      button.disabled = true;
+      element("calendarStatus").textContent = "Checking the shared comments for completed days…";
+      const readingIds = Array.from(new Set(
+        state.calendarWindow.days.filter((day) => day.entry).map((day) => day.entry.readingId)
+      ));
+      if (!readingIds.length) {
+        element("calendarStatus").textContent = "No readings are scheduled in this month.";
+        button.disabled = false;
+        return;
+      }
+      try {
+        const activity = await state.adapter.listCommentActivity(readingIds);
+        if (!activity || activity.planVersion !== state.plan.planVersion ||
+            !Array.isArray(activity.participants) || !activity.completedByReadingId || typeof activity.completedByReadingId !== "object") {
+          throw appError("Comment activity did not match the active plan.", "COMMENT_ACTIVITY_INVALID");
+        }
+        const allowed = new Set(readingIds);
+        const expectedParticipants = state.calendarParticipants.map((participant) => participant.authorId);
+        const returnedParticipants = activity.participants.map((participant) => participant && participant.authorId);
+        if (JSON.stringify(returnedParticipants) !== JSON.stringify(expectedParticipants)) {
+          throw appError("Comment activity returned an unexpected reader list.", "COMMENT_ACTIVITY_INVALID");
+        }
+        const completionByReadingId = new Map(state.completionByReadingId);
+        readingIds.forEach((readingId) => {
+          const authors = activity.completedByReadingId[readingId];
+          if (!Array.isArray(authors) || authors.some((authorId) => !expectedParticipants.includes(authorId))) {
+            throw appError("Comment activity contained an invalid reader.", "COMMENT_ACTIVITY_INVALID");
+          }
+          completionByReadingId.set(readingId, new Set(authors));
+        });
+        const local = await localCompletionForReadings(readingIds);
+        const pendingByReading = new Set(local.outbox.map((item) => item.readingId));
+        pendingByReading.forEach((readingId) => {
+          if (!allowed.has(readingId)) return;
+          const localAuthors = local.completionByReadingId.get(readingId) || new Set();
+          const authors = completionByReadingId.get(readingId);
+          if (localAuthors.has(state.session.authorId)) authors.add(state.session.authorId);
+          else authors.delete(state.session.authorId);
+        });
+        state.completionByReadingId = completionByReadingId;
+        state.completedReadingIds = deriveCurrentReaderCompletion();
+        await persistCalendarCompletion(readingIds, completionByReadingId);
+        renderCalendar();
+        element("calendarStatus").textContent = "Dustin and Shane’s progress is synchronized from shared comments.";
+        setSyncStatus("Calendar synchronized");
+      } catch {
+        await hydrateCalendarCompletion();
+        element("calendarStatus").textContent = "Offline · showing both readers’ last saved progress.";
+        setSyncStatus("Offline · saved calendar available");
+      } finally {
+        button.disabled = false;
+      }
+    };
+    const promise = run();
+    state.calendarSyncPromise = promise;
+    try {
+      return await promise;
+    } finally {
+      if (state.calendarSyncPromise === promise) state.calendarSyncPromise = null;
+    }
+  }
+
+  function pageLabel(index) {
+    if (index === 0) return "Orientation";
+    if (index === 1) return state.currentEntry && state.currentEntry.kind === "book_intro" ? "Book introduction" : "Scripture";
+    return "Commentary";
+  }
+
+  function setReadingPage(pageIndex, options) {
+    const nextPage = Math.max(0, Math.min(2, Number(pageIndex) || 0));
+    state.currentPage = nextPage;
+    [0, 1, 2].forEach((index) => {
+      const panel = element(index === 0 ? "readingPageIntro" : index === 1 ? "readingPageText" : "readingPageCommentary");
+      panel.hidden = index !== nextPage;
+      const step = element(`pageStep${index}`);
+      if (index === nextPage) step.setAttribute("aria-current", "step");
+      else step.removeAttribute("aria-current");
+    });
+    element("pagePosition").textContent = `Page ${nextPage + 1} of 3 · ${pageLabel(nextPage)}`;
+    element("previousPage").disabled = nextPage === 0;
+    element("nextPage").hidden = nextPage === 2;
+    element("finishReading").hidden = nextPage !== 2;
+    element("extendedStudy").hidden = nextPage !== 2;
+    if (nextPage !== 2) {
+      element("extendedStudy").querySelectorAll("details").forEach((disclosure) => {
+        disclosure.open = false;
+      });
+    }
+    element("discussionPageContext").textContent = `${pageLabel(nextPage)} · comments for this day`;
+    if (!options || options.focus !== false) {
+      const heading = element(nextPage === 0
+        ? "overviewHeading"
+        : nextPage === 1
+          ? state.currentEntry && state.currentEntry.kind === "book_intro" ? "bookIntroductionHeading" : "scriptureHeading"
+          : "commentarySummaryHeading");
+      heading.scrollIntoView({block: "start"});
+      heading.focus({preventScroll: true});
+    }
+  }
+
+  function showHome(options) {
+    state.view = "home";
+    state.currentEntry = null;
+    state.scriptureRequestToken += 1;
+    state.commentSyncToken += 1;
+    element("readingView").hidden = true;
+    element("homeView").hidden = false;
+    element("skipLink").href = "#calendarHeading";
+    element("skipLink").textContent = "Skip to the calendar";
+    setBanner("");
+    renderCalendar();
+    if ((!options || options.sync !== false) && (!root.navigator || root.navigator.onLine !== false)) {
+      syncCalendarCompletion().catch(() => {});
+    }
+    if (root.scrollTo) root.scrollTo({top: 0, behavior: "auto"});
+    if (!options || options.focus !== false) element("calendarHeading").focus({preventScroll: true});
+  }
+
+  async function openReading(readingId, options) {
+    state.view = "reading";
+    element("homeView").hidden = true;
+    element("readingView").hidden = false;
+    element("skipLink").href = "#overviewHeading";
+    element("skipLink").textContent = "Skip to the reading";
+    setReadingPage(0, {focus: false});
+    if (root.scrollTo) root.scrollTo({top: 0, behavior: "auto"});
+    await loadReading(readingId, {testingOverride: Boolean(options && options.testingOverride)});
+  }
+
+  function renderReadingShell(schedule) {
+    const entry = schedule.selectedEntry;
+    state.currentEntry = entry;
+    element("readingDate").textContent = formatReadingDate(schedule.readingDate);
+    element("readingPosition").textContent = entry.sourcePlanDay
+      ? `Original plan day ${entry.sourcePlanDay} of 92 · Bridge day ${entry.dayIndex} of ${state.plan.entries.length}`
+      : `Day ${entry.dayIndex} of ${state.plan.entries.length}`;
+    const passageCount = Array.isArray(entry.passages) ? entry.passages.length : 1;
+    element("readingKind").textContent = entry.kind === "book_intro"
+      ? "Book introduction day"
+      : `${passageCount} ${passageCount === 1 ? "chapter" : "chapters"} · one daily discussion`;
+    element("readingTitle").textContent = titleForEntry(entry);
+    element("readingRationale").textContent = entry.orderingRationale;
+    element("pageStep1Label").textContent = entry.kind === "book_intro" ? "Book intro" : "Scripture";
+    element("bookIntroductionSection").hidden = entry.kind !== "book_intro";
+    element("scriptureSection").hidden = entry.kind !== "chapter";
+    setReadingPage(0, {focus: false});
+
+    if (schedule.locked) {
+      setBanner("This future reading is locked by the shared plan configuration.", "info");
+    } else if (schedule.usingTestingOverride) {
+      setBanner("Development override is active. The shared calendar has not been changed.", "info");
+    } else if (schedule.status === "before_start") {
+      setBanner("The shared plan has not started yet.", "info");
+    } else if (schedule.status === "pilot_complete") {
+      setBanner("This seven-day bridge is complete. No later reading is active yet.", "info");
+    } else {
+      setBanner("");
+    }
+  }
+
+  async function loadReading(requestedReadingId, options) {
+    const schedule = calculateSchedule(state.plan, state.config, new Date(), requestedReadingId, options);
+    state.schedule = schedule;
+    renderReadingShell(schedule);
+    if (schedule.locked) {
+      state.verseOfTheDay = null;
+      prepareVerseOfTheDay();
+      replaceWithText(element("overviewContent"), "This reading will become available according to the shared calendar.");
+      element("overviewSources").replaceChildren();
+      replaceWithText(element("commentarySummary"), "The commentary summary will become available with the reading.");
+      replaceWithText(element("practicalTakeaway"), "The practical takeaway will become available with the reading.");
+      element("mainSourceNotes").replaceChildren();
+      element("mainSourceDisclosure").hidden = true;
+      replaceWithText(element("comprehensiveSynthesis"), "The comprehensive synthesis will become available with the reading.");
+      return;
+    }
+    setSyncStatus("Loading reading…");
+    const entry = schedule.selectedEntry;
+    await loadCachedDiscussion(entry.readingId);
+    refreshComments({background: true, readingId: entry.readingId}).catch(() => {});
+    const result = await readingPayloadWithCache(entry.readingId);
+    const payload = result.payload;
+    if (state.currentEntry.readingId !== entry.readingId) return;
+    const commentary = payload.commentary || payload.metadata;
+    if (!commentary || commentary.readingId !== entry.readingId) {
+      throw appError("Private commentary did not match the selected reading.", "CONTENT_MISMATCH");
+    }
+    renderCommentary(commentary, payload.sources || state.sources || []);
+    if (entry.kind === "chapter") loadScripture(entry).catch(() => {});
+    await loadDraft(entry.readingId);
+    await updateCacheInspector();
+    setSyncStatus(result.source === "cache" || (root.navigator && root.navigator.onLine === false)
+      ? "Offline · cached reading and drafts available"
+      : "Ready");
+    element("readingTitle").focus({preventScroll: true});
+  }
+
+  async function prefetchOfflineWindow() {
+    if (!state.plan || !state.config) return;
+    const target = Math.min(7, Math.max(1, Number(state.config.offlineReadingWindowDays) || 1));
+    const entries = state.plan.entries;
+    const calendarIndex = Math.min(entries.length - 1, Math.max(0, state.schedule.calendarDayIndex - 1));
+    let startIndex = calendarIndex;
+    let endIndex = Math.min(entries.length, startIndex + target);
+    if (endIndex - startIndex < target) startIndex = Math.max(0, endIndex - target);
+    const windowEntries = entries.slice(startIndex, endIndex);
+    let contentCount = 0;
+    let scriptureCount = 0;
+    let scriptureEligible = 0;
+
+    for (const entry of windowEntries) {
+      try {
+        let payload = await cachedPrivatePayload(entry.readingId);
+        if (!payload) {
+          payload = await state.adapter.getReadingPayload(entry.readingId);
+          await persistPrivatePayload(entry.readingId, payload);
+        }
+        if (payload) contentCount += 1;
+      } catch {
+        // A partial pack is preferable to failing the active reading.
+      }
+
+      if (entry.kind === "chapter" && state.policy.offlinePersistenceAllowed) {
+        scriptureEligible += 1;
+        try {
+          let scripture = await cachedScripture(entry.readingId);
+          if (!scripture) {
+            scripture = await state.adapter.getScripture(entry.readingId);
+            if (scripture && scripture.available !== false) await persistScripture(scripture);
+          }
+          if (scripture && scripture.translation === "ESV" && await cachedScripture(entry.readingId)) scriptureCount += 1;
+        } catch {
+          // The provider policy or connectivity may intentionally leave Scripture online-only.
+        }
+      }
+    }
+
+    const scriptureStatus = state.policy.offlinePersistenceAllowed
+      ? `${scriptureCount}/${scriptureEligible} chapter text records available offline`
+      : "ESV text stays network-only by provider policy";
+    element("offlinePackStatus").textContent = `${contentCount}/${windowEntries.length} reading records prepared · ` +
+      `${scriptureStatus} · target ${target} readings.`;
+    await updateCacheInspector();
+  }
+
+  async function loadDraft(readingId) {
+    const draftKey = `comment:${readingId}`;
+    const record = await state.store.get("commentDrafts", draftKey);
+    const body = normalizedDraftBody(record);
+    if (record && typeof record.body !== "string") await state.store.delete("commentDrafts", draftKey);
+    element("commentBody").value = body;
+    element("draftStatus").textContent = body ? "Draft restored from this browser." : "Drafts and pending writes use IndexedDB.";
+  }
+
+  function normalizedDraftBody(record) {
+    return record && typeof record.body === "string" ? record.body : "";
+  }
+
+  let draftSaveTimer = null;
+  function scheduleDraftSave() {
+    root.clearTimeout(draftSaveTimer);
+    draftSaveTimer = root.setTimeout(async () => {
+      if (!state.currentEntry) return;
+      const body = element("commentBody").value;
+      const draftKey = `comment:${state.currentEntry.readingId}`;
+      if (body) {
+        await state.store.put("commentDrafts", {draftKey, readingId: state.currentEntry.readingId, body, updatedAt: new Date().toISOString()});
+        element("draftStatus").textContent = "Draft saved on this device.";
+      } else {
+        await state.store.delete("commentDrafts", draftKey);
+        element("draftStatus").textContent = "Drafts and pending writes use IndexedDB.";
+      }
+      await updateCacheInspector();
+    }, 250);
+  }
+
+  function formatTimestamp(value) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "Time unavailable";
+    return new Intl.DateTimeFormat(undefined, {dateStyle: "medium", timeStyle: "short"}).format(date);
+  }
+
+  function commentCard(comment, pending) {
+    const card = root.document.createElement("article");
+    card.className = "comment-card";
+    card.dataset.pending = pending ? "true" : "false";
+    const meta = root.document.createElement("div");
+    meta.className = "comment-meta";
+    const author = root.document.createElement("strong");
+    author.textContent = pending ? `${state.session.displayName} · pending` : comment.displayName;
+    const time = root.document.createElement("span");
+    time.textContent = pending ? "Stored on this device" : `${formatTimestamp(comment.updatedAt)} · rev ${comment.revision}`;
+    meta.append(author, time);
+    const body = root.document.createElement("p");
+    body.className = "comment-body";
+    body.textContent = pending && comment.eventType === "delete" ? "Pending deletion" : (comment.body || "");
+    card.append(meta, body);
+
+    if (!pending && comment.authorId === state.session.authorId) {
+      const actions = root.document.createElement("div");
+      actions.className = "comment-actions";
+      const edit = root.document.createElement("button");
+      edit.type = "button";
+      edit.textContent = "Edit";
+      edit.setAttribute("aria-label", `Edit comment by ${comment.displayName}`);
+      edit.addEventListener("click", () => beginInlineEdit(comment, card, body, actions));
+      const remove = root.document.createElement("button");
+      remove.type = "button";
+      remove.textContent = "Retract";
+      remove.setAttribute("aria-label", `Retract comment by ${comment.displayName}`);
+      remove.addEventListener("click", () => beginRetraction(comment, actions));
+      actions.append(edit, remove);
+      card.appendChild(actions);
+    }
+    return card;
+  }
+
+  function cancelCommentAction() {
+    refreshComments().catch(() => setSyncStatus("Could not restore the discussion view"));
+  }
+
+  function beginInlineEdit(comment, card, body, actions) {
+    const editor = root.document.createElement("textarea");
+    editor.className = "comment-editor";
+    editor.rows = 5;
+    editor.maxLength = 8000;
+    editor.value = comment.body || "";
+    editor.setAttribute("aria-label", `Edit comment by ${comment.displayName}`);
+    body.replaceWith(editor);
+
+    const save = root.document.createElement("button");
+    save.type = "button";
+    save.textContent = "Save edit";
+    save.addEventListener("click", async () => {
+      const revised = editor.value.trim();
+      if (!revised) {
+        setSyncStatus("A comment cannot be empty");
+        editor.focus();
+        return;
+      }
+      save.disabled = true;
+      await editComment(comment, revised);
+    });
+    const cancel = root.document.createElement("button");
+    cancel.type = "button";
+    cancel.textContent = "Cancel";
+    cancel.addEventListener("click", cancelCommentAction);
+    actions.replaceChildren(save, cancel);
+    card.dataset.editing = "true";
+    editor.focus();
+  }
+
+  function beginRetraction(comment, actions) {
+    const message = root.document.createElement("span");
+    message.className = "comment-action-prompt";
+    message.textContent = "Retract this comment? Revision history will remain on the server.";
+    const confirm = root.document.createElement("button");
+    confirm.type = "button";
+    confirm.className = "danger-button";
+    confirm.textContent = "Confirm retract";
+    confirm.addEventListener("click", async () => {
+      confirm.disabled = true;
+      await deleteComment(comment);
+    });
+    const cancel = root.document.createElement("button");
+    cancel.type = "button";
+    cancel.textContent = "Cancel";
+    cancel.addEventListener("click", cancelCommentAction);
+    actions.replaceChildren(message, confirm, cancel);
+    confirm.focus();
+  }
+
+  async function renderComments(pendingItems) {
+    const list = element("commentList");
+    list.replaceChildren();
+    const pending = compactOutbox(pendingItems || []);
+    const combinedCount = state.comments.length + pending.length;
+    if (!combinedCount) {
+      replaceWithText(list, "No comments yet for this reading.");
+      return;
+    }
+    state.comments.forEach((comment) => list.appendChild(commentCard(comment, false)));
+    pending.forEach((comment) => list.appendChild(commentCard(comment, true)));
+  }
+
+  async function replaceCommentSnapshots(readingId, comments) {
+    const existing = await state.store.getAll("commentSnapshot");
+    for (const snapshot of existing) {
+      if (snapshot.readingId === readingId) await state.store.delete("commentSnapshot", snapshot.commentId);
+    }
+    for (const comment of comments || []) {
+      if (comment && comment.commentId) await state.store.put("commentSnapshot", comment);
+    }
+  }
+
+  function updateReadingCompletion(readingId, comments, outbox) {
+    const completedAuthors = new Set();
+    state.calendarParticipants.forEach((participant) => {
+      const participantOutbox = participant.authorId === state.session.authorId ? outbox : [];
+      if (readingHasActiveComment(comments, participantOutbox, participant.authorId, readingId)) {
+        completedAuthors.add(participant.authorId);
+      }
+    });
+    state.completionByReadingId.set(readingId, completedAuthors);
+    state.completedReadingIds = deriveCurrentReaderCompletion();
+    if (state.store && state.plan && state.session) {
+      state.store.put("calendarCompletion", {
+        readingId,
+        planVersion: state.plan.planVersion,
+        completionByAuthorId: Object.fromEntries(
+          state.calendarParticipants.map((participant) => [participant.authorId, completedAuthors.has(participant.authorId)])
+        ),
+        syncedAt: new Date().toISOString()
+      }).catch(() => {});
+    }
+    if (state.view === "home") renderCalendar();
+    return completedAuthors.has(state.session.authorId);
+  }
+
+  async function loadCachedDiscussion(readingId) {
+    const [snapshots, outbox] = await Promise.all([
+      state.store.getAll("commentSnapshot"),
+      state.store.getAll("commentOutbox")
+    ]);
+    const comments = snapshots.filter((item) => item.readingId === readingId && !item.deletedAt);
+    const pending = outbox.filter((item) => item.readingId === readingId);
+    if (state.currentEntry && state.currentEntry.readingId === readingId) {
+      state.comments = comments;
+      await renderComments(pending);
+    }
+    updateReadingCompletion(readingId, comments, pending);
+  }
+
+  async function refreshComments(options) {
+    const readingId = options && options.readingId || (state.currentEntry && state.currentEntry.readingId);
+    if (!readingId) return;
+    const token = ++state.commentSyncToken;
+    const background = Boolean(options && options.background);
+    if (!background) setSyncStatus("Syncing discussion…");
+    try {
+      const comments = await state.adapter.listComments(readingId);
+      await replaceCommentSnapshots(readingId, comments);
+      const outbox = (await state.store.getAll("commentOutbox"))
+        .filter((item) => item.readingId === readingId);
+      updateReadingCompletion(readingId, comments, outbox);
+      if (state.currentEntry && state.currentEntry.readingId === readingId && token === state.commentSyncToken) {
+        state.comments = comments;
+        await renderComments(outbox);
+        setSyncStatus(outbox.length ? `${outbox.length} comment update${outbox.length === 1 ? "" : "s"} pending` : "Discussion synchronized");
+      }
+    } catch {
+      const snapshots = (await state.store.getAll("commentSnapshot"))
+        .filter((item) => item.readingId === readingId && !item.deletedAt);
+      const outbox = (await state.store.getAll("commentOutbox"))
+        .filter((item) => item.readingId === readingId);
+      updateReadingCompletion(readingId, snapshots, outbox);
+      if (state.currentEntry && state.currentEntry.readingId === readingId && token === state.commentSyncToken) {
+        state.comments = snapshots;
+        await renderComments(outbox);
+        setSyncStatus("Offline · showing cached discussion");
+      }
+    }
+  }
+
+  async function queueComment(payload) {
+    const item = {
+      ...payload,
+      queuedAt: new Date().toISOString(),
+      status: "pending"
+    };
+    await state.store.put("commentOutbox", item);
+    await updateCacheInspector();
+    return item;
+  }
+
+  async function submitNewComment(event) {
+    event.preventDefault();
+    const body = element("commentBody").value.trim();
+    if (!body || !state.currentEntry) return;
+    const clientRequestId = createRequestId("comment-create");
+    await queueComment({
+      clientRequestId,
+      localTempId: createRequestId("local-comment"),
+      eventType: "create",
+      planVersion: state.plan.planVersion,
+      readingId: state.currentEntry.readingId,
+      body,
+      baseRevision: 0
+    });
+    element("commentBody").value = "";
+    await state.store.delete("commentDrafts", `comment:${state.currentEntry.readingId}`);
+    await refreshComments();
+    if (!root.navigator || root.navigator.onLine !== false || state.adapter.kind === "mock") await flushOutbox();
+    else setSyncStatus("Offline · comment queued");
+  }
+
+  async function editComment(comment, revised) {
+    const normalized = String(revised || "").trim();
+    if (!normalized || normalized === comment.body) {
+      await refreshComments();
+      return;
+    }
+    await queueComment({
+      clientRequestId: createRequestId("comment-edit"),
+      eventType: "edit",
+      planVersion: comment.planVersion,
+      readingId: comment.readingId,
+      commentId: comment.commentId,
+      body: normalized,
+      baseRevision: comment.revision
+    });
+    await refreshComments();
+    if (!root.navigator || root.navigator.onLine !== false || state.adapter.kind === "mock") await flushOutbox();
+  }
+
+  async function deleteComment(comment) {
+    await queueComment({
+      clientRequestId: createRequestId("comment-delete"),
+      eventType: "delete",
+      planVersion: comment.planVersion,
+      readingId: comment.readingId,
+      commentId: comment.commentId,
+      body: "",
+      baseRevision: comment.revision
+    });
+    await refreshComments();
+    if (!root.navigator || root.navigator.onLine !== false || state.adapter.kind === "mock") await flushOutbox();
+  }
+
+  async function flushOutbox() {
+    if (root.navigator && root.navigator.onLine === false && state.adapter.kind !== "mock") {
+      setSyncStatus("Offline · writes remain queued");
+      return;
+    }
+    const queued = compactOutbox(await state.store.getAll("commentOutbox"));
+    if (!queued.length) {
+      setSyncStatus("No pending comments");
+      await refreshComments();
+      return;
+    }
+    setSyncStatus(`Syncing ${queued.length} pending…`);
+    for (const item of queued) {
+      try {
+        const result = await state.adapter.submitCommentEvent(item);
+        await state.store.delete("commentOutbox", item.clientRequestId);
+        if (result && result.event) await state.store.put("commentSnapshot", result.event);
+      } catch (error) {
+        await state.store.put("commentOutbox", {...item, status: "error", errorCode: error.code || "SYNC_FAILED"});
+        setSyncStatus(error.code === "REVISION_CONFLICT" ? "Edit conflict · refresh required" : "Sync paused · retry available");
+        break;
+      }
+    }
+    await refreshComments();
+    await updateCacheInspector();
+    const remaining = await state.store.getAll("commentOutbox");
+    if (!remaining.length) setSyncStatus("Discussion synchronized");
+  }
+
+  async function updateCacheInspector() {
+    if (!state.store || !state.policy) return;
+    const [scripture, content, completion, outbox, drafts, snapshots, mockEvents, credential] = await Promise.all([
+      state.store.getAll("scriptureCache"),
+      state.store.getAll("privateContent"),
+      state.store.getAll("calendarCompletion"),
+      state.store.getAll("commentOutbox"),
+      state.store.getAll("commentDrafts"),
+      state.store.getAll("commentSnapshot"),
+      state.store.getAll("commentEvents"),
+      state.store.get("deviceCredentials", "reader-code")
+    ]);
+    const freshContent = [];
+    for (const record of content) {
+      if (privateRecordIsFresh(record, Date.now(), state.plan && state.plan.planVersion)) freshContent.push(record);
+      else await state.store.delete("privateContent", record.readingId);
+    }
+    const policyState = root.DBRProviderPolicy.inspectCache(scripture, state.policy);
+    element("cacheInspector").textContent = JSON.stringify({
+      storageMode: state.store.mode,
+      clientBuildId: CLIENT_BUILD_ID,
+      serverBuildId: state.bootstrap && state.bootstrap.appBuildId,
+      providerPolicy: policyState,
+      offlineReadingWindowDays: state.config.offlineReadingWindowDays,
+      privateContentEntries: freshContent.length,
+      calendarCompletionEntries: completion.length,
+      cachedCommentSnapshots: snapshots.length,
+      localMockRevisionEvents: mockEvents.length,
+      offlineDrafts: drafts.length,
+      pendingCommentEvents: outbox.length,
+      readerCodeStored: Boolean(credential && credential.readerCode),
+      serviceWorkerRegistered: false
+    }, null, 2);
+  }
+
+  async function clearDownloadedData() {
+    const button = element("clearDownloadedData");
+    if (button.dataset.confirmClear !== "true") {
+      button.dataset.confirmClear = "true";
+      button.textContent = "Confirm clear downloaded data";
+      button.setAttribute("aria-label", "Confirm clearing all downloaded data from this browser");
+      setSyncStatus("Press the clear button again to remove local data");
+      root.setTimeout(() => {
+        if (button.dataset.confirmClear === "true") {
+          delete button.dataset.confirmClear;
+          button.textContent = "Clear downloaded data";
+          button.removeAttribute("aria-label");
+        }
+      }, 10000);
+      return;
+    }
+    delete button.dataset.confirmClear;
+    button.textContent = "Clear downloaded data";
+    button.removeAttribute("aria-label");
+    const credential = await state.store.get("deviceCredentials", "reader-code");
+    await state.store.clearAll();
+    if (credential && credential.readerCode) await state.store.put("deviceCredentials", credential);
+    element("commentBody").value = "";
+    state.comments = [];
+    state.completionByReadingId = new Map();
+    state.completedReadingIds = new Set();
+    await renderComments([]);
+    await updateCacheInspector();
+    renderCalendar();
+    element("offlinePackStatus").textContent = "Downloaded reading data cleared. Reader access remains remembered; reconnect to prepare the offline window again.";
+    setSyncStatus("Downloaded data cleared");
+    if (state.currentEntry && state.currentEntry.kind === "chapter") await loadScripture(state.currentEntry);
+    if (state.view === "home" && (!root.navigator || root.navigator.onLine !== false)) syncCalendarCompletion().catch(() => {});
+  }
+
+  async function forgetReaderAccess() {
+    const button = element("forgetReaderAccess");
+    if (button.dataset.confirmForget !== "true") {
+      button.dataset.confirmForget = "true";
+      button.textContent = "Confirm forget reader code";
+      button.setAttribute("aria-label", "Confirm forgetting reader access for this Google account and browser");
+      setSyncStatus("Press the forget button again to require the reader code next time");
+      root.setTimeout(() => {
+        if (button.dataset.confirmForget === "true") {
+          delete button.dataset.confirmForget;
+          button.textContent = "Forget reader code";
+          button.removeAttribute("aria-label");
+        }
+      }, 10000);
+      return;
+    }
+    button.disabled = true;
+    try {
+      await state.adapter.forgetReaderEnrollment();
+      await state.store.delete("deviceCredentials", "reader-code");
+      state.readerCode = "";
+      showReaderCodeGate(appError("Reader access was forgotten. Enter your code to enroll this account again.", "READER_CODE_REQUIRED"));
+    } catch {
+      setSyncStatus("Reader access could not be forgotten; reconnect and retry");
+    } finally {
+      delete button.dataset.confirmForget;
+      button.textContent = "Forget reader code";
+      button.removeAttribute("aria-label");
+      button.disabled = false;
+    }
+  }
+
+  function wireEvents() {
+    if (state.uiWired) return;
+    state.uiWired = true;
+    element("brandHomeButton").addEventListener("click", () => showHome());
+    element("calendarHomeButton").addEventListener("click", () => showHome());
+    element("refreshCalendar").addEventListener("click", () => syncCalendarCompletion().catch(() => {}));
+    element("previousMonth").addEventListener("click", () => {
+      state.calendarMonthDate = shiftMonth(state.calendarMonthDate, -1);
+      state.selectedCalendarDate = null;
+      renderCalendar();
+      syncCalendarCompletion().catch(() => {});
+    });
+    element("nextMonth").addEventListener("click", () => {
+      state.calendarMonthDate = shiftMonth(state.calendarMonthDate, 1);
+      state.selectedCalendarDate = null;
+      renderCalendar();
+      syncCalendarCompletion().catch(() => {});
+    });
+    element("openSelectedReading").addEventListener("click", () => {
+      const readingId = element("openSelectedReading").dataset.readingId;
+      if (readingId) openReading(readingId).catch(handleFatalError);
+    });
+    [0, 1, 2].forEach((index) => {
+      element(`pageStep${index}`).addEventListener("click", () => setReadingPage(index));
+    });
+    element("previousPage").addEventListener("click", () => setReadingPage(state.currentPage - 1));
+    element("nextPage").addEventListener("click", () => setReadingPage(state.currentPage + 1));
+    element("finishReading").addEventListener("click", () => showHome());
+    element("retryScripture").addEventListener("click", () => state.currentEntry && loadScripture(state.currentEntry));
+    element("refreshComments").addEventListener("click", refreshComments);
+    element("commentForm").addEventListener("submit", submitNewComment);
+    element("commentBody").addEventListener("input", scheduleDraftSave);
+    element("syncOutbox").addEventListener("click", flushOutbox);
+    element("clearDownloadedData").addEventListener("click", clearDownloadedData);
+    element("forgetReaderAccess").addEventListener("click", forgetReaderAccess);
+    root.addEventListener("online", () => {
+      flushOutbox().catch(() => setSyncStatus("Sync retry failed"));
+      if (state.view === "home") syncCalendarCompletion().catch(() => {});
+    });
+    root.addEventListener("pageshow", () => {
+      if (state.view === "home" && (!root.navigator || root.navigator.onLine !== false)) {
+        syncCalendarCompletion().catch(() => {});
+      }
+    });
+    root.document.addEventListener("visibilitychange", () => {
+      if (root.document.visibilityState === "visible" && state.view === "home" &&
+          (!root.navigator || root.navigator.onLine !== false)) {
+        syncCalendarCompletion().catch(() => {});
+      }
+    });
+    root.addEventListener("offline", () => setSyncStatus("Offline · drafts remain local"));
+  }
+
+  function showReaderCodeGate(error) {
+    element("appMain").hidden = true;
+    element("readerCodeGate").hidden = false;
+    element("authStatus").textContent = "Reader code required";
+    element("readerCodeStatus").textContent = error && error.message
+      ? error.message
+      : "Enter the code assigned to your signed-in Google account.";
+    element("readerCodeInput").value = "";
+    state.readerCodeSubmitting = false;
+    updateReaderCodeSubmitState();
+    element("readerCodeInput").focus();
+    setSyncStatus("Locked");
+  }
+
+  function hideReaderCodeGate() {
+    element("readerCodeGate").hidden = true;
+    element("appMain").hidden = false;
+  }
+
+  async function startAuthorizedApplication() {
+    setSyncStatus("Authorizing…");
+    const bootstrap = await state.adapter.getBootstrapData();
+    state.bootstrap = bootstrap;
+    state.config = bootstrap.config;
+    state.plan = validatePlan(bootstrap.plan);
+    state.policy = root.DBRProviderPolicy.validatePolicy(bootstrap.providerPolicy);
+    state.session = bootstrap.session;
+    state.sources = bootstrap.sources || [];
+    if (!state.session || !state.session.authorId || !state.session.displayName) {
+      throw appError("The server did not provide an authorized display identity.", "AUTH_REQUIRED");
+    }
+    const participants = Array.isArray(bootstrap.participants) ? bootstrap.participants.map((participant) => ({
+      authorId: String(participant && participant.authorId || ""),
+      displayName: String(participant && participant.displayName || "")
+    })) : [];
+    if (participants.length !== 2 || new Set(participants.map((participant) => participant.authorId)).size !== 2 ||
+        participants.some((participant) => !/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/.test(participant.authorId) ||
+          !participant.displayName || participant.displayName.length > 80) ||
+        !participants.some((participant) => participant.authorId === state.session.authorId)) {
+      throw appError("The server did not provide the expected two-reader roster.", "AUTH_REQUIRED");
+    }
+    state.calendarParticipants = participants;
+    if (state.adapter.kind === "apps-script") {
+      const persistentStorage = await requestPersistentStorage();
+      if (state.readerCode) {
+        await state.store.put("deviceCredentials", {
+          credentialId: "reader-code",
+          readerCode: state.readerCode,
+          verifiedAt: new Date().toISOString(),
+          authorId: state.session.authorId,
+          persistentStorage: persistentStorage
+        });
+      }
+    }
+    hideReaderCodeGate();
+    element("authStatus").textContent = state.adapter.kind === "mock" ? "Local mock · fabricated data" : `Signed in as ${state.session.displayName}`;
+    const esvNotice = state.policy.requiredAttribution.notice || FALLBACK_ESV_NOTICE;
+    element("esvNotice").textContent = esvNotice;
+    element("verseOfDayNotice").textContent = esvNotice;
+    wireEvents();
+    state.schedule = calculateSchedule(state.plan, state.config, new Date());
+    await hydrateCalendarCompletion();
+    showHome({focus: false, sync: false});
+    configureBuildUpdate(bootstrap);
+    await syncCalendarCompletion();
+    await flushOutbox();
+    syncCalendarCompletion().catch(() => {});
+    prefetchOfflineWindow().catch(() => {});
+  }
+
+  function updateReaderCodeSubmitState() {
+    const input = element("readerCodeInput");
+    const submit = element("readerCodeSubmit");
+    if (!input || !submit) return;
+    submit.disabled = state.readerCodeSubmitting || !readerCodeLooksReady(input.value);
+  }
+
+  function wireReaderCodeForm() {
+    const input = element("readerCodeInput");
+    ["input", "change", "keyup"].forEach((eventName) => input.addEventListener(eventName, updateReaderCodeSubmitState));
+    input.addEventListener("paste", () => root.setTimeout(updateReaderCodeSubmitState, 0));
+    updateReaderCodeSubmitState();
+    element("readerCodeForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const submit = element("readerCodeSubmit");
+      const code = input.value.trim();
+      if (!readerCodeLooksReady(code)) {
+        element("readerCodeStatus").textContent = "Paste the complete reader code before unlocking.";
+        updateReaderCodeSubmitState();
+        return;
+      }
+      state.readerCodeSubmitting = true;
+      updateReaderCodeSubmitState();
+      element("readerCodeStatus").textContent = "Checking Google identity, Drive permission, and reader code…";
+      state.readerCode = code;
+      try {
+        await startAuthorizedApplication();
+      } catch (error) {
+        state.readerCode = "";
+        await state.store.delete("deviceCredentials", "reader-code");
+        if (["READER_CODE_REQUIRED", "READER_CODE_INVALID", "AUTH_REQUIRED", "ACCESS_DENIED", "WRONG_EXECUTION_IDENTITY"].includes(error.code)) {
+          showReaderCodeGate(error);
+        } else {
+          handleFatalError(error);
+        }
+      } finally {
+        state.readerCodeSubmitting = false;
+        updateReaderCodeSubmitState();
+      }
+    });
+  }
+
+  async function init() {
+    setSyncStatus("Preparing…");
+    state.store = await createBrowserStore();
+    state.adapter = root.google && root.google.script && root.google.script.run
+      ? productionAdapter()
+      : localAdapter(state.store);
+    wireReaderCodeForm();
+    if (state.adapter.kind === "apps-script") {
+      const credential = await state.store.get("deviceCredentials", "reader-code");
+      state.readerCode = credential && credential.readerCode ? credential.readerCode : "";
+      try {
+        await startAuthorizedApplication();
+      } catch (error) {
+        if (["READER_CODE_REQUIRED", "READER_CODE_INVALID"].includes(error.code)) {
+          state.readerCode = "";
+          await state.store.delete("deviceCredentials", "reader-code");
+          showReaderCodeGate(error);
+          return;
+        }
+        throw error;
+      }
+      return;
+    }
+    await startAuthorizedApplication();
+  }
+
+  function handleFatalError(error) {
+    const code = error && error.code ? error.code : "UNAVAILABLE";
+    if (["READER_CODE_REQUIRED", "READER_CODE_INVALID"].includes(code) && state.adapter && state.adapter.kind === "apps-script") {
+      showReaderCodeGate(error);
+      return;
+    }
+    const publicMessage = ["AUTH_REQUIRED", "ACCESS_DENIED", "WRONG_EXECUTION_IDENTITY"].includes(code)
+      ? "Access could not be confirmed. Sign in with an authorized Google account and grant the required permissions."
+      : "The reader could not finish loading. Private data remains closed; retry after checking the local server or deployment configuration.";
+    setBanner(publicMessage, "error");
+    setSyncStatus("Unavailable");
+    ["nextPage", "finishReading", "submitComment", "refreshComments", "refreshCalendar", "syncOutbox", "openSelectedReading", "previousMonth", "nextMonth"].forEach((id) => {
+      if (element(id)) element(id).disabled = true;
+    });
+  }
+
+  return {
+    buildMonthCalendar,
+    calculateSchedule,
+    civilDayNumber,
+    compactOutbox,
+    createRequestId,
+    createBrowserStore,
+    dateOnlyForDay,
+    datePartsInTimeZone,
+    extractNumberedVerseText,
+    formatReadingDate,
+    handleFatalError,
+    init,
+    parseDateOnly,
+    privateRecordIsFresh,
+    readingHasActiveComment,
+    readerCodeLooksReady,
+    normalizedDraftBody,
+    normalizedVerseOfTheDay,
+    safeExternalUrl,
+    safeVersionedAppUrl,
+    splitComprehensiveSections,
+    titleForEntry,
+    verseReferenceLabel,
+    validatePlan
+  };
+});

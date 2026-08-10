@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "provider-policies/v1",
+  "policies": [
+    {
+      "provider": "Crossway ESV API",
+      "translation": "ESV",
+      "policyVersion": "esv-api-2026-08-08-v3-network-only",
+      "verifiedAt": "2026-08-08",
+      "termsUrl": "https://api.esv.org/",
+      "maxVersesPerRequest": 500,
+      "maxTotalCachedVerses": 500,
+      "maxBookFraction": 0.5,
+      "maxCacheAgeSeconds": 0,
+      "offlinePersistenceAllowed": false,
+      "refreshBehavior": "network_every_open",
+      "downloadAllowed": false,
+      "bulkCopyAllowed": false,
+      "apiKeyMayReachClient": false,
+      "requiredAttribution": {
+        "label": "ESV",
+        "notice": "Scripture quotations are from the ESV® Bible (The Holy Bible, English Standard Version®), © 2001 by Crossway, a publishing ministry of Good News Publishers. Used by permission. All rights reserved. The ESV text may not be quoted in any publication made available to the public by a Creative Commons license. The ESV may not be translated into any other language.\n\nUsers may not copy or download more than 500 verses of the ESV Bible or more than one half of any book of the ESV Bible.",
+        "linkUrl": "https://www.esv.org/"
+      }
+    }
+  ]
+}

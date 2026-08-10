@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daily-bible-reader.local/schemas/comment.schema.json",
+  "title": "Append-only comment event",
+  "type": "object",
+  "required": [
+    "eventId",
+    "commentId",
+    "clientRequestId",
+    "planVersion",
+    "readingId",
+    "eventType",
+    "authorId",
+    "displayName",
+    "body",
+    "baseRevision",
+    "revision",
+    "createdAt",
+    "updatedAt",
+    "deletedAt"
+  ],
+  "properties": {
+    "eventId": {"type": "string", "minLength": 16, "maxLength": 100},
+    "commentId": {"type": "string", "minLength": 16, "maxLength": 100},
+    "clientRequestId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{15,99}$"},
+    "planVersion": {"type": "string", "minLength": 1, "maxLength": 80},
+    "readingId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{1,79}$"},
+    "eventType": {"enum": ["create", "edit", "delete"]},
+    "authorId": {"type": "string", "minLength": 1, "maxLength": 80},
+    "displayName": {"type": "string", "minLength": 1, "maxLength": 80},
+    "body": {"type": "string", "maxLength": 8000},
+    "baseRevision": {"type": "integer", "minimum": 0},
+    "revision": {"type": "integer", "minimum": 1},
+    "createdAt": {"type": "string", "format": "date-time"},
+    "updatedAt": {"type": "string", "format": "date-time"},
+    "deletedAt": {"type": ["string", "null"], "format": "date-time"}
+  },
+  "additionalProperties": false
+}
+

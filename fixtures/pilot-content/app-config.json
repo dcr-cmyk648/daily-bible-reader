@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "app-config/v1",
+  "sharedStartDate": "2026-08-08",
+  "sharedStartDateMode": "fixed",
+  "timezone": "America/Detroit",
+  "futureReadingsLocked": true,
+  "futureLookaheadDays": 6,
+  "pastReadingsAvailable": true,
+  "offlineReadingWindowDays": 7,
+  "privateContentCacheMaxAgeSeconds": 604800,
+  "testingOverrideEnabled": true,
+  "testingReadingIds": [
+    "CC-Y3Q4-D054",
+    "CC-Y3Q4-D055",
+    "CC-Y3Q4-D056",
+    "CC-Y3Q4-D057",
+    "CC-Y3Q4-D058",
+    "CC-Y3Q4-D059",
+    "CC-Y3Q4-D060"
+  ],
+  "displayTranslation": "ESV",
+  "runtimeAI": false
+}

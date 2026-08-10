@@ -1,0 +1,442 @@
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+const vm = require("node:vm");
+
+const app = require("../app/frontend/app.js");
+
+test("offline outbox compacts edits into an unsynced create", () => {
+  const items = [
+    {clientRequestId: "create:1234567890123456", localTempId: "temp:12345678901234567", eventType: "create", body: "first", queuedAt: "2026-08-08T10:00:00Z"},
+    {clientRequestId: "edit:12345678901234567", localTempId: "temp:12345678901234567", eventType: "edit", body: "second", queuedAt: "2026-08-08T10:01:00Z"}
+  ];
+  const compacted = app.compactOutbox(items);
+  assert.equal(compacted.length, 1);
+  assert.equal(compacted[0].eventType, "create");
+  assert.equal(compacted[0].body, "second");
+});
+
+test("offline create followed by delete disappears before sync", () => {
+  const items = [
+    {clientRequestId: "create:1234567890123456", localTempId: "temp:12345678901234567", eventType: "create", body: "first", queuedAt: "2026-08-08T10:00:00Z"},
+    {clientRequestId: "delete:123456789012345", localTempId: "temp:12345678901234567", eventType: "delete", body: "", queuedAt: "2026-08-08T10:01:00Z"}
+  ];
+  assert.deepEqual(app.compactOutbox(items), []);
+});
+
+test("a signed-in reader's active or queued comment marks only that reading complete", () => {
+  const comments = [
+    {commentId: "comment:1234567890123456", readingId: "intro-GEN", authorId: "dustin", deletedAt: null},
+    {commentId: "comment:2234567890123456", readingId: "GEN-001", authorId: "shane", deletedAt: null}
+  ];
+  assert.equal(app.readingHasActiveComment(comments, [], "dustin", "intro-GEN"), true);
+  assert.equal(app.readingHasActiveComment(comments, [], "dustin", "GEN-001"), false);
+  assert.equal(app.readingHasActiveComment(comments, [{
+    clientRequestId: "create:1234567890123456",
+    localTempId: "local:12345678901234567",
+    eventType: "create",
+    readingId: "GEN-001",
+    queuedAt: "2026-08-08T10:00:00Z"
+  }], "dustin", "GEN-001"), true);
+});
+
+test("a pending retraction removes completion when it is the reader's only comment", () => {
+  const comments = [{
+    commentId: "comment:1234567890123456",
+    readingId: "intro-GEN",
+    authorId: "dustin",
+    deletedAt: null
+  }];
+  const pendingDelete = [{
+    clientRequestId: "delete:1234567890123456",
+    eventType: "delete",
+    commentId: "comment:1234567890123456",
+    readingId: "intro-GEN",
+    queuedAt: "2026-08-08T10:00:00Z"
+  }];
+  assert.equal(app.readingHasActiveComment(comments, pendingDelete, "dustin", "intro-GEN"), false);
+});
+
+test("request IDs are retry-safe identifiers", () => {
+  const one = app.createRequestId("comment-create");
+  const two = app.createRequestId("comment-create");
+  assert.notEqual(one, two);
+  assert.ok(one.length >= 16);
+  assert.match(one, /^[A-Za-z0-9][A-Za-z0-9_.:-]+$/);
+});
+
+test("malformed or legacy comment drafts never render as the word undefined", () => {
+  assert.equal(app.normalizedDraftBody(undefined), "");
+  assert.equal(app.normalizedDraftBody(null), "");
+  assert.equal(app.normalizedDraftBody({}), "");
+  assert.equal(app.normalizedDraftBody({body: undefined}), "");
+  assert.equal(app.normalizedDraftBody({body: "saved words"}), "saved words");
+});
+
+test("blocked iPhone IndexedDB startup falls back instead of freezing the reader", async () => {
+  const priorIndexedDb = globalThis.indexedDB;
+  const request = {};
+  globalThis.indexedDB = {
+    open() {
+      setTimeout(() => request.onblocked(), 0);
+      return request;
+    }
+  };
+  try {
+    const store = await app.createBrowserStore(100);
+    assert.equal(store.mode, "memory");
+    assert.equal(await store.get("deviceCredentials", "reader-code"), null);
+  } finally {
+    if (priorIndexedDb === undefined) delete globalThis.indexedDB;
+    else globalThis.indexedDB = priorIndexedDb;
+  }
+});
+
+test("production startup is late-load safe, bounded, and minified for iPhone Safari", () => {
+  const frontend = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
+  const buildScript = fs.readFileSync(path.join(__dirname, "../scripts/build-apps-script.mjs"), "utf8");
+  assert.match(frontend, /document\.readyState === "loading"/);
+  assert.match(frontend, /addEventListener\("DOMContentLoaded", start, \{once: true\}\)/);
+  assert.match(frontend, /setSyncStatus\("Preparing…"\)/);
+  assert.match(frontend, /"SERVER_TIMEOUT"/);
+  assert.match(buildScript, /target: "safari15"/);
+  assert.match(buildScript, /Buffer\.byteLength\(html, "utf8"\)/);
+  assert.doesNotMatch(buildScript, /MAX_PRODUCTION_HTML_BYTES/);
+});
+
+test("frontend renders untrusted content without innerHTML sinks", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
+  assert.equal(/\.innerHTML\s*=|insertAdjacentHTML|document\.write\s*\(/.test(source), false);
+  assert.equal(/root\.(?:prompt|confirm)\s*\(/.test(source), false);
+  assert.ok(source.includes("textContent"));
+  assert.ok(source.includes("beginInlineEdit"));
+  assert.ok(source.includes("Confirm retract"));
+});
+
+test("HTML shell is semantic, mobile-ready, and includes calendar plus ESV controls", () => {
+  const html = fs.readFileSync(path.join(__dirname, "../app/frontend/index.html"), "utf8");
+  const css = fs.readFileSync(path.join(__dirname, "../app/frontend/styles.css"), "utf8");
+  assert.match(html, /<meta name="viewport"/);
+  assert.match(html, /<main[^>]*class="page-shell"[^>]*>/);
+  assert.match(html, /<h1 id="readingTitle"/);
+  assert.match(html, /id="calendarWeeks"/);
+  assert.match(html, /id="calendarMonthHeading"/);
+  assert.match(html, /id="selectedDayCompletion"/);
+  assert.match(html, /id="openSelectedReading"/);
+  assert.doesNotMatch(html, /Development only|developmentControls|readingOverride|openOverrideReading/);
+  assert.match(html, /id="readingPageIntro"/);
+  assert.match(html, /id="readingPageText"/);
+  assert.match(html, /id="readingPageCommentary"/);
+  assert.match(html, /id="finishReading"/);
+  assert.match(html, /data-shared-across-pages="true"/);
+  assert.match(html, /aria-live="polite"/);
+  assert.match(html, /id="esvNotice"/);
+  assert.match(html, /https:\/\/www\.esv\.org\//);
+  assert.equal(/serviceWorker\.register/.test(html), false);
+  assert.match(css, /\[hidden\]\s*\{[^}]*display:\s*none\s*!important/s);
+});
+
+test("iOS Home Screen icon is declared locally and applied through Apps Script HtmlOutput", () => {
+  const html = fs.readFileSync(path.join(__dirname, "../app/frontend/index.html"), "utf8");
+  const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "../app/frontend/manifest.webmanifest"), "utf8"));
+  const buildScript = fs.readFileSync(path.join(__dirname, "../scripts/build-apps-script.mjs"), "utf8");
+  assert.match(html, /rel="apple-touch-icon" sizes="180x180" href="assets\/apple-touch-icon-180\.png"/);
+  assert.ok(manifest.icons.some((icon) => icon.sizes === "192x192" && /maskable/.test(icon.purpose)));
+  assert.ok(manifest.icons.some((icon) => icon.sizes === "512x512" && /maskable/.test(icon.purpose)));
+  assert.match(buildScript, /data:image\/png;base64/);
+  assert.match(buildScript, /__DBR_FAVICON_DATA_URL__/);
+});
+
+test("Apps Script source uses user identity, configured IDs, locking, and no payload logging", () => {
+  const code = fs.readFileSync(path.join(__dirname, "../app/apps-script/Code.gs"), "utf8");
+  new vm.Script(code, {filename: "Code.gs"});
+  assert.match(code, /Session\.getActiveUser\(\)\.getEmail\(\)/);
+  assert.match(code, /Session\.getEffectiveUser\(\)\.getEmail\(\)/);
+  assert.match(code, /DriveApp\.getFileById\(/);
+  assert.match(code, /LockService\.getScriptLock\(\)/);
+  assert.match(code, /PropertiesService\.getScriptProperties\(\)/);
+  assert.match(code, /PropertiesService\.getUserProperties\(\)/);
+  assert.match(code, /DBR_READER_ENROLLMENT/);
+  assert.match(code, /readerCodeHash:\s*presentedReaderCodeHash/);
+  assert.equal(/readerCode:\s*normalizedReaderCode/.test(code), false);
+  assert.equal(/console\.(?:log|warn|error)\s*\(/.test(code), false);
+  assert.equal(/Logger\.log\s*\(/.test(code), false);
+});
+
+test("Apps Script doGet uses only HtmlOutput-supported meta tags", () => {
+  const code = fs.readFileSync(path.join(__dirname, "../app/apps-script/Code.gs"), "utf8");
+  const allowedNames = new Set([
+    "apple-mobile-web-app-capable",
+    "google-site-verification",
+    "mobile-web-app-capable",
+    "viewport"
+  ]);
+  const observedNames = [];
+  let observedFavicon = "";
+  const output = {
+    evaluate() {
+      return this;
+    },
+    setTitle() {
+      return this;
+    },
+    setFaviconUrl(url) {
+      observedFavicon = url;
+      return this;
+    },
+    addMetaTag(name) {
+      if (!allowedNames.has(name)) {
+        throw new Error(`Unsupported Apps Script meta tag: ${name}`);
+      }
+      observedNames.push(name);
+      return this;
+    }
+  };
+  const context = vm.createContext({
+    HtmlService: {
+      createTemplateFromFile() {
+        return output;
+      }
+    }
+  });
+
+  new vm.Script(`${code}\ndoGet();`, {filename: "Code.gs"}).runInContext(context);
+  assert.deepEqual(observedNames, [
+    "viewport",
+    "apple-mobile-web-app-capable",
+    "mobile-web-app-capable"
+  ]);
+  assert.equal(observedFavicon, "__DBR_FAVICON_DATA_URL__");
+});
+
+test("Apps Script accepts both legacy and current commentary metadata during migration", () => {
+  const code = fs.readFileSync(path.join(__dirname, "../app/apps-script/Code.gs"), "utf8");
+  assert.match(code, /DBR_COMMENTARY_SCHEMA_VERSIONS\s*=\s*\["commentary\/v1", "commentary\/v2", "commentary\/v3"\]/);
+  assert.match(code, /DBR_COMMENTARY_SCHEMA_VERSIONS\.includes\(metadata\.schemaVersion\)/);
+});
+
+test("frontend source contains no ESV key, alternate translation, or real passage payload", () => {
+  const files = ["app/frontend/index.html", "app/frontend/app.js", "app/frontend/styles.css"];
+  const source = files.map((file) => fs.readFileSync(path.join(__dirname, "..", file), "utf8")).join("\n");
+  assert.equal(/ESV_API_KEY|Authorization:\s*["']Token\s+[A-Za-z0-9]/.test(source), false);
+  assert.equal(/\b(?:KJV|NIV|BSB|WEB)\b/.test(source), false);
+  assert.equal(/In the beginning, God created|Let there be light/i.test(source), false);
+});
+
+test("versioned update links are restricted to Apps Script deployment URLs", () => {
+  const build = "0123456789abcdef";
+  assert.equal(
+    app.safeVersionedAppUrl("https://script.google.com/macros/s/DEPLOYMENT_123/exec", build),
+    `https://script.google.com/macros/s/DEPLOYMENT_123/exec?appBuild=${build}`
+  );
+  assert.equal(app.safeVersionedAppUrl("https://example.com/reader", build), null);
+  assert.equal(app.safeVersionedAppUrl("javascript:alert(1)", build), null);
+  assert.equal(app.safeVersionedAppUrl("https://script.google.com/macros/s/DEPLOYMENT_123/exec", "not-a-build"), null);
+});
+
+test("private offline commentary expires and is plan-version scoped", () => {
+  const now = Date.parse("2026-08-08T16:00:00Z");
+  const record = {
+    payload: {commentary: {readingId: "GEN-001"}},
+    planVersion: "pilot-genesis-v1",
+    expiresAt: "2026-08-15T16:00:00Z"
+  };
+  assert.equal(app.privateRecordIsFresh(record, now, "pilot-genesis-v1"), true);
+  assert.equal(app.privateRecordIsFresh(record, now, "different-plan"), false);
+  assert.equal(app.privateRecordIsFresh(record, Date.parse("2026-08-15T16:00:00Z"), "pilot-genesis-v1"), false);
+});
+
+test("every production RPC accepts the reader code as its first argument while enrollment may satisfy it", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
+  ["getBootstrapData", "getReadingPayload", "getScripture", "listComments", "listCommentActivity", "submitCommentEvent", "forgetReaderEnrollment"].forEach((name) => {
+    assert.match(source, new RegExp(`appsScriptRpc\\(\"${name}\", state\\.readerCode`));
+  });
+});
+
+test("reader-code gate recognizes complete pasted values and rejects incomplete input", () => {
+  assert.equal(app.readerCodeLooksReady("short"), false);
+  assert.equal(app.readerCodeLooksReady(" 123456789012 "), true);
+  assert.equal(app.readerCodeLooksReady(`12345678901\n2`), false);
+  const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
+  assert.match(source, /\["input", "change", "keyup"\]/);
+  assert.match(source, /addEventListener\("paste"/);
+  assert.match(source, /navigator\.storage\.persist\(\)/);
+});
+
+test("clear-data flow resets the visible offline-pack status", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
+  assert.match(source, /offlinePackStatus"\)\.textContent = "Downloaded reading data cleared\./);
+  assert.match(source, /const credential = await state\.store\.get\("deviceCredentials", "reader-code"\);[\s\S]*state\.store\.clearAll\(\);[\s\S]*state\.store\.put\("deviceCredentials", credential\)/);
+  assert.match(source, /async function forgetReaderAccess\(\)/);
+  assert.match(source, /state\.adapter\.forgetReaderEnrollment\(\)/);
+});
+
+test("daily page puts one cited article first and exposes custom collapsed deep-study sections after discussion", () => {
+  const html = fs.readFileSync(path.join(__dirname, "../app/frontend/index.html"), "utf8");
+  const appSource = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
+  const orderedIds = ["overviewContent", "scriptureSection", "commentarySummary", "verseOfDaySection", "practicalTakeaway", "mainSourceDisclosure", "discussionCard", "finishReading", "extendedStudy", "comprehensiveSynthesis", "sourceAuditDisclosure", "sourceList"];
+  const positions = orderedIds.map((id) => html.indexOf(`id="${id}"`));
+  positions.forEach((position) => assert.ok(position >= 0));
+  for (let index = 1; index < positions.length; index += 1) assert.ok(positions[index] > positions[index - 1]);
+  assert.match(html, /<article id="commentarySummary"/);
+  assert.match(html, /class="extended-study-panel"/);
+  assert.match(html, /<details id="sourceAuditDisclosure"/);
+  assert.match(html, /<details id="mainSourceDisclosure"/);
+  assert.equal(/<details id="sourceAuditDisclosure"[^>]*\sopen(?:\s|>)/.test(html), false);
+  assert.match(appSource, /renderSourceCitations\(dailyIntroduction\.sourceIds/);
+  assert.match(appSource, /renderCommentarySummary\(commentarySummary, citationIndex\)/);
+  assert.match(appSource, /renderInlineCitedParagraph\(paragraph\.markdown/);
+  assert.match(appSource, /renderComprehensiveSections\(comprehensive\)/);
+  assert.match(appSource, /disclosure\.className = "deep-dive-disclosure"/);
+  assert.doesNotMatch(appSource, /commentary-summary-paragraph/);
+  assert.doesNotMatch(html, /Key commentary insights/);
+  assert.match(appSource, /link\.target = "_blank";/);
+  assert.match(appSource, /link\.rel = "noopener noreferrer";/);
+});
+
+test("Page 3 derives a selected verse from live Scripture without storing provider wording", () => {
+  const html = fs.readFileSync(path.join(__dirname, "../app/frontend/index.html"), "utf8");
+  const frontend = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
+  const schema = JSON.parse(fs.readFileSync(path.join(__dirname, "../schemas/commentary.schema.json"), "utf8"));
+  const fabricated = "[1] Fabricated first verse.\n\n[2] Fabricated second verse,\nwith a preserved line.\n\n[3] Fabricated third verse.";
+  assert.equal(app.extractNumberedVerseText(fabricated, 2), "Fabricated second verse,\nwith a preserved line.");
+  assert.equal(app.extractNumberedVerseText(fabricated, 4), "");
+  const entry = {kind: "chapter", passages: [{bookId: "MIC", chapter: 3, verseCount: 12}, {bookId: "MIC", chapter: 4, verseCount: 13}]};
+  assert.deepEqual(app.normalizedVerseOfTheDay({bookId: "MIC", chapter: 4, verse: 5}, entry), {bookId: "MIC", chapter: 4, verse: 5});
+  assert.equal(app.normalizedVerseOfTheDay({bookId: "MIC", chapter: 5, verse: 1}, entry), null);
+  assert.equal(app.verseReferenceLabel({bookId: "MIC", chapter: 4, verse: 5}), "Micah 4:5");
+  assert.match(html, /<blockquote id="verseOfDayText"/);
+  assert.match(html, /id="verseOfDayNotice"/);
+  assert.match(frontend, /renderVerseOfTheDay\(scripture\)/);
+  assert.match(frontend, /extractNumberedVerseText\(passage\.passage, selection\.verse\)/);
+  assert.deepEqual(Object.keys(schema.properties.verseOfTheDay.properties), ["bookId", "chapter", "verse"]);
+  assert.equal(Object.hasOwn(schema.properties.verseOfTheDay.properties, "text"), false);
+});
+
+test("comprehensive Markdown becomes individually selectable passage-specific sections", () => {
+  const sections = app.splitComprehensiveSections(
+    "## Comprehensive synthesis\n\n### Authority under judgment\n\nFirst body.\n\n### Peace after judgment\n\nSecond body."
+  );
+  assert.deepEqual(sections, [
+    {title: "Authority under judgment", markdown: "First body."},
+    {title: "Peace after judgment", markdown: "Second body."}
+  ]);
+});
+
+test("editorial contract requires practical prose and confessional evidentiary weighting", () => {
+  const stance = fs.readFileSync(path.join(__dirname, "../docs/EDITORIAL_STANCE.md"), "utf8");
+  const workflow = fs.readFileSync(path.join(__dirname, "../docs/COMMENTARY_WORKFLOW.md"), "utf8");
+  const validator = fs.readFileSync(path.join(__dirname, "../scripts/validate-private-content.mjs"), "utf8");
+  assert.match(stance, /Use plain, precise language/);
+  assert.match(stance, /must stand alone in the context of that day's Scripture/);
+  assert.match(stance, /practical payoff clear/);
+  assert.match(stance, /Methodological naturalism is not a neutral baseline/);
+  assert.match(stance, /predictive prophecy is impossible/);
+  assert.match(stance, /very strong positive evidence/);
+  assert.match(workflow, /pretentious diction or tightly packed jargon/);
+  assert.match(workflow, /Make the payoff explicit/);
+  assert.match(workflow, /Source breadth does not imply equal epistemic weight/);
+  assert.match(workflow, /must not force every included contextual or counterposition source into the main path/);
+  assert.match(workflow, /assumed prophecy, miracle, or divine action was impossible/);
+  assert.match(validator, /DEPENDENT_CROSS_REFERENCE/);
+  assert.match(validator, /assertStandalone\(paragraph\.markdown/);
+  assert.doesNotMatch(validator, /main all-sources synthesis must cite every included source/);
+});
+
+test("numeric commentary citations reveal and focus the numbered source note", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
+  assert.match(source, /function appendNumberedCitations\(container, sourceIds, citationIndex\)/);
+  assert.match(source, /function renderInlineCitedParagraph\(markdown, sourceIds, citationIndex, container\)/);
+  assert.match(source, /\{\\\{cite:/);
+  assert.match(source, /disclosure\.open = true;/);
+  assert.match(source, /note\.scrollIntoView\(\{block: "center"\}\);/);
+  assert.match(source, /note\.focus\(\{preventScroll: true\}\);/);
+  assert.match(source, /function normalizedComprehensiveSynthesis\(commentary, isBookIntroduction\)/);
+});
+
+test("the entire application uses an explicit dark palette with readable controls", () => {
+  const css = fs.readFileSync(path.join(__dirname, "../app/frontend/styles.css"), "utf8");
+  const html = fs.readFileSync(path.join(__dirname, "../app/frontend/index.html"), "utf8");
+  assert.match(css, /:root\s*\{\s*color-scheme:\s*dark;/);
+  assert.equal(/prefers-color-scheme:\s*dark/.test(css), false);
+  assert.match(css, /\.status-pill,\s*\.coverage-indicator\s*\{[\s\S]*?color:\s*#dceae4;/);
+  assert.match(css, /\.major-disclosure > summary\s*\{\s*color:\s*#dceae4;/);
+  assert.match(css, /button\s*\{[\s\S]*?color:\s*#e5f1ec;/);
+  assert.match(css, /a\s*\{\s*color:\s*#a3d7c4;/);
+  assert.match(html, /<meta name="color-scheme" content="dark">/);
+  assert.match(html, /<meta name="theme-color" content="#0b1110">/);
+});
+
+test("calendar completion is batched and each opened reading background-syncs its discussion", () => {
+  const frontend = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
+  const server = fs.readFileSync(path.join(__dirname, "../app/apps-script/Code.gs"), "utf8");
+  assert.match(frontend, /async function syncCalendarCompletion\(\)/);
+  assert.match(frontend, /state\.adapter\.listCommentActivity\(readingIds\)/);
+  assert.match(frontend, /state\.calendarWindow\.days\.filter\(\(day\) => day\.entry\)/);
+  assert.doesNotMatch(frontend, /state\.calendarWindow\.days\.filter\(\(day\) => day\.entry && day\.accessible\)/);
+  assert.match(frontend, /refreshComments\(\{background: true, readingId: entry\.readingId\}\)/);
+  assert.match(server, /function listCommentActivity\(readerCode, readingIds\)/);
+  assert.match(server, /readingIds\.length > 42/);
+  assert.match(server, /completedByReadingId:/);
+  assert.match(frontend, /state\.calendarParticipants/);
+});
+
+test("calendar refreshes shared completion before offline prefetch and whenever home becomes active", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
+  const startup = source.slice(source.indexOf("async function startAuthorizedApplication()"), source.indexOf("function updateReaderCodeSubmitState()"));
+  assert.ok(startup.indexOf("await syncCalendarCompletion();") < startup.indexOf("prefetchOfflineWindow().catch"));
+  assert.match(source, /function showHome\(options\)[\s\S]*?syncCalendarCompletion\(\)\.catch/);
+  assert.match(source, /addEventListener\("pageshow"[\s\S]*?syncCalendarCompletion\(\)\.catch/);
+  assert.match(source, /addEventListener\("visibilitychange"[\s\S]*?visibilityState === "visible"[\s\S]*?syncCalendarCompletion\(\)\.catch/);
+  assert.match(source, /if \(state\.calendarSyncPromise\) return state\.calendarSyncPromise/);
+});
+
+test("calendar uses a compact monthly selector with two-reader dots and a date-specific action", () => {
+  const html = fs.readFileSync(path.join(__dirname, "../app/frontend/index.html"), "utf8");
+  const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
+  const css = fs.readFileSync(path.join(__dirname, "../app/frontend/styles.css"), "utf8");
+  assert.match(source, /function buildMonthCalendar\(/);
+  assert.match(source, /function selectCalendarDate\(date, options\)/);
+  assert.match(source, /completionSet\(day\.entry\.readingId\)/);
+  assert.match(source, /button\.dataset\.readingId = canOpen/);
+  assert.match(source, /openReading\(readingId\)/);
+  assert.doesNotMatch(source, /configureDevelopmentControls|openOverrideReading|readingOverride/);
+  assert.match(css, /\.calendar-day\s*\{[^}]*min-height:\s*3\.15rem/s);
+  assert.match(css, /\.participant-color-0/);
+  assert.match(css, /\.participant-color-1/);
+  assert.match(html, /id="previousMonth"/);
+  assert.match(html, /id="nextMonth"/);
+  assert.match(html, /id="openSelectedReading"/);
+  assert.doesNotMatch(html, /Last week|This week|Next week/);
+});
+
+test("reading navigation is three pages and Finished returns to the calendar", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
+  assert.match(source, /function setReadingPage\(pageIndex, options\)/);
+  assert.match(source, /element\("finishReading"\)\.addEventListener\("click", \(\) => showHome\(\)\)/);
+  assert.match(source, /entry\.kind === "book_intro" \? "Book intro" : "Scripture"/);
+  assert.match(source, /element\("bookIntroductionSection"\)\.hidden = entry\.kind !== "book_intro"/);
+});
+
+test("a multi-chapter bridge day stays one reading and one Scripture page", () => {
+  const frontend = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
+  const server = fs.readFileSync(path.join(__dirname, "../app/apps-script/Code.gs"), "utf8");
+  const micah = {kind: "chapter", bookId: "MIC", passages: [{bookId: "MIC", chapter: 3}, {bookId: "MIC", chapter: 4}]};
+  assert.equal(app.titleForEntry(micah), "Micah 3–4");
+  assert.match(frontend, /passages\.forEach\(\(passage\) =>/);
+  assert.match(frontend, /section\.className = "scripture-passage"/);
+  assert.match(server, /UrlFetchApp\.fetchAll\(requests\)/);
+  assert.match(server, /cacheAllowed:\s*false/);
+});
+
+test("local private-draft preview is localhost-only and restricted to the seven bridge IDs", () => {
+  const server = fs.readFileSync(path.join(__dirname, "../scripts/dev-server.mjs"), "utf8");
+  const frontend = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
+  const builder = fs.readFileSync(path.join(__dirname, "../scripts/build-apps-script.mjs"), "utf8");
+  assert.match(server, /const HOST = "127\.0\.0\.1";/);
+  assert.match(server, /\^\\\/__private\\\/reading\\\/\(CC-Y3Q4-D05\[4-9\]\|CC-Y3Q4-D060\)\\\.json\$/);
+  assert.match(frontend, /\/\* DBR_LOCAL_ADAPTER_START \*\/[\s\S]*privateDraftMode\(\)[\s\S]*\/\* DBR_LOCAL_ADAPTER_END \*\//);
+  assert.match(builder, /DBR_LOCAL_ADAPTER_START[\s\S]*DBR_LOCAL_ADAPTER_END/);
+  assert.match(builder, /privateDraft\|\\\/__private\\\//);
+});

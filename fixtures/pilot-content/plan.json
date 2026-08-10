@@ -1,0 +1,126 @@
+{
+  "schemaVersion": "plan/v1",
+  "planVersion": "celebration-y3q4-bridge-2026-v1",
+  "title": "Celebration Church Year 3 Quarter 4 bridge week",
+  "canonId": "protestant-66-provisional-configurable",
+  "entries": [
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 1,
+      "sourcePlanDay": 54,
+      "readingId": "CC-Y3Q4-D054",
+      "kind": "chapter",
+      "bookId": "MIC",
+      "chapter": 3,
+      "passages": [
+        {"bookId": "MIC", "chapter": 3, "verseCount": 12},
+        {"bookId": "MIC", "chapter": 4, "verseCount": 13}
+      ],
+      "orderingRationale": "Temporary bridge preserves Day 54 of Celebration Church's published Year 3, Quarter 4 sequence.",
+      "chronologyBasis": "pragmatic",
+      "confidence": "high",
+      "notes": "Micah 3–4 appears as one daily reading and one shared discussion.",
+      "sourceIds": ["youversion_celebration_y3q4_plan_3805"]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 2,
+      "sourcePlanDay": 55,
+      "readingId": "CC-Y3Q4-D055",
+      "kind": "chapter",
+      "bookId": "MIC",
+      "chapter": 5,
+      "passages": [
+        {"bookId": "MIC", "chapter": 5, "verseCount": 15},
+        {"bookId": "MIC", "chapter": 6, "verseCount": 16},
+        {"bookId": "MIC", "chapter": 7, "verseCount": 20}
+      ],
+      "orderingRationale": "Temporary bridge preserves Day 55 of Celebration Church's published Year 3, Quarter 4 sequence.",
+      "chronologyBasis": "pragmatic",
+      "confidence": "high",
+      "notes": "Micah 5–7 appears as one daily reading and one shared discussion.",
+      "sourceIds": ["youversion_celebration_y3q4_plan_3805"]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 3,
+      "sourcePlanDay": 56,
+      "readingId": "CC-Y3Q4-D056",
+      "kind": "chapter",
+      "bookId": "1PE",
+      "chapter": 5,
+      "passages": [{"bookId": "1PE", "chapter": 5, "verseCount": 14}],
+      "orderingRationale": "Temporary bridge preserves Day 56 of Celebration Church's published Year 3, Quarter 4 sequence.",
+      "chronologyBasis": "pragmatic",
+      "confidence": "high",
+      "notes": "One chapter appears on the Scripture page.",
+      "sourceIds": ["youversion_celebration_y3q4_plan_3805"]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 4,
+      "sourcePlanDay": 57,
+      "readingId": "CC-Y3Q4-D057",
+      "kind": "chapter",
+      "bookId": "NAM",
+      "chapter": 1,
+      "passages": [{"bookId": "NAM", "chapter": 1, "verseCount": 15}],
+      "orderingRationale": "Temporary bridge preserves Day 57 of Celebration Church's published Year 3, Quarter 4 sequence.",
+      "chronologyBasis": "pragmatic",
+      "confidence": "high",
+      "notes": "Commentary is intentionally pending; no advance synthesis was generated.",
+      "sourceIds": ["youversion_celebration_y3q4_plan_3805"]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 5,
+      "sourcePlanDay": 58,
+      "readingId": "CC-Y3Q4-D058",
+      "kind": "chapter",
+      "bookId": "NAM",
+      "chapter": 2,
+      "passages": [{"bookId": "NAM", "chapter": 2, "verseCount": 13}],
+      "orderingRationale": "Temporary bridge preserves Day 58 of Celebration Church's published Year 3, Quarter 4 sequence.",
+      "chronologyBasis": "pragmatic",
+      "confidence": "high",
+      "notes": "Commentary is intentionally pending; no advance synthesis was generated.",
+      "sourceIds": ["youversion_celebration_y3q4_plan_3805"]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 6,
+      "sourcePlanDay": 59,
+      "readingId": "CC-Y3Q4-D059",
+      "kind": "chapter",
+      "bookId": "NAM",
+      "chapter": 3,
+      "passages": [{"bookId": "NAM", "chapter": 3, "verseCount": 19}],
+      "orderingRationale": "Temporary bridge preserves Day 59 of Celebration Church's published Year 3, Quarter 4 sequence.",
+      "chronologyBasis": "pragmatic",
+      "confidence": "high",
+      "notes": "Commentary is intentionally pending; no advance synthesis was generated.",
+      "sourceIds": ["youversion_celebration_y3q4_plan_3805"]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 7,
+      "sourcePlanDay": 60,
+      "readingId": "CC-Y3Q4-D060",
+      "kind": "chapter",
+      "bookId": "PRO",
+      "chapter": 31,
+      "passages": [{"bookId": "PRO", "chapter": 31, "verseCount": 31}],
+      "orderingRationale": "Temporary bridge preserves Day 60 of Celebration Church's published Year 3, Quarter 4 sequence.",
+      "chronologyBasis": "pragmatic",
+      "confidence": "high",
+      "notes": "Commentary is intentionally pending; no advance synthesis was generated.",
+      "sourceIds": ["youversion_celebration_y3q4_plan_3805"]
+    }
+  ],
+  "bookMetrics": {
+    "MIC": {"verseCount": 105, "chapterCount": 7, "versification": "ESV API metrics verified for bridge policy calculations"},
+    "1PE": {"verseCount": 105, "chapterCount": 5, "versification": "ESV API metrics verified for bridge policy calculations"},
+    "NAM": {"verseCount": 47, "chapterCount": 3, "versification": "ESV API metrics verified for bridge policy calculations"},
+    "PRO": {"verseCount": 915, "chapterCount": 31, "versification": "ESV API metrics verified for bridge policy calculations"}
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "private-manifest/v1",
+  "appConfigFileId": "DRIVE_FILE_ID_APP_CONFIG",
+  "planFileId": "DRIVE_FILE_ID_ACTIVE_PLAN",
+  "sourceRegistryFileId": "DRIVE_FILE_ID_SOURCE_REGISTRY",
+  "readings": {
+    "CC-Y3Q4-D054": {"contentFileId": "DRIVE_FILE_ID_D054_MARKDOWN", "metadataFileId": "DRIVE_FILE_ID_D054_METADATA"},
+    "CC-Y3Q4-D055": {"contentFileId": "DRIVE_FILE_ID_D055_MARKDOWN", "metadataFileId": "DRIVE_FILE_ID_D055_METADATA"},
+    "CC-Y3Q4-D056": {"contentFileId": "DRIVE_FILE_ID_D056_MARKDOWN", "metadataFileId": "DRIVE_FILE_ID_D056_METADATA"},
+    "CC-Y3Q4-D057": {"contentFileId": "DRIVE_FILE_ID_D057_MARKDOWN", "metadataFileId": "DRIVE_FILE_ID_D057_METADATA"},
+    "CC-Y3Q4-D058": {"contentFileId": "DRIVE_FILE_ID_D058_MARKDOWN", "metadataFileId": "DRIVE_FILE_ID_D058_METADATA"},
+    "CC-Y3Q4-D059": {"contentFileId": "DRIVE_FILE_ID_D059_MARKDOWN", "metadataFileId": "DRIVE_FILE_ID_D059_METADATA"},
+    "CC-Y3Q4-D060": {"contentFileId": "DRIVE_FILE_ID_D060_MARKDOWN", "metadataFileId": "DRIVE_FILE_ID_D060_METADATA"}
+  }
+}

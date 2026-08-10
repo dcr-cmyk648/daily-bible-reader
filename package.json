@@ -1,0 +1,25 @@
+{
+  "name": "daily-bible-reader",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Private two-person daily ESV reader with Drive-hosted commentary and revision-aware shared comments.",
+  "scripts": {
+    "build": "node scripts/build-apps-script.mjs",
+    "dev": "node scripts/dev-server.mjs",
+    "reader-codes": "node scripts/generate-reader-codes.mjs",
+    "build:private-properties": "node scripts/build-private-script-properties.mjs",
+    "safety": "node scripts/check-repository-safety.mjs --all",
+    "validate": "node scripts/validate-content.mjs",
+    "validate:sources": "node scripts/validate-source-registry.mjs",
+    "validate:private": "node scripts/validate-private-content.mjs",
+    "bundle:private": "node scripts/build-private-content-bundle.mjs",
+    "test": "node --test tests/*.test.js",
+    "check": "npm run safety && npm run validate && npm run validate:sources && npm run validate:private && npm test && npm run build"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}

@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daily-bible-reader.local/schemas/source.schema.json",
+  "title": "Source registry",
+  "type": "object",
+  "required": ["schemaVersion", "registryVersion", "updatedAt", "sources"],
+  "properties": {
+    "schemaVersion": {"const": "source-registry/v1"},
+    "registryVersion": {"type": "string", "minLength": 1, "maxLength": 80},
+    "updatedAt": {"type": ["string", "null"], "format": "date-time"},
+    "sources": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/source"}
+    }
+  },
+  "$defs": {
+    "source": {
+      "type": "object",
+      "required": [
+        "sourceId",
+        "title",
+        "authorOrOrganization",
+        "edition",
+        "publicationDate",
+        "publisher",
+        "resourceType",
+        "traditionOrPerspective",
+        "scope",
+        "urlOrCitation",
+        "accessDate",
+        "accessMethod",
+        "rightsStatus",
+        "license",
+        "allowedUses",
+        "rawTextStorageAllowed",
+        "summaryUseStatus",
+        "qualityTier",
+        "includedReadings",
+        "notes"
+      ],
+      "properties": {
+        "sourceId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{1,99}$"},
+        "title": {"type": "string", "minLength": 1, "maxLength": 500},
+        "authorOrOrganization": {"type": "string", "maxLength": 500},
+        "edition": {"type": "string", "maxLength": 500},
+        "publicationDate": {"type": ["string", "null"], "maxLength": 100},
+        "publisher": {"type": "string", "maxLength": 300},
+        "resourceType": {"type": "string", "minLength": 1, "maxLength": 100},
+        "traditionOrPerspective": {"type": "array", "items": {"type": "string", "maxLength": 100}, "uniqueItems": true},
+        "scope": {"type": "string", "maxLength": 1000},
+        "urlOrCitation": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "accessDate": {"type": ["string", "null"], "format": "date"},
+        "accessMethod": {"type": ["string", "null"], "maxLength": 500},
+        "rightsStatus": {"enum": ["public_domain", "open_license", "copyrighted", "unknown"]},
+        "license": {"type": ["string", "null"], "maxLength": 500},
+        "allowedUses": {"type": "array", "items": {"type": "string", "maxLength": 200}, "uniqueItems": true},
+        "rawTextStorageAllowed": {"type": "boolean"},
+        "summaryUseStatus": {"enum": ["discovered", "consulted", "inaccessible", "excluded_rights", "excluded_duplicate", "excluded_quality", "included"]},
+        "qualityTier": {"enum": ["primary", "strong", "supplemental", "excluded"]},
+        "includedReadings": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "notes": {"type": "string", "maxLength": 4000}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
+

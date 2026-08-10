@@ -1,0 +1,53 @@
+{
+  "schemaVersion": "commentary/v2",
+  "commentaryVersion": "CC-Y3Q4-D054-placeholder-v2",
+  "readingId": "CC-Y3Q4-D054",
+  "publicationStatus": "placeholder",
+  "dailyIntroduction": {
+    "markdown": "Local interface placeholder — the source-grounded daily orientation remains private and is not stored in Git.",
+    "sourceIds": []
+  },
+  "commentarySummary": {"paragraphs": []},
+  "practicalTakeaway": {
+    "markdown": "Local interface placeholder — no substantive takeaway is stored in Git.",
+    "sourceIds": []
+  },
+  "verseOfTheDay": {"bookId": "MIC", "chapter": 3, "verse": 1},
+  "overview": "This conspicuous placeholder exercises the bridge-reading interface without placing private generated commentary or licensed Scripture in Git.",
+  "sections": [
+    {"sectionId": "brief-overview", "title": "Brief overview", "markdown": "Private synthesis is unavailable in this tracked development fixture.", "sourceIds": []},
+    {"sectionId": "literary-structure", "title": "Literary structure", "markdown": "Private synthesis is unavailable in this tracked development fixture.", "sourceIds": []},
+    {"sectionId": "historical-cultural-context", "title": "Historical and cultural context", "markdown": "Private synthesis is unavailable in this tracked development fixture.", "sourceIds": []},
+    {"sectionId": "language-textual-details", "title": "Language and textual details", "markdown": "Private synthesis is unavailable in this tracked development fixture.", "sourceIds": []},
+    {"sectionId": "major-theological-themes", "title": "Major theological themes", "markdown": "Private synthesis is unavailable in this tracked development fixture.", "sourceIds": []},
+    {"sectionId": "broad-agreement", "title": "Areas of broad agreement", "markdown": "No agreement claim is made by this placeholder.", "sourceIds": []},
+    {"sectionId": "interpretive-disagreements", "title": "Major interpretive disagreements", "markdown": "Private synthesis is unavailable in this tracked development fixture.", "sourceIds": []},
+    {"sectionId": "canonical-connections", "title": "Canonical and intertextual connections", "markdown": "Private synthesis is unavailable in this tracked development fixture.", "sourceIds": []},
+    {"sectionId": "historical-reception", "title": "Historical reception", "markdown": "Private synthesis is unavailable in this tracked development fixture.", "sourceIds": []},
+    {"sectionId": "contemporary-questions", "title": "Contemporary questions", "markdown": "Private synthesis is unavailable in this tracked development fixture.", "sourceIds": []},
+    {"sectionId": "takeaways", "title": "Practical or theological takeaways", "markdown": "Private synthesis is unavailable in this tracked development fixture.", "sourceIds": []},
+    {"sectionId": "source-notes", "title": "Source notes", "markdown": "No commentary sources are claimed by this placeholder.", "sourceIds": []}
+  ],
+  "claims": [],
+  "sourceNotes": [],
+  "coverage": {
+    "representedCategories": [],
+    "missingCategories": ["all substantive source categories"],
+    "consultedCount": 0,
+    "includedCount": 0,
+    "majorDisagreements": [],
+    "singleSourceClaimIds": [],
+    "inaccessibleSourceIds": [],
+    "limitations": ["Tracked interface placeholder only; never publish as finished commentary."]
+  },
+  "generation": {
+    "generatedAt": null,
+    "modelOrTool": null,
+    "promptOrWorkflowVersion": "commentary-workflow-v2-expert-concise",
+    "sourceSetVersion": "not-started",
+    "humanReviewStatus": "not_started",
+    "contentHash": null,
+    "priorVersions": [],
+    "knownLimitations": ["No substantive commentary is stored in Git."]
+  }
+}

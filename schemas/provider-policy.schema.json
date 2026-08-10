@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daily-bible-reader.local/schemas/provider-policy.schema.json",
+  "title": "Scripture provider policy",
+  "type": "object",
+  "required": [
+    "provider",
+    "translation",
+    "policyVersion",
+    "verifiedAt",
+    "termsUrl",
+    "maxVersesPerRequest",
+    "maxTotalCachedVerses",
+    "maxBookFraction",
+    "maxCacheAgeSeconds",
+    "offlinePersistenceAllowed",
+    "refreshBehavior",
+    "downloadAllowed",
+    "bulkCopyAllowed",
+    "apiKeyMayReachClient",
+    "requiredAttribution"
+  ],
+  "properties": {
+    "provider": {"type": "string", "minLength": 1},
+    "translation": {"const": "ESV"},
+    "policyVersion": {"type": "string", "minLength": 1},
+    "verifiedAt": {"type": "string", "format": "date"},
+    "termsUrl": {"type": "string", "format": "uri"},
+    "maxVersesPerRequest": {"type": "integer", "minimum": 1},
+    "maxTotalCachedVerses": {"type": "integer", "minimum": 0},
+    "maxBookFraction": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+    "maxCacheAgeSeconds": {"type": "integer", "minimum": 0},
+    "offlinePersistenceAllowed": {"type": "boolean"},
+    "refreshBehavior": {"enum": ["network_first", "cache_first", "no_persistence", "network_every_open"]},
+    "downloadAllowed": {"type": "boolean"},
+    "bulkCopyAllowed": {"type": "boolean"},
+    "apiKeyMayReachClient": {"const": false},
+    "requiredAttribution": {
+      "type": "object",
+      "required": ["label", "notice", "linkUrl"],
+      "properties": {
+        "label": {"const": "ESV"},
+        "notice": {"type": "string", "minLength": 100},
+        "linkUrl": {"const": "https://www.esv.org/"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

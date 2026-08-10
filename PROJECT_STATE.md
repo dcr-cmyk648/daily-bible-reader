@@ -4,7 +4,7 @@ Updated 2026-08-10 (`America/Detroit`).
 
 ## Current phase
 
-The private reader is operating as a seven-day pre-launch bridge based on Celebration Church's *Reading the Bible in 3 Years — Year 3 Quarter 4*. After version 20 remained at the literal HTML **Starting…** state on Dustin's installed iPhone, the unchanged production URL was rolled back to confirmed-working immutable version 19. Recovery build `898d9f53923bd23a` is immutable version 21 on the separate canary URL pending an installed-iPhone smoke.
+The private reader is operating as a seven-day pre-launch bridge based on Celebration Church's *Reading the Bible in 3 Years — Year 3 Quarter 4*. Feature work is paused for a release-stability investigation. The unchanged production URL remains on confirmed-working immutable version 19. Version 21's watchdog executed on Dustin's iPhone, but its core did not start. Reflow-only A/B build `aa5f629de676c1b3` is immutable version 22 on canary.
 
 The app has local-first startup, a dark full-month calendar, authoritative two-reader completion, three reading pages, live network-only ESV, source-grounded private commentary, append-only shared comments, and append-only shared verse highlights. Dustin and Shane have distinct highlight colors, may both mark the same verse, see server timestamps, and may remove only their own marks.
 
@@ -52,14 +52,16 @@ The full 92-day Celebration chapter assignment is factual reference metadata onl
 - Revised the 1 Peter 5 deep study to name the major modern authorship case and present the traditional Silvanus explanation tightly. Uploaded `draft-v8` and the revised source registry in place; file identity and owner-plus-Shane permissions were preserved.
 - Added shared highlights end to end: immutable create/delete events, idempotency, locking, exact passage-bound validation, server identity/time, owner-only removal, two-reader overlap, accessible verse buttons, and color/timestamp UI.
 - Isolated highlights into an optional post-core client after the version-20 phone stall. The core reader now starts immediately, installed readers stay on IndexedDB schema version 4, highlights never migrate or persist in IndexedDB, and independent 8/45-second startup watchdogs replace an infinite **Starting…** state with a visible recovery path.
+- Downloaded immutable Apps Script versions 15–22 from Google and built a release matrix. The working version-19 core's longest minified line is 49,022 characters; both pre-core failures exceed 50,000. Version 22 preserves version-21 logic but reduces every inline script line to at most 817 characters.
+- Added a permanent 800-byte esbuild line target, a hard 1,200-character generated-script ceiling, per-script build diagnostics, and the release policy in `docs/RELEASE_STABILITY.md`.
 - Added and verified the frozen 17-column `highlight-events` tab in the existing event spreadsheet without changing sharing.
 - Extended plan/reading schemas with stream IDs/sequences, context reading IDs, unit labels, and partial-passage bounds. Validation enforces four unique streams, contiguous schedule/stream order, earlier-only context, exact ranges, and introduction immediately followed by chapter 1.
 - Documented the four-stream scheduling model without generating the complete plan.
-- Built recovery bundle `898d9f53923bd23a`, created immutable Apps Script version 21, and deployed it only to canary. Production remains on version 19. Both deployment URLs return no-store Google sign-in redirects to anonymous requests.
+- Built A/B bundle `aa5f629de676c1b3`, created immutable Apps Script version 22, deployed it only to canary, and cloned it back from Google to confirm an exact byte match with the inspected bundle. Production remains on version 19. Both deployment URLs return no-store Google sign-in redirects to anonymous requests.
 
 ## Validation status
 
-- `npm run check` passes: repository safety over 68 files, seven schemas, seven active readings, the independent 92-day reference schedule, private validation of three v3 syntheses plus four v2 placeholders and 36 sources, 98/98 tests, and parsed/inspected 119,412-byte code-only recovery build `898d9f53923bd23a`.
+- `npm run check` passes: repository safety over 69 files, seven schemas, seven active readings, the independent 92-day reference schedule, private validation of three v3 syntheses plus four v2 placeholders and 36 sources, 98/98 tests, and parsed/inspected 119,556-byte code-only A/B build `aa5f629de676c1b3`; inline script maxima are 801, 817, and 814 characters.
 - Schedule coverage includes stable IDs, grouped/partial passages, Detroit civil dates and DST, start-date changes, lookahead/locking, four-stream invariants, earlier-reading context, and introduction/chapter-1 adjacency.
 - Authorization, comment, and highlight coverage includes two server-derived users, anonymous/third-user denial, Drive denial, code spoofing, arbitrary-ID rejection, create/edit/retract, highlight add/remove/overlap, owner-only removal, exact verse bounds, idempotent retry, collisions, XSS, and payload limits.
 - ESV coverage includes server-only keys, exact attribution, no translation fallback, exact requested boundaries, and total persistent-storage refusal under the active provider policy.
@@ -68,7 +70,7 @@ The full 92-day Celebration chapter assignment is factual reference metadata onl
 
 ## Known risks and external checks
 
-- Version 21 still needs a brief installed-phone canary smoke. Local and anonymous checks cannot reproduce iOS Apps Script shell execution or prove an authenticated `google.script.run` path. Production therefore remains on version 19 until the canary opens, reopens, and completes one live highlight add/remove.
+- Version 22 needs the installed-phone A/B. Local and anonymous checks cannot reproduce the Apps Script/iPhone inline-delivery boundary. Production therefore remains on version 19 until the canary opens and reopens. If version 22 works, line length is causal for the version 20–21 pre-core failure; if it does not, feature work remains paused and the external code-only asset shell is next.
 - Shane's account/code binding and app-mediated comment creation are verified. His live ESV, Home Screen installation, and highlight overlap remain manual checks for later.
 - An editor of the underlying Sheet could alter rows directly. Google sharing is restricted to the two exact accounts, but the event logs are operationally auditable rather than cryptographically immutable.
 - Offline revocation is not instantaneous. Removing access requires allowlist, Drive, and Sheet revocation plus clearing downloaded data on a retained device.
@@ -77,4 +79,4 @@ The full 92-day Celebration chapter assignment is factual reference metadata onl
 
 ## Next concrete action
 
-Open canary version 21 on Dustin's iPhone, confirm that **Starting…** changes immediately, open a reading, add/remove a highlight, close it, and reopen it. Promote the same immutable version to the unchanged production deployment only after that gate passes. When Shane later tests, confirm his color can coexist on the same verse and that neither reader can remove the other's mark. After that smoke, convert `docs/CONTENT_AUTOMATION.md` into the agreed remote prepublication automation and readiness-alert workflow without adding runtime AI to the reader.
+Open canary version 22 on Dustin's iPhone. Confirm startup, close/reopen, calendar, and one reading. Do not promote or resume feature work until this one-variable test is recorded. A pass confirms the build-line root cause and permits a later deliberate production promotion; a failure triggers the thin Apps Script shell plus external code-only asset prototype described in `docs/RELEASE_STABILITY.md`.

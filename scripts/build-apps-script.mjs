@@ -10,6 +10,13 @@ import {inspectPaths} from "./check-repository-safety.mjs";
 
 const ROOT = process.cwd();
 const OUTPUT = path.join(ROOT, "dist/apps-script");
+// Apps Script serves the HTML inside a Google-managed iframe. The installed
+// iPhone reader repeatedly rejected minified script lines just above 50,000
+// characters while otherwise equivalent deployed artifacts below that boundary
+// executed. Keep generated lines close to the known-good unminified releases so
+// a small feature can never cross that platform-sensitive cliff again.
+const INLINE_SCRIPT_LINE_LIMIT = 800;
+const MAX_GENERATED_LINE_LENGTH = 1200;
 
 async function text(relativePath) {
   return readFile(path.join(ROOT, relativePath), "utf8");
@@ -43,7 +50,7 @@ async function main() {
 
   const buildId = createHash("sha256")
     .update([
-      `esbuild:${esbuildVersion};target:safari15;minify:true`,
+      `esbuild:${esbuildVersion};target:safari15;minify:true;lineLimit:${INLINE_SCRIPT_LINE_LIMIT}`,
       sourceHtml,
       css,
       providerPolicy,
@@ -84,24 +91,28 @@ async function main() {
   const [{code: productionBoot}, {code: productionJavaScript}, {code: productionHighlights}, {code: productionCss}] = await Promise.all([
     transform(boot, {
       legalComments: "none",
+      lineLimit: INLINE_SCRIPT_LINE_LIMIT,
       loader: "js",
       minify: true,
       target: "safari12"
     }),
     transform(`${providerPolicy}\n${productionApp}`, {
       legalComments: "none",
+      lineLimit: INLINE_SCRIPT_LINE_LIMIT,
       loader: "js",
       minify: true,
       target: "safari15"
     }),
     transform(highlights, {
       legalComments: "none",
+      lineLimit: INLINE_SCRIPT_LINE_LIMIT,
       loader: "js",
       minify: true,
       target: "safari12"
     }),
     transform(css, {
       legalComments: "none",
+      lineLimit: INLINE_SCRIPT_LINE_LIMIT,
       loader: "css",
       minify: true,
       target: "safari15"
@@ -147,6 +158,13 @@ async function main() {
     throw new Error(`Expected three isolated production inline scripts; found ${inlineScripts.length}.`);
   }
   inlineScripts.forEach((source, index) => {
+    const longestLine = Math.max(...source.split("\n").map((line) => line.length));
+    if (longestLine > MAX_GENERATED_LINE_LENGTH) {
+      throw new Error(
+        `Generated inline JavaScript ${index + 1} has a ${longestLine}-character line; ` +
+        `the release ceiling is ${MAX_GENERATED_LINE_LENGTH}.`
+      );
+    }
     try {
       new Script(source, {filename: `Index.inline-${index + 1}.js`});
     } catch (error) {
@@ -169,8 +187,13 @@ async function main() {
     throw new Error("Generated HTML contains a fixture/private/secret indicator.");
   }
   const htmlBytes = Buffer.byteLength(html, "utf8");
+  const scriptDiagnostics = inlineScripts.map((source) => {
+    const longestLine = Math.max(...source.split("\n").map((line) => line.length));
+    return `${Buffer.byteLength(source, "utf8")}B/${longestLine}ch`;
+  }).join(", ");
   process.stdout.write(
-    `Apps Script bundle ${buildId} built and inspected at dist/apps-script (code only; ${htmlBytes} HTML bytes).\n`
+    `Apps Script bundle ${buildId} built and inspected at dist/apps-script ` +
+    `(code only; ${htmlBytes} HTML bytes; inline scripts ${scriptDiagnostics}).\n`
   );
 }
 

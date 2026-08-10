@@ -142,7 +142,7 @@ test("shared highlights do not force an IndexedDB schema upgrade on installed re
   }
 });
 
-test("production startup is late-load safe, bounded, and minified for iPhone Safari", () => {
+test("production startup is late-load safe, bounded, and line-limited for iPhone Safari", () => {
   const frontend = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
   const boot = fs.readFileSync(path.join(__dirname, "../app/frontend/boot.js"), "utf8");
   const buildScript = fs.readFileSync(path.join(__dirname, "../scripts/build-apps-script.mjs"), "utf8");
@@ -157,6 +157,10 @@ test("production startup is late-load safe, bounded, and minified for iPhone Saf
   assert.match(boot, /Reload reader safely/);
   assert.match(buildScript, /target: "safari15"/);
   assert.match(buildScript, /target: "safari12"/);
+  assert.match(buildScript, /const INLINE_SCRIPT_LINE_LIMIT = 800/);
+  assert.match(buildScript, /const MAX_GENERATED_LINE_LENGTH = 1200/);
+  assert.match(buildScript, /lineLimit: INLINE_SCRIPT_LINE_LIMIT/);
+  assert.match(buildScript, /longestLine > MAX_GENERATED_LINE_LENGTH/);
   assert.match(buildScript, /Buffer\.byteLength\(html, "utf8"\)/);
   assert.doesNotMatch(buildScript, /MAX_PRODUCTION_HTML_BYTES/);
   assert.match(buildScript, /replace\('<script src="app\.js"><\/script>', \(\) =>/);

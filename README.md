@@ -94,4 +94,5 @@ It is enabled in the current local repository. The private GitHub repository is 
 - `docs/EDITORIAL_STANCE.md` — confessional premise, supernatural evidentiary weighting, fair-engagement method, and concise daily hierarchy
 - `docs/CHRONOLOGY.md` — schedule model and chronology limits
 - `docs/TESTING.md` — validation strategy
+- `docs/RELEASE_STABILITY.md` — immutable artifact matrix, current root-cause evidence, and release gates
 - `PROJECT_STATE.md` — current handoff and next action

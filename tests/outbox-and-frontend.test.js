@@ -557,6 +557,14 @@ test("today and tomorrow are the only priority warm readings", () => {
   assert.match(source, /scriptureMemoryByReadingId: new Map\(\)/);
   assert.match(source, /async function warmPriorityWindow\(\)/);
   assert.match(source, /state\.adapter\.getReadingPayloads/);
+  const priorityWarmSource = source.slice(
+    source.indexOf("async function warmPriorityWindow()"),
+    source.indexOf("async function prefetchOfflineWindow()")
+  );
+  assert.match(priorityWarmSource, /getReadingPayloads\(entries\.map\(\(entry\) => entry\.readingId\)\)/);
+  assert.match(priorityWarmSource, /private-content revision cannot remain hidden for seven days/);
+  assert.match(priorityWarmSource, /renderContentReadiness\(currentContentReadiness\(state\.privatePayloadByReadingId\)\)/);
+  assert.doesNotMatch(priorityWarmSource, /missingPayloads/);
   assert.match(source, /state\.adapter\.listComments/);
   assert.match(source, /getScriptureForReading\(entry\)/);
   assert.match(source, /scriptureMemoryOnly: true/);
@@ -686,6 +694,8 @@ test("editorial contract requires practical prose and confessional evidentiary w
   assert.match(validator, /assertStandalone\(paragraph\.markdown/);
   assert.match(validator, /CC-Y3Q4-D057[^\n]+substantive: true/);
   assert.match(validator, /4 syntheses; 3 explicit placeholders/);
+  assert.match(validator, /externalSchemas: \{"mhc-runtime\.schema\.json": mhcRuntimeSchema\}/);
+  assert.match(validator, /attached verse commentary must cover every configured verse exactly once/);
   assert.doesNotMatch(validator, /main all-sources synthesis must cite every included source/);
 });
 

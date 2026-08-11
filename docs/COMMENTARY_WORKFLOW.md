@@ -1,6 +1,6 @@
 # Commentary research and publication workflow
 
-The synthesis is a prepublication artifact, never a runtime AI response. Work one reading at a time. The temporary Celebration bridge permits only `CC-Y3Q4-D054` through `CC-Y3Q4-D060`; Dustin individually authorized D057 (Nahum 1) on 2026-08-10, so D054–D057 may contain substantive main syntheses. D058–D060 remain main-commentary placeholders. The separately requested rolling D056–D058 Matthew Henry verse window is an ignored review aid, not a replacement synthesis or publication; it does not authorize a D058 main synthesis, D059, or D060 generation.
+The synthesis is a prepublication artifact, never a runtime AI response. Work one reading at a time. The temporary Celebration bridge permits only `CC-Y3Q4-D054` through `CC-Y3Q4-D060`; Dustin individually authorized D057 (Nahum 1) on 2026-08-10, so D054–D057 may contain substantive main syntheses. D058–D060 remain main-commentary placeholders. The separately requested rolling D056–D058 Matthew Henry verse window is an ignored review aid, not a replacement synthesis or automatic publication. D057's human-corrected 15-verse result was separately attached after review; this does not authorize a D058 main synthesis, D059, or D060 generation.
 
 Scheduled preparation uses the repo-local `$draft-daily-commentary` skill only after `scripts/content-automation.mjs work-order` emits a validated `commentary-work-order/v1` packet from an explicitly enabled private policy. The packet authorizes one ignored `unreviewed` staging draft and nothing else. The status evaluator, work-order generator, and skill are separate gates; none can publish.
 
@@ -100,4 +100,4 @@ Before publication, the ignored drafts can be rendered through the localhost-onl
 
 ## Review checkpoint
 
-After D057, stop unless the user explicitly authorizes another reading. The current main-synthesis authorization ends at D057. The private Henry layer for D056–D058 remains unapproved and does not authorize a D058 synthesis, D059–D060, recurring publication, or the complete chronology. The preserved Genesis calibration and this bridge inform the later launch plan, but every additional commentary reading still requires the one-reading gate.
+After D057, stop unless the user explicitly authorizes another reading. The current main-synthesis authorization ends at D057. D057's attached Henry layer remains `in_review`; the D056 and D058 layers remain private and unattached. None of them authorizes a D058 synthesis, D059–D060, recurring publication, or the complete chronology. The preserved Genesis calibration and this bridge inform the later launch plan, but every additional commentary reading still requires the one-reading gate.

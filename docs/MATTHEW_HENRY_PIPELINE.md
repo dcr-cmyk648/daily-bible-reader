@@ -5,7 +5,7 @@ This is an offline, resumable source-preprocessing workflow. It never runs AI in
 - the preserved Genesis book-introduction/Genesis 1 Spark-versus-Luna calibration; and
 - a schedule-aware Spark audit lane that resolves the active reading from today through at most two days ahead.
 
-The rolling lane was explicitly exercised on 2026-08-10 for `CC-Y3Q4-D056` (1 Peter 5), `CC-Y3Q4-D057` (Nahum 1), and `CC-Y3Q4-D058` (Nahum 2). D057 now has a separately published multi-source main draft, while D058 retains its main-commentary placeholder. Every generated Henry shard, audit, and portable-store file remains ignored, private, and unapproved; none is automatically attached to the main draft, and D059 was not generated.
+The rolling lane was explicitly exercised on 2026-08-10 for `CC-Y3Q4-D056` (1 Peter 5), `CC-Y3Q4-D057` (Nahum 1), and `CC-Y3Q4-D058` (Nahum 2). D057 now has a published private multi-source main draft and a separately reviewed, attached 15-verse Henry layer, both marked `in_review`; D058 retains its main-commentary placeholder. Generated shards, audits, portable-store files, and raw worker output remain ignored and private. Nothing is attached automatically, D056 and D058 remain unattached, and D059 was not generated.
 
 ## Selected source and rights record
 
@@ -79,9 +79,9 @@ The bounded D057 exercise preserved three fingerprinted Spark attempts:
 - The anchor-aware revision corrected the verse centering but was safely rejected after changing the required shared source label.
 - Prompt v4 preserved the exact range label and produced 15 valid records with no deterministic warnings.
 
-Human review confirms that the final records cite only atoms from their indexed ranges, use direct condensed authorial voice, and contain no embedded Scripture transcription. It remains `in_review`, not approved: verses 5 and 14 need copy edits, and one slightly abstract phrase in verse 11 needs a final judgment. This is intentionally retained as an audit example rather than silently polished into an approved result.
+Human review confirmed that the final records cite only atoms from their indexed ranges, use direct condensed authorial voice, and contain no embedded Scripture transcription. Verses 5 and 14 received the recorded copy edits, and verse 11's abstract phrase was replaced with wording directly grounded in its cited atom. The raw fingerprinted Spark output remains unchanged; the corrected result is a separate content-addressed reviewed artifact, remains `in_review` rather than `approved`, and is attached to D057's private metadata with all 15 verses covered.
 
-The D056 and D058 results are also `in_review`. D056 requires a source-copy edit at verse 6, correction of the awkward/unsupported construction at verse 11, and softening of a small exclusivity overstatement at verse 5; its verse-12 `church` warning was judged acceptable contextual shorthand. D058 is otherwise well grounded, with one rhetorical comparison at verse 10 to soften before approval. Natural reuse of one exact Henry range across neighboring verses was explicitly accepted and is not repeated as a warning on every record.
+The D056 and D058 results are also `in_review` but remain private and unattached. D056 requires a source-copy edit at verse 6, correction of the awkward/unsupported construction at verse 11, and softening of a small exclusivity overstatement at verse 5; its verse-12 `church` warning was judged acceptable contextual shorthand. D058 is otherwise well grounded, with one rhetorical comparison at verse 10 to soften before approval. Natural reuse of one exact Henry range across neighboring verses was explicitly accepted and is not repeated as a warning on every record.
 
 ## Commands
 

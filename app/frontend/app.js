@@ -1711,6 +1711,21 @@
     };
   }
 
+  function currentContentReadiness(payloadsInput) {
+    const entries = state.plan && Array.isArray(state.plan.entries) ? state.plan.entries : [];
+    if (!entries.length || !state.schedule) {
+      return {...evaluateContentReadiness([], payloadsInput, 0, 0), currentPlanDay: false};
+    }
+    const scheduleComplete = state.schedule.status === "pilot_complete";
+    const calendarIndex = Math.min(entries.length - 1, Math.max(0, state.schedule.calendarDayIndex - 1));
+    const startIndex = scheduleComplete ? entries.length : calendarIndex;
+    const target = scheduleComplete ? 0 : Math.min(3, entries.length - startIndex);
+    return {
+      ...evaluateContentReadiness(entries, payloadsInput, startIndex, target),
+      currentPlanDay: state.schedule.status === "active"
+    };
+  }
+
   function bootstrapRecordIsFresh(record, nowInput, credential) {
     const now = Number.isFinite(nowInput) ? nowInput : Date.now();
     return Boolean(record && record.readingId === BOOTSTRAP_CACHE_KEY &&
@@ -2499,38 +2514,27 @@
     const run = async () => {
       const entries = syncScriptureMemoryWindow();
       if (!entries.length) return;
-      const missingPayloads = [];
       for (const entry of entries) {
-        if (await cachedPrivatePayload(entry.readingId)) continue;
-        const pending = state.privatePayloadRequestByReadingId.get(entry.readingId);
-        if (pending) {
-          try {
-            await pending;
-            continue;
-          } catch {
-            // Retry the priority record through the batch below.
-          }
-        }
-        missingPayloads.push(entry);
+        await cachedPrivatePayload(entry.readingId);
       }
-      if (missingPayloads.length) {
-        try {
-          const batch = await state.adapter.getReadingPayloads(missingPayloads.map((entry) => entry.readingId));
-          if (!batch || batch.planVersion !== state.plan.planVersion ||
-              !batch.payloads || typeof batch.payloads !== "object") {
-            throw appError("Priority reading batch did not match the active plan.", "CONTENT_MISMATCH");
-          }
-          for (const entry of missingPayloads) {
-            const payload = batch.payloads[entry.readingId];
-            const commentary = payload && (payload.commentary || payload.metadata);
-            if (!commentary || commentary.readingId !== entry.readingId) {
-              throw appError("Priority reading batch contained mismatched content.", "CONTENT_MISMATCH");
-            }
-            await persistPrivatePayload(entry.readingId, payload);
-          }
-        } catch {
-          // The normal reading loader and seven-day preparation lane remain available for retry.
+      try {
+        // Cached bytes paint immediately, but today and tomorrow are always revalidated
+        // after authorization so a private-content revision cannot remain hidden for seven days.
+        const batch = await state.adapter.getReadingPayloads(entries.map((entry) => entry.readingId));
+        if (!batch || batch.planVersion !== state.plan.planVersion ||
+            !batch.payloads || typeof batch.payloads !== "object") {
+          throw appError("Priority reading batch did not match the active plan.", "CONTENT_MISMATCH");
         }
+        for (const entry of entries) {
+          const payload = batch.payloads[entry.readingId];
+          const commentary = payload && (payload.commentary || payload.metadata);
+          if (!commentary || commentary.readingId !== entry.readingId) {
+            throw appError("Priority reading batch contained mismatched content.", "CONTENT_MISMATCH");
+          }
+          await persistPrivatePayload(entry.readingId, payload);
+        }
+      } catch {
+        // The cached priority payload and normal reading loader remain available offline.
       }
       await Promise.allSettled(entries.map(async (entry) => {
         const comments = await state.adapter.listComments(entry.readingId);
@@ -2541,7 +2545,10 @@
         .map((entry) => getScriptureForReading(entry)));
       const selectedDay = state.calendarWindow && state.calendarWindow.days
         .find((day) => day.date === state.selectedCalendarDate);
-      if (state.view === "home" && selectedDay) renderSelectedDayVerse(selectedDay);
+      if (state.view === "home") {
+        renderContentReadiness(currentContentReadiness(state.privatePayloadByReadingId));
+        if (selectedDay) renderSelectedDayVerse(selectedDay);
+      }
       await updateCacheInspector();
     };
     const promise = run();
@@ -2619,13 +2626,7 @@
     const scriptureStatus = state.policy.offlinePersistenceAllowed
       ? `${scriptureCount}/${scriptureEligible} chapter text records available offline`
       : "ESV text stays network-only by provider policy";
-    const scheduleComplete = state.schedule.status === "pilot_complete";
-    const readinessStartIndex = scheduleComplete ? entries.length : calendarIndex;
-    const preparationTarget = scheduleComplete ? 0 : Math.min(3, entries.length - readinessStartIndex);
-    const readiness = {
-      ...evaluateContentReadiness(entries, payloadByReadingId, readinessStartIndex, preparationTarget),
-      currentPlanDay: state.schedule.status === "active"
-    };
+    const readiness = currentContentReadiness(payloadByReadingId);
     renderContentReadiness(readiness);
     const readinessMessage = readiness.consecutiveReady < readiness.target
       ? `Preparation alert: ${readiness.consecutiveReady}/${readiness.target} consecutive full studies are ready from today.`

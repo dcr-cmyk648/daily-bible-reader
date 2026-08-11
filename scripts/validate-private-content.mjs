@@ -12,6 +12,7 @@ const REQUIRE_PRIVATE = process.argv.includes("--require");
 const REGISTRY_PATH = path.join(ROOT, "research/working/bridge-source-registry.json");
 const SCHEMA_PATH = path.join(ROOT, "schemas/commentary.schema.json");
 const SOURCE_SCHEMA_PATH = path.join(ROOT, "schemas/source.schema.json");
+const MHC_RUNTIME_SCHEMA_PATH = path.join(ROOT, "schemas/mhc-runtime.schema.json");
 const PLAN_PATH = path.join(ROOT, "fixtures/pilot-content/plan.json");
 const CONTENT_DIR = path.join(ROOT, "private-content/bridge/celebration-y3q4");
 const READINGS = [
@@ -122,9 +123,10 @@ async function main() {
     return;
   }
 
-  const [schema, sourceSchema, registry, plan] = await Promise.all([
+  const [schema, sourceSchema, mhcRuntimeSchema, registry, plan] = await Promise.all([
     readFile(SCHEMA_PATH, "utf8").then(JSON.parse),
     readFile(SOURCE_SCHEMA_PATH, "utf8").then(JSON.parse),
+    readFile(MHC_RUNTIME_SCHEMA_PATH, "utf8").then(JSON.parse),
     readFile(REGISTRY_PATH, "utf8").then(JSON.parse),
     readFile(PLAN_PATH, "utf8").then(JSON.parse)
   ]);
@@ -140,7 +142,10 @@ async function main() {
       readFile(path.join(CONTENT_DIR, reading.markdown), "utf8"),
       readFile(path.join(CONTENT_DIR, reading.metadata), "utf8").then(JSON.parse)
     ]);
-    assertSchemaValid(commentary, schema, {label: `${reading.readingId} private commentary`});
+    assertSchemaValid(commentary, schema, {
+      label: `${reading.readingId} private commentary`,
+      externalSchemas: {"mhc-runtime.schema.json": mhcRuntimeSchema}
+    });
     assert(commentary.schemaVersion === (reading.substantive ? "commentary/v3" : "commentary/v2"),
       `${reading.readingId}: schema version does not match substantive/placeholder status`);
     assert(commentary.readingId === reading.readingId, `${reading.readingId}: metadata association mismatch`);
@@ -152,6 +157,22 @@ async function main() {
     assert(supportsSourceSetVersion(registry, commentary.generation.sourceSetVersion),
       `${reading.readingId}: source-set version is not supported by the current additive registry`);
     const entry = plan.entries.find((candidate) => candidate.readingId === reading.readingId);
+    const verseCommentary = commentary.verseCommentary;
+    if (verseCommentary) {
+      assert(entry && entry.kind === "chapter" && entry.passages.length === 1,
+        `${reading.readingId}: attached verse commentary requires exactly one configured chapter`);
+      const passage = entry.passages[0];
+      assert(verseCommentary.book_id === passage.bookId && verseCommentary.chapter === passage.chapter,
+        `${reading.readingId}: attached verse commentary does not match the configured chapter`);
+      assert(["in_review", "approved"].includes(verseCommentary.review_status),
+        `${reading.readingId}: an attached live verse-commentary layer must be in review or approved`);
+      const startVerse = Number.isInteger(passage.verseStart) ? passage.verseStart : 1;
+      const expectedRecordIds = Array.from({length: passage.verseCount}, (_, index) =>
+        `${passage.bookId}.${passage.chapter}.${startVerse + index}`
+      ).sort();
+      assert(JSON.stringify(Object.keys(verseCommentary.records).sort()) === JSON.stringify(expectedRecordIds),
+        `${reading.readingId}: attached verse commentary must cover every configured verse exactly once`);
+    }
     const selectedVerse = commentary.verseOfTheDay;
     const selectedPassage = entry && entry.passages.find((passage) =>
       passage.bookId === selectedVerse.bookId && passage.chapter === selectedVerse.chapter

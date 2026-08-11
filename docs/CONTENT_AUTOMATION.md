@@ -59,7 +59,8 @@ The scheduled task must never change the live manifest, deploy Apps Script, expo
 
 Each successful run appears in **Scheduled**, whose unread state provides the first operational signal. The run should link to the private draft and present a short review checklist suitable for the phone:
 
-- Is the main article accurate, practical, coherent, and appropriately concise?
+- Does the main article develop one clear thesis through connected paragraphs, with secondary questions moved to the deep study rather than inserted as source-coverage detours?
+- Is that executive synthesis accurate, practical, readable at daily pace, and appropriately concise?
 - Are major claims traceable to sources actually consulted?
 - Are substantial alternative readings represented fairly without treating anti-supernatural assumptions as neutral evidence?
 - Is the selected verse genuinely representative of the day's reading?

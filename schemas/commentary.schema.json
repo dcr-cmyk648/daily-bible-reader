@@ -46,7 +46,7 @@
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 4000,
-                "description": "One paragraph of the coherent main article. In commentary/v3, place {{cite:source_id,source_id}} immediately after the supported claim."
+                "description": "One paragraph in the coherent executive synthesis. In commentary/v3, retain {{cite:source_id,source_id}} after supported claims as private provenance; the daily surface omits these markers and links readers to the separate detailed synthesis for claim-level citations."
               },
               "sourceIds": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
             },

@@ -204,15 +204,22 @@ async function main() {
     const summaryParagraphs = commentary.commentarySummary.paragraphs;
     assert(reading.substantive ? summaryParagraphs.length >= 1 : summaryParagraphs.length === 0,
       `${reading.readingId}: commentary summary does not match content status`);
-    assert(summaryParagraphs.reduce((total, paragraph) => total + wordCount(paragraph.markdown), 0) <= 700,
-      `${reading.readingId}: main commentary summary must stay under 700 words`);
+    const summaryWords = summaryParagraphs.reduce((total, paragraph) => total + wordCount(paragraph.markdown), 0);
+    if (reading.substantive) {
+      assert(summaryParagraphs.length >= 2 && summaryParagraphs.length <= 6,
+        `${reading.readingId}: executive synthesis needs 2–6 connected prose paragraphs`);
+      assert(summaryWords >= 220 && summaryWords <= 600,
+        `${reading.readingId}: executive synthesis must contain 220–600 words`);
+    }
     summaryParagraphs.forEach((paragraph, index) => {
       assert(paragraphCount(paragraph.markdown) === 1,
         `${reading.readingId}/summary-${index + 1}: each summary block must be one prose paragraph`);
+      assert(wordCount(paragraph.markdown) >= 45 && wordCount(paragraph.markdown) <= 180,
+        `${reading.readingId}/summary-${index + 1}: paragraph must contain 45–180 words`);
       assert(!/^\s*(?:[-*+]\s|\d+[.)]\s|#{1,6}\s)/.test(paragraph.markdown),
         `${reading.readingId}/summary-${index + 1}: main summary must be continuous prose, not a list or titled point`);
       assert(paragraph.sourceIds.length >= 1,
-        `${reading.readingId}/summary-${index + 1}: notable main-summary claims need adjacent citations`);
+        `${reading.readingId}/summary-${index + 1}: main-summary provenance is missing`);
       if (reading.substantive) {
         const inlineIds = [...new Set(inlineCitationIds(paragraph.markdown))].sort();
         const declaredIds = [...paragraph.sourceIds].sort();
@@ -221,9 +228,10 @@ async function main() {
         assert(JSON.stringify(inlineIds) === JSON.stringify(declaredIds),
           `${reading.readingId}/summary-${index + 1}: inline citation markers must exactly match sourceIds`);
       }
-      assertStandalone(paragraph.markdown, `${reading.readingId}/summary-${index + 1}`);
     });
     if (reading.substantive) {
+      assertStandalone(summaryParagraphs.map((paragraph) => paragraph.markdown).join("\n\n"),
+        `${reading.readingId}/executive-synthesis`);
       const mainSourceIds = new Set(summaryParagraphs.flatMap((paragraph) => paragraph.sourceIds));
       assert(mainSourceIds.size >= 2,
         `${reading.readingId}: main synthesis must draw on multiple consulted sources`);

@@ -1061,6 +1061,13 @@
     return ids;
   }
 
+  function withoutInlineCitations(markdown) {
+    return String(markdown || "").replace(
+      /\{\{cite:[A-Za-z0-9_.:-]+(?:\s*,\s*[A-Za-z0-9_.:-]+)*\}\}/g,
+      ""
+    );
+  }
+
   function createNumberedCitations(sourceIds, citationIndex) {
     const numbers = [...new Set((sourceIds || [])
       .map((sourceId) => citationIndex.numberById.get(sourceId))
@@ -1088,22 +1095,6 @@
       citations.appendChild(link);
     });
     return citations;
-  }
-
-  function appendNumberedCitations(container, sourceIds, citationIndex) {
-    const citations = createNumberedCitations(sourceIds, citationIndex);
-    if (!citations) return;
-    const paragraphs = container.querySelectorAll("p");
-    const target = paragraphs.length ? paragraphs[paragraphs.length - 1] : container;
-    target.appendChild(root.document.createTextNode(" "));
-    target.appendChild(citations);
-  }
-
-  function renderInlineCitedParagraph(markdown, sourceIds, citationIndex, container) {
-    const paragraph = root.document.createElement("p");
-    const markerCount = appendInlineCitedText(paragraph, markdown, citationIndex);
-    container.appendChild(paragraph);
-    if (!markerCount) appendNumberedCitations(paragraph, sourceIds, citationIndex);
   }
 
   function renderNumberedSourceNotes(citationIndex, options) {
@@ -1150,8 +1141,8 @@
       listId: "mainSourceNotes",
       summaryId: "mainSourceSummary",
       noteIdPrefix: "main-source-note",
-      populatedLabel: "numbered sources used on this page",
-      emptyLabel: "Sources used on this page"
+      populatedLabel: "sources informing the daily synthesis",
+      emptyLabel: "Sources informing the daily synthesis"
     });
   }
 
@@ -1166,7 +1157,7 @@
     });
   }
 
-  function renderCommentarySummary(summary, citationIndex) {
+  function renderCommentarySummary(summary) {
     const container = element("commentarySummary");
     container.replaceChildren();
     const paragraphs = summary && Array.isArray(summary.paragraphs) ? summary.paragraphs : [];
@@ -1174,9 +1165,11 @@
       replaceWithText(container, "Commentary research is still being prepared for this reading.");
       return;
     }
-    paragraphs.forEach((paragraph) =>
-      renderInlineCitedParagraph(paragraph.markdown, paragraph.sourceIds, citationIndex, container)
-    );
+    paragraphs.forEach((paragraph) => {
+      const node = root.document.createElement("p");
+      node.textContent = withoutInlineCitations(paragraph.markdown);
+      container.appendChild(node);
+    });
   }
 
   function normalizedComprehensiveSynthesis(commentary, isBookIntroduction) {
@@ -1454,12 +1447,22 @@
     state.verseOfTheDay = normalizedVerseOfTheDay(commentary.verseOfTheDay, state.currentEntry);
     prepareVerseOfTheDay();
     const comprehensive = normalizedComprehensiveSynthesis(commentary, isBookIntroduction);
-    const pageCitationIndex = buildPageCitationIndex(commentarySummary, practicalTakeaway, comprehensive, sources || []);
-    const mainCitationIndex = citationTargetIndex(pageCitationIndex, "mainSourceDisclosure", "main-source-note");
-    const deepCitationIndex = citationTargetIndex(pageCitationIndex, "deepSourceDisclosure", "deep-source-note");
-    renderCommentarySummary(commentarySummary, mainCitationIndex);
+    const mainPageCitationIndex = buildPageCitationIndex(
+      commentarySummary,
+      practicalTakeaway,
+      {sourceIds: []},
+      sources || []
+    );
+    const deepPageCitationIndex = buildPageCitationIndex(
+      {paragraphs: []},
+      {sourceIds: []},
+      comprehensive,
+      sources || []
+    );
+    const mainCitationIndex = citationTargetIndex(mainPageCitationIndex, "mainSourceDisclosure", "main-source-note");
+    const deepCitationIndex = citationTargetIndex(deepPageCitationIndex, "deepSourceDisclosure", "deep-source-note");
+    renderCommentarySummary(commentarySummary);
     renderSafeMarkdown(practicalTakeaway.markdown, element("practicalTakeaway"));
-    appendNumberedCitations(element("practicalTakeaway"), practicalTakeaway.sourceIds, mainCitationIndex);
     renderMainSourceNotes(mainCitationIndex);
 
     const badge = element("reviewBadge");

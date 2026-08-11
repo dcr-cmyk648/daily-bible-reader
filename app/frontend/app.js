@@ -1647,7 +1647,8 @@
     }
     element("translationLabel").textContent = "Page 2 · ESV Scripture";
     element("scriptureHeading").textContent = scripture.canonical || titleForEntry(state.currentEntry);
-    scriptureState.textContent = "Official ESV text retrieved for this screen through the authenticated server. It is not saved for offline use.";
+    scriptureState.hidden = true;
+    scriptureState.textContent = "";
     passages.forEach((passage) => {
       const section = root.document.createElement("section");
       section.className = "scripture-passage";
@@ -2691,15 +2692,15 @@
     notifyHighlightEnhancer();
     element("readingView").hidden = true;
     element("homeView").hidden = false;
-    element("skipLink").href = "#calendarHeading";
-    element("skipLink").textContent = "Skip to the calendar";
+    element("skipLink").href = "#selectedDayTitle";
+    element("skipLink").textContent = "Skip to today’s reading";
     setBanner("");
     renderCalendar();
     if ((!options || options.sync !== false) && (!root.navigator || root.navigator.onLine !== false)) {
       resumeOnlineWork();
     }
     if (root.scrollTo) root.scrollTo({top: 0, behavior: "auto"});
-    if (!options || options.focus !== false) element("calendarHeading").focus({preventScroll: true});
+    if (!options || options.focus !== false) element("selectedDayTitle").focus({preventScroll: true});
   }
 
   async function openReading(readingId, options) {

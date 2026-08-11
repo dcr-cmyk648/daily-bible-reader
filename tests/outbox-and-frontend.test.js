@@ -880,7 +880,22 @@ test("calendar uses a compact monthly selector with two-reader dots and a date-s
   assert.match(html, /id="previousMonth"/);
   assert.match(html, /id="nextMonth"/);
   assert.match(html, /id="openSelectedReading"/);
+  assert.ok(html.indexOf('id="selectedDayCard"') < html.indexOf('id="calendarHeading"'));
+  assert.match(html, /id="homeView"[^>]*aria-labelledby="selectedDayTitle"/);
+  assert.match(html, /<h1 id="selectedDayTitle"[^>]*tabindex="-1"/);
+  assert.match(source, /element\("skipLink"\)\.href = "#selectedDayTitle"/);
+  assert.match(source, /element\("selectedDayTitle"\)\.focus\(\{preventScroll: true\}\)/);
   assert.doesNotMatch(html, /Last week|This week|Next week/);
+});
+
+test("successful ESV rendering omits the informational banner above Scripture", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
+  const successRender = source.slice(source.indexOf('element("translationLabel").textContent = "Page 2 · ESV Scripture"'), source.indexOf("async function persistScripture"));
+  assert.match(successRender, /scriptureState\.hidden = true/);
+  assert.match(successRender, /scriptureState\.textContent = ""/);
+  assert.doesNotMatch(successRender, /Official ESV text retrieved for this screen/);
+  assert.match(source, /function renderScriptureUnavailable\(message\)[\s\S]*scriptureState\.hidden = false/);
+  assert.match(source, /Retrieving official ESV text through the authenticated server/);
 });
 
 test("reading navigation is three pages and Finished returns to the calendar", () => {

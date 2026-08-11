@@ -141,6 +141,7 @@ h3 {
   font-size: 1.18rem;
 }
 
+#selectedDayTitle,
 #calendarHeading,
 #readingTitle,
 #overviewHeading,
@@ -249,7 +250,7 @@ h3 {
   padding: clamp(1.5rem, 6vw, 3rem) 0 1rem;
 }
 
-.home-heading h1 {
+.home-heading h2 {
   margin-bottom: 0.5rem;
 }
 
@@ -391,7 +392,7 @@ h3 {
   padding: 0.85rem;
 }
 
-.calendar-card-heading h2 {
+.calendar-card-heading h3 {
   margin: 0;
   font-size: clamp(1.25rem, 5vw, 1.7rem);
   text-align: center;
@@ -551,14 +552,18 @@ h3 {
 .selected-day-card {
   display: grid;
   gap: 0.8rem;
-  margin-top: 1rem;
   padding: 1rem;
   border-color: #455f55;
 }
 
-.selected-day-card h2,
+.selected-day-card h1,
 .selected-day-card p {
   margin-bottom: 0.25rem;
+}
+
+.selected-day-card h1 {
+  max-width: none;
+  font-size: clamp(2rem, 9vw, 3.25rem);
 }
 
 .selected-day-completion {

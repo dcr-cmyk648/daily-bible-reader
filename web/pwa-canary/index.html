@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-pwa-release="13b29667018eac3e">
+<html lang="en" data-pwa-release="94b1a3d8701551c6">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -12,10 +12,10 @@
     <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon-180.png">
     <link rel="icon" type="image/png" sizes="192x192" href="assets/bible-reader-icon-192.png">
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="../releases/cd43eeba4eb91ba0/styles.css" integrity="sha384-AwnxfCZsxCpCmgljp3zt8aoydlnKRLPr00eSqpGCVAIVLDjQ/p8voeftQvQsDBNv" crossorigin="anonymous">
+    <link rel="stylesheet" href="../releases/b5ee9d7c055d5eb5/styles.css" integrity="sha384-2yoQ0I4Sa7IjGQgmcgUKzEj2et9KLGJhlSg59u//7QAAc+4nagOdEr4BENNEpSlI" crossorigin="anonymous">
   </head>
   <body>
-    <a id="skipLink" class="skip-link" href="#calendarHeading">Skip to the calendar</a>
+    <a id="skipLink" class="skip-link" href="#selectedDayTitle">Skip to today’s reading</a>
 
     <header class="app-header">
       <div>
@@ -63,10 +63,30 @@
         <button id="pwaUpdateButton" class="primary-button" type="button">Restart with update</button>
       </section>
 
-      <section id="homeView" class="home-view" aria-labelledby="calendarHeading">
+      <section id="homeView" class="home-view" aria-labelledby="selectedDayTitle">
+        <section id="selectedDayCard" class="selected-day-card" aria-labelledby="selectedDayTitle">
+          <div>
+            <p id="selectedDayDate" class="eyebrow">Selected date</p>
+            <h1 id="selectedDayTitle" tabindex="-1">Loading reading…</h1>
+            <p id="selectedDayPosition" class="muted"></p>
+          </div>
+          <div id="selectedDayCompletion" class="selected-day-completion" aria-label="Completion by reader"></div>
+          <div id="selectedDayVerse" class="selected-day-verse" hidden>
+            <span class="eyebrow">Verse of the day</span>
+            <a id="selectedDayVerseLink" target="_blank" rel="noopener noreferrer">Loading selection…</a>
+            <blockquote id="selectedDayVerseText" hidden></blockquote>
+            <p id="selectedDayVerseStatus" class="muted">Checking saved study metadata.</p>
+            <details id="selectedDayVerseNoticeDisclosure" class="selected-day-esv-notice" hidden>
+              <summary>ESV copyright notice</summary>
+              <p id="selectedDayVerseNotice"></p>
+            </details>
+          </div>
+          <button id="openSelectedReading" class="primary-button" type="button">Open selected reading</button>
+        </section>
+
         <header class="home-heading">
           <p class="eyebrow">Shared reading plan</p>
-          <h1 id="calendarHeading" tabindex="-1">Calendar</h1>
+          <h2 id="calendarHeading" tabindex="-1">Calendar</h2>
           <p id="calendarSummary" class="home-summary">Select a date to see its reading and both readers’ progress.</p>
         </header>
 
@@ -75,7 +95,7 @@
             <button id="previousMonth" class="month-button" type="button" aria-label="Previous month">‹</button>
             <div class="calendar-month-title">
               <p class="eyebrow">Shared progress</p>
-              <h2 id="calendarMonthHeading">Loading month…</h2>
+              <h3 id="calendarMonthHeading">Loading month…</h3>
             </div>
             <div class="calendar-heading-actions">
               <button id="nextMonth" class="month-button" type="button" aria-label="Next month">›</button>
@@ -95,26 +115,6 @@
           <p class="eyebrow">Study preparation</p>
           <h2 id="contentReadinessTitle">Upcoming study notes need attention</h2>
           <p id="contentReadinessMessage"></p>
-        </section>
-
-        <section id="selectedDayCard" class="selected-day-card" aria-labelledby="selectedDayTitle">
-          <div>
-            <p id="selectedDayDate" class="eyebrow">Selected date</p>
-            <h2 id="selectedDayTitle">Loading reading…</h2>
-            <p id="selectedDayPosition" class="muted"></p>
-          </div>
-          <div id="selectedDayCompletion" class="selected-day-completion" aria-label="Completion by reader"></div>
-          <div id="selectedDayVerse" class="selected-day-verse" hidden>
-            <span class="eyebrow">Verse of the day</span>
-            <a id="selectedDayVerseLink" target="_blank" rel="noopener noreferrer">Loading selection…</a>
-            <blockquote id="selectedDayVerseText" hidden></blockquote>
-            <p id="selectedDayVerseStatus" class="muted">Checking saved study metadata.</p>
-            <details id="selectedDayVerseNoticeDisclosure" class="selected-day-esv-notice" hidden>
-              <summary>ESV copyright notice</summary>
-              <p id="selectedDayVerseNotice"></p>
-            </details>
-          </div>
-          <button id="openSelectedReading" class="primary-button" type="button">Open selected reading</button>
         </section>
 
         <section class="storage-card" aria-labelledby="storageHeading">
@@ -346,6 +346,6 @@
       <p>Private two-person bridge · Seven scheduled days · No runtime AI</p>
     </footer>
 
-    <script src="assets/pwa-client.13b29667018eac3e.js"></script>
+    <script src="assets/pwa-client.94b1a3d8701551c6.js"></script>
   </body>
 </html>

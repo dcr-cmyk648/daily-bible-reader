@@ -84,7 +84,7 @@ node scripts/validate-source-registry.mjs research/working/bridge-source-registr
 node scripts/validate-private-content.mjs --require
 ```
 
-The private validator requires exactly the seven bridge readings, `commentary/v3` with one comprehensive Markdown synthesis for the four individually authorized substantive days, legacy `commentary/v2` fixed-section placeholders for the three ungenerated days, matching content hashes, multiple independent sources in each substantive main synthesis, every included source represented across the complete substantive package, accurate single-source flags, and no likely stored ESV passage or unsafe raw HTML.
+The private validator requires exactly the seven bridge readings, `commentary/v3` with one comprehensive Markdown synthesis for the four individually authorized substantive days, legacy `commentary/v2` fixed-section placeholders for the three ungenerated days, matching content hashes, multiple independent sources in each substantive main synthesis, every included source represented across the complete substantive package, accurate single-source flags, and no likely stored ESV passage or unsafe raw HTML. A chapter marked end-to-end prepared additionally requires the complete reviewed Matthew Henry verse layer, exact cited public-domain source atoms for every verse record, a configured ESV passage reference, orientation, coherent main synthesis, verse of the day, practical takeaway, comprehensive synthesis, and traceable source metadata. ESV wording remains a server-fetched session resource and is never part of the stored preparation artifact.
 
 ## 8. Publish one reading
 

@@ -28,6 +28,7 @@
   const BOOTSTRAP_CACHE_KEY = "__app-bootstrap__";
   const BOOTSTRAP_CACHE_SCHEMA = "bootstrap-cache/v1";
   const HOT_READING_COUNT = 2;
+  const READING_PREPARATION_SCHEMA = "reading-preparation/v1";
   const STARTUP_TIMING_SCHEMA = "startup-timing/v1";
   const STARTUP_MILESTONE_ORDER = [
     "shellVisible",
@@ -1674,14 +1675,173 @@
     return state.adapter && state.adapter.cacheContext || "apps-script";
   }
 
-  function readingContentIsPrepared(payload, expectedReadingId) {
+  function studyWordCount(value) {
+    return String(value || "")
+      .replace(/\{\{cite:[^}]+\}\}/g, "")
+      .replace(/[#*_`>\[\]()]/g, " ")
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean).length;
+  }
+
+  function substantiveStudyText(value, minimumWords) {
+    const text = String(value || "").trim();
+    if (studyWordCount(text) < minimumWords) return false;
+    return !/(?:study notes?|commentary|orientation|synthesis|takeaway).{0,45}(?:not yet (?:prepared|available)|unavailable|being prepared|preparation pending)/i.test(text);
+  }
+
+  function preparationEntry(entryInput, commentary) {
+    if (entryInput && typeof entryInput === "object") return entryInput;
+    const shard = commentary && commentary.verseCommentary;
+    const readingId = typeof entryInput === "string" ? entryInput : commentary && commentary.readingId;
+    if (commentary && commentary.bookCommentary) return {readingId, kind: "book_intro", bookId: commentary.bookCommentary.resource && commentary.bookCommentary.resource.book_id};
+    if (shard && shard.book_id && Number.isInteger(shard.chapter)) {
+      return {
+        readingId,
+        kind: "chapter",
+        bookId: shard.book_id,
+        chapter: shard.chapter,
+        passages: [{bookId: shard.book_id, chapter: shard.chapter, verseCount: Object.keys(shard.records || {}).length}]
+      };
+    }
+    return {readingId, kind: "chapter", passages: []};
+  }
+
+  function chapterPassagesAreConfigured(entry) {
+    return Boolean(entry && entry.kind === "chapter" && Array.isArray(entry.passages) && entry.passages.length &&
+      entry.passages.every((passage) => passage && /^[A-Z0-9]{2,8}$/.test(String(passage.bookId || "")) &&
+        Number.isInteger(passage.chapter) && passage.chapter > 0 &&
+        Number.isInteger(passage.verseCount) && passage.verseCount > 0));
+  }
+
+  function verseCommentaryIsComplete(commentary, entry) {
+    if (!chapterPassagesAreConfigured(entry) || entry.passages.length !== 1) return false;
+    const passage = entry.passages[0];
+    const shard = commentary && commentary.verseCommentary;
+    if (!shard || shard.schema_version !== "mhc-runtime/v1" || shard.validation_status !== "valid" ||
+        !["in_review", "approved"].includes(shard.review_status) || shard.book_id !== passage.bookId ||
+        shard.chapter !== passage.chapter || !substantiveStudyText(shard.source_layer_note, 5)) return false;
+    const records = shard.records && typeof shard.records === "object" ? shard.records : {};
+    const atoms = shard.source_atoms && typeof shard.source_atoms === "object" ? shard.source_atoms : {};
+    const startVerse = Number.isInteger(passage.verseStart) ? passage.verseStart : 1;
+    const expectedIds = Array.from({length: passage.verseCount}, (_, index) =>
+      `${passage.bookId}.${passage.chapter}.${startVerse + index}`
+    );
+    if (Object.keys(records).length !== expectedIds.length) return false;
+    return expectedIds.every((recordId) => {
+      const record = records[recordId];
+      if (!record || !substantiveStudyText(record.blurb, 4) ||
+          !substantiveStudyText(record.scope_note, 2) || !String(record.source_reference_label || "").trim() ||
+          !Array.isArray(record.source_unit_ids) || !record.source_unit_ids.length ||
+          !Array.isArray(record.source_atom_ids) || !record.source_atom_ids.length) return false;
+      return record.source_atom_ids.every((atomId) => {
+        const atom = atoms[atomId];
+        return Boolean(atom && atom.source_unit_id && atom.source_reference_label && substantiveStudyText(atom.text, 3));
+      });
+    });
+  }
+
+  function bookCommentaryIsComplete(commentary, entry) {
+    const shard = commentary && commentary.bookCommentary;
+    const resource = shard && shard.resource;
+    return Boolean(entry && entry.kind === "book_intro" && shard && shard.schema_version === "mhc-runtime/v1" &&
+      shard.validation_status === "valid" && ["in_review", "approved"].includes(shard.review_status) &&
+      resource && resource.book_id === entry.bookId && resource.resource_type === "book_intro" &&
+      substantiveStudyText(resource.blurb, 20) && Array.isArray(resource.source_unit_ids) && resource.source_unit_ids.length &&
+      String(resource.source_reference_label || "").trim());
+  }
+
+  function citedPreparationSourceIds(commentary) {
+    const ids = new Set();
+    const add = (values) => (Array.isArray(values) ? values : []).forEach((value) => {
+      if (typeof value === "string" && value) ids.add(value);
+    });
+    add(commentary && commentary.dailyIntroduction && commentary.dailyIntroduction.sourceIds);
+    (commentary && commentary.commentarySummary && Array.isArray(commentary.commentarySummary.paragraphs)
+      ? commentary.commentarySummary.paragraphs : []).forEach((paragraph) => add(paragraph.sourceIds));
+    add(commentary && commentary.practicalTakeaway && commentary.practicalTakeaway.sourceIds);
+    add(commentary && commentary.comprehensiveSynthesis && commentary.comprehensiveSynthesis.sourceIds);
+    return ids;
+  }
+
+  function readingPreparationReport(payload, entryInput) {
     const commentary = payload && (payload.commentary || payload.metadata);
+    const entry = preparationEntry(entryInput, commentary);
+    const expectedReadingId = entry && entry.readingId;
     const generation = commentary && commentary.generation;
-    return Boolean(commentary && commentary.readingId &&
-      (!expectedReadingId || commentary.readingId === expectedReadingId) &&
-      ["draft", "reviewed", "published"].includes(commentary.publicationStatus) &&
-      generation && ["in_review", "approved"].includes(generation.humanReviewStatus) &&
+    const metadataReady = Boolean(commentary && commentary.readingId &&
+      (!expectedReadingId || commentary.readingId === expectedReadingId) && commentary.schemaVersion === "commentary/v3" &&
+      ["draft", "reviewed", "published"].includes(commentary.publicationStatus) && generation &&
+      ["in_review", "approved"].includes(generation.humanReviewStatus) &&
       /^[a-f0-9]{64}$/.test(String(generation.contentHash || "")));
+    const introduction = commentary && commentary.dailyIntroduction;
+    const summaryParagraphs = commentary && commentary.commentarySummary &&
+      Array.isArray(commentary.commentarySummary.paragraphs) ? commentary.commentarySummary.paragraphs : [];
+    const takeaway = commentary && commentary.practicalTakeaway;
+    const synthesis = commentary && commentary.comprehensiveSynthesis;
+    const citedSourceIds = citedPreparationSourceIds(commentary);
+    const sources = payload && Array.isArray(payload.sources) ? payload.sources : [];
+    const sourceById = new Map(sources.map((source) => [source && source.sourceId, source]));
+    const sourceRecordsReady = metadataReady && citedSourceIds.size >= 2 &&
+      [...citedSourceIds].every((sourceId) => {
+        const source = sourceById.get(sourceId);
+        return Boolean(source && String(source.title || "").trim() && String(source.urlOrCitation || "").trim());
+      });
+    const components = [
+      {id: "metadata", label: "reviewed study metadata", ready: metadataReady},
+      {
+        id: "orientation",
+        label: "orientation",
+        ready: metadataReady && introduction && substantiveStudyText(introduction.markdown, 20) &&
+          Array.isArray(introduction.sourceIds) && introduction.sourceIds.length > 0
+      },
+      entry && entry.kind === "book_intro"
+        ? {id: "book-overview", label: "Matthew Henry book overview", ready: metadataReady && bookCommentaryIsComplete(commentary, entry)}
+        : {id: "scripture", label: "ESV passage configuration", ready: chapterPassagesAreConfigured(entry)},
+      ...(entry && entry.kind === "book_intro" ? [] : [{
+        id: "henry",
+        label: "Matthew Henry verse commentary with full source text",
+        ready: metadataReady && verseCommentaryIsComplete(commentary, entry)
+      }]),
+      {
+        id: "main-synthesis",
+        label: "main commentary synthesis",
+        ready: metadataReady && summaryParagraphs.length > 0 &&
+          summaryParagraphs.every((paragraph) => substantiveStudyText(paragraph.markdown, 20) &&
+            Array.isArray(paragraph.sourceIds) && paragraph.sourceIds.length > 0)
+      },
+      {
+        id: "verse-of-the-day",
+        label: "verse of the day",
+        ready: entry && entry.kind === "book_intro" ? true : metadataReady && Boolean(normalizedVerseOfTheDay(commentary && commentary.verseOfTheDay, entry))
+      },
+      {
+        id: "takeaway",
+        label: "practical takeaway",
+        ready: metadataReady && takeaway && substantiveStudyText(takeaway.markdown, 5) &&
+          Array.isArray(takeaway.sourceIds) && takeaway.sourceIds.length > 0
+      },
+      {
+        id: "comprehensive-synthesis",
+        label: "comprehensive synthesis",
+        ready: metadataReady && synthesis && substantiveStudyText(synthesis.markdown, 100) &&
+          Array.isArray(synthesis.sourceIds) && synthesis.sourceIds.length > 0
+      },
+      {id: "sources", label: "traceable source records", ready: sourceRecordsReady}
+    ];
+    const missing = components.filter((component) => !component.ready);
+    return {
+      schemaVersion: READING_PREPARATION_SCHEMA,
+      readingId: expectedReadingId || commentary && commentary.readingId || null,
+      prepared: missing.length === 0,
+      components,
+      missingComponentIds: missing.map((component) => component.id),
+      missingComponents: missing.map((component) => component.label)
+    };
+  }
+
+  function readingContentIsPrepared(payload, entryInput) {
+    return readingPreparationReport(payload, entryInput).prepared;
   }
 
   function evaluateContentReadiness(entriesInput, payloadsInput, startIndexInput, targetInput) {
@@ -1694,10 +1854,15 @@
     const target = Math.min(remaining, Math.max(0, Number.isInteger(targetInput) ? targetInput : 3));
     let consecutiveReady = 0;
     let nextGapEntry = null;
+    let nextGapReport = null;
+    const reports = [];
     for (let offset = 0; offset < target; offset += 1) {
       const entry = entries[startIndex + offset];
-      if (!entry || !readingContentIsPrepared(payloads.get(entry.readingId), entry.readingId)) {
+      const report = readingPreparationReport(entry && payloads.get(entry.readingId), entry || null);
+      reports.push(report);
+      if (!entry || !report.prepared) {
         nextGapEntry = entry || null;
+        nextGapReport = report;
         break;
       }
       consecutiveReady += 1;
@@ -1707,6 +1872,8 @@
       target,
       readyThroughEntry: consecutiveReady ? entries[startIndex + consecutiveReady - 1] : null,
       nextGapEntry,
+      nextGapReport,
+      reports,
       state: target === 0 || consecutiveReady >= target ? "green" : consecutiveReady === 0 ? "critical" : "warning"
     };
   }
@@ -1718,11 +1885,16 @@
     }
     const scheduleComplete = state.schedule.status === "pilot_complete";
     const calendarIndex = Math.min(entries.length - 1, Math.max(0, state.schedule.calendarDayIndex - 1));
-    const startIndex = scheduleComplete ? entries.length : calendarIndex;
+    const startsTomorrow = state.schedule.status === "active";
+    const startIndex = scheduleComplete ? entries.length : startsTomorrow ? Math.min(entries.length, calendarIndex + 1) : 0;
     const target = scheduleComplete ? 0 : Math.min(3, entries.length - startIndex);
+    const readiness = evaluateContentReadiness(entries, payloadsInput, startIndex, target);
     return {
-      ...evaluateContentReadiness(entries, payloadsInput, startIndex, target),
-      currentPlanDay: state.schedule.status === "active"
+      ...readiness,
+      currentPlanDay: state.schedule.status === "active",
+      startsTomorrow,
+      firstEntry: entries[startIndex] || null,
+      firstReport: readiness.reports[0] || null
     };
   }
 
@@ -1789,19 +1961,48 @@
     return record.payload;
   }
 
+  function privatePayloadRevision(payload) {
+    const commentary = payload && (payload.commentary || payload.metadata);
+    if (!commentary) return "";
+    return [
+      commentary.commentaryVersion || "",
+      commentary.generation && commentary.generation.contentHash || "",
+      commentary.verseCommentary && commentary.verseCommentary.generation_timestamp || "",
+      commentary.bookCommentary && commentary.bookCommentary.generation_timestamp || ""
+    ].join(":");
+  }
+
+  function privatePayloadNeedsBlockingRefresh(payload) {
+    const commentary = payload && (payload.commentary || payload.metadata);
+    const generation = commentary && commentary.generation;
+    return !commentary || commentary.publicationStatus === "placeholder" ||
+      !generation || !["in_review", "approved"].includes(generation.humanReviewStatus) ||
+      !/^[a-f0-9]{64}$/.test(String(generation.contentHash || ""));
+  }
+
   async function persistPrivatePayload(readingId, payload) {
+    const previous = state.privatePayloadByReadingId.get(readingId);
     state.privatePayloadByReadingId.set(readingId, payload);
     const maxAgeSeconds = Number(state.config && state.config.privateContentCacheMaxAgeSeconds || 0);
-    if (!Number.isInteger(maxAgeSeconds) || maxAgeSeconds <= 0 || maxAgeSeconds > 604800) return;
-    const cachedAt = new Date();
-    await state.store.put("privateContent", {
-      readingId,
-      cacheContext: privateCacheContext(),
-      planVersion: state.plan.planVersion,
-      cachedAt: cachedAt.toISOString(),
-      expiresAt: new Date(cachedAt.getTime() + maxAgeSeconds * 1000).toISOString(),
-      payload
-    });
+    if (Number.isInteger(maxAgeSeconds) && maxAgeSeconds > 0 && maxAgeSeconds <= 604800) {
+      const cachedAt = new Date();
+      await state.store.put("privateContent", {
+        readingId,
+        cacheContext: privateCacheContext(),
+        planVersion: state.plan.planVersion,
+        cachedAt: cachedAt.toISOString(),
+        expiresAt: new Date(cachedAt.getTime() + maxAgeSeconds * 1000).toISOString(),
+        payload
+      });
+    }
+    if (previous && privatePayloadRevision(previous) !== privatePayloadRevision(payload) &&
+        state.view === "reading" && state.currentEntry && state.currentEntry.readingId === readingId) {
+      const commentary = payload && (payload.commentary || payload.metadata);
+      if (commentary && commentary.readingId === readingId) {
+        renderCommentary(commentary, payload.sources || state.sources || []);
+        setSyncStatus("Study updated to the newest version");
+      }
+    }
   }
 
   function mayUseOfflineFallback(error) {
@@ -1822,9 +2023,19 @@
     const cached = await cachedPrivatePayload(readingId);
     if (cached) {
       if (serverCallsAllowed() && (!root.navigator || root.navigator.onLine !== false)) {
-        state.adapter.getReadingPayload(readingId)
-          .then((payload) => persistPrivatePayload(readingId, payload))
-          .catch(() => {});
+        if (privatePayloadNeedsBlockingRefresh(cached)) {
+          try {
+            const payload = await state.adapter.getReadingPayload(readingId);
+            await persistPrivatePayload(readingId, payload);
+            return {payload, source: "network"};
+          } catch (error) {
+            if (!mayUseOfflineFallback(error)) throw error;
+          }
+        } else {
+          state.adapter.getReadingPayload(readingId)
+            .then((payload) => persistPrivatePayload(readingId, payload))
+            .catch(() => {});
+        }
       }
       return {payload: cached, source: "cache"};
     }
@@ -2099,6 +2310,29 @@
     return Boolean(state.session && String(state.session.authorId || "").toLowerCase() === "dustin");
   }
 
+  function preparationDateForEntry(entry) {
+    if (!entry || !state.schedule || !state.schedule.effectiveStartDate || !Number.isInteger(entry.dayIndex)) return null;
+    return dateOnlyForDay(state.schedule.effectiveStartDate, entry.dayIndex - 1);
+  }
+
+  function preparationEntryDescription(entry) {
+    if (!entry) return "the next scheduled reading";
+    const date = preparationDateForEntry(entry);
+    return `${titleForEntry(entry)}${date ? ` on ${fullCalendarDate(date)}` : ""}`;
+  }
+
+  function conciseMissingComponents(report) {
+    const missing = report && Array.isArray(report.missingComponents) ? report.missingComponents : [];
+    if (!missing.length) return "one or more required study components";
+    const visible = missing.slice(0, 4);
+    const list = visible.length === 1
+      ? visible[0]
+      : visible.length === 2
+        ? `${visible[0]} and ${visible[1]}`
+        : `${visible.slice(0, -1).join(", ")}, and ${visible[visible.length - 1]}`;
+    return missing.length > visible.length ? `${list}, plus ${missing.length - visible.length} more` : list;
+  }
+
   function renderContentReadiness(readiness) {
     const alert = element("contentReadinessAlert");
     if (!readiness || readiness.state === "green" || readiness.target === 0) {
@@ -2107,21 +2341,22 @@
     }
     alert.hidden = false;
     alert.dataset.state = readiness.state;
-    element("contentReadinessTitle").textContent = readiness.state === "critical" && readiness.currentPlanDay
-      ? "Today's study notes need attention"
-      : "Upcoming study notes need attention";
+    const firstReady = Boolean(readiness.firstReport && readiness.firstReport.prepared);
+    const firstLabel = readiness.startsTomorrow ? "Tomorrow's study" : "The first scheduled study";
+    element("contentReadinessTitle").textContent = firstReady
+      ? `${firstLabel} is ready`
+      : `${firstLabel} needs attention`;
     if (contentDiagnosticsArePrivateToOwner()) {
       const gap = readiness.nextGapEntry;
-      const gapDescription = gap ? `${titleForEntry(gap)} (${gap.readingId})` : "the next scheduled reading";
-      element("contentReadinessMessage").textContent = readiness.state === "critical"
-        ? `${gapDescription} does not yet have a full study. Scripture and discussion remain available.`
-        : `${readiness.consecutiveReady} of the next ${readiness.target} full studies are ready. ${gapDescription} is the first gap.`;
+      const gapDescription = preparationEntryDescription(gap);
+      const missing = conciseMissingComponents(readiness.nextGapReport);
+      element("contentReadinessMessage").textContent = firstReady
+        ? `${preparationEntryDescription(readiness.firstEntry)} is fully prepared. The first later gap is ${gapDescription}; it is missing ${missing}.`
+        : `${gapDescription} is missing ${missing}. Its configured ESV passage and discussion remain available while the study material is completed.`;
     } else {
-      element("contentReadinessMessage").textContent = readiness.state === "critical"
-        ? readiness.currentPlanDay
-          ? "Today's commentary is delayed. Scripture and discussion remain available."
-          : "An upcoming commentary is still being prepared."
-        : "An upcoming commentary is still being prepared; today's available reading is unaffected.";
+      element("contentReadinessMessage").textContent = firstReady
+        ? `${firstLabel} is fully prepared; a later reading is still being prepared.`
+        : `${firstLabel} is still being prepared. Its configured ESV passage and discussion remain available.`;
     }
   }
 
@@ -2628,9 +2863,13 @@
       : "ESV text stays network-only by provider policy";
     const readiness = currentContentReadiness(payloadByReadingId);
     renderContentReadiness(readiness);
-    const readinessMessage = readiness.consecutiveReady < readiness.target
-      ? `Preparation alert: ${readiness.consecutiveReady}/${readiness.target} consecutive full studies are ready from today.`
-      : `${readiness.consecutiveReady} consecutive full studies are ready from today.`;
+    const readinessMessage = readiness.target === 0
+      ? "No advance studies remain in this bridge"
+      : readiness.consecutiveReady < readiness.target
+        ? readiness.consecutiveReady > 0
+          ? `Tomorrow is ready; ${readiness.consecutiveReady}/${readiness.target} consecutive advance studies are fully prepared`
+          : `Tomorrow's full study is not yet prepared`
+        : `${readiness.consecutiveReady} consecutive advance studies are fully prepared`;
     const offlineStatus = element("offlinePackStatus");
     offlineStatus.dataset.state = readiness.state === "green" ? "ready" : "warning";
     offlineStatus.textContent = `${contentCount}/${windowEntries.length} reading records downloaded · ` +
@@ -3505,8 +3744,11 @@
     init,
     parseDateOnly,
     priorityReadingEntries,
+    privatePayloadNeedsBlockingRefresh,
+    privatePayloadRevision,
     privateRecordIsFresh,
     readingContentIsPrepared,
+    readingPreparationReport,
     readingHasActiveComment,
     readerCodeLooksReady,
     normalizedDraftBody,

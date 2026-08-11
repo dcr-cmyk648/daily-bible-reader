@@ -19,7 +19,7 @@ const READINGS = [
   {readingId: "CC-Y3Q4-D054", markdown: "CC-Y3Q4-D054.md", metadata: "CC-Y3Q4-D054.metadata.json", substantive: true},
   {readingId: "CC-Y3Q4-D055", markdown: "CC-Y3Q4-D055.md", metadata: "CC-Y3Q4-D055.metadata.json", substantive: true},
   {readingId: "CC-Y3Q4-D056", markdown: "CC-Y3Q4-D056.md", metadata: "CC-Y3Q4-D056.metadata.json", substantive: true},
-  {readingId: "CC-Y3Q4-D057", markdown: "CC-Y3Q4-D057.md", metadata: "CC-Y3Q4-D057.metadata.json", substantive: true},
+  {readingId: "CC-Y3Q4-D057", markdown: "CC-Y3Q4-D057.md", metadata: "CC-Y3Q4-D057.metadata.json", substantive: true, prepared: true},
   {readingId: "CC-Y3Q4-D058", markdown: "CC-Y3Q4-D058.md", metadata: "CC-Y3Q4-D058.metadata.json", substantive: false},
   {readingId: "CC-Y3Q4-D059", markdown: "CC-Y3Q4-D059.md", metadata: "CC-Y3Q4-D059.metadata.json", substantive: false},
   {readingId: "CC-Y3Q4-D060", markdown: "CC-Y3Q4-D060.md", metadata: "CC-Y3Q4-D060.metadata.json", substantive: false}
@@ -172,7 +172,22 @@ async function main() {
       ).sort();
       assert(JSON.stringify(Object.keys(verseCommentary.records).sort()) === JSON.stringify(expectedRecordIds),
         `${reading.readingId}: attached verse commentary must cover every configured verse exactly once`);
+      if (reading.prepared) {
+        assert(verseCommentary.source_atoms && Object.keys(verseCommentary.source_atoms).length > 0,
+          `${reading.readingId}: prepared verse commentary must carry its exact public-domain source atoms`);
+        Object.entries(verseCommentary.records).forEach(([recordId, record]) => {
+          assert(Array.isArray(record.source_atom_ids) && record.source_atom_ids.length > 0,
+            `${reading.readingId}/${recordId}: prepared verse commentary must cite exact source atoms`);
+          record.source_atom_ids.forEach((atomId) => {
+            const atom = verseCommentary.source_atoms[atomId];
+            assert(atom && typeof atom.text === "string" && atom.text.trim(),
+              `${reading.readingId}/${recordId}: cited source atom ${atomId} is unavailable`);
+          });
+        });
+      }
     }
+    if (reading.prepared) assert(verseCommentary,
+      `${reading.readingId}: an end-to-end prepared chapter requires reviewed verse-by-verse Matthew Henry commentary`);
     const selectedVerse = commentary.verseOfTheDay;
     const selectedPassage = entry && entry.passages.find((passage) =>
       passage.bookId === selectedVerse.bookId && passage.chapter === selectedVerse.chapter
@@ -284,7 +299,7 @@ async function main() {
     });
   }
 
-  process.stdout.write(`Private content validation passed (4 syntheses; 3 explicit placeholders; ${registry.sources.length} registered sources; no stored Scripture).\n`);
+  process.stdout.write(`Private content validation passed (1 end-to-end prepared study; 4 syntheses; 3 explicit placeholders; ${registry.sources.length} registered sources; no stored Scripture).\n`);
 }
 
 main().catch((error) => {

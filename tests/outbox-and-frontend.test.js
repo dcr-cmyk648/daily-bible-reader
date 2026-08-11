@@ -449,47 +449,123 @@ test("cached bootstrap is time-limited and bound to the saved reader identity", 
   assert.equal(app.bootstrapRecordIsFresh(record, Date.parse(record.expiresAt), {authorId: "dustin"}), false);
 });
 
-test("content readiness requires consecutive reviewed studies and exposes the first gap", () => {
-  const ready = (readingId) => ({commentary: {
+test("content readiness requires every end-to-end study component and exposes the first gap", () => {
+  const entry = (readingId, dayIndex) => ({
     readingId,
-    publicationStatus: "draft",
-    generation: {humanReviewStatus: "approved", contentHash: "a".repeat(64)}
-  }});
+    dayIndex,
+    kind: "chapter",
+    bookId: "NAM",
+    chapter: 1,
+    passages: [{bookId: "NAM", chapter: 1, verseCount: 2}]
+  });
+  const sourceIds = ["source-one", "source-two"];
+  const ready = (planEntry) => ({
+    commentary: {
+      schemaVersion: "commentary/v3",
+      commentaryVersion: `${planEntry.readingId}-v1`,
+      readingId: planEntry.readingId,
+      publicationStatus: "draft",
+      dailyIntroduction: {
+        markdown: "Nahum addresses God's patient justice and dependable refuge. Read the chapter as one argument in which judgment on violent power and safety for those who trust God belong together.",
+        sourceIds
+      },
+      commentarySummary: {paragraphs: [{
+        markdown: "The chapter deliberately holds divine patience, power, judgment, and protection together. Its storm imagery is theological rather than decorative: no imperial strength can resist God, yet the same Judge knows those who take refuge in him.",
+        sourceIds
+      }]},
+      practicalTakeaway: {markdown: "Bring one present fear under God's trustworthy rule today.", sourceIds: ["source-one"]},
+      verseOfTheDay: {bookId: "NAM", chapter: 1, verse: 1},
+      comprehensiveSynthesis: {
+        markdown: Array.from({length: 12}, () => "Nahum's opening poem places the fall of predatory power within the character of the covenant God, joining moral seriousness to concrete refuge for faithful people.").join(" "),
+        sourceIds
+      },
+      verseCommentary: {
+        schema_version: "mhc-runtime/v1",
+        source_id: "fabricated-henry-fixture",
+        source_version: "test-v1",
+        source_archive_sha256: "b".repeat(64),
+        source_manifest_ref: "FABRICATED TEST SOURCE",
+        worker_model: "test",
+        prompt_version: "test-v1",
+        generation_timestamp: "2026-08-10T12:00:00Z",
+        validation_status: "valid",
+        review_status: "approved",
+        label: "Matthew Henry — condensed paraphrase",
+        book_id: "NAM",
+        chapter: 1,
+        source_layer_note: "Fabricated source excerpts support this test-only condensation.",
+        source_atoms: {
+          atom1: {source_unit_id: "unit1", source_reference_label: "Test unit 1", text: "Fabricated commentary source text for the first verse."},
+          atom2: {source_unit_id: "unit2", source_reference_label: "Test unit 2", text: "Fabricated commentary source text for the second verse."}
+        },
+        records: {
+          "NAM.1.1": {
+            blurb: "Henry connects divine rule with practical confidence under pressure.",
+            scope_note: "Direct test note.",
+            source_unit_ids: ["unit1"],
+            source_atom_ids: ["atom1"],
+            source_reference_label: "Test unit 1"
+          },
+          "NAM.1.2": {
+            blurb: "Henry treats judgment as morally serious rather than arbitrary force.",
+            scope_note: "Direct test note.",
+            source_unit_ids: ["unit2"],
+            source_atom_ids: ["atom2"],
+            source_reference_label: "Test unit 2"
+          }
+        }
+      },
+      coverage: {consultedCount: 2, includedCount: 2},
+      generation: {humanReviewStatus: "approved", contentHash: "a".repeat(64)}
+    },
+    sources: sourceIds.map((sourceId) => ({
+      sourceId,
+      title: `Fabricated ${sourceId}`,
+      urlOrCitation: `https://example.test/${sourceId}`
+    }))
+  });
   const placeholder = {commentary: {
     readingId: "CC-Y3Q4-D057",
     publicationStatus: "placeholder",
     generation: {humanReviewStatus: "not_started", contentHash: null}
   }};
-  assert.equal(app.readingContentIsPrepared(ready("CC-Y3Q4-D054")), true);
-  assert.equal(app.readingContentIsPrepared(placeholder), false);
-  assert.equal(app.readingContentIsPrepared({commentary: {
-    readingId: "CC-Y3Q4-D055",
-    publicationStatus: "draft",
-    generation: {humanReviewStatus: "in_review", contentHash: "b".repeat(64)}
-  }}), true);
-  assert.equal(app.readingContentIsPrepared({commentary: {
-    readingId: "CC-Y3Q4-D055",
-    publicationStatus: "draft",
-    generation: {humanReviewStatus: "changes_requested", contentHash: "b".repeat(64)}
-  }}), false);
-  assert.equal(app.readingContentIsPrepared({commentary: {
-    readingId: "CC-Y3Q4-D055",
-    publicationStatus: "draft",
-    generation: {humanReviewStatus: "approved", contentHash: null}
-  }}), false);
+  const first = entry("CC-Y3Q4-D054", 1);
+  const complete = ready(first);
+  assert.equal(app.readingContentIsPrepared(complete, first), true);
+  assert.deepEqual(app.readingPreparationReport(complete, first).missingComponentIds, []);
+  assert.equal(app.readingContentIsPrepared(placeholder, first), false);
+  const missingHenry = structuredClone(complete);
+  delete missingHenry.commentary.verseCommentary;
+  assert.equal(app.readingContentIsPrepared(missingHenry, first), false);
+  assert.ok(app.readingPreparationReport(missingHenry, first).missingComponentIds.includes("henry"));
+  const missingFullSource = structuredClone(complete);
+  delete missingFullSource.commentary.verseCommentary.source_atoms.atom1;
+  assert.equal(app.readingContentIsPrepared(missingFullSource, first), false);
+  const missingSources = structuredClone(complete);
+  missingSources.sources = [];
+  assert.equal(app.readingContentIsPrepared(missingSources, first), false);
+  const reviewRejected = structuredClone(complete);
+  reviewRejected.commentary.generation.humanReviewStatus = "changes_requested";
+  assert.equal(app.readingContentIsPrepared(reviewRejected, first), false);
+  assert.equal(app.privatePayloadNeedsBlockingRefresh(placeholder), true);
+  assert.equal(app.privatePayloadNeedsBlockingRefresh(complete), false);
+  const revised = structuredClone(complete);
+  revised.commentary.generation.contentHash = "c".repeat(64);
+  assert.notEqual(app.privatePayloadRevision(complete), app.privatePayloadRevision(revised));
   assert.equal(app.readingContentIsPrepared(null), false);
 
-  const entries = [54, 55, 56, 57].map((day) => ({readingId: `CC-Y3Q4-D0${day}`, dayIndex: day - 53}));
+  const entries = [54, 55, 56, 57].map((day) => entry(`CC-Y3Q4-D0${day}`, day - 53));
   const payloads = new Map([
-    [entries[0].readingId, ready(entries[0].readingId)],
-    [entries[1].readingId, ready(entries[1].readingId)],
+    [entries[0].readingId, ready(entries[0])],
+    [entries[1].readingId, ready(entries[1])],
     [entries[2].readingId, placeholder],
-    [entries[3].readingId, ready(entries[3].readingId)]
+    [entries[3].readingId, ready(entries[3])]
   ]);
   const readiness = app.evaluateContentReadiness(entries, payloads, 0, 3);
   assert.equal(readiness.consecutiveReady, 2);
   assert.equal(readiness.state, "warning");
   assert.equal(readiness.nextGapEntry.readingId, entries[2].readingId);
+  assert.ok(readiness.nextGapReport.missingComponentIds.includes("orientation"));
   assert.equal(app.evaluateContentReadiness(entries, payloads, 2, 3).state, "critical");
   assert.equal(app.evaluateContentReadiness(entries, payloads, 3, 3).state, "green");
   assert.deepEqual(app.evaluateContentReadiness(entries, payloads, entries.length, 3), {
@@ -497,12 +573,16 @@ test("content readiness requires consecutive reviewed studies and exposes the fi
     target: 0,
     readyThroughEntry: null,
     nextGapEntry: null,
+    nextGapReport: null,
+    reports: [],
     state: "green"
   });
 
   const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
-  assert.match(source, /Preparation alert: \$\{readiness\.consecutiveReady\}\/\$\{readiness\.target\}/);
+  assert.match(source, /Tomorrow is ready; \$\{readiness\.consecutiveReady\}\/\$\{readiness\.target\}/);
   assert.match(source, /contentDiagnosticsArePrivateToOwner/);
+  assert.match(source, /privatePayloadNeedsBlockingRefresh\(cached\)/);
+  assert.match(source, /Study updated to the newest version/);
 });
 
 test("selected calendar days show a validated reference and may render session-memory ESV", () => {

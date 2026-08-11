@@ -552,6 +552,9 @@ test("content readiness requires every end-to-end study component and exposes th
   const revised = structuredClone(complete);
   revised.commentary.generation.contentHash = "c".repeat(64);
   assert.notEqual(app.privatePayloadRevision(complete), app.privatePayloadRevision(revised));
+  const revisedHenry = structuredClone(complete);
+  revisedHenry.commentary.verseCommentary.generation_timestamp = "2026-08-11T13:18:26.238Z";
+  assert.notEqual(app.privatePayloadRevision(complete), app.privatePayloadRevision(revisedHenry));
   assert.equal(app.readingContentIsPrepared(null), false);
 
   const entries = [54, 55, 56, 57].map((day) => entry(`CC-Y3Q4-D0${day}`, day - 53));
@@ -579,7 +582,9 @@ test("content readiness requires every end-to-end study component and exposes th
   });
 
   const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
-  assert.match(source, /Tomorrow is ready; \$\{readiness\.consecutiveReady\}\/\$\{readiness\.target\}/);
+  assert.match(source, /The first later gap is \$\{gapDescription\}/);
+  assert.match(source, /offlineStatus\.dataset\.state = contentCount === windowEntries\.length/);
+  assert.doesNotMatch(source, /Tomorrow's full study is not yet prepared/);
   assert.match(source, /contentDiagnosticsArePrivateToOwner/);
   assert.match(source, /privatePayloadNeedsBlockingRefresh\(cached\)/);
   assert.match(source, /Study updated to the newest version/);
@@ -723,6 +728,8 @@ test("daily page puts one uninterrupted executive synthesis first and exposes ci
   assert.match(appSource, /disclosure\.className = "deep-dive-disclosure"/);
   assert.doesNotMatch(appSource, /commentary-summary-paragraph/);
   assert.doesNotMatch(html, /Key commentary insights/);
+  const css = fs.readFileSync(path.join(__dirname, "../app/frontend/styles.css"), "utf8");
+  assert.match(css, /\.commentary-summary,\s*\n\.commentary-body,\s*\n\.takeaway-content\s*\{\s*\n\s*font-family:\s*Georgia/);
   assert.match(appSource, /link\.target = "_blank";/);
   assert.match(appSource, /link\.rel = "noopener noreferrer";/);
 });
@@ -781,7 +788,7 @@ test("editorial contract requires practical prose and confessional evidentiary w
   assert.match(validator, /executive synthesis needs 2–6 connected prose paragraphs/);
   assert.match(validator, /executive synthesis must contain 220–600 words/);
   assert.match(validator, /CC-Y3Q4-D057[^\n]+substantive: true/);
-  assert.match(validator, /4 syntheses; 3 explicit placeholders/);
+  assert.match(validator, /5 syntheses; 2 explicit placeholders/);
   assert.match(validator, /externalSchemas: \{"mhc-runtime\.schema\.json": mhcRuntimeSchema\}/);
   assert.match(validator, /attached verse commentary must cover every configured verse exactly once/);
   assert.doesNotMatch(validator, /main all-sources synthesis must cite every included source/);

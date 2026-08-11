@@ -6,6 +6,7 @@ import {spawnSync} from "node:child_process";
 import path from "node:path";
 import process from "node:process";
 import {inspectText} from "./check-repository-safety.mjs";
+import {syncLatestHenryRuntime} from "./lib/mhc-library-sync.mjs";
 
 const ROOT = process.cwd();
 const OUTPUT = path.join(ROOT, "private-content/bundles/celebration-bridge-review");
@@ -39,7 +40,35 @@ function validatePrivateInputs() {
   if (result.status !== 0) throw new Error((result.stderr || result.stdout || "Private validation failed.").trim());
 }
 
+async function synchronizeAttachedHenry() {
+  const libraryRoot = path.resolve(
+    ROOT,
+    process.env.DBR_MHC_LIBRARY_ROOT || "private-commentary/mhc/stores/library"
+  );
+  const runtimeSchemaPath = path.join(ROOT, "schemas/mhc-runtime.schema.json");
+  const results = [];
+  for (const readingId of READING_IDS) {
+    const metadataPath = path.join(
+      ROOT,
+      `private-content/bridge/celebration-y3q4/${readingId}.metadata.json`
+    );
+    const metadata = JSON.parse(await readFile(metadataPath, "utf8"));
+    if (!metadata.verseCommentary) continue;
+    results.push(await syncLatestHenryRuntime({
+      libraryRoot,
+      readingId,
+      metadataPath,
+      runtimeSchemaPath
+    }));
+  }
+  if (results.length) {
+    const changed = results.filter((result) => result.changed).length;
+    process.stdout.write(`Henry handoff verified ${results.length} prepared readings against the current private catalog (${changed} updated).\n`);
+  }
+}
+
 async function main() {
+  await synchronizeAttachedHenry();
   validatePrivateInputs();
   const prepared = [];
   for (const file of INPUTS) {

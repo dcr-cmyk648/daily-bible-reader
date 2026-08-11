@@ -1,6 +1,6 @@
 # Content automation runbook
 
-Status: deterministic local foundation and one-reading commentary handoff implemented. One real D057 run completed under a stable work order, received a separate explicit manual publication approval, and was verified in private Drive; the generation gate was disabled again before D058. No recurring task, private Drive staging area, or publication automation is enabled.
+Status: deterministic local foundation and one-reading commentary handoff implemented. Bounded D057 and D058 runs completed under stable work orders and were verified in private Drive after manual review/publication authorization. The generation gate is disabled again. No recurring task, private Drive staging area, or publication automation is enabled.
 
 The automation controller is deliberately read-only. It inspects versioned metadata, measures consecutive draft and published buffers, and selects at most one earliest next action. When—and only when—a private policy explicitly enables generation, it can emit a schema-validated one-reading work order for the repo-local `$draft-daily-commentary` skill. Neither command opens commentary bodies, invokes a model, writes Drive, changes the live manifest, or deploys the reader.
 
@@ -50,6 +50,8 @@ node scripts/content-automation.mjs work-order \
 ```
 
 The packet explicitly names `$draft-daily-commentary`. The skill works only in `private-content/automation/staging/<readingId>/`, prepares commentary, synthesis, registry/coverage, and validation artifacts, and leaves them `unreviewed`. It cannot publish or select a second reading. The primary task must execute the full main-commentary workflow itself. Do not invoke Spark here; the exact ChatGPT-authenticated `gpt-5.3-codex-spark` model is reserved for mass verse-by-verse Matthew Henry condensation. Preserve the D057 Spark-assisted artifact as a one-off calibration rather than a reusable precedent.
+
+At the private publication boundary, `npm run bundle:private` follows the Matthew Henry library's checksum-bound `current.json` pointer and synchronizes every already attached chapter layer before validation. It therefore picks up a reviewed background regeneration instead of retaining an embedded older version. A corrupt pointer/catalog, checksum mismatch, missing reading, or newer `unreviewed` artifact fails closed. `DBR_MHC_LIBRARY_ROOT` may point a clean integration checkout at the canonical private library; it must never point into a public build or be committed as configuration.
 
 ## Decision rules
 

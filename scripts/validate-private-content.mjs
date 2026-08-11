@@ -20,7 +20,7 @@ const READINGS = [
   {readingId: "CC-Y3Q4-D055", markdown: "CC-Y3Q4-D055.md", metadata: "CC-Y3Q4-D055.metadata.json", substantive: true},
   {readingId: "CC-Y3Q4-D056", markdown: "CC-Y3Q4-D056.md", metadata: "CC-Y3Q4-D056.metadata.json", substantive: true},
   {readingId: "CC-Y3Q4-D057", markdown: "CC-Y3Q4-D057.md", metadata: "CC-Y3Q4-D057.metadata.json", substantive: true, prepared: true},
-  {readingId: "CC-Y3Q4-D058", markdown: "CC-Y3Q4-D058.md", metadata: "CC-Y3Q4-D058.metadata.json", substantive: false},
+  {readingId: "CC-Y3Q4-D058", markdown: "CC-Y3Q4-D058.md", metadata: "CC-Y3Q4-D058.metadata.json", substantive: true, prepared: true},
   {readingId: "CC-Y3Q4-D059", markdown: "CC-Y3Q4-D059.md", metadata: "CC-Y3Q4-D059.metadata.json", substantive: false},
   {readingId: "CC-Y3Q4-D060", markdown: "CC-Y3Q4-D060.md", metadata: "CC-Y3Q4-D060.metadata.json", substantive: false}
 ];
@@ -317,7 +317,7 @@ async function main() {
     });
   }
 
-  process.stdout.write(`Private content validation passed (1 end-to-end prepared study; 4 syntheses; 3 explicit placeholders; ${registry.sources.length} registered sources; no stored Scripture).\n`);
+  process.stdout.write(`Private content validation passed (2 end-to-end prepared studies; 5 syntheses; 2 explicit placeholders; ${registry.sources.length} registered sources; no stored Scripture).\n`);
 }
 
 main().catch((error) => {

@@ -2905,17 +2905,10 @@
       : "ESV text stays network-only by provider policy";
     const readiness = currentContentReadiness(payloadByReadingId);
     renderContentReadiness(readiness);
-    const readinessMessage = readiness.target === 0
-      ? "No advance studies remain in this bridge"
-      : readiness.consecutiveReady < readiness.target
-        ? readiness.consecutiveReady > 0
-          ? `Tomorrow is ready; ${readiness.consecutiveReady}/${readiness.target} consecutive advance studies are fully prepared`
-          : `Tomorrow's full study is not yet prepared`
-        : `${readiness.consecutiveReady} consecutive advance studies are fully prepared`;
     const offlineStatus = element("offlinePackStatus");
-    offlineStatus.dataset.state = readiness.state === "green" ? "ready" : "warning";
+    offlineStatus.dataset.state = contentCount === windowEntries.length ? "ready" : "warning";
     offlineStatus.textContent = `${contentCount}/${windowEntries.length} reading records downloaded · ` +
-      `${scriptureStatus} · ${readinessMessage}`;
+      scriptureStatus;
     await updateCacheInspector();
   }
 

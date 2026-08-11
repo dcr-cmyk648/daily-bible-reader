@@ -27,6 +27,7 @@
     "mhc:next:spark": "node scripts/mhc-pipeline.mjs schedule-next",
     "mhc:window:dry-run": "node scripts/mhc-pipeline.mjs schedule-window --dry-run",
     "mhc:window:spark": "node scripts/mhc-pipeline.mjs schedule-window",
+    "mhc:sync-latest": "node scripts/sync-latest-mhc.mjs",
     "mhc:intro:luna": "node scripts/mhc-pipeline.mjs generate --book GEN --book-intro --model gpt-5.6-luna",
     "mhc:validate:luna": "node scripts/mhc-pipeline.mjs validate --book GEN --chapter 1 --model gpt-5.6-luna",
     "mhc:export:luna": "node scripts/mhc-pipeline.mjs export --book GEN --chapter 1 --model gpt-5.6-luna",

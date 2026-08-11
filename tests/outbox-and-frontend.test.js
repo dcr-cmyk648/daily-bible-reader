@@ -701,7 +701,7 @@ test("clear-data flow resets the visible offline-pack status", () => {
 test("daily page puts one cited article first and exposes custom collapsed deep-study sections after discussion", () => {
   const html = fs.readFileSync(path.join(__dirname, "../app/frontend/index.html"), "utf8");
   const appSource = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
-  const orderedIds = ["overviewContent", "scriptureSection", "commentarySummary", "verseOfDaySection", "practicalTakeaway", "mainSourceDisclosure", "discussionCard", "finishReading", "extendedStudy", "comprehensiveSynthesis", "sourceAuditDisclosure", "sourceList"];
+  const orderedIds = ["overviewContent", "scriptureSection", "commentarySummary", "verseOfDaySection", "practicalTakeaway", "mainSourceDisclosure", "discussionCard", "finishReading", "extendedStudy", "comprehensiveSynthesis", "deepSourceDisclosure", "sourceAuditDisclosure", "sourceList"];
   const positions = orderedIds.map((id) => html.indexOf(`id="${id}"`));
   positions.forEach((position) => assert.ok(position >= 0));
   for (let index = 1; index < positions.length; index += 1) assert.ok(positions[index] > positions[index - 1]);
@@ -711,9 +711,11 @@ test("daily page puts one cited article first and exposes custom collapsed deep-
   assert.match(html, /<details id="mainSourceDisclosure"/);
   assert.equal(/<details id="sourceAuditDisclosure"[^>]*\sopen(?:\s|>)/.test(html), false);
   assert.match(appSource, /renderSourceCitations\(dailyIntroduction\.sourceIds/);
-  assert.match(appSource, /renderCommentarySummary\(commentarySummary, citationIndex\)/);
+  assert.match(appSource, /renderCommentarySummary\(commentarySummary, mainCitationIndex\)/);
   assert.match(appSource, /renderInlineCitedParagraph\(paragraph\.markdown/);
-  assert.match(appSource, /renderComprehensiveSections\(comprehensive\)/);
+  assert.match(appSource, /renderComprehensiveSections\(comprehensive, deepCitationIndex\)/);
+  assert.match(appSource, /renderSafeMarkdown\(section\.markdown, body, citationIndex\)/);
+  assert.match(appSource, /renderDeepSourceNotes\(deepCitationIndex\)/);
   assert.match(appSource, /disclosure\.className = "deep-dive-disclosure"/);
   assert.doesNotMatch(appSource, /commentary-summary-paragraph/);
   assert.doesNotMatch(html, /Key commentary insights/);
@@ -781,13 +783,21 @@ test("editorial contract requires practical prose and confessional evidentiary w
 
 test("numeric commentary citations reveal and focus the numbered source note", () => {
   const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
+  const html = fs.readFileSync(path.join(__dirname, "../app/frontend/index.html"), "utf8");
+  const validator = fs.readFileSync(path.join(__dirname, "../scripts/validate-private-content.mjs"), "utf8");
   assert.match(source, /function appendNumberedCitations\(container, sourceIds, citationIndex\)/);
+  assert.match(source, /function appendInlineCitedText\(container, markdown, citationIndex\)/);
   assert.match(source, /function renderInlineCitedParagraph\(markdown, sourceIds, citationIndex, container\)/);
+  assert.match(source, /function buildPageCitationIndex\(summary, practicalTakeaway, comprehensive, sources\)/);
   assert.match(source, /\{\\\{cite:/);
   assert.match(source, /disclosure\.open = true;/);
+  assert.match(source, /link\.href = `#\$\{citationIndex\.noteIdPrefix\}-\$\{number\}`/);
   assert.match(source, /note\.scrollIntoView\(\{block: "center"\}\);/);
   assert.match(source, /note\.focus\(\{preventScroll: true\}\);/);
   assert.match(source, /function normalizedComprehensiveSynthesis\(commentary, isBookIntroduction\)/);
+  assert.match(html, /id="deepSourceDisclosure"/);
+  assert.match(html, /id="deepSourceNotes"/);
+  assert.match(validator, /prepared comprehensive inline citations must cover its declared source set/);
 });
 
 test("the entire application uses an explicit dark palette with readable controls", () => {

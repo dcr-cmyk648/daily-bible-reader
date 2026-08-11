@@ -262,6 +262,16 @@ async function main() {
       assert(commentary.comprehensiveSynthesis.sourceIds.length === commentary.coverage.includedCount,
         `${reading.readingId}: comprehensive synthesis must include every cited source`);
       assertStandalone(commentary.comprehensiveSynthesis.markdown, `${reading.readingId}/comprehensive-synthesis`);
+      const inlineDeepSourceIds = [...new Set(inlineCitationIds(markdown))].sort();
+      const declaredDeepSourceIds = [...commentary.comprehensiveSynthesis.sourceIds].sort();
+      inlineDeepSourceIds.forEach((sourceId) => assert(declaredDeepSourceIds.includes(sourceId),
+        `${reading.readingId}: comprehensive synthesis cites undeclared source ${sourceId}`));
+      if (reading.prepared) {
+        assert(inlineDeepSourceIds.length > 0,
+          `${reading.readingId}: an end-to-end prepared comprehensive synthesis needs inline citation markers`);
+        assert(JSON.stringify(inlineDeepSourceIds) === JSON.stringify(declaredDeepSourceIds),
+          `${reading.readingId}: prepared comprehensive inline citations must cover its declared source set`);
+      }
     } else {
       const sectionTitles = commentary.sections.map((section) => section.title);
       assert(sectionTitles.length === EXPECTED_HEADINGS.length, `${reading.readingId}: metadata section count`);

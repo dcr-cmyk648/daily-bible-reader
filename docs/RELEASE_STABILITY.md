@@ -40,7 +40,7 @@ The line ceiling is deliberately far below the observed failure and close to the
 
 1. Production stays on the last phone-confirmed immutable version until a canary passes.
 2. A stability canary changes one delivery variable at a time.
-3. `npm run check`, generated-line enforcement, repository safety, exact artifact inspection, and public-backend status/denial probing must pass before canary.
+3. `npm run check`, generated-line enforcement, repository safety, exact artifact inspection, and public-backend status/denial probing must pass before canary. A commentary-rendering release also verifies at mobile width that no internal citation marker is visible, every numbered link reaches a source note, and citation text creates no horizontal overflow.
 4. A new shell architecture or storage/RPC migration requires an installed-iPhone cold launch, close/reopen, calendar open, one Scripture open, and one write test before promotion.
 5. Ordinary content publication does not redeploy the shell. After the hybrid's initial phone gate, routine frontend changes publish a verified immutable Pages release; phone testing is reserved for launcher, storage, authentication, backend-contract, and deployment changes instead of every small UI edit.
 6. Failed releases are never promoted. The stable production deployment stays pinned to version 23; a Pages/token rollback restores the last good immutable Pages/PWA release or reopens the retained version-23 installation.

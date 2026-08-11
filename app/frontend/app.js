@@ -903,7 +903,31 @@
     container.appendChild(node);
   }
 
-  function renderSafeMarkdown(markdown, container) {
+  function appendInlineCitedText(container, markdown, citationIndex) {
+    const text = String(markdown || "");
+    if (!citationIndex) {
+      container.textContent = text;
+      return 0;
+    }
+    const pattern = /\{\{cite:([A-Za-z0-9_.:-]+(?:\s*,\s*[A-Za-z0-9_.:-]+)*)\}\}/g;
+    let cursor = 0;
+    let match;
+    let markerCount = 0;
+    while ((match = pattern.exec(text))) {
+      container.appendChild(root.document.createTextNode(text.slice(cursor, match.index)));
+      const citations = createNumberedCitations(
+        match[1].split(",").map((sourceId) => sourceId.trim()),
+        citationIndex
+      );
+      if (citations) container.appendChild(citations);
+      cursor = pattern.lastIndex;
+      markerCount += 1;
+    }
+    container.appendChild(root.document.createTextNode(text.slice(cursor)));
+    return markerCount;
+  }
+
+  function renderSafeMarkdown(markdown, container, citationIndex) {
     container.replaceChildren();
     const lines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
     let list = null;
@@ -913,7 +937,7 @@
     function flushParagraph() {
       if (!paragraph.length) return;
       const node = root.document.createElement("p");
-      node.textContent = paragraph.join(" ");
+      appendInlineCitedText(node, paragraph.join(" "), citationIndex);
       container.appendChild(node);
       paragraph = [];
     }
@@ -936,7 +960,7 @@
         flushList();
         const level = heading[1].length === 3 ? "h3" : "h4";
         const node = root.document.createElement(level);
-        node.textContent = heading[2];
+        appendInlineCitedText(node, heading[2], citationIndex);
         container.appendChild(node);
         return;
       }
@@ -951,7 +975,7 @@
           container.appendChild(list);
         }
         const item = root.document.createElement("li");
-        item.textContent = (bullet || numbered)[1];
+        appendInlineCitedText(item, (bullet || numbered)[1], citationIndex);
         list.appendChild(item);
         return;
       }
@@ -1000,13 +1024,14 @@
     };
   }
 
-  function buildMainCitationIndex(summary, practicalTakeaway, sources) {
+  function buildPageCitationIndex(summary, practicalTakeaway, comprehensive, sources) {
     const sourceById = new Map((sources || []).map((source) => [source.sourceId, source]));
     const orderedIds = [];
     const numberById = new Map();
     const units = [
       ...((summary && summary.paragraphs) || []),
-      practicalTakeaway || {sourceIds: []}
+      practicalTakeaway || {sourceIds: []},
+      comprehensive || {sourceIds: []}
     ];
     units.forEach((unit) => {
       const sourceIds = [
@@ -1020,6 +1045,10 @@
       });
     });
     return {numberById, orderedIds, sourceById};
+  }
+
+  function citationTargetIndex(index, disclosureId, noteIdPrefix) {
+    return {...index, disclosureId, noteIdPrefix};
   }
 
   function inlineCitationIds(markdown) {
@@ -1043,14 +1072,14 @@
     numbers.forEach((number, index) => {
       if (index) citations.appendChild(root.document.createTextNode(","));
       const link = root.document.createElement("a");
-      link.href = `#main-source-note-${number}`;
+      link.href = `#${citationIndex.noteIdPrefix}-${number}`;
       link.textContent = String(number);
       link.setAttribute("aria-label", `Source ${number}`);
       link.addEventListener("click", (event) => {
         event.preventDefault();
-        const disclosure = element("mainSourceDisclosure");
+        const disclosure = element(citationIndex.disclosureId);
         disclosure.open = true;
-        const note = element(`main-source-note-${number}`);
+        const note = element(`${citationIndex.noteIdPrefix}-${number}`);
         if (note) {
           note.scrollIntoView({block: "center"});
           note.focus({preventScroll: true});
@@ -1072,40 +1101,25 @@
 
   function renderInlineCitedParagraph(markdown, sourceIds, citationIndex, container) {
     const paragraph = root.document.createElement("p");
-    const text = String(markdown || "");
-    const pattern = /\{\{cite:([A-Za-z0-9_.:-]+(?:\s*,\s*[A-Za-z0-9_.:-]+)*)\}\}/g;
-    let cursor = 0;
-    let match;
-    let markerCount = 0;
-    while ((match = pattern.exec(text))) {
-      paragraph.appendChild(root.document.createTextNode(text.slice(cursor, match.index)));
-      const citations = createNumberedCitations(
-        match[1].split(",").map((sourceId) => sourceId.trim()),
-        citationIndex
-      );
-      if (citations) paragraph.appendChild(citations);
-      cursor = pattern.lastIndex;
-      markerCount += 1;
-    }
-    paragraph.appendChild(root.document.createTextNode(text.slice(cursor)));
+    const markerCount = appendInlineCitedText(paragraph, markdown, citationIndex);
     container.appendChild(paragraph);
     if (!markerCount) appendNumberedCitations(paragraph, sourceIds, citationIndex);
   }
 
-  function renderMainSourceNotes(citationIndex) {
-    const disclosure = element("mainSourceDisclosure");
-    const list = element("mainSourceNotes");
+  function renderNumberedSourceNotes(citationIndex, options) {
+    const disclosure = element(options.disclosureId);
+    const list = element(options.listId);
     list.replaceChildren();
     disclosure.open = false;
     disclosure.hidden = citationIndex.orderedIds.length === 0;
-    element("mainSourceSummary").textContent = citationIndex.orderedIds.length
-      ? `${citationIndex.orderedIds.length} sources cited in the main synthesis`
-      : "Sources cited in the main synthesis";
+    element(options.summaryId).textContent = citationIndex.orderedIds.length
+      ? `${citationIndex.orderedIds.length} ${options.populatedLabel}`
+      : options.emptyLabel;
     citationIndex.orderedIds.forEach((sourceId, index) => {
       const source = citationIndex.sourceById.get(sourceId);
       const item = root.document.createElement("li");
       const number = index + 1;
-      item.id = `main-source-note-${number}`;
+      item.id = `${options.noteIdPrefix}-${number}`;
       item.tabIndex = -1;
       const author = root.document.createElement("span");
       author.className = "main-source-author";
@@ -1127,6 +1141,28 @@
       const details = [source.edition, source.publicationDate].filter(Boolean).join(" · ");
       if (details) item.appendChild(root.document.createTextNode(` (${details})`));
       list.appendChild(item);
+    });
+  }
+
+  function renderMainSourceNotes(citationIndex) {
+    renderNumberedSourceNotes(citationIndex, {
+      disclosureId: "mainSourceDisclosure",
+      listId: "mainSourceNotes",
+      summaryId: "mainSourceSummary",
+      noteIdPrefix: "main-source-note",
+      populatedLabel: "numbered sources used on this page",
+      emptyLabel: "Sources used on this page"
+    });
+  }
+
+  function renderDeepSourceNotes(citationIndex) {
+    renderNumberedSourceNotes(citationIndex, {
+      disclosureId: "deepSourceDisclosure",
+      listId: "deepSourceNotes",
+      summaryId: "deepSourceSummary",
+      noteIdPrefix: "deep-source-note",
+      populatedLabel: "numbered sources used on this page",
+      emptyLabel: "Sources used on this page"
     });
   }
 
@@ -1178,7 +1214,7 @@
     return sections;
   }
 
-  function renderComprehensiveSections(comprehensive) {
+  function renderComprehensiveSections(comprehensive, citationIndex) {
     const container = element("comprehensiveSynthesis");
     container.replaceChildren();
     const sections = splitComprehensiveSections(comprehensive.markdown);
@@ -1195,7 +1231,7 @@
         : section.title;
       const body = root.document.createElement("div");
       body.className = "commentary-body deep-dive-body";
-      renderSafeMarkdown(section.markdown, body);
+      renderSafeMarkdown(section.markdown, body, citationIndex);
       disclosure.append(summary, body);
       container.appendChild(disclosure);
     });
@@ -1417,17 +1453,20 @@
     const practicalTakeaway = commentary.practicalTakeaway || {markdown: "Practical takeaway unavailable.", sourceIds: []};
     state.verseOfTheDay = normalizedVerseOfTheDay(commentary.verseOfTheDay, state.currentEntry);
     prepareVerseOfTheDay();
-    const citationIndex = buildMainCitationIndex(commentarySummary, practicalTakeaway, sources || []);
-    renderCommentarySummary(commentarySummary, citationIndex);
+    const comprehensive = normalizedComprehensiveSynthesis(commentary, isBookIntroduction);
+    const pageCitationIndex = buildPageCitationIndex(commentarySummary, practicalTakeaway, comprehensive, sources || []);
+    const mainCitationIndex = citationTargetIndex(pageCitationIndex, "mainSourceDisclosure", "main-source-note");
+    const deepCitationIndex = citationTargetIndex(pageCitationIndex, "deepSourceDisclosure", "deep-source-note");
+    renderCommentarySummary(commentarySummary, mainCitationIndex);
     renderSafeMarkdown(practicalTakeaway.markdown, element("practicalTakeaway"));
-    appendNumberedCitations(element("practicalTakeaway"), practicalTakeaway.sourceIds, citationIndex);
-    renderMainSourceNotes(citationIndex);
+    appendNumberedCitations(element("practicalTakeaway"), practicalTakeaway.sourceIds, mainCitationIndex);
+    renderMainSourceNotes(mainCitationIndex);
 
     const badge = element("reviewBadge");
     badge.textContent = commentary.publicationStatus === "placeholder" ? "Commentary being prepared" : commentary.publicationStatus;
 
-    const comprehensive = normalizedComprehensiveSynthesis(commentary, isBookIntroduction);
-    renderComprehensiveSections(comprehensive);
+    renderComprehensiveSections(comprehensive, deepCitationIndex);
+    renderDeepSourceNotes(deepCitationIndex);
     element("sourceAuditDisclosure").open = false;
 
     renderCoverage(commentary.coverage || {}, sources || []);

@@ -975,8 +975,8 @@ export function resolveScheduledReading({plan, appConfig, now = new Date(), toda
 }
 
 export function resolveScheduledWindow({plan, appConfig, now = new Date(), today, daysAhead = 2}) {
-  if (!Number.isInteger(daysAhead) || daysAhead < 0 || daysAhead > 2) {
-    throw new Error("The rolling audit window is deliberately limited to today through two days ahead.");
+  if (!Number.isInteger(daysAhead) || daysAhead < 0 || daysAhead > 7) {
+    throw new Error("The rolling audit window is limited to today through seven days ahead.");
   }
   const context = scheduleContext({plan, appConfig, now, today});
   const targets = Array.from({length: daysAhead + 1}, (_, offset) =>

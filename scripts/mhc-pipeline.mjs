@@ -64,7 +64,7 @@ Usage:
   node scripts/mhc-pipeline.mjs export --book GEN --chapter 1 --model MODEL
   node scripts/mhc-pipeline.mjs export --book GEN --book-intro --model MODEL
   node scripts/mhc-pipeline.mjs schedule-next [--today YYYY-MM-DD] [--days-ahead 0|1] [--dry-run]
-  node scripts/mhc-pipeline.mjs schedule-window [--today YYYY-MM-DD] [--days-ahead 0|1|2] [--dry-run]
+  node scripts/mhc-pipeline.mjs schedule-window [--today YYYY-MM-DD] [--days-ahead 0..7] [--dry-run]
 
 Future full-corpus mode is locked unless both flags are present:
   node scripts/mhc-pipeline.mjs generate --all --confirm-full-corpus --model MODEL
@@ -916,7 +916,7 @@ async function scheduleWindow(options) {
     plan,
     appConfig,
     today: options.today,
-    daysAhead: options.daysAhead === undefined ? 2 : options.daysAhead
+    daysAhead: options.daysAhead === undefined ? 7 : options.daysAhead
   });
   if (options.dryRun) {
     process.stdout.write(`Rolling Spark window ${window.windowStartDate} through ${window.windowEndDate}:\n`);

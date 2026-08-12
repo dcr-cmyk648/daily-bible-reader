@@ -1,6 +1,6 @@
 # Daily content automation runbook
 
-This runbook operates the authorized one-reading T+7 lane. It never runs inside the reader and never uses an OpenAI API key. Work in an isolated task worktree. Resolve the canonical checkout from the absolute Git common directory, then link the ignored private directories to its existing stores. Verify those targets before creating the ignored links; never create empty substitute stores. Do not use a dirty shared worktree.
+This runbook operates the authorized one-reading T+7 lane. It never runs inside the reader and never uses an OpenAI API key. Work in an isolated task worktree. A scheduled run may begin in a dirty shared checkout; leave it untouched, fetch and verify `origin/main`, and create a temporary worktree from that ref. Resolve the canonical checkout from the absolute Git common directory, then link the ignored private directories to its existing stores. Verify those targets before creating the ignored links; never create empty substitute stores. Do not generate or publish from the dirty shared checkout.
 
 ## 1. Resolve the exact work order
 

@@ -69,9 +69,27 @@ If tracked code/plan metadata changed, commit intentionally, push `main`, publis
 
 Report the reading/date, source categories and limitations, Henry generation/review status, tests/gates, Drive readback, resulting ready-through date, commit, Pages release, and any failure. Do not include private IDs, reader codes, comments, ESV wording, or copyrighted source text.
 
+## 5. Opportunistic Henry backfill
+
+After—and only after—the T+7 lane is complete and verified, inspect the one-reading backfill queue:
+
+```sh
+npm run mhc:backfill:next
+```
+
+Validate the result against `schemas/mhc-backfill-work-order.schema.json`. The queue scans active-plan order and selects only the earliest manifest-published chapter whose metadata still contains a valid `henrySourceLink`. It verifies the checksum-bound private Henry library before reporting one of four actions:
+
+- `none`: no published fallback remains;
+- `generate_review_publish`: the artifact is missing, so persist the embedded one-reading ensure request in ignored private storage and invoke `npm run mhc:ensure`;
+- `review_attach_publish`: a generated artifact exists but still needs complete atom-by-atom primary review and approval;
+- `attach_publish`: a previously approved artifact needs only checksum revalidation, attachment, validation, and atomic private republication.
+
+If the T+7 lane already observed a Spark quota/availability failure, do not probe Spark again in the backfill lane. A backfill quota failure is a successful safe deferral: retain the full-source link, leave the library and live manifest unchanged, and let the next daily task select the same reading. Never substitute another model. A successful generation still requires the same hash-bound review process described above. `npm run mhc:sync-latest` removes the fallback only while attaching the verified reviewed runtime. Upload versioned metadata first and replace the private manifest last. This lane never rewrites the orientation, multi-source synthesis, takeaway, or Scripture reference.
+
 ## Failure rules
 
 - A non-quota generation, citation, review, or validation failure leaves the reading non-ready and retries the same work order. A confirmed Spark availability/quota failure uses only the documented full-source-link fallback.
+- Backfill is lower priority than the end-to-end T+7 lane, processes at most one separate reading per run, and retains its working fallback on every failure.
 - A Drive upload failure leaves the old manifest current.
 - Missing local private storage or a dirty checkout stops publication.
 - The workflow never skips to a later reading, generates a second reading, reads comments, calls the ESV API, or weakens a gate.

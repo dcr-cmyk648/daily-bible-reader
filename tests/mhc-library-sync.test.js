@@ -93,7 +93,13 @@ async function fixture(reviewStatus = "in_review") {
   const metadataPath = path.join(root, "metadata.json");
   await fs.writeFile(metadataPath, `${JSON.stringify({
     readingId: "CC-Y3Q4-D058",
-    verseCommentary: runtime("mhc-worker/v1", "2026-08-10T12:00:00Z")
+    verseCommentary: runtime("mhc-worker/v1", "2026-08-10T12:00:00Z"),
+    henrySourceLink: {
+      sourceId: "fabricated-source",
+      title: "Fabricated fallback link",
+      url: "https://example.test/fabricated-commentary",
+      note: "FABRICATED TEST FALLBACK ONLY."
+    }
   }, null, 2)}\n`);
   return {root, metadataPath, latest};
 }
@@ -110,6 +116,7 @@ test("Henry handoff follows the checksum-bound current catalog and replaces a st
   assert.equal(result.changed, true);
   const metadata = JSON.parse(await fs.readFile(data.metadataPath, "utf8"));
   assert.deepEqual(metadata.verseCommentary, data.latest);
+  assert.equal(metadata.henrySourceLink, undefined);
   await assert.doesNotReject(() => syncLatestHenryRuntime({
     libraryRoot: data.root,
     readingId: "CC-Y3Q4-D058",

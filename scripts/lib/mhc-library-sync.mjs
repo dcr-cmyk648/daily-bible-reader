@@ -107,7 +107,8 @@ export async function syncLatestHenryRuntime({
   const current = Array.isArray(metadata.verseCommentaries)
     ? metadata.verseCommentaries
     : metadata.verseCommentary ? [metadata.verseCommentary] : [];
-  const changed = !sameHenryRuntime(current, latest.runtimes);
+  const fallbackPresent = metadata.henrySourceLink !== undefined;
+  const changed = !sameHenryRuntime(current, latest.runtimes) || fallbackPresent;
   if (checkOnly && changed) {
     const attachedVersion = current.length
       ? current.map((runtime) => `${runtime.prompt_version} at ${runtime.generation_timestamp}`).join(", ")
@@ -124,6 +125,7 @@ export async function syncLatestHenryRuntime({
       metadata.verseCommentaries = latest.runtimes;
       delete metadata.verseCommentary;
     }
+    delete metadata.henrySourceLink;
     await writeFile(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`, "utf8");
   }
   return {

@@ -9,6 +9,8 @@ This is an offline, resumable source-preprocessing workflow. It never runs AI in
 
 The rolling lane was first exercised on 2026-08-10 for D056–D058, then used under direct review for D059–D064 during the authorized T+7 fill. Generated Henry shards, audits, and portable-store files remain ignored and private; only hash-bound reviewed runtime layers may be attached to published reading metadata. Spark quota was unavailable for D065, so no model substitution occurred and that reading uses a verified link to the complete public-domain chapter commentary.
 
+The deterministic `mhc-backfill-work-order/v1` queue revisits that kind of fallback after the daily T+7 study is safe. It selects at most one earliest published fallback, probes Spark only through the existing one-reading ensure contract, and leaves the full-source link untouched on quota or any later failure. A successful artifact still passes complete atom-by-atom primary review before `sync-latest-mhc` replaces the fallback and the private metadata/manifest are republished atomically. The queue never changes the broader commentary synthesis.
+
 ## Selected source and rights record
 
 The selected input is CrossWire's **Matthew Henry's Complete Commentary on the Whole Bible** SWORD module `MHC`, version 2.2, dated 2022-08-29. CrossWire describes it as `Public Domain--Copy Freely`, and the module configuration states `DistributionLicense=Public Domain`.
@@ -132,6 +134,9 @@ The ordinary content-generation thread should use `mhc-ensure-request/v1` when i
 
 ```sh
 npm run mhc:ensure -- --request /path/to/mhc-ensure-request.json
+
+# Inspect the one-reading published-fallback backfill queue.
+npm run mhc:backfill:next
 ```
 
 The controller verifies the catalog pointer, catalog hash/schema, immutable reading hash/schema, chapter runtime, and exact requested plan membership before treating a reading as available. It invokes Spark only for missing or invalid targets, merges successful results into the durable catalog without replacing the latest rolling-window manifest, verifies the complete requested set again, and writes `mhc-ensure-result/v1`. If every reading already exists, no model call occurs. If generation fails or Codex is unavailable, prior stored and published content remains intact.

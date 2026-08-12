@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daily-bible-reader.local/schemas/mhc-backfill-work-order.schema.json",
+  "title": "One-reading opportunistic Matthew Henry backfill work order",
+  "type": "object",
+  "required": ["schemaVersion", "workOrderId", "issuedAt", "planVersion", "action", "reasonCode", "reading", "metadataPath", "manifestEntryPresent", "libraryState", "sparkRequest", "guards"],
+  "properties": {
+    "schemaVersion": {"const": "mhc-backfill-work-order/v1"},
+    "workOrderId": {"type": "string", "pattern": "^MHBWO-[a-f0-9]{24}$"},
+    "issuedAt": {"type": "string", "format": "date-time"},
+    "planVersion": {"type": "string", "minLength": 1, "maxLength": 200},
+    "action": {"enum": ["none", "generate_review_publish", "review_attach_publish", "attach_publish"]},
+    "reasonCode": {"enum": ["no_published_henry_fallbacks", "spark_generation_required", "generated_artifact_requires_review", "reviewed_artifact_requires_approval", "approved_artifact_ready_to_attach"]},
+    "reading": {"type": ["object", "null"]},
+    "metadataPath": {
+      "type": ["string", "null"],
+      "pattern": "^private-content/bridge/celebration-y3q4/[A-Za-z0-9][A-Za-z0-9._:-]{2,159}\\.metadata\\.json$"
+    },
+    "manifestEntryPresent": {"type": "boolean"},
+    "libraryState": {"type": ["string", "null"], "enum": ["missing", "unreviewed", "in_review", "approved", null]},
+    "sparkRequest": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "required": ["schema_version", "request_id", "plan_version", "requested_by", "start_reading_id", "reading_count", "worker_model", "generation_mode", "only_if_missing", "reason"],
+          "properties": {
+            "schema_version": {"const": "mhc-ensure-request/v1"},
+            "request_id": {"type": "string", "pattern": "^henry-backfill-[a-z0-9._:-]{3,80}-v1$"},
+            "plan_version": {"type": "string", "minLength": 1, "maxLength": 200},
+            "requested_by": {"const": "daily-study-backfill"},
+            "start_reading_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,159}$"},
+            "reading_count": {"const": 1},
+            "worker_model": {"const": "gpt-5.3-codex-spark"},
+            "generation_mode": {"const": "spark-autonomous-chunked-two-stage/v4"},
+            "only_if_missing": {"const": true},
+            "reason": {"type": "string", "minLength": 1, "maxLength": 500}
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "guards": {
+      "type": "object",
+      "required": ["maxReadings", "tPlus7PreparationFirst", "publishedFallbackOnly", "sparkModel", "substituteModelAllowed", "primaryReviewRequired", "contentFirstManifestLast", "scriptureTextStored", "runtimeAiAllowed", "commentsReadable"],
+      "properties": {
+        "maxReadings": {"const": 1},
+        "tPlus7PreparationFirst": {"const": true},
+        "publishedFallbackOnly": {"const": true},
+        "sparkModel": {"const": "gpt-5.3-codex-spark"},
+        "substituteModelAllowed": {"const": false},
+        "primaryReviewRequired": {"const": true},
+        "contentFirstManifestLast": {"const": true},
+        "scriptureTextStored": {"const": false},
+        "runtimeAiAllowed": {"const": false},
+        "commentsReadable": {"const": false}
+      },
+      "additionalProperties": false
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"action": {"const": "none"}}},
+      "then": {"properties": {"reading": {"type": "null"}, "metadataPath": {"type": "null"}, "manifestEntryPresent": {"const": false}, "libraryState": {"type": "null"}, "sparkRequest": {"type": "null"}}}
+    },
+    {
+      "if": {"properties": {"action": {"const": "generate_review_publish"}}},
+      "then": {"properties": {"reading": {"type": "object"}, "metadataPath": {"type": "string"}, "manifestEntryPresent": {"const": true}, "libraryState": {"const": "missing"}, "sparkRequest": {"type": "object"}}}
+    },
+    {
+      "if": {"properties": {"action": {"enum": ["review_attach_publish", "attach_publish"]}}},
+      "then": {"properties": {"reading": {"type": "object"}, "metadataPath": {"type": "string"}, "manifestEntryPresent": {"const": true}, "sparkRequest": {"type": "null"}}}
+    }
+  ],
+  "additionalProperties": false
+}

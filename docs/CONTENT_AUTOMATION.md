@@ -19,6 +19,8 @@ At `America/Detroit` day D, exactly D+7 must be end-to-end ready:
 
 The deterministic `npm run study:next` command emits a `rolling-study-work-order/v1` for only that T+7 reading. It returns `none` when the local canonical copy, reviewed Henry layer or valid quota fallback, exact content hash, and manifest entry already agree. It returns `prepare_publish` when any component is absent or stale. Tomorrow's order may require appending exactly one plan entry; `npm run bridge:extend -- --source-day N` refuses gaps and anything beyond the current T+7 authorization.
 
+Once that primary work order is verified complete, `npm run mhc:backfill:next` may emit one lower-priority `mhc-backfill-work-order/v1`. It selects the earliest live chapter still using the full-commentary fallback and either requests one exact Spark artifact, routes an existing artifact through primary review, or attaches an already approved artifact. This queue never substitutes a model, never rewrites the multi-source study, and never blocks the next day's preparation. A quota result leaves the fallback and manifest unchanged for another daily attempt.
+
 ## Publication boundary
 
 The user has authorized this narrow recurring publication lane. It does not authorize bulk generation or unrelated external changes.
@@ -42,6 +44,6 @@ The calendar warning is computed from complete end-to-end records, not merely fi
 
 ## Scheduling
 
-The active desktop Codex task **Prepare Daily Bible Reader T+7** runs daily at 3:00 a.m. Detroit time as a new chat bound to the BibleApp project. The current desktop build could not bind a new task to an app-managed worktree or starting branch, so isolation is enforced by the checked prompt itself: each run leaves the shared checkout untouched, fetches `origin/main`, and creates and verifies a temporary worktree from that ref before editing. The Mac must remain powered on and the app must be running for local-project work. The prompt is `prompts/daily-study-scheduled-task.md`; it deliberately re-reads repository policy, emits the exact work order, operates on at most one reading, and reports a no-op when T+7 is already complete. Scheduled-task behavior was checked against the official OpenAI documentation on 2026-08-12: <https://learn.chatgpt.com/docs/automations>.
+The active desktop Codex task **Prepare Daily Bible Reader T+7** runs daily at 3:00 a.m. Detroit time as a new chat bound to the BibleApp project. The current desktop build could not bind a new task to an app-managed worktree or starting branch, so isolation is enforced by the checked prompt itself: each run leaves the shared checkout untouched, fetches `origin/main`, and creates and verifies a temporary worktree from that ref before editing. The Mac must remain powered on and the app must be running for local-project work. The prompt is `prompts/daily-study-scheduled-task.md`; it deliberately re-reads repository policy, completes or verifies exactly one T+7 reading first, then may process at most one separate Henry-only fallback backfill. Scheduled-task behavior was checked against the official OpenAI documentation on 2026-08-12: <https://learn.chatgpt.com/docs/automations>.
 
 Review the first several run reports. The scope remains one T+7 reading even after the workflow proves reliable.

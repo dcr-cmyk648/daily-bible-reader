@@ -50,6 +50,8 @@ The second command may invoke the exact authenticated `gpt-5.3-codex-spark` work
 
 Spark is reserved for that high-volume, verse-by-verse Matthew Henry lane. The broader `$draft-daily-commentary` workflow stays in the primary Codex task: it conducts source research, weighs evidence, writes and edits the synthesis, verifies citations, validates the package, and performs any separately approved publication. The preserved D057 Spark-assisted run is a one-off calibration, not the future workflow.
 
+After the daily T+7 study is verified ready, `npm run mhc:backfill:next` may select one earlier published reading that used the full-Henry link during a Spark quota outage. The active scheduled task tries one exact Spark conversion, retains the link unchanged if capacity is still unavailable, and replaces it only after complete source-atom review, validation, and atomic private republication. This backfill never calls AI from the reader and never rewrites the broader daily synthesis.
+
 The local mock is Dustin. The primary Pages PWA initially prompts for one of two high-entropy reader codes; the backend hashes it and derives the fixed display identity (`Dustin` or `Shane`) without trusting a browser-supplied name. After successful verification, the raw code remains only in IndexedDB on that device. Closing and reopening normally does not require it again. Rotating the configured hash invalidates that code, and **Forget reader code** removes the local copy. The accessing-user Apps Script rollback additionally binds its enrollment to the signed-in Google account. Generate the two codes only on a trusted local terminal:
 
 ```sh

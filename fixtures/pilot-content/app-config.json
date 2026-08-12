@@ -4,10 +4,11 @@
   "sharedStartDateMode": "fixed",
   "timezone": "America/Detroit",
   "futureReadingsLocked": true,
-  "futureLookaheadDays": 6,
+  "futureLookaheadDays": 7,
   "pastReadingsAvailable": true,
-  "offlineReadingWindowDays": 7,
-  "privateContentCacheMaxAgeSeconds": 604800,
+  "offlineReadingWindowDays": 8,
+  "preparedAheadDays": 7,
+  "privateContentCacheMaxAgeSeconds": 1209600,
   "testingOverrideEnabled": true,
   "testingReadingIds": [
     "CC-Y3Q4-D054",
@@ -16,7 +17,12 @@
     "CC-Y3Q4-D057",
     "CC-Y3Q4-D058",
     "CC-Y3Q4-D059",
-    "CC-Y3Q4-D060"
+    "CC-Y3Q4-D060",
+    "CC-Y3Q4-D061",
+    "CC-Y3Q4-D062",
+    "CC-Y3Q4-D063",
+    "CC-Y3Q4-D064",
+    "CC-Y3Q4-D065"
   ],
   "displayTranslation": "ESV",
   "runtimeAI": false

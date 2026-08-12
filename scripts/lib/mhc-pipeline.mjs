@@ -22,9 +22,9 @@ export const COMMENTARY_SCHEMA_VERSION = "mhc-commentary/v2";
 export const BOOK_INTRO_SCHEMA_VERSION = "mhc-book-intro/v1";
 export const RUNTIME_SCHEMA_VERSION = "mhc-runtime/v1";
 export const FACT_BRIEF_SCHEMA_VERSION = "mhc-fact-brief/v2";
-export const FACT_PROMPT_VERSION = "mhc-fact-extractor/v5";
+export const FACT_PROMPT_VERSION = "mhc-fact-extractor/v8";
 export const LEGACY_PROMPT_VERSION = "mhc-worker/v11";
-export const PROMPT_VERSION = "mhc-autonomous-writer/v2";
+export const PROMPT_VERSION = "mhc-autonomous-writer/v5";
 export const AUTONOMOUS_GENERATION_MODE = "spark-autonomous-chunked-two-stage/v4";
 
 export const OSIS_BOOKS = Object.freeze([
@@ -576,7 +576,16 @@ const SOURCE_REPORTING_PATTERNS = Object.freeze([
   /\b(?:is|are|was|were)\s+called\s+(?:as\s+)?(?:a|an|the)\b/i,
   /\b(?:is|are|was|were)\s+likened\s+(?:as|to)\b/i,
   /\b(?:the|this)\s+image(?:ry)?\s+is\b/i
+  ,/\b(?:he|Henry)\s+(?:adds?|summarizes?|uses?|identifies?|describes?|compares?)\b/i
+  ,/\b(?:the\s+)?treatment\s+(?:adds?|summarizes?|uses?|identifies?|describes?|compares?)\b/i
 ]);
+
+const ARCHAIC_TERM_PATTERN = /\b(?:doth|hast|hath|ravin|shalt|thee|thereof|thereunto|thine|thou|thy|whelps?|whereof|wherein|whence|whither|ye)\b/i;
+
+function findArchaicTerm(value) {
+  const match = ARCHAIC_TERM_PATTERN.exec(String(value || ""));
+  return match && match[0] || null;
+}
 
 export function findSourceReportingPhrase(value) {
   const text = String(value || "");
@@ -587,16 +596,43 @@ export function findSourceReportingPhrase(value) {
   return null;
 }
 
+function explicitVerseMarkerGroups(value) {
+  const text = String(value || "");
+  const groups = [];
+  const pattern = /\b(?:v|ver|verse)s?\.?\s*(\d+)(?:\s*[-–]\s*(\d+))?(?:\s*(?:,|&|and)\s*(\d+))?/giu;
+  for (const match of text.matchAll(pattern)) {
+    const prefix = text.slice(Math.max(0, match.index - 32), match.index);
+    // Henry commonly prints cross-references such as “Isa. v. 8”. In that
+    // construction `v.` is a Roman chapter number, not a marker for verse 8 of
+    // the chapter being abridged. Treat a marker immediately following a
+    // capitalized book abbreviation as a cross-reference and ignore it.
+    if (/(?:^|[\s(])(?:[1-3]\s*)?[A-Z][A-Za-z]{1,14}\.\s*$/u.test(prefix)) continue;
+    const values = [];
+    const start = Number(match[1]);
+    const end = match[2] ? Number(match[2]) : start;
+    for (let verse = start; verse <= end; verse += 1) values.push(verse);
+    if (match[3]) values.push(Number(match[3]));
+    if (values.length) groups.push(values);
+  }
+  return groups;
+}
+
 function atomExplicitlyMarksVerse(atom, verse) {
-  const text = String(atom && atom.text || "");
-  return new RegExp(`\\b(?:v|ver|verse)\\.?\\s*${verse}\\b`, "i").test(text);
+  return explicitVerseMarkerGroups(atom && atom.text).some((group) => group.includes(verse));
+}
+
+function atomVerseMarkerSpecificity(atom, verse) {
+  const matchingGroups = explicitVerseMarkerGroups(atom && atom.text)
+    .filter((group) => group.includes(verse));
+  if (!matchingGroups.length) return null;
+  return Math.min(...matchingGroups.map((group) => group.length));
 }
 
 function explicitIdentityTermsForAtom(atom) {
   const text = String(atom && atom.text || "");
   const terms = [];
   const patterns = [
-    /[—–]\s*([A-Z][A-Za-z'’-]{2,})\b/g,
+    /[—–]\s*([A-Z][A-Za-z'’-]{2,})\b(?=\s+and\s+(?:his|her|their)\s+(?:spokesman|son|daughter|brother|sister|father|mother|wife|husband)\b)/g,
     /\b(?:named|called|namely|spokesman|son|daughter|brother|sister|father|mother|wife|husband)\s+([A-Z][A-Za-z'’-]{2,})\b/g
   ];
   const ignored = new Set(["And", "But", "For", "He", "Her", "His", "It", "Its", "She", "That", "The", "Their", "There", "These", "They", "This", "Those", "We", "What", "When", "Where", "Who"]);
@@ -611,7 +647,10 @@ function explicitIdentityTermsForAtom(atom) {
 function explicitRelationsForAtom(atom) {
   const text = String(atom && atom.text || "");
   const relations = [];
-  const pattern = /\b(?:his|her|their)\s+(spokesman|son|daughter|brother|sister|father|mother|wife|husband)\s+([A-Z][A-Za-z'’-]{2,})\b/gi;
+  // The related person must be an actual capitalized proper name. Do not use the
+  // case-insensitive flag here: it caused ordinary continuations such as
+  // “her husband wears …” to be misread as a person named “Wears.”
+  const pattern = /\b(?:[Hh]is|[Hh]er|[Tt]heir)\s+(spokesman|son|daughter|brother|sister|father|mother|wife|husband)\s+([A-Z][A-Za-z'’-]{2,})\b/g;
   for (const match of text.matchAll(pattern)) {
     const relation = match[1].toLowerCase();
     const term = match[2];
@@ -763,6 +802,8 @@ export function validateChapterOutput(output, {
     }
     const citedAtomTexts = citedAtomIds.map((atomId) => byAtomId.get(atomId)).filter(Boolean).map((atom) => atom.text);
     if (expectedMetadata.prompt_version === PROMPT_VERSION) {
+      const archaic = findArchaicTerm(record.blurb);
+      if (archaic) errors.push(`$.records[${index}].blurb: archaic term ${JSON.stringify(archaic)} must be paraphrased into contemporary English`);
       unsupportedMidSentenceCapitalizedTerms(record.blurb, citedAtomTexts).forEach((term) => {
         errors.push(`$.records[${index}].blurb: capitalized term ${JSON.stringify(term)} is absent from the cited source atoms`);
       });
@@ -880,9 +921,20 @@ export function buildChapterJobSpec({
     if (!coverage.sourceUnits.length) {
       throw new Error(`${verseId} has no normalized source unit or deterministic surrounding treatment.`);
     }
-    const targetMarkedAtoms = coverage.sourceUnits.flatMap((unit) =>
-      unit.source_atoms.filter((atom) => atomExplicitlyMarksVerse(atom, index + 1))
+    const markedAtoms = coverage.sourceUnits.flatMap((unit) =>
+      unit.source_atoms
+        .map((atom) => ({atom, specificity: atomVerseMarkerSpecificity(atom, index + 1)}))
+        .filter(({specificity}) => specificity !== null)
     );
+    // A broad block heading such as “vv. 8–11” should not become an additional
+    // mandatory fact when a later atom explicitly treats “v. 9”. Require every
+    // equally specific marker, but prefer the narrowest marker available.
+    const bestMarkerSpecificity = markedAtoms.length
+      ? Math.min(...markedAtoms.map(({specificity}) => specificity))
+      : null;
+    const targetMarkedAtoms = markedAtoms
+      .filter(({specificity}) => specificity === bestMarkerSpecificity)
+      .map(({atom}) => atom);
     return {
       verse_id: verseId,
       required_coverage_type: coverage.coverageType,
@@ -1044,8 +1096,12 @@ export function hydrateFactBriefEvidence(factBrief, {chapterJobSpec}) {
   const snippets = new Map(chapterJobSpec.sourceUnits.flatMap((unit) =>
     (unit.source_atoms || []).flatMap((atom) => evidenceSnippetsForAtom(atom).map((snippet) => [snippet.source_snippet_id, snippet]))
   ));
+  const atoms = new Map(chapterJobSpec.sourceUnits.flatMap((unit) =>
+    (unit.source_atoms || []).map((atom) => [atom.source_atom_id, atom])
+  ));
   const requestByVerse = new Map(chapterJobSpec.requestedRecords.map((record) => [record.verse_id, record]));
   const stopWords = new Set(["a", "an", "and", "are", "as", "at", "be", "been", "but", "by", "for", "from", "had", "has", "have", "he", "her", "his", "i", "in", "is", "it", "its", "of", "on", "or", "that", "the", "their", "them", "they", "this", "to", "was", "were", "will", "with"]);
+  const actorIgnored = new Set(["And", "But", "For", "From", "He", "Her", "His", "It", "Its", "Let", "Nor", "Or", "She", "So", "That", "The", "Their", "There", "These", "They", "This", "Those", "Thus", "We", "What", "When", "Where", "Who", "Yet"]);
   const wordTokens = (value) => String(value || "").match(/[A-Za-z0-9]+(?:[’'-][A-Za-z0-9]+)*/gu) || [];
   const qualificationAnchor = (evidence, qualification) => {
     if (qualification === "some_understand") {
@@ -1053,7 +1109,7 @@ export function hydrateFactBriefEvidence(factBrief, {chapterJobSpec}) {
       return match && match[0];
     }
     if (qualification === "alternative") {
-      const match = /\b(?:or it may|either|another|otherwise|or)\b/i.exec(evidence);
+      const match = /\b(?:some\s+read|or it may|either|another|otherwise|or)\b/i.exec(evidence);
       return match && match[0];
     }
     if (qualification === "uncertain") {
@@ -1064,10 +1120,10 @@ export function hydrateFactBriefEvidence(factBrief, {chapterJobSpec}) {
   };
   const chooseShortAnchor = (term, statement, evidence) => {
     const cleanTerm = normalizedEvidence(term);
-    if (wordCount(cleanTerm) === 1 && containsRequiredTerm(evidence, cleanTerm)) return cleanTerm;
+    if (wordCount(cleanTerm) === 1 && !findArchaicTerm(cleanTerm) && containsRequiredTerm(evidence, cleanTerm)) return cleanTerm;
     const statementWords = new Set(wordTokens(statement).map((word) => word.toLowerCase()));
-    const candidates = wordTokens(cleanTerm).filter((word) => containsRequiredTerm(evidence, word));
-    const fallback = wordTokens(evidence).filter((word) => statementWords.has(word.toLowerCase()));
+    const candidates = wordTokens(cleanTerm).filter((word) => !findArchaicTerm(word) && containsRequiredTerm(evidence, word));
+    const fallback = wordTokens(evidence).filter((word) => !findArchaicTerm(word) && statementWords.has(word.toLowerCase()));
     const pool = candidates.length ? candidates : fallback;
     const ranked = pool.filter((word) => !stopWords.has(word.toLowerCase())).sort((left, right) => {
       const properDifference = Number(/^[A-Z]/.test(right)) - Number(/^[A-Z]/.test(left));
@@ -1084,7 +1140,65 @@ export function hydrateFactBriefEvidence(factBrief, {chapterJobSpec}) {
       .filter((term, index, values) => values.findIndex((candidate) => candidate.toLowerCase() === term.toLowerCase()) === index)
       .slice(0, 3);
   };
+  const commonPrefixLength = (left, right) => {
+    let index = 0;
+    while (index < left.length && index < right.length && left[index] === right[index]) index += 1;
+    return index;
+  };
+  const namedActorAnchors = (statement, evidence) => {
+    const statementWords = wordTokens(statement).map((word) => word.toLowerCase().replace(/[’']s$/u, ""));
+    const result = [];
+    for (const match of String(evidence || "").matchAll(/\b[A-Z][A-Za-z'’-]{2,}\b/gu)) {
+      const term = match[0].replace(/[’']s$/u, "");
+      if (actorIgnored.has(term) || result.includes(term)) continue;
+      const normalizedTerm = term.toLowerCase();
+      const namedInStatement = statementWords.some((word) => word === normalizedTerm ||
+        (Math.min(word.length, normalizedTerm.length) >= 6 && commonPrefixLength(word, normalizedTerm) >= 6));
+      if (namedInStatement) result.push(term);
+    }
+    return result.slice(0, 2);
+  };
+  const deterministicVerseRelevance = (fact, request) => {
+    const snippet = snippets.get(fact.source_snippet_id);
+    const atom = atoms.get(fact.source_atom_id);
+    if (!snippet || !atom) return fact.verse_relevance;
+    const targetVerse = Number(String(request && request.verse_id || "").split(".").at(-1));
+    let activeMarkers = [];
+    const allSnippets = evidenceSnippetsForAtom(atom);
+    let markerCarry = "";
+    for (const candidate of allSnippets) {
+      if (candidate.sequence > snippet.sequence) break;
+      const combinedMarkerText = `${markerCarry} ${candidate.text}`;
+      const groups = explicitVerseMarkerGroups(combinedMarkerText);
+      if (groups.length) activeMarkers = groups.at(-1);
+      markerCarry = String(candidate.text || "").slice(-16);
+    }
+    if (activeMarkers.includes(targetVerse)) return "target_marker";
+    if (activeMarkers.length) return "shared_range_context";
+    if ((request && request.verse_anchor_terms || []).some((term) => containsRequiredTerm(snippet.text, term))) {
+      return "anchor_supported";
+    }
+    return "shared_range_context";
+  };
   for (const brief of hydrated && hydrated.verse_briefs || []) {
+    const request = requestByVerse.get(brief.verse_id);
+    const facts = Array.isArray(brief.facts) ? brief.facts : [];
+    facts.forEach((fact) => { fact.verse_relevance = deterministicVerseRelevance(fact, request); });
+    const isTranslatedMaxim = (fact) => {
+      const snippet = snippets.get(fact.source_snippet_id);
+      const evidence = String(snippet && snippet.text || fact.evidence_quote || "");
+      const pieces = evidence.split(/[—–]/u);
+      if (pieces.length !== 2) return false;
+      const leftWords = wordCount(pieces[0]);
+      const rightWords = wordCount(pieces[1]);
+      return leftWords >= 2 && leftWords <= 8 && rightWords >= 3;
+    };
+    const hasDirectTargetFact = facts.some((fact) => fact.verse_relevance === "target_marker" && !isTranslatedMaxim(fact));
+    brief.facts = facts
+      .filter((fact) => !isTranslatedMaxim(fact))
+      .filter((fact) => !hasDirectTargetFact || fact.verse_relevance !== "shared_range_context")
+      .slice(0, 3)
+      .map((fact, index) => ({...fact, fact_id: `${brief.verse_id}:f${String(index + 1).padStart(2, "0")}`}));
     for (const fact of brief.facts || []) {
       const snippet = snippets.get(fact.source_snippet_id);
       if (snippet && snippet.source_atom_id === fact.source_atom_id) {
@@ -1100,9 +1214,9 @@ export function hydrateFactBriefEvidence(factBrief, {chapterJobSpec}) {
           const fallback = chooseShortAnchor("", fact.statement, snippet.text);
           if (fallback) fact.must_include_terms = [fallback];
         }
+        for (const actor of namedActorAnchors(fact.statement, snippet.text).reverse()) addProtectedAnchor(fact, actor);
       }
     }
-    const request = requestByVerse.get(brief.verse_id);
     const requiredFacts = (brief.facts || []).filter((fact) => fact.importance === "required");
     for (const identity of request && request.required_explicit_identity_terms || []) {
       const fact = requiredFacts.find((candidate) => containsRequiredTerm(candidate.evidence_quote, identity));
@@ -1180,7 +1294,7 @@ function textContainsQualificationCue(value, qualification) {
     return /\bsome\b.{0,50}\b(?:think|understand|take|make|interpret)(?:s|ing|ed)?\b/i.test(text);
   }
   if (qualification === "alternative") {
-    return /\b(?:or|either|alternative|another|otherwise|others?)\b/i.test(text);
+    return /\b(?:some\s+read|or|either|alternative|another|otherwise|others?)\b/i.test(text);
   }
   return /\b(?:may|might|perhaps|possibly|probably|likely|uncertain|unclear)\b/i.test(text);
 }
@@ -1226,6 +1340,7 @@ export function validateFactBrief(factBrief, {schema, chapterJobSpec}) {
       errors.push(`$.verse_briefs[${briefIndex}].source_reference_label: is not permitted for ${brief.verse_id}`);
     }
     const facts = Array.isArray(brief.facts) ? brief.facts : [];
+    if (facts.length > 3) errors.push(`$.verse_briefs[${briefIndex}].facts: no more than three material facts are allowed`);
     if (!facts.some((fact) => fact.importance === "required")) {
       errors.push(`$.verse_briefs[${briefIndex}].facts: at least one required fact is needed`);
     }
@@ -1262,6 +1377,12 @@ export function validateFactBrief(factBrief, {schema, chapterJobSpec}) {
       unsupportedMidSentenceCapitalizedTerms(fact.statement, [atom && atom.text || ""]).forEach((term) => {
         errors.push(`${factPath}.statement: capitalized term ${JSON.stringify(term)} is absent from the cited atom`);
       });
+      // Fact statements are private accuracy scaffolding. The reader-facing writer and
+      // chapter admission reject source-reporting language after paraphrase.
+      const archaicFactTerm = findArchaicTerm(fact.statement);
+      if (archaicFactTerm) {
+        errors.push(`${factPath}.statement: archaic term ${JSON.stringify(archaicFactTerm)} must be paraphrased into contemporary English`);
+      }
       const statementKey = normalizedEvidence(fact.statement).toLowerCase();
       if (normalizedStatements.has(statementKey)) errors.push(`${factPath}.statement: duplicate fact statement within ${brief.verse_id}`);
       normalizedStatements.add(statementKey);

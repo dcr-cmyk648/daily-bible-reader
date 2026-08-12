@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daily-bible-reader.local/schemas/rolling-study-work-order.schema.json",
+  "title": "One-reading T+7 preparation and private publication work order",
+  "type": "object",
+  "required": ["schemaVersion", "workOrderId", "issuedAt", "effectiveDate", "targetDate", "daysAhead", "planVersion", "action", "reasonCode", "planExtensionRequired", "reading", "requiredComponents", "guards"],
+  "properties": {
+    "schemaVersion": {"const": "rolling-study-work-order/v1"},
+    "workOrderId": {"type": "string", "pattern": "^RSWO-[a-f0-9]{24}$"},
+    "issuedAt": {"type": "string", "format": "date-time"},
+    "effectiveDate": {"type": "string", "format": "date"},
+    "targetDate": {"type": "string", "format": "date"},
+    "daysAhead": {"const": 7},
+    "planVersion": {"type": "string", "minLength": 1, "maxLength": 200},
+    "action": {"enum": ["prepare_publish", "none", "plan_complete"]},
+    "reasonCode": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{1,99}$"},
+    "planExtensionRequired": {"type": "boolean"},
+    "reading": {"type": ["object", "null"]},
+    "requiredComponents": {
+      "const": ["planEntry", "orientation", "scriptureReference", "verseOfTheDayReference", "commentarySummary", "practicalTakeaway", "comprehensiveSynthesis", "sourceRegistryAndCoverage", "reviewedMatthewHenryVerseLayerOrVerifiedFullTextLink", "commentaryMetadataAndHash", "privateManifestPromotion", "driveReadbackVerification"]
+    },
+    "guards": {
+      "type": "object",
+      "required": ["maxReadings", "exactDaysAhead", "privateContentOnly", "publishAfterPrimaryReview", "requiredReviewStatus", "contentFirstManifestLast", "scriptureTextStored", "runtimeAiAllowed", "commentsReadable", "sparkScope"],
+      "properties": {
+        "maxReadings": {"const": 1},
+        "exactDaysAhead": {"const": 7},
+        "privateContentOnly": {"const": true},
+        "publishAfterPrimaryReview": {"const": true},
+        "requiredReviewStatus": {"const": "in_review"},
+        "contentFirstManifestLast": {"const": true},
+        "scriptureTextStored": {"const": false},
+        "runtimeAiAllowed": {"const": false},
+        "commentsReadable": {"const": false},
+        "sparkScope": {"const": "matthew_henry_verse_layer_only"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

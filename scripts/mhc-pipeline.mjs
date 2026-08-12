@@ -37,6 +37,7 @@ import {
   validateFactBrief
 } from "./lib/mhc-pipeline.mjs";
 import {validateAgainstSchema} from "./lib/schema-validator.mjs";
+import {applyScheduleReviewToResults} from "./lib/mhc-review.mjs";
 
 const ROOT = process.cwd();
 const PRIVATE_ROOT = path.join(ROOT, "private-commentary", "mhc");
@@ -50,8 +51,8 @@ const REVIEW_QUEUE_PATH = path.join(PRIVATE_ROOT, "review-queue.jsonl");
 const ACTIVE_PLAN_PATH = path.join(ROOT, "fixtures", "pilot-content", "plan.json");
 const ACTIVE_CONFIG_PATH = path.join(ROOT, "fixtures", "pilot-content", "app-config.json");
 const BOUNDARIES_PATH = path.join(ROOT, "config", "mhc-source-boundaries.json");
-const PROMPT_PATH = path.join(ROOT, "prompts", "mhc-autonomous-writer-v2.md");
-const FACT_PROMPT_PATH = path.join(ROOT, "prompts", "mhc-fact-extractor-v5.md");
+const PROMPT_PATH = path.join(ROOT, "prompts", "mhc-autonomous-writer-v5.md");
+const FACT_PROMPT_PATH = path.join(ROOT, "prompts", "mhc-fact-extractor-v8.md");
 const LEGACY_PROMPT_PATH = path.join(ROOT, "prompts", "mhc-worker-v11.md");
 const CHAPTER_SCHEMA_PATH = path.join(ROOT, "schemas", "mhc-commentary-output.schema.json");
 const FACT_BRIEF_SCHEMA_PATH = path.join(ROOT, "schemas", "mhc-fact-brief.schema.json");
@@ -758,7 +759,13 @@ async function generateValidatedFactChunk({
   let checked = await exists(outputPath)
     ? await validateFactBriefFile({outputPath, schema: factSchema, chapterJobSpec: chunk.chapterJobSpec})
     : null;
-  if (checked && checked.validation.valid) return {...checked, outputPath, chunkDir, skipped: true};
+  if (checked && checked.validation.valid) {
+    // A controller correction can make a previously rejected cached chunk valid.
+    // Keep the persisted diagnostic in sync with the validation just performed so
+    // later audits do not report an obsolete failure for a reused sound chunk.
+    await writeJson(path.join(chunkDir, "validation.json"), checked.validation);
+    return {...checked, outputPath, chunkDir, skipped: true};
+  }
   if (dryRun) return {output: null, validation: null, outputPath, chunkDir, dryRun: true};
 
   const tryVerseFallback = async () => {
@@ -804,10 +811,9 @@ async function generateValidatedFactChunk({
     return {...mergedChecked, outputPath, chunkDir, skipped: false, fallbackApplied: true};
   };
 
-  if (checked && await exists(path.join(chunkDir, "validation.json"))) {
+  if (checked && await exists(path.join(chunkDir, "validation.json")) && allowFallback) {
     const fallback = await tryVerseFallback();
     if (fallback) return fallback;
-    throw new Error(`Spark fact chunk ${chunk.chunkId} remained invalid after its cached bounded repair.`);
   }
 
   const resumedInvalid = Boolean(checked && checked.output);
@@ -1698,9 +1704,14 @@ function quotedMarkdown(value) {
 }
 
 async function writeScheduleAuditReport(audit, passageResults, reportPath) {
+  const reviewLabel = audit.review_status === "approved"
+    ? "APPROVED FOR ATTACHMENT"
+    : audit.review_status === "in_review"
+      ? "CODEX-REVIEWED FOR PRIVATE PILOT ATTACHMENT"
+      : "UNREVIEWED — NOT PUBLISHED";
   const lines = [
     `# ${audit.reading_id} Matthew Henry Spark audit`, "",
-    `**UNREVIEWED — NOT PUBLISHED.** Prepared for ${audit.schedule_date} with ${audit.worker_model}.`, "",
+    `**${reviewLabel}.** Prepared for ${audit.schedule_date} with ${audit.worker_model}.`, "",
     "The schedule's main commentary was not changed. Spark independently extracted a deterministically validated fact ledger, wrote each condensation from that ledger, and performed its own second-pass review. This report contains the admitted condensations and exact public-domain Henry commentary atoms cited for them; embedded Scripture transcription was removed before generation.", ""
   ];
   for (const result of passageResults) {
@@ -1848,7 +1859,28 @@ async function scheduleReading(options, {plan, target}) {
       passageResults.push(passageResult);
       audit.passages.push(Object.fromEntries(Object.entries(passageResult).filter(([key]) => key !== "runtime")));
     }
-    audit.audit_status = options.dryRun ? "prepared" : audit.human_review.status === "required" ? "unreviewed" : "in_review";
+    if (!options.dryRun) {
+      const canonicalReviewPath = path.join(auditPaths.root, "review.json");
+      if (await exists(canonicalReviewPath)) {
+        const review = await readJson(canonicalReviewPath);
+        const reviewSchema = await readJson(path.join(ROOT, "schemas", "mhc-schedule-review.schema.json"));
+        const reviewErrors = validateAgainstSchema(review, reviewSchema);
+        if (reviewErrors.length) {
+          throw new Error(`Stored schedule review is invalid:\n- ${reviewErrors.join("\n- ")}`);
+        }
+        const promoted = applyScheduleReviewToResults({review, audit, passageResults});
+        audit.review_status = promoted.audit.review_status;
+        audit.human_review = promoted.audit.human_review;
+        audit.passages = promoted.audit.passages;
+        passageResults.splice(0, passageResults.length, ...promoted.passageResults);
+        for (const result of passageResults) {
+          const runtimePath = path.join(PRIVATE_ROOT, audit.passages.find((passage) =>
+            passage.book_id === result.book_id && passage.chapter === result.chapter).runtime_path);
+          await writeJson(runtimePath, result.runtime);
+        }
+      }
+    }
+    audit.audit_status = options.dryRun ? "prepared" : audit.human_review.status === "required" ? "unreviewed" : audit.human_review.status;
     audit.completed_at = new Date().toISOString();
     await writeJson(auditPaths.manifest, audit);
     await writeScheduleAuditReport(audit, passageResults, auditPaths.report);
@@ -2441,5 +2473,7 @@ export {
   resultMetrics,
   scheduleNext,
   scheduleWindow,
+  writePortableStores,
+  writeScheduleAuditReport,
   validateSaved
 };

@@ -25,7 +25,7 @@
 | Comment/highlight collision or retry | Script lock; append-only revisions; base revision; idempotent client request IDs | A native Sheet editor can still alter rows outside the app |
 | Arbitrary Drive/Sheet access | IDs exist only in Script Properties/manifest; browser sends stable reading IDs; compiled RPC allowlist | Owner-executed code has Dustin's declared scope authority; a server bug has more consequence than under per-user Drive gating |
 | Accidental Git/Pages publication | ignore rules; staged hook; safety scanner; exact public-path exception; build inspection | Heuristic Scripture/secret detection is not a proof; human diff review remains required |
-| Browser-cache persistence | seven-day private-content ceiling; reader-bound bootstrap; explicit-denial purge; clear/forget controls; no ESV persistence | Offline revocation is delayed; device/OS backups are outside app control |
+| Browser-cache persistence | eight-record current-plus-seven target; fourteen-day maximum age; reader/plan/version-bound bootstrap; explicit-denial purge; clear/forget controls; no ESV persistence | Offline revocation is delayed; device/OS backups are outside app control |
 | Stale or substituted shell | immutable content-addressed assets; SHA-384; network-first navigation/manifest; complete service-worker install; explicit activation; prior cache retained | GitHub account/repository security is part of the trust boundary |
 | Drive/Sheet sharing mistake | app never relies on link sharing; audit exact accounts; private IDs never public | Token PWA reads as owner even if Shane's Drive share is removed; token rotation is the application revocation action |
 

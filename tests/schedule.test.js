@@ -6,7 +6,7 @@ const path = require("node:path");
 const app = require("../app/frontend/app.js");
 const plan = JSON.parse(fs.readFileSync(path.join(__dirname, "../fixtures/pilot-content/plan.json"), "utf8"));
 const config = JSON.parse(fs.readFileSync(path.join(__dirname, "../fixtures/pilot-content/app-config.json"), "utf8"));
-const bridgeIds = Array.from({length: 7}, (_, index) => `CC-Y3Q4-D${String(index + 54).padStart(3, "0")}`);
+const bridgeIds = plan.entries.map((entry) => entry.readingId);
 
 function fixedConfig(overrides = {}) {
   return {...config, sharedStartDateMode: "fixed", testingOverrideEnabled: false, ...overrides};
@@ -23,9 +23,9 @@ function syntheticPlan(count = 4) {
   };
 }
 
-test("bridge preserves source days 54–60 with stable daily IDs and grouped chapters", () => {
+test("bridge preserves a contiguous rolling source-day sequence with stable IDs and grouped chapters", () => {
   assert.deepEqual(plan.entries.map((entry) => entry.readingId), bridgeIds);
-  assert.deepEqual(plan.entries.map((entry) => entry.sourcePlanDay), [54, 55, 56, 57, 58, 59, 60]);
+  assert.deepEqual(plan.entries.map((entry) => entry.sourcePlanDay), Array.from({length: plan.entries.length}, (_, index) => index + 54));
   assert.deepEqual(plan.entries[0].passages.map((passage) => passage.chapter), [3, 4]);
   assert.deepEqual(plan.entries[1].passages.map((passage) => passage.chapter), [5, 6, 7]);
 });
@@ -70,9 +70,10 @@ test("changing start date changes calendar placement but not stable reading IDs"
   assert.deepEqual(plan.entries.map((entry) => entry.readingId), bridgeIds);
 });
 
-test("six-day lookahead exposes the complete bridge week", () => {
-  const result = app.calculateSchedule(plan, fixedConfig(), new Date("2026-08-08T16:00:00Z"), bridgeIds[6]);
-  assert.equal(result.selectedEntry.readingId, bridgeIds[6]);
+test("seven-day lookahead exposes the complete prepared window", () => {
+  const target = plan.entries.find((entry) => entry.sourcePlanDay === 65);
+  const result = app.calculateSchedule(plan, fixedConfig(), new Date("2026-08-12T16:00:00Z"), target.readingId);
+  assert.equal(result.selectedEntry.readingId, target.readingId);
   assert.equal(result.locked, false);
 });
 
@@ -103,7 +104,7 @@ test("development override switches to an approved bridge reading without changi
 });
 
 test("unconfigured override cannot escape the bridge", () => {
-  const result = app.calculateSchedule(plan, config, new Date("2026-08-08T16:00:00Z"), "CC-Y3Q4-D061", {testingOverride: true});
+  const result = app.calculateSchedule(plan, config, new Date("2026-08-08T16:00:00Z"), "CC-Y3Q4-D999", {testingOverride: true});
   assert.equal(result.selectedEntry.readingId, bridgeIds[0]);
   assert.equal(result.usingTestingOverride, false);
 });
@@ -119,13 +120,15 @@ test("calendar home renders the complete Sunday-based month grid", () => {
   assert.equal(calendar.days.filter((day) => day.isToday).length, 1);
 });
 
-test("bridge calendar maps all seven readings to August 8–14", () => {
+test("bridge calendar maps every active August entry to its shared civil date", () => {
   const calendar = app.buildMonthCalendar(plan, config, new Date("2026-08-08T16:00:00Z"), new Set(), "2026-08-01");
   const dated = calendar.days.filter((day) => day.entry);
-  assert.deepEqual(dated.map((day) => day.entry.readingId), bridgeIds);
-  assert.deepEqual(dated.map((day) => day.date), ["2026-08-08", "2026-08-09", "2026-08-10", "2026-08-11", "2026-08-12", "2026-08-13", "2026-08-14"]);
+  const augustIds = bridgeIds.slice(0, 24);
+  assert.deepEqual(dated.map((day) => day.entry.readingId), augustIds);
+  assert.deepEqual(dated.map((day) => day.date), Array.from({length: augustIds.length}, (_, index) => `2026-08-${String(index + 8).padStart(2, "0")}`));
   assert.equal(dated[0].status, "today");
-  assert.ok(dated.every((day) => day.accessible));
+  assert.ok(dated.slice(0, 8).every((day) => day.accessible));
+  assert.ok(dated.slice(8).every((day) => !day.accessible));
 });
 
 test("calendar distinguishes per-reader completion, missed days, and locked future days", () => {

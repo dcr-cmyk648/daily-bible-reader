@@ -1,23 +1,23 @@
 ---
 name: draft-daily-commentary
-description: Prepare or repair exactly one Daily Bible Reader commentary draft from a schema-validated commentary-work-order/v1 packet. Use for the scheduled private prepublication pipeline, source inventory, cited daily synthesis, custom deep-study material, coverage audit, and staging validation. Do not use for runtime generation, Scripture delivery, bulk chapter generation, publication, deployment, or work without an explicitly enabled work order.
+description: Prepare or repair exactly one Daily Bible Reader study from a schema-validated work order. Use for private source inventory, cited synthesis, custom deep study, coverage audit, and staging validation. Only a rolling-study-work-order/v1 may authorize hash-validated publication of its one T+7 reading.
 ---
 
 # Draft Daily Commentary
 
-Accept one `commentary-work-order/v1` object produced by `scripts/content-automation.mjs work-order`. Treat it as authorization for that reading only, not as authority to publish.
+Accept either one legacy `commentary-work-order/v1` produced by `scripts/content-automation.mjs work-order`, or one `rolling-study-work-order/v1` produced by `scripts/rolling-study-work-order.mjs`. Both authorize one reading only. The legacy order is draft-only. A rolling order with `action: prepare_publish` authorizes private publication only after the primary task completes source review, content review, Henry review, validation, and content-first/manifest-last promotion.
 
 ## 1. Verify the gate
 
 1. Read repository `AGENTS.md`, `README.md`, and `PROJECT_STATE.md`.
-2. Validate the packet against `schemas/commentary-work-order.schema.json` and confirm its `reading` still exactly matches the canonical active plan.
-3. Require `pipeline.skillName: draft-daily-commentary`, `guards.maxReadings: 1`, private ignored staging, no ESV wording, `autoPublish: false`, and review status `unreviewed`.
+2. Validate the packet against its exact schema and confirm its `reading` still matches the canonical active plan. A rolling order may name the one immediately appendable reference-plan entry when `planExtensionRequired` is true; run the bounded bridge-extension command and then revalidate the match.
+3. For a legacy order, require its draft-only guards. For a rolling order, require `daysAhead: 7`, one reading, private-only content, primary review before publication, content-first/manifest-last promotion, `in_review` status, no stored ESV wording, no runtime AI, no comment access, and Spark limited to the Matthew Henry verse layer.
 4. Stop if the packet is absent, stale, names more than one reading, conflicts with the plan, or asks for a reading outside the currently authorized generation scope.
 5. Stop on a dirty shared worktree. Use the task's isolated worktree or dedicated clean automation checkout. Never reset or discard another task's files.
 
 ## 2. Load the exact workflow
 
-Read every file named in `pipeline.workflowDocuments`, plus `schemas/commentary.schema.json`, `schemas/source.schema.json`, and `schemas/content-staging-index.schema.json`. These repository files are authoritative. Do not reconstruct editorial or rights rules from memory.
+For a legacy packet, read every file named in `pipeline.workflowDocuments`. For a rolling packet, read the workflow documents listed in `prompts/daily-study-scheduled-task.md`. In both modes also read `schemas/commentary.schema.json`, `schemas/source.schema.json`, and the applicable work-order schema. These repository files are authoritative. Do not reconstruct editorial or rights rules from memory.
 
 Use `context.configuredReadingIds` when the plan explicitly identifies relevant prior material. Treat `context.immediatePreviousReadingId` only as a candidate: consult and mention it only when it materially clarifies the current reading, and restate enough context for today's prose to stand alone.
 
@@ -27,7 +27,7 @@ Work only under the ignored path `private-content/automation/staging/<readingId>
 
 Prepare these artifacts for the one reading:
 
-- `commentary.json` using `commentary/v3`, publication status `draft`, and human review status `unreviewed`;
+- `commentary.json` using `commentary/v3`, publication status `draft`, initially unreviewed and promoted to `in_review` only after direct primary-task review;
 - `synthesis.md`, with passage-specific level-three headings;
 - a validated reading-specific source-registry working copy or delta that retains honest access and rights states;
 - `coverage-report.json`, containing represented and missing categories, consulted/included counts, major disagreements, single-source claims, inaccessible candidates, exclusions, and limitations;
@@ -37,7 +37,7 @@ Do not copy Scripture into any artifact. `verseOfTheDay` is a reference only.
 
 ## 4. Research and draft
 
-Run the Matthew Henry preflight for the named passages. When exact reviewed atoms exist, use that source as the foundational confessional/pastoral pass and record its exact CrossWire edition; absence is a reported limitation, not permission to invent it. Build outward with independent grammatical, textual, historical, literary, canonical, theological, reception, and useful counterposition sources.
+Run the Matthew Henry preflight for the named passages. When exact reviewed atoms exist, use that source as the foundational confessional/pastoral pass and record its exact CrossWire edition. If and only if Spark reports an availability or account-quota limit, stop retrying and do not switch models: attach a verified credential-free HTTPS link to the complete public-domain chapter commentary, bound to its real source-registry record. Label that fallback honestly; absence is never permission to invent a condensation. Build outward with independent grammatical, textual, historical, literary, canonical, theological, reception, and useful counterposition sources.
 
 Do not delegate the main daily synthesis to Spark. The primary task must perform the broad source research, evidentiary weighting, drafting, editing, citation verification, validation, and publication handoff itself. The exact authenticated `gpt-5.3-codex-spark` model is reserved for the separate high-volume, verse-by-verse Matthew Henry condensation pipeline described in `docs/MATTHEW_HENRY_PIPELINE.md`. Preserve the D057 Spark-assisted draft as a one-off historical calibration; it is not a precedent for subsequent work orders.
 
@@ -49,13 +49,15 @@ Write for expert Christian readers under the repository's confessional stance. P
 
 Run source provenance, commentary schema/citation/hash/rights checks, repository safety, and every reading-specific validator available. A failed check must leave the staging record non-ready and list stable error codes. A passing machine check still leaves the draft `unreviewed`.
 
-Update only this reading's private staging-index entry. Re-run the status command and return:
+Update only this reading's private staging record. Re-run the applicable status/work-order command and return:
 
 - work-order ID and reading ID;
 - artifacts created or changed;
 - sources consulted, included, inaccessible, and excluded by category;
 - validation results and known limitations;
 - resulting draft and published horizons;
-- the exact files Dustin must review.
+- the exact files reviewed or still requiring judgment.
 
-Never publish, upload, deploy, commit private output, alter the live manifest, call the ESV API, read comments, or generate another reading.
+For a legacy order, never publish, upload, deploy, commit private output, alter the live manifest, call the ESV API, read comments, or generate another reading.
+
+For a rolling `prepare_publish` order, the primary task must directly review and mark only the named study `in_review`, attach the newest hash-bound reviewed Henry artifact or the quota-only verified full-commentary link described above, run all private and repository gates, upload versioned private content first, update the single private manifest pointer last, and verify exact-byte Drive readback. It may commit and push the code-only plan extension and publish the existing approved Pages/Apps Script path when required. It must never store ESV wording, read comments, weaken a gate, generate a second reading, or publish partial content. Failure leaves the previous manifest current and reports the same T+7 gap for retry.

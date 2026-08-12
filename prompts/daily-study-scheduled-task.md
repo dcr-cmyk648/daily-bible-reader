@@ -1,24 +1,18 @@
-# Scheduled task: maintain the Daily Bible Reader draft buffer
+# Scheduled task: keep the Daily Bible Reader ready through T+7
 
-Work only in the Daily Bible Reader project selected for this task, preferably in an isolated Git worktree. This is an offline prepublication workflow; the deployed reader must never call a model.
+Work only in the Daily Bible Reader project in an isolated worktree. This is offline prepublication work; the deployed reader must never call a model. The user has authorized this exact recurring lane to prepare and privately publish at most one reading: the study exactly seven Detroit civil days ahead. This is not authorization for bulk generation, a later day, the new long-term plan, comments, ESV text storage, or unrelated external changes.
 
-Before acting, read `AGENTS.md`, `README.md`, `PROJECT_STATE.md`, `docs/AUTOMATION_RUNBOOK.md`, `docs/CONTENT_AUTOMATION.md`, `docs/COMMENTARY_WORKFLOW.md`, `docs/EDITORIAL_STANCE.md`, `docs/CONTENT_AND_RIGHTS.md`, and `docs/SECURITY.md`. If the repository is dirty with another task's work, stop and report it.
+Before acting, read `AGENTS.md`, `README.md`, `PROJECT_STATE.md`, `docs/AUTOMATION_RUNBOOK.md`, `docs/CONTENT_AUTOMATION.md`, `docs/COMMENTARY_WORKFLOW.md`, `docs/EDITORIAL_STANCE.md`, `docs/CONTENT_AND_RIGHTS.md`, `docs/MATTHEW_HENRY_PIPELINE.md`, `docs/SECURITY.md`, and `docs/RELEASE_STABILITY.md`. Read `.agents/skills/draft-daily-commentary/SKILL.md` completely. Resolve the canonical checkout as the parent of the absolute `git rev-parse --git-common-dir` result. Its ignored stores are `private-content`, `private-commentary`, `research/raw`, and `research/working`. In a temporary task worktree, create only ignored symlinks back to those exact existing directories when they are absent; first verify every target is a real directory and remains inside that canonical checkout. Never create a replacement empty private store. If the checkout is dirty with unrelated work or canonical private storage is unavailable, stop and report the same T+7 gap; never reset or discard files.
 
-Run the read-only content status command against the configured private plan, app config, automation policy, staging index, and live index. Validate every input. Do not infer readiness from filenames or a later prepared reading.
+1. Run `npm run study:next` and validate the JSON against `schemas/rolling-study-work-order.schema.json`.
+2. If the action is `none`, verify the named reading's exact local hash, reviewed Henry layer, manifest membership, and Drive readback; report a no-op. If `plan_complete`, report it and stop.
+3. For `prepare_publish`, work on only the returned `readingId`. If `planExtensionRequired` is true, run `npm run bridge:extend -- --source-day <sourcePlanDay>`, re-run the work order, and verify the same reading now matches the active plan.
+4. Explicitly invoke `$draft-daily-commentary` with the unchanged rolling work order. The primary task—not Spark—must perform broad source discovery, lawful consultation, source-status decisions, editorial weighting, drafting, editing, citation verification, coverage assessment, and final review. Use content-rich, readable, practical prose for expert Christian readers under the documented confessional stance. Do not claim consultation from snippets or inaccessible works.
+5. Use Spark only for the complete verse-by-verse Matthew Henry layer for this reading. Generate the one schedule reading, prepare its hash-bound review candidate, and compare every condensation with every cited exact atom. Fix a recurring error in the general controller/prompt and regenerate. Record any genuinely isolated correction and its reason in the same candidate. Only after the full comparison, set that candidate to `approved` and apply it once. Never apply an `in_review` candidate and then replace its correction history with a second approval record; the canonical approved record must stay bound to the raw generation so rebuilds can replay it. Attach the newest reviewed artifact from the checksum-bound Henry library. If Spark is unavailable or quota-limited, do not switch models and do not invent a replacement condensation. Add a verified HTTPS `henrySourceLink` to the complete public-domain chapter commentary, bind it to a real source-registry ID, and report the fallback explicitly.
+6. Finish every required component: plan entry, orientation, Scripture reference(s) without ESV wording, verse-of-the-day reference, coherent main synthesis, concrete takeaway, custom cited deep sections, source registry/coverage, either a reviewed Henry layer or the verified full-commentary fallback link, metadata, and exact content hash. Mark it `in_review` only after direct primary review.
+7. Run source, private-content, schema, citation, rights, repository-safety, test, build, and release checks. Do not weaken a failed check.
+8. Publish atomically to the existing private Drive structure: upload/version content, metadata, plan, config, and registry first; update the private manifest last; verify exact-byte readback, manifest bindings, and unchanged narrow sharing. Never include IDs or private content in the report.
+9. If code or factual plan metadata changed, commit and push only safe tracked files, publish the code-only Pages release, and update only the existing approved token Apps Script path if necessary. Never move the immutable USER_ACCESSING production deployment pointer.
+10. Report the exact reading/date, source coverage and limitations, Henry review, gates, Drive readback, ready-through date, commit/release, and any retry needed.
 
-Follow the returned `nextAction` exactly:
-
-- `none` or `plan_complete`: make no content change; report both horizons.
-- `review_or_publish_one`: do not publish. Report the exact reading needing Dustin's review and the failing reason code.
-- `generate_or_repair_one`: work on only the returned `readingId`. Never substitute another day, skip ahead, or generate a batch.
-
-For `generate_or_repair_one`:
-
-1. Run the same command as `work-order`. This must fail when the private policy has not explicitly set `generationEnabled: true`.
-2. Validate the returned `commentary-work-order/v1` packet and verify that it names the same one reading as the readiness action.
-3. Explicitly invoke `$draft-daily-commentary` with that exact packet. Do not paraphrase it into a broader request or add another reading.
-4. Let the skill build or repair only the ignored private staging workspace and return its source, validation, limitation, and review report.
-   The main article must be an executive synthesis with one governing through-line and connected paragraphs; move secondary questions into custom deep-study sections instead of compressing source coverage into the daily path.
-5. Re-run the read-only status command and report the new draft/published horizons plus the exact files requiring review.
-
-Never commit or push private output. Never upload or publish automatically. Never deploy Apps Script or Pages, create Google resources, alter sharing, read comments, call the ESV API, or send messages. A failed run leaves live content unchanged and retries the same earliest gap later.
+Never generate a second reading, skip a gap, store or request ESV text, read comments, expose credentials or identities, create Google resources, alter sharing, or place private content/source atoms in Git. A failed run leaves the prior private manifest current and retries this same T+7 reading next time.

@@ -42,6 +42,7 @@ test("numbered Scripture rendering supports isolated shared highlights and parti
   assert.match(html, /id="highlightAction"/);
   assert.match(html, /id="verseCommentaryBlurb"/);
   assert.match(html, /id="verseCommentarySource"/);
+  assert.match(html, /id="verseCommentaryFallbackLink"/);
   assert.match(html, />Read Henry</);
   assert.match(html, /Matthew Henry — condensed paraphrase/);
   assert.match(css, /data-highlight-reader-0/);
@@ -53,6 +54,7 @@ test("numbered Scripture rendering supports isolated shared highlights and parti
   assert.match(highlights, /api\.listCurrentHighlights/);
   assert.match(highlights, /api\.submitCurrentHighlightEvent/);
   assert.match(highlights, /context\.verseCommentary/);
+  assert.match(highlights, /context\.henrySourceLink/);
   assert.match(highlights, /sourceAtoms\.appendChild/);
   assert.match(highlights, /paragraph\.textContent = atom\.text/);
   assert.match(highlights, /selectedTrigger/);
@@ -391,11 +393,12 @@ test("Apps Script accepts both legacy and current commentary metadata during mig
   assert.match(code, /DBR_COMMENTARY_SCHEMA_VERSIONS\.includes\(metadata\.schemaVersion\)/);
 });
 
-test("Apps Script batches the seven-day commentary window behind one authorization", () => {
+test("Apps Script batches today plus seven prepared readings behind one authorization", () => {
   const code = fs.readFileSync(path.join(__dirname, "../app/apps-script/Code.gs"), "utf8");
   const batch = code.slice(code.indexOf("function getReadingPayloads"), code.indexOf("function dbrBuildReadingPayload_"));
   assert.match(batch, /dbrAuthorizedContext_\(readerCode\)/);
-  assert.match(batch, /readingIds\.length > 7/);
+  assert.match(batch, /readingIds\.length > DBR_PRIVATE_BATCH_MAX/);
+  assert.match(code, /const DBR_PRIVATE_BATCH_MAX = 8/);
   assert.match(batch, /sourceRegistryFileId/);
   assert.match(batch, /dbrBuildReadingPayload_\(privateState, registry, readingId\)/);
   assert.equal((batch.match(/dbrReadPrivateState_/g) || []).length, 1);
@@ -538,6 +541,14 @@ test("content readiness requires every end-to-end study component and exposes th
   delete missingHenry.commentary.verseCommentary;
   assert.equal(app.readingContentIsPrepared(missingHenry, first), false);
   assert.ok(app.readingPreparationReport(missingHenry, first).missingComponentIds.includes("henry"));
+  missingHenry.commentary.henrySourceLink = {
+    sourceId: "source-one",
+    title: "Read the fabricated full commentary",
+    url: "https://example.test/henry/full",
+    note: "A verified full public-domain link replaces the unavailable test-only condensation."
+  };
+  assert.equal(app.readingContentIsPrepared(missingHenry, first), true);
+  assert.equal(app.readingPreparationReport(missingHenry, first).components.find((component) => component.id === "henry").ready, true);
   const missingFullSource = structuredClone(complete);
   delete missingFullSource.commentary.verseCommentary.source_atoms.atom1;
   assert.equal(app.readingContentIsPrepared(missingFullSource, first), false);
@@ -647,7 +658,7 @@ test("today and tomorrow are the only priority warm readings", () => {
     source.indexOf("async function prefetchOfflineWindow()")
   );
   assert.match(priorityWarmSource, /getReadingPayloads\(entries\.map\(\(entry\) => entry\.readingId\)\)/);
-  assert.match(priorityWarmSource, /private-content revision cannot remain hidden for seven days/);
+  assert.match(priorityWarmSource, /private-content revision cannot remain hidden behind the offline retention window/);
   assert.match(priorityWarmSource, /renderContentReadiness\(currentContentReadiness\(state\.privatePayloadByReadingId\)\)/);
   assert.doesNotMatch(priorityWarmSource, /missingPayloads/);
   assert.match(source, /state\.adapter\.listComments/);
@@ -787,10 +798,14 @@ test("editorial contract requires practical prose and confessional evidentiary w
   assert.match(validator, /summaryParagraphs\.map\(\(paragraph\) => paragraph\.markdown\)\.join\("\\n\\n"\)/);
   assert.match(validator, /executive synthesis needs 2–6 connected prose paragraphs/);
   assert.match(validator, /executive synthesis must contain 220–600 words/);
-  assert.match(validator, /CC-Y3Q4-D057[^\n]+substantive: true/);
-  assert.match(validator, /5 syntheses; 2 explicit placeholders/);
+  assert.match(validator, /const readings = plan\.entries\.map/);
+  assert.match(validator, /substantive: true/);
+  assert.match(validator, /prepared: entry\.sourcePlanDay >= 57/);
+  assert.match(validator, /const preparedCount = readings\.filter/);
+  assert.match(validator, /const synthesisCount = readings\.filter/);
   assert.match(validator, /externalSchemas: \{"mhc-runtime\.schema\.json": mhcRuntimeSchema\}/);
   assert.match(validator, /attached verse commentary must cover every configured verse exactly once/);
+  assert.match(validator, /reviewed Matthew Henry shards or a verified full-commentary link/);
   assert.doesNotMatch(validator, /main all-sources synthesis must cite every included source/);
 });
 
@@ -917,12 +932,13 @@ test("a multi-chapter bridge day stays one reading and one Scripture page", () =
   assert.match(server, /cacheAllowed:\s*false/);
 });
 
-test("local private-draft preview is localhost-only and restricted to the seven bridge IDs", () => {
+test("local private-draft preview is localhost-only and restricted to active plan IDs", () => {
   const server = fs.readFileSync(path.join(__dirname, "../scripts/dev-server.mjs"), "utf8");
   const frontend = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
   const builder = fs.readFileSync(path.join(__dirname, "../scripts/build-apps-script.mjs"), "utf8");
   assert.match(server, /const HOST = "127\.0\.0\.1";/);
-  assert.match(server, /\^\\\/__private\\\/reading\\\/\(CC-Y3Q4-D05\[4-9\]\|CC-Y3Q4-D060\)\\\.json\$/);
+  assert.match(server, /const BRIDGE_READING_IDS = ACTIVE_PLAN\.entries\.map/);
+  assert.match(server, /BRIDGE_READING_IDS\.includes\(privateReading\[1\]\)/);
   assert.match(frontend, /\/\* DBR_LOCAL_ADAPTER_START \*\/[\s\S]*privateDraftMode\(\)[\s\S]*\/\* DBR_LOCAL_ADAPTER_END \*\//);
   assert.match(builder, /DBR_LOCAL_ADAPTER_START[\s\S]*DBR_LOCAL_ADAPTER_END/);
   assert.match(server, /\^\\\/__mhc\\\/reading\\\/\(intro-GEN\|GEN-001\)\\\.json\$/);
@@ -931,7 +947,7 @@ test("local private-draft preview is localhost-only and restricted to the seven 
   assert.match(server, /private-commentary", "mhc", "stores", "current-window/);
   assert.match(server, /\/__mhc\/window\/manifest\.json/);
   assert.match(server, /Matthew Henry window-store checksum mismatch/);
-  assert.match(server, /portable\.chapters\.length === 1/);
+  assert.match(server, /Array\.isArray\(portable\.chapters\).*portable\.chapters\.length/s);
   assert.match(frontend, /\/\* DBR_LOCAL_ADAPTER_START \*\/[\s\S]*mhcPilotMode\(\)[\s\S]*\/\* DBR_LOCAL_ADAPTER_END \*\//);
   assert.match(builder, /privateDraft\|mhcPilot/);
   assert.match(builder, /__\(\?:private\|mhc\)/);

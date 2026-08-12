@@ -7,7 +7,7 @@ This is an offline, resumable source-preprocessing workflow. It never runs AI in
 - a schedule-aware Spark audit lane that resolves the active reading from today through at most two days ahead; and
 - plan-generator activation and ensure-missing contracts that accept a start reading plus a bounded caller-selected count.
 
-The rolling lane was explicitly exercised on 2026-08-10 for `CC-Y3Q4-D056` (1 Peter 5), `CC-Y3Q4-D057` (Nahum 1), and `CC-Y3Q4-D058` (Nahum 2). The two Nahum readings retain their tracked main-commentary placeholders. Every generated Henry shard, audit, and portable-store file remains ignored, private, and unapproved; D059 was not generated.
+The rolling lane was first exercised on 2026-08-10 for D056–D058, then used under direct review for D059–D064 during the authorized T+7 fill. Generated Henry shards, audits, and portable-store files remain ignored and private; only hash-bound reviewed runtime layers may be attached to published reading metadata. Spark quota was unavailable for D065, so no model substitution occurred and that reading uses a verified link to the complete public-domain chapter commentary.
 
 ## Selected source and rights record
 
@@ -37,7 +37,7 @@ The first Genesis preverse also contains volume, book, and chapter material. `co
 
 ## Autonomous Spark contract and validation
 
-The current autonomous mode is `spark-autonomous-chunked-two-stage/v4`. It uses `mhc-fact-extractor/v5` followed by `mhc-autonomous-writer/v2`; chapter output remains `mhc-commentary/v2`. `mhc-worker/v11` and the older output schema remain only for preserved calibration/review artifacts.
+The current autonomous mode is `spark-autonomous-chunked-two-stage/v4`. It uses `mhc-fact-extractor/v8` followed by `mhc-autonomous-writer/v5`; chapter output remains `mhc-commentary/v2`. The first rolling-window audit exposed over-extracted source rhetoric, weak agency, unrelated shared-range details, archaic residue, and ledger-like prose. Fact v8 permits at most three material facts, favors the treatment's interpretive conclusion over setup detail, rejects source-reporting scaffolds and peripheral maxims, and protects named actors. The controller derives verse relevance from the nearest explicit source marker instead of trusting the model's label. Writer v5 then performs a strict plain-English coherence pass without inventing links between separate agents, while admission rejects common archaic residue. `mhc-worker/v11` and the older output schema remain only for preserved calibration/review artifacts.
 
 The two stages deliberately separate grounding from prose:
 
@@ -66,7 +66,7 @@ The controller requires `codex login status` to report a ChatGPT login and refus
 
 The writer fingerprint includes source hash, prompt/schema/model versions, autonomous mode, fact-prompt version, and exact fact-brief hash. Validated fact-ledger caching is independent of downstream writer-admission revisions, so a prose-prompt change does not spend Spark budget re-extracting unchanged facts. A restart skips only a completed result whose current bytes still validate. Changed inputs create a new directory; prior attempts remain preserved. Transient process failures use bounded retries, and invalid structured drafts receive at most the configured bounded validation-guided repairs.
 
-Human corrections remain a separate legacy/review layer for preserved jobs. The autonomous Spark chapter path rejects `review-overrides.json`; failures must be addressed by a general controller/prompt revision and a new versioned run, not by silently patching individual prose. Older schedule-local overrides remain hash-bound to the exact reading, job, prompt, fingerprint, and raw-output SHA-256 and cannot change citations, ranges, metadata, or publication status.
+Human corrections remain a separate, explicit review layer. The autonomous Spark chapter path rejects the legacy `review-overrides.json`; recurring failures must be addressed by a general controller/prompt revision and a new versioned run. After direct comparison with every cited atom, `mhc-schedule-review/v1` may record an isolated replacement blurb and its reason. That correction is hash-bound to the exact unreviewed runtime, may name only an existing verse, leaves citations/ranges/source atoms untouched, and is listed in the audit's corrected verse IDs. It is therefore review provenance, not a silent mutation. Older schedule-local overrides remain preserved for legacy jobs only.
 
 ## Rolling two-day-ahead Spark lane
 

@@ -1,7 +1,7 @@
 {
   "schemaVersion": "plan/v1",
   "planVersion": "celebration-y3q4-bridge-2026-v1",
-  "title": "Celebration Church Year 3 Quarter 4 bridge week",
+  "title": "Celebration Church Year 3 Quarter 4 rolling bridge",
   "canonId": "protestant-66-provisional-configurable",
   "entries": [
     {
@@ -115,12 +115,96 @@
       "confidence": "high",
       "notes": "Commentary is intentionally pending; no advance synthesis was generated.",
       "sourceIds": ["youversion_celebration_y3q4_plan_3805"]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 8,
+      "sourcePlanDay": 61,
+      "readingId": "CC-Y3Q4-D061",
+      "kind": "chapter",
+      "bookId": "HAB",
+      "chapter": 1,
+      "passages": [
+        {"bookId": "HAB", "chapter": 1, "verseCount": 17},
+        {"bookId": "HAB", "chapter": 2, "verseCount": 20},
+        {"bookId": "HAB", "chapter": 3, "verseCount": 19}
+      ],
+      "orderingRationale": "Temporary bridge preserves Day 61 of Celebration Church's published Year 3, Quarter 4 sequence.",
+      "chronologyBasis": "pragmatic",
+      "confidence": "high",
+      "notes": "Habakkuk 1–3 appears as one daily reading, one Scripture page, and one shared discussion.",
+      "sourceIds": ["youversion_celebration_y3q4_plan_3805"]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 9,
+      "sourcePlanDay": 62,
+      "readingId": "CC-Y3Q4-D062",
+      "kind": "chapter",
+      "bookId": "2PE",
+      "chapter": 1,
+      "passages": [{"bookId": "2PE", "chapter": 1, "verseCount": 21}],
+      "orderingRationale": "Temporary bridge preserves Day 62 of Celebration Church's published Year 3, Quarter 4 sequence.",
+      "chronologyBasis": "pragmatic",
+      "confidence": "high",
+      "notes": "One chapter appears on the Scripture page.",
+      "sourceIds": ["youversion_celebration_y3q4_plan_3805"]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 10,
+      "sourcePlanDay": 63,
+      "readingId": "CC-Y3Q4-D063",
+      "kind": "chapter",
+      "bookId": "ZEP",
+      "chapter": 1,
+      "passages": [{"bookId": "ZEP", "chapter": 1, "verseCount": 18}],
+      "orderingRationale": "Temporary bridge preserves Day 63 of Celebration Church's published Year 3, Quarter 4 sequence.",
+      "chronologyBasis": "pragmatic",
+      "confidence": "high",
+      "notes": "One chapter appears on the Scripture page.",
+      "sourceIds": ["youversion_celebration_y3q4_plan_3805"]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 11,
+      "sourcePlanDay": 64,
+      "readingId": "CC-Y3Q4-D064",
+      "kind": "chapter",
+      "bookId": "ZEP",
+      "chapter": 2,
+      "passages": [{"bookId": "ZEP", "chapter": 2, "verseCount": 15}],
+      "contextReadingIds": ["CC-Y3Q4-D063"],
+      "orderingRationale": "Temporary bridge preserves Day 64 of Celebration Church's published Year 3, Quarter 4 sequence.",
+      "chronologyBasis": "pragmatic",
+      "confidence": "high",
+      "notes": "The orientation may build on Zephaniah 1 while remaining understandable on its own.",
+      "sourceIds": ["youversion_celebration_y3q4_plan_3805"]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 12,
+      "sourcePlanDay": 65,
+      "readingId": "CC-Y3Q4-D065",
+      "kind": "chapter",
+      "bookId": "ZEP",
+      "chapter": 3,
+      "passages": [{"bookId": "ZEP", "chapter": 3, "verseCount": 20}],
+      "contextReadingIds": ["CC-Y3Q4-D064"],
+      "orderingRationale": "Temporary bridge preserves Day 65 of Celebration Church's published Year 3, Quarter 4 sequence.",
+      "chronologyBasis": "pragmatic",
+      "confidence": "high",
+      "notes": "The orientation may complete Zephaniah's movement from judgment to restoration while remaining understandable on its own.",
+      "sourceIds": ["youversion_celebration_y3q4_plan_3805"]
     }
   ],
   "bookMetrics": {
     "MIC": {"verseCount": 105, "chapterCount": 7, "versification": "ESV API metrics verified for bridge policy calculations"},
     "1PE": {"verseCount": 105, "chapterCount": 5, "versification": "ESV API metrics verified for bridge policy calculations"},
     "NAM": {"verseCount": 47, "chapterCount": 3, "versification": "ESV API metrics verified for bridge policy calculations"},
-    "PRO": {"verseCount": 915, "chapterCount": 31, "versification": "ESV API metrics verified for bridge policy calculations"}
+    "PRO": {"verseCount": 915, "chapterCount": 31, "versification": "ESV API metrics verified for bridge policy calculations"},
+    "HAB": {"verseCount": 56, "chapterCount": 3, "versification": "ESV API metrics verified for bridge policy calculations"},
+    "2PE": {"verseCount": 61, "chapterCount": 3, "versification": "ESV API metrics verified for bridge policy calculations"},
+    "ZEP": {"verseCount": 53, "chapterCount": 3, "versification": "ESV API metrics verified for bridge policy calculations"}
   }
 }

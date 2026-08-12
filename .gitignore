@@ -14,9 +14,13 @@ config/*.local.json
 config/*.private.json
 
 # Private/generated research and Drive-bound content must never enter Git.
+private-content
+private-commentary
 private-content/
 private-commentary/
 local-private/
+research/raw
+research/working
 research/raw/
 research/working/
 research/exports/
@@ -25,4 +29,3 @@ uploads/
 # Local browser/test state.
 .cache/
 tmp/
-

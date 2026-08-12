@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "chapter-metrics/v1",
+  "referencePlanId": "celebration-y3q4-3805",
+  "versification": "Protestant chapter numbering; factual verse-count metadata only",
+  "books": {
+    "Micah": {"bookId": "MIC", "chapterCount": 7, "verseCount": 105, "chapters": {"1": 16, "2": 13, "3": 12, "4": 13, "5": 15, "6": 16, "7": 20}},
+    "1 Peter": {"bookId": "1PE", "chapterCount": 5, "verseCount": 105, "chapters": {"1": 25, "2": 25, "3": 22, "4": 19, "5": 14}},
+    "Nahum": {"bookId": "NAM", "chapterCount": 3, "verseCount": 47, "chapters": {"1": 15, "2": 13, "3": 19}},
+    "Proverbs": {"bookId": "PRO", "chapterCount": 31, "verseCount": 915, "chapters": {"31": 31}},
+    "Habakkuk": {"bookId": "HAB", "chapterCount": 3, "verseCount": 56, "chapters": {"1": 17, "2": 20, "3": 19}},
+    "2 Peter": {"bookId": "2PE", "chapterCount": 3, "verseCount": 61, "chapters": {"1": 21, "2": 22, "3": 18}},
+    "Zephaniah": {"bookId": "ZEP", "chapterCount": 3, "verseCount": 53, "chapters": {"1": 18, "2": 15, "3": 20}},
+    "Haggai": {"bookId": "HAG", "chapterCount": 2, "verseCount": 38, "chapters": {"1": 15, "2": 23}},
+    "Zechariah": {"bookId": "ZEC", "chapterCount": 14, "verseCount": 211, "chapters": {"1": 21, "2": 13, "3": 10, "4": 14, "5": 11, "6": 15, "7": 14, "8": 23, "9": 17, "10": 12, "11": 17, "12": 14, "13": 9, "14": 21}},
+    "James": {"bookId": "JAS", "chapterCount": 5, "verseCount": 108, "chapters": {"1": 27, "2": 26, "3": 18, "4": 17, "5": 20}},
+    "Psalms": {"bookId": "PSA", "chapterCount": 150, "verseCount": 2461, "chapters": {"148": 14, "149": 9, "150": 6}},
+    "Malachi": {"bookId": "MAL", "chapterCount": 4, "verseCount": 55, "chapters": {"1": 14, "2": 17, "3": 18, "4": 6}}
+  }
+}

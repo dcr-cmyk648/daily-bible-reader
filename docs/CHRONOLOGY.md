@@ -2,7 +2,7 @@
 
 ## Temporary Celebration bridge
 
-The active app schedule is a seven-day excerpt from Celebration Church's 92-day *Reading the Bible in 3 Years — Year 3 Quarter 4* plan:
+The active app schedule is a bounded rolling excerpt from Celebration Church's 92-day *Reading the Bible in 3 Years — Year 3 Quarter 4* plan. As of 2026-08-12 it is prepared through T+7:
 
 | Bridge day | Date | Source-plan day | Reading ID | Scripture |
 |---:|---|---:|---|---|
@@ -13,18 +13,23 @@ The active app schedule is a seven-day excerpt from Celebration Church's 92-day 
 | 5 | 2026-08-12 | 58 | `CC-Y3Q4-D058` | Nahum 2 |
 | 6 | 2026-08-13 | 59 | `CC-Y3Q4-D059` | Nahum 3 |
 | 7 | 2026-08-14 | 60 | `CC-Y3Q4-D060` | Proverbs 31 |
+| 8 | 2026-08-15 | 61 | `CC-Y3Q4-D061` | Habakkuk 1–3 |
+| 9 | 2026-08-16 | 62 | `CC-Y3Q4-D062` | 2 Peter 1 |
+| 10 | 2026-08-17 | 63 | `CC-Y3Q4-D063` | Zephaniah 1 |
+| 11 | 2026-08-18 | 64 | `CC-Y3Q4-D064` | Zephaniah 2 |
+| 12 | 2026-08-19 | 65 | `CC-Y3Q4-D065` | Zephaniah 3 |
 
 Days with multiple chapters remain one scheduled reading, one Scripture page, and one discussion keyed to the daily reading ID. The server requests each chapter separately from ESV and combines the returned chapters only in memory for the page.
 
-The complete 92-day sequence is stored as factual reference metadata in `config/reference-plans/celebration-y3q4.json` and a private Drive reference file. It contains passage assignments and provenance, not Celebration's devotional prose, ESV text, commentary, or 92 generated reading payloads. Only days 54–60 are active. Days 54–57 are the only individually authorized substantive syntheses; days 58–60 remain explicit preparation placeholders.
+The complete 92-day sequence is stored as factual reference metadata in `config/reference-plans/celebration-y3q4.json` and a private Drive reference file. It contains passage assignments and provenance, not Celebration's devotional prose, ESV text, commentary, or 92 generated reading payloads. The active plan grows by at most one contiguous source-plan day when that reading enters T+7. No later devotional content is generated in advance.
 
 ## Shared calendar model
 
 The bridge uses a fixed `sharedStartDate` of 2026-08-08 interpreted in `America/Detroit`. Date comparison uses civil calendar days, so 23/25-hour daylight-saving days do not shift the reading. `dayIndex` selects a stable reading; changing the start date changes dates, never reading IDs or comment associations.
 
-The bridge permits six days of lookahead so all seven entries can be tested immediately. Past readings remain available. The internal development override is restricted to the same seven IDs but is not exposed as a reader-facing control. The home calendar starts weeks on Sunday and shows one complete month. A date click selects it and updates the passage/progress card below; opening requires the separate date-specific action. Completion is per reader and derives from an active comment, including a queued offline create; two colored dots make Dustin’s and Shane’s independent progress visible without exposing either account email.
+The bridge permits seven days of lookahead. Past readings remain available. The internal development override is restricted to active-plan IDs and is not exposed as a reader-facing control. The home calendar starts weeks on Sunday and shows one complete month. A date click selects it and updates the passage/progress card below; opening requires the separate date-specific action. Completion is per reader and derives from an active comment, including a queued offline create; two colored dots make Dustin’s and Shane’s independent progress visible without exposing either account email.
 
-The seven-reading offline target applies to private commentary payloads and comment drafts. ESV and shared highlights are network-only, so “offline week” does not mean seven persisted Scripture passages or offline highlight changes.
+The eight-reading local target is today plus seven future private commentary payloads and comment drafts. ESV and shared highlights are network-only; today's and tomorrow's Scripture are warmed only in volatile memory, so “offline week” does not mean persisted Scripture passages or offline highlight changes.
 
 ## Preserved Genesis calibration
 

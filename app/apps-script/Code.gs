@@ -94,19 +94,16 @@ const DBR_ESV_POLICY = {
 
 const DBR_BOOK_NAMES = {
   "1PE": "1 Peter",
+  "2PE": "2 Peter",
+  HAB: "Habakkuk",
   MIC: "Micah",
   NAM: "Nahum",
-  PRO: "Proverbs"
+  PRO: "Proverbs",
+  ZEP: "Zephaniah"
 };
-const DBR_BRIDGE_READING_IDS = [
-  "CC-Y3Q4-D054",
-  "CC-Y3Q4-D055",
-  "CC-Y3Q4-D056",
-  "CC-Y3Q4-D057",
-  "CC-Y3Q4-D058",
-  "CC-Y3Q4-D059",
-  "CC-Y3Q4-D060"
-];
+const DBR_BRIDGE_SOURCE_DAY_MIN = 54;
+const DBR_BRIDGE_SOURCE_DAY_MAX = 92;
+const DBR_PRIVATE_BATCH_MAX = 8;
 
 function doGet() {
   const output = HtmlService.createHtmlOutputFromFile("Index")
@@ -184,7 +181,7 @@ function getReadingPayloads(readerCode, readingIds) {
     const context = dbrAuthorizedContext_(readerCode);
     dbrEnforceRateLimit_("reading-batch", 20, 60);
     const privateState = dbrReadPrivateState_(context);
-    if (!Array.isArray(readingIds) || readingIds.length < 1 || readingIds.length > 7) {
+    if (!Array.isArray(readingIds) || readingIds.length < 1 || readingIds.length > DBR_PRIVATE_BATCH_MAX) {
       throw dbrError_("INVALID_READING", "Reading batch is invalid.");
     }
     const normalized = readingIds.map(function (readingId) { return String(readingId || ""); });
@@ -589,13 +586,13 @@ function dbrReadPrivateState_() {
       [manifestId, cached.manifest.appConfigFileId, cached.manifest.planFileId].forEach(function (fileId) {
         DriveApp.getFileById(fileId).getId();
       });
-      dbrValidatePrivateConfig_(cached.config, cached.plan);
+      dbrValidatePrivateConfig_(cached.config, cached.plan, cached.manifest);
       return {manifest: cached.manifest, config: cached.config, plan: cached.plan};
     }
     const manifest = DBRServerCore.parseManifest(dbrReadJsonFile_(manifestId, 150000, "CONTENT_ACCESS_DENIED"));
     const config = dbrReadJsonFile_(manifest.appConfigFileId, 150000, "CONTENT_ACCESS_DENIED");
     const plan = dbrReadJsonFile_(manifest.planFileId, 500000, "CONTENT_ACCESS_DENIED");
-    dbrValidatePrivateConfig_(config, plan);
+    dbrValidatePrivateConfig_(config, plan, manifest);
     if (userCache) {
       try {
         userCache.put(DBR_PRIVATE_STATE_CACHE.key, JSON.stringify({
@@ -615,34 +612,74 @@ function dbrReadPrivateState_() {
   }
 }
 
-function dbrValidatePrivateConfig_(config, plan) {
+function dbrCivilDayNumber_(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ""));
+  if (!match) throw dbrError_("CONTENT_INVALID", "A schedule date is invalid.");
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
+    throw dbrError_("CONTENT_INVALID", "A schedule date is invalid.");
+  }
+  return Math.floor(date.getTime() / 86400000);
+}
+
+function dbrValidatePrivateConfig_(config, plan, manifest) {
   if (!config || config.schemaVersion !== "app-config/v1" || config.displayTranslation !== "ESV" || config.runtimeAI !== false) {
     throw dbrError_("CONTENT_INVALID", "Application configuration is invalid.");
   }
   if (!["fixed", "testing_today"].includes(config.sharedStartDateMode) ||
       !Number.isInteger(config.futureLookaheadDays) || config.futureLookaheadDays < 0 || config.futureLookaheadDays > 7 ||
-      !Number.isInteger(config.offlineReadingWindowDays) || config.offlineReadingWindowDays < 1 || config.offlineReadingWindowDays > 7 ||
+      !Number.isInteger(config.offlineReadingWindowDays) || config.offlineReadingWindowDays < 1 || config.offlineReadingWindowDays > 8 ||
+      !Number.isInteger(config.preparedAheadDays) || config.preparedAheadDays < 1 || config.preparedAheadDays > 7 ||
       !Number.isInteger(config.privateContentCacheMaxAgeSeconds) || config.privateContentCacheMaxAgeSeconds < 0 ||
-      config.privateContentCacheMaxAgeSeconds > 604800) {
+      config.privateContentCacheMaxAgeSeconds > 1209600) {
     throw dbrError_("CONTENT_INVALID", "Schedule or offline configuration is invalid.");
   }
   if (!plan || plan.schemaVersion !== "plan/v1" || plan.planVersion !== "celebration-y3q4-bridge-2026-v1" ||
-      !Array.isArray(plan.entries) || plan.entries.length !== DBR_BRIDGE_READING_IDS.length) {
-    throw dbrError_("CONTENT_INVALID", "Bridge plan must contain exactly the approved seven readings.");
+      !Array.isArray(plan.entries) || plan.entries.length < 1 ||
+      plan.entries.length > DBR_BRIDGE_SOURCE_DAY_MAX - DBR_BRIDGE_SOURCE_DAY_MIN + 1) {
+    throw dbrError_("CONTENT_INVALID", "The rolling bridge plan is invalid.");
   }
   try {
     DBRServerCore.validatePlanStructure(plan);
   } catch (error) {
     throw dbrError_("CONTENT_INVALID", "Reading-plan structure is invalid.");
   }
+  const today = Utilities.formatDate(new Date(), config.timezone, "yyyy-MM-dd");
+  const effectiveStartDate = config.sharedStartDateMode === "testing_today"
+    ? today
+    : config.sharedStartDate;
+  const currentPlanDay = Math.max(1,
+    dbrCivilDayNumber_(today) - dbrCivilDayNumber_(effectiveStartDate) + 1);
+  const maximumRollingEntries = Math.min(
+    DBR_BRIDGE_SOURCE_DAY_MAX - DBR_BRIDGE_SOURCE_DAY_MIN + 1,
+    currentPlanDay + config.preparedAheadDays
+  );
+  if (plan.entries.length > maximumRollingEntries) {
+    throw dbrError_("CONTENT_INVALID", "The rolling plan extends beyond the authorized seven-day horizon.");
+  }
   plan.entries.forEach(function (entry, index) {
-    if (!entry || entry.readingId !== DBR_BRIDGE_READING_IDS[index] || entry.dayIndex !== index + 1 ||
+    const sourcePlanDay = DBR_BRIDGE_SOURCE_DAY_MIN + index;
+    const expectedReadingId = "CC-Y3Q4-D" + String(sourcePlanDay).padStart(3, "0");
+    if (!entry || entry.readingId !== expectedReadingId || entry.sourcePlanDay !== sourcePlanDay ||
+        entry.dayIndex !== index + 1 ||
         entry.kind !== "chapter" || !Array.isArray(entry.passages) || !entry.passages.length ||
         entry.passages.length > 5 || entry.bookId !== entry.passages[0].bookId ||
         entry.chapter !== entry.passages[0].chapter) {
       throw dbrError_("CONTENT_INVALID", "Bridge plan order or passage configuration is invalid.");
     }
   });
+  if (manifest) {
+    const planIds = new Set(plan.entries.map(function (entry) { return entry.readingId; }));
+    const manifestIds = Object.keys(manifest.readings || {});
+    if (manifestIds.length !== planIds.size ||
+        plan.entries.some(function (entry) { return !manifest.readings[entry.readingId]; }) ||
+        manifestIds.some(function (readingId) { return !planIds.has(readingId); })) {
+      throw dbrError_("CONTENT_INVALID", "The private manifest must exactly match the rolling plan.");
+    }
+  }
 }
 
 function dbrReadTextFile_(fileId, maxBytes) {

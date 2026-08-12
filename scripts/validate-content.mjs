@@ -45,6 +45,7 @@ function sourceIdsFromCommentary(commentary) {
   (commentary.sections || []).forEach((section) => section.sourceIds.forEach((id) => ids.add(id)));
   (commentary.comprehensiveSynthesis?.sourceIds || []).forEach((id) => ids.add(id));
   commentary.claims.forEach((claim) => claim.sourceIds.forEach((id) => ids.add(id)));
+  if (commentary.henrySourceLink && commentary.henrySourceLink.sourceId) ids.add(commentary.henrySourceLink.sourceId);
   return ids;
 }
 
@@ -109,14 +110,25 @@ async function main() {
   }));
 
   assert(plan.schemaVersion === "plan/v1", "Plan schema version.");
-  const bridgeIds = Array.from({length: 7}, (_, index) => `CC-Y3Q4-D${String(index + 54).padStart(3, "0")}`);
+  const firstSourcePlanDay = 54;
+  const activeThroughSourcePlanDay = plan.entries.at(-1).sourcePlanDay;
+  const detroitToday = new Intl.DateTimeFormat("en-CA", {
+    timeZone: config.timezone, year: "numeric", month: "2-digit", day: "2-digit"
+  }).format(new Date());
+  const civilDay = (value) => Math.floor(Date.parse(`${value}T00:00:00Z`) / 86400000);
+  const authorizedThroughSourcePlanDay = Math.min(92, firstSourcePlanDay +
+    Math.max(0, civilDay(detroitToday) - civilDay(config.sharedStartDate)) + config.futureLookaheadDays);
+  assert(activeThroughSourcePlanDay <= authorizedThroughSourcePlanDay,
+    "Tracked bridge may not exceed the current Detroit T+7 horizon.");
+  const bridgeIds = Array.from({length: activeThroughSourcePlanDay - firstSourcePlanDay + 1}, (_, index) =>
+    `CC-Y3Q4-D${String(index + firstSourcePlanDay).padStart(3, "0")}`);
   assert(plan.planVersion === "celebration-y3q4-bridge-2026-v1", "Bridge plan version.");
-  assert(plan.entries.length === 7, "Bridge plan must contain exactly seven entries.");
+  assert(plan.entries.length === bridgeIds.length, "Tracked rolling bridge must end at its declared active horizon.");
   assert(JSON.stringify(plan.entries.map((entry) => entry.readingId)) === JSON.stringify(bridgeIds), "Bridge reading IDs and order.");
-  assert(new Set(plan.entries.map((entry) => entry.readingId)).size === 7, "Reading IDs must be stable and unique.");
+  assert(new Set(plan.entries.map((entry) => entry.readingId)).size === bridgeIds.length, "Reading IDs must be stable and unique.");
   plan.entries.forEach((entry, index) => {
     assert(entry.dayIndex === index + 1, "Plan day indexes must be contiguous.");
-    assert(entry.sourcePlanDay === index + 54, "Source-plan day mapping must stay contiguous.");
+    assert(entry.sourcePlanDay === index + firstSourcePlanDay, "Source-plan day mapping must stay contiguous.");
     assert(entry.planVersion === plan.planVersion, "Entry plan version mismatch.");
     assert(entry.kind === "chapter" && entry.passages.length >= 1, "Every bridge entry must contain chapter references.");
     assert(entry.bookId === entry.passages[0].bookId && entry.chapter === entry.passages[0].chapter, "Primary passage mismatch.");
@@ -126,23 +138,25 @@ async function main() {
   assert(config.displayTranslation === "ESV" && config.runtimeAI === false, "ESV-only and no-runtime-AI config.");
   assert(config.timezone === "America/Detroit", "Pilot timezone.");
   assert(config.sharedStartDateMode === "fixed" && config.sharedStartDate === "2026-08-08", "Bridge start date.");
-  assert(config.futureReadingsLocked === true && config.futureLookaheadDays === 6, "Bridge week must be visible during testing.");
-  assert(config.offlineReadingWindowDays === 7 && config.privateContentCacheMaxAgeSeconds === 604800, "Pilot offline target must be seven readings/seven days.");
+  assert(config.futureReadingsLocked === true && config.futureLookaheadDays === 7, "Seven future readings must be visible.");
+  assert(config.offlineReadingWindowDays === 8 && config.preparedAheadDays === 7 &&
+    config.privateContentCacheMaxAgeSeconds === 1209600, "Device target must retain today plus seven future private studies without expiring T+7 before its day arrives.");
   assert(JSON.stringify(config.testingReadingIds) === JSON.stringify(bridgeIds), "Testing override is restricted to bridge readings.");
   assert(deploymentConfig.sharedStartDateMode === "fixed", "Deployment example must use an explicit shared start date.");
-  assert(deploymentConfig.futureLookaheadDays === 6 && deploymentConfig.offlineReadingWindowDays === 7, "Deployment example lookahead/offline window.");
+  assert(deploymentConfig.futureLookaheadDays === 7 && deploymentConfig.offlineReadingWindowDays === 8 &&
+    deploymentConfig.preparedAheadDays === 7 && deploymentConfig.privateContentCacheMaxAgeSeconds === 1209600,
+    "Deployment example rolling lookahead/offline window.");
 
   assert(referencePlan.schemaVersion === "reference-plan/v1" && referencePlan.dayCount === 92, "Reference schedule identity/count.");
   assert(referencePlan.days.length === 92, "Reference schedule must store exactly 92 factual day mappings.");
   referencePlan.days.forEach((day, index) => {
     assert(day.day === index + 1 && Array.isArray(day.references) && day.references.length >= 1, "Reference schedule day order.");
   });
-  const expectedBridgeReferences = [
-    ["Micah 3", "Micah 4"], ["Micah 5", "Micah 6", "Micah 7"], ["1 Peter 5"],
-    ["Nahum 1"], ["Nahum 2"], ["Nahum 3"], ["Proverbs 31"]
-  ];
-  assert(JSON.stringify(referencePlan.days.slice(53, 60).map((day) => day.references)) === JSON.stringify(expectedBridgeReferences),
-    "Reference-plan days 54–60 must match the active bridge.");
+  plan.entries.forEach((entry) => {
+    const factualReferences = referencePlan.days[entry.sourcePlanDay - 1].references;
+    assert(factualReferences.length === entry.passages.length,
+      `${entry.readingId}: active passage count must match the factual reference plan`);
+  });
 
   assert(registry.schemaVersion === "source-registry/v1", "Registry schema version.");
   assert(new Set(registry.sources.map((source) => source.sourceId)).size === registry.sources.length, "Unique source IDs.");
@@ -168,7 +182,8 @@ async function main() {
   assert(policy.requiredAttribution.notice.includes("Users may not copy or download more than 500 verses"), "Required ESV notice.");
 
   assert(manifestExample.schemaVersion === "private-manifest/v1", "Private manifest example version.");
-  assert(JSON.stringify(Object.keys(manifestExample.readings)) === JSON.stringify(bridgeIds), "Manifest example must include only bridge readings.");
+  assert(Object.keys(manifestExample.readings).every((readingId) => bridgeIds.includes(readingId)),
+    "Manifest example may name only active bridge readings.");
   assert(appsManifest.webapp.executeAs === "USER_ACCESSING" && appsManifest.webapp.access === "ANYONE", "Fail-closed Apps Script deployment identity.");
   assert(!appsManifest.webapp.access.includes("ANONYMOUS"), "Anonymous Apps Script access is forbidden.");
   const scopes = new Set(appsManifest.oauthScopes);
@@ -197,7 +212,7 @@ async function main() {
     assert(ignore.includes(entry), `.gitignore missing ${entry}`)
   );
 
-  process.stdout.write(`Content validation passed (${schemaFiles.length} schemas, 7 bridge readings, 92-day reference schedule, fabricated Scripture only).\n`);
+  process.stdout.write(`Content validation passed (${schemaFiles.length} schemas, ${bridgeIds.length} rolling bridge readings, 92-day reference schedule, fabricated Scripture only).\n`);
 }
 
 main().catch((error) => {

@@ -87,7 +87,11 @@
       }).map(function participantName(participant) { return participant.displayName; });
       var verseText = button.lastElementChild ? button.lastElementChild.textContent : "";
       button.setAttribute("aria-label", referenceLabel(reference) + ". " + verseText +
-        (commentaryFor(reference) ? " Precomputed Matthew Henry summary available." : " Commentary unavailable.") +
+        (commentaryFor(reference)
+          ? " Precomputed Matthew Henry summary available."
+          : context && context.henrySourceLink
+            ? " Full Matthew Henry commentary link available."
+            : " Commentary unavailable.") +
         (names.length ? " Highlighted by " + names.join(" and ") + "." : " Not highlighted.") +
         " Open verse details.");
     });
@@ -203,11 +207,15 @@
     var shard = context && context.verseCommentary;
     var details = element("verseCommentaryDetails");
     var unavailable = element("verseCommentaryUnavailable");
+    var fallback = element("verseCommentaryFallback");
+    var fallbackLink = element("verseCommentaryFallbackLink");
+    var fallbackNote = element("verseCommentaryFallbackNote");
     var source = element("verseCommentarySource");
     var sourceAtoms = element("verseCommentarySourceAtoms");
     source.open = false;
     sourceAtoms.replaceChildren();
     if (!record) {
+      var sourceLink = context && context.henrySourceLink;
       element("verseCommentaryLabel").textContent = "Matthew Henry commentary";
       element("verseCommentaryBlurb").textContent = "";
       element("verseCommentaryReference").textContent = "";
@@ -216,9 +224,17 @@
       element("verseCommentarySourceNote").textContent = "";
       source.hidden = true;
       details.hidden = true;
-      unavailable.hidden = false;
+      if (fallback) fallback.hidden = !sourceLink;
+      if (fallbackNote) fallbackNote.textContent = sourceLink ? sourceLink.note : "";
+      if (sourceLink && fallbackLink) {
+        fallbackLink.href = sourceLink.url;
+        fallbackLink.textContent = sourceLink.title;
+      }
+      unavailable.hidden = Boolean(sourceLink && fallback && fallbackLink);
       return;
     }
+    if (fallback) fallback.hidden = true;
+    if (fallbackNote) fallbackNote.textContent = "";
     element("verseCommentaryLabel").textContent = shard.label;
     element("verseCommentaryBlurb").textContent = record.blurb;
     element("verseCommentaryReference").textContent = record.source_reference_label;

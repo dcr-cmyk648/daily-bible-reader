@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-pwa-release="94b1a3d8701551c6">
+<html lang="en" data-pwa-release="86ab0c8391208750">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -12,7 +12,7 @@
     <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon-180.png">
     <link rel="icon" type="image/png" sizes="192x192" href="assets/bible-reader-icon-192.png">
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="../releases/b5ee9d7c055d5eb5/styles.css" integrity="sha384-2yoQ0I4Sa7IjGQgmcgUKzEj2et9KLGJhlSg59u//7QAAc+4nagOdEr4BENNEpSlI" crossorigin="anonymous">
+    <link rel="stylesheet" href="../releases/edec22c0e9dd1ccb/styles.css" integrity="sha384-2yoQ0I4Sa7IjGQgmcgUKzEj2et9KLGJhlSg59u//7QAAc+4nagOdEr4BENNEpSlI" crossorigin="anonymous">
   </head>
   <body>
     <a id="skipLink" class="skip-link" href="#selectedDayTitle">Skip to today’s reading</a>
@@ -121,7 +121,7 @@
           <div>
             <p class="eyebrow">Local privacy</p>
             <h2 id="storageHeading">Downloaded data</h2>
-            <p class="muted">The app keeps a seven-day private study snapshot and warms today plus tomorrow first. ESV Scripture stays out of persistent storage; those two readings may remain only in session memory.</p>
+            <p class="muted">The app keeps today plus seven future private studies on this device and warms today plus tomorrow first. ESV Scripture stays out of persistent storage; those two readings may remain only in session memory.</p>
             <p id="offlinePackStatus" class="muted" aria-live="polite">Offline pack has not been prepared yet.</p>
           </div>
           <div class="storage-actions">
@@ -333,6 +333,10 @@
             <p id="verseCommentarySourceNote" class="muted"></p>
             <div id="verseCommentarySourceAtoms" class="verse-commentary-source-atoms"></div>
           </details>
+          <div id="verseCommentaryFallback" class="inline-state" data-state="info" hidden>
+            <p id="verseCommentaryFallbackNote"></p>
+            <a id="verseCommentaryFallbackLink" class="source-link" href="https://www.ccel.org/" target="_blank" rel="noopener noreferrer">Read the full public-domain Matthew Henry commentary</a>
+          </div>
           <p id="verseCommentaryUnavailable" class="inline-state" data-state="info" hidden>Matthew Henry commentary is unavailable for this verse.</p>
         </section>
         <p class="eyebrow highlight-sharing-label">Shared verse highlights</p>
@@ -346,6 +350,6 @@
       <p>Private two-person bridge · Seven scheduled days · No runtime AI</p>
     </footer>
 
-    <script src="assets/pwa-client.94b1a3d8701551c6.js"></script>
+    <script src="assets/pwa-client.86ab0c8391208750.js"></script>
   </body>
 </html>

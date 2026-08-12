@@ -115,7 +115,7 @@
           <div>
             <p class="eyebrow">Local privacy</p>
             <h2 id="storageHeading">Downloaded data</h2>
-            <p class="muted">The app keeps a seven-day private study snapshot and warms today plus tomorrow first. ESV Scripture stays out of persistent storage; those two readings may remain only in session memory.</p>
+            <p class="muted">The app keeps today plus seven future private studies on this device and warms today plus tomorrow first. ESV Scripture stays out of persistent storage; those two readings may remain only in session memory.</p>
             <p id="offlinePackStatus" class="muted" aria-live="polite">Offline pack has not been prepared yet.</p>
           </div>
           <div class="storage-actions">
@@ -327,6 +327,10 @@
             <p id="verseCommentarySourceNote" class="muted"></p>
             <div id="verseCommentarySourceAtoms" class="verse-commentary-source-atoms"></div>
           </details>
+          <div id="verseCommentaryFallback" class="inline-state" data-state="info" hidden>
+            <p id="verseCommentaryFallbackNote"></p>
+            <a id="verseCommentaryFallbackLink" class="source-link" href="https://www.ccel.org/" target="_blank" rel="noopener noreferrer">Read the full public-domain Matthew Henry commentary</a>
+          </div>
           <p id="verseCommentaryUnavailable" class="inline-state" data-state="info" hidden>Matthew Henry commentary is unavailable for this verse.</p>
         </section>
         <p class="eyebrow highlight-sharing-label">Shared verse highlights</p>

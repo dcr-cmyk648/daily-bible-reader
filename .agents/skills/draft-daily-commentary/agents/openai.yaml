@@ -1,6 +1,6 @@
 interface:
   display_name: "Draft Daily Commentary"
-  short_description: "Prepare one validated private study draft"
-  default_prompt: "Use $draft-daily-commentary to prepare the one reading named by the validated work order."
+  short_description: "Prepare one validated private daily study"
+  default_prompt: "Use $draft-daily-commentary for the one reading named by the validated work order, respecting whether it is draft-only or the authorized T+7 publication lane. Spark is exclusive to the Henry condensation; on Spark quota or availability failure, use only the verified full public-domain Henry link fallback."
 policy:
   allow_implicit_invocation: false

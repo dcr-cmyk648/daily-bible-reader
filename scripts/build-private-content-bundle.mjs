@@ -10,23 +10,16 @@ import {syncLatestHenryRuntime} from "./lib/mhc-library-sync.mjs";
 
 const ROOT = process.cwd();
 const OUTPUT = path.join(ROOT, "private-content/bundles/celebration-bridge-review");
-const READING_IDS = [
-  "CC-Y3Q4-D054",
-  "CC-Y3Q4-D055",
-  "CC-Y3Q4-D056",
-  "CC-Y3Q4-D057",
-  "CC-Y3Q4-D058",
-  "CC-Y3Q4-D059",
-  "CC-Y3Q4-D060"
-];
-const INPUTS = [
-  ...READING_IDS.flatMap((readingId) => [
+function bundleInputs(readingIds) {
+  return [
+  ...readingIds.flatMap((readingId) => [
     {source: `private-content/bridge/celebration-y3q4/${readingId}.md`, destination: `readings/${readingId}.md`},
     {source: `private-content/bridge/celebration-y3q4/${readingId}.metadata.json`, destination: `readings/${readingId}.metadata.json`}
   ]),
   {source: "research/working/bridge-source-registry.json", destination: "config/source-registry.json"},
   {source: "research/working/BRIDGE_SOURCE_COVERAGE.md", destination: "coverage/BRIDGE_SOURCE_COVERAGE.md"}
-];
+  ];
+}
 
 function sha256(text) {
   return createHash("sha256").update(text, "utf8").digest("hex");
@@ -40,20 +33,20 @@ function validatePrivateInputs() {
   if (result.status !== 0) throw new Error((result.stderr || result.stdout || "Private validation failed.").trim());
 }
 
-async function synchronizeAttachedHenry() {
+async function synchronizeAttachedHenry(readingIds) {
   const libraryRoot = path.resolve(
     ROOT,
     process.env.DBR_MHC_LIBRARY_ROOT || "private-commentary/mhc/stores/library"
   );
   const runtimeSchemaPath = path.join(ROOT, "schemas/mhc-runtime.schema.json");
   const results = [];
-  for (const readingId of READING_IDS) {
+  for (const readingId of readingIds) {
     const metadataPath = path.join(
       ROOT,
       `private-content/bridge/celebration-y3q4/${readingId}.metadata.json`
     );
     const metadata = JSON.parse(await readFile(metadataPath, "utf8"));
-    if (!metadata.verseCommentary) continue;
+    if (!metadata.verseCommentary && !Array.isArray(metadata.verseCommentaries)) continue;
     results.push(await syncLatestHenryRuntime({
       libraryRoot,
       readingId,
@@ -68,10 +61,13 @@ async function synchronizeAttachedHenry() {
 }
 
 async function main() {
-  await synchronizeAttachedHenry();
+  const activePlan = JSON.parse(await readFile(path.join(ROOT, "fixtures/pilot-content/plan.json"), "utf8"));
+  const readingIds = activePlan.entries.map((entry) => entry.readingId);
+  const inputs = bundleInputs(readingIds);
+  await synchronizeAttachedHenry(readingIds);
   validatePrivateInputs();
   const prepared = [];
-  for (const file of INPUTS) {
+  for (const file of inputs) {
     const content = await readFile(path.join(ROOT, file.source), "utf8");
     const problems = inspectText(`review-bundle/${file.destination}`, content);
     if (problems.length) throw new Error(`${file.destination} failed bundle safety: ${problems.join(", ")}`);
@@ -79,7 +75,7 @@ async function main() {
   }
 
   const registry = JSON.parse(prepared.find((file) => file.destination === "config/source-registry.json").content);
-  const readingInputs = READING_IDS.map((readingId) => ({
+  const readingInputs = readingIds.map((readingId) => ({
     readingId,
     markdown: `readings/${readingId}.md`,
     metadata: `readings/${readingId}.metadata.json`

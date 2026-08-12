@@ -10,15 +10,8 @@ import process from "node:process";
 const ROOT = process.cwd();
 const PORT = Number(process.env.DBR_PORT || 4173);
 const HOST = "127.0.0.1";
-const BRIDGE_READING_IDS = [
-  "CC-Y3Q4-D054",
-  "CC-Y3Q4-D055",
-  "CC-Y3Q4-D056",
-  "CC-Y3Q4-D057",
-  "CC-Y3Q4-D058",
-  "CC-Y3Q4-D059",
-  "CC-Y3Q4-D060"
-];
+const ACTIVE_PLAN = JSON.parse(await readFile(path.join(ROOT, "fixtures/pilot-content/plan.json"), "utf8"));
+const BRIDGE_READING_IDS = ACTIVE_PLAN.entries.map((entry) => entry.readingId);
 const MHC_PILOT_READING_IDS = ["intro-GEN", "GEN-001"];
 const MHC_WINDOW_ROOT = path.join(ROOT, "private-commentary", "mhc", "stores", "current-window");
 const ALLOWED_PREFIXES = ["app/frontend/", "app/shared/", "fixtures/", "config/", "web/"];
@@ -76,21 +69,26 @@ function mergeCommentaryMarkdown(metadata, markdown) {
   return commentary;
 }
 
-async function scheduleMhcRuntime(readingId) {
+async function scheduleMhcRuntimes(readingId) {
   const privateMhcRoot = path.join(ROOT, "private-commentary", "mhc");
   const portable = await windowStoreReading(readingId);
-  if (portable && Array.isArray(portable.chapters) && portable.chapters.length === 1) {
-    return portable.chapters[0].runtime;
+  if (portable && Array.isArray(portable.chapters) && portable.chapters.length &&
+      portable.chapters.every((chapter) => ["in_review", "approved"].includes(chapter.runtime && chapter.runtime.review_status))) {
+    return portable.chapters.map((chapter) => chapter.runtime);
   }
   try {
     const audit = JSON.parse(await readFile(path.join(privateMhcRoot, "schedule", readingId, "audit.json"), "utf8"));
-    if (audit.reading_id !== readingId || !["unreviewed", "approved"].includes(audit.audit_status) ||
-        !Array.isArray(audit.passages) || audit.passages.length !== 1) return null;
-    const runtimePath = path.resolve(privateMhcRoot, String(audit.passages[0].runtime_path || ""));
-    if (!runtimePath.startsWith(`${privateMhcRoot}${path.sep}`)) throw new Error("Unsafe Matthew Henry runtime path");
-    return JSON.parse(await readFile(runtimePath, "utf8"));
+    if (audit.reading_id !== readingId || !["unreviewed", "in_review", "approved"].includes(audit.audit_status) ||
+        !Array.isArray(audit.passages) || !audit.passages.length) return [];
+    const runtimes = [];
+    for (const passage of audit.passages) {
+      const runtimePath = path.resolve(privateMhcRoot, String(passage.runtime_path || ""));
+      if (!runtimePath.startsWith(`${privateMhcRoot}${path.sep}`)) throw new Error("Unsafe Matthew Henry runtime path");
+      runtimes.push(JSON.parse(await readFile(runtimePath, "utf8")));
+    }
+    return runtimes;
   } catch (error) {
-    if (error && error.code === "ENOENT") return null;
+    if (error && error.code === "ENOENT") return [];
     throw error;
   }
 }
@@ -140,8 +138,9 @@ async function privateDraftPayload(readingId) {
     readFile(path.join(ROOT, "research/working/bridge-source-registry.json"), "utf8").then(JSON.parse)
   ]);
   const commentary = mergeCommentaryMarkdown(metadata, markdown);
-  const verseCommentary = await scheduleMhcRuntime(readingId);
-  if (verseCommentary) commentary.verseCommentary = verseCommentary;
+  const verseCommentaries = await scheduleMhcRuntimes(readingId);
+  if (verseCommentaries.length === 1) commentary.verseCommentary = verseCommentaries[0];
+  else if (verseCommentaries.length > 1) commentary.verseCommentaries = verseCommentaries;
   const sourceIds = new Set();
   (commentary.dailyIntroduction?.sourceIds || []).forEach((sourceId) => sourceIds.add(sourceId));
   (commentary.commentarySummary?.paragraphs || []).forEach((paragraph) =>
@@ -307,9 +306,10 @@ const server = createServer(async (request, response) => {
     }
     return;
   }
-  const mhcWindowReading = /^\/__mhc\/window\/readings\/(CC-Y3Q4-D05[4-9]|CC-Y3Q4-D060)\.json$/.exec(url.pathname);
+  const mhcWindowReading = /^\/__mhc\/window\/readings\/([A-Za-z0-9_-]+)\.json$/.exec(url.pathname);
   if (mhcWindowReading) {
     try {
+      if (!BRIDGE_READING_IDS.includes(mhcWindowReading[1])) throw new Error("Reading is outside the active plan");
       const reading = await windowStoreReading(mhcWindowReading[1]);
       if (!reading) throw new Error("Reading is outside the current window");
       sendJson(response, 200, reading, headers);
@@ -353,9 +353,10 @@ const server = createServer(async (request, response) => {
     }
     return;
   }
-  const privateReading = /^\/__private\/reading\/(CC-Y3Q4-D05[4-9]|CC-Y3Q4-D060)\.json$/.exec(url.pathname);
+  const privateReading = /^\/__private\/reading\/([A-Za-z0-9_-]+)\.json$/.exec(url.pathname);
   if (privateReading) {
     try {
+      if (!BRIDGE_READING_IDS.includes(privateReading[1])) throw new Error("Reading is outside the active plan");
       sendJson(response, 200, await privateDraftPayload(privateReading[1]), headers);
     } catch {
       sendJson(response, 404, {error: "Private draft reading is unavailable."}, headers);

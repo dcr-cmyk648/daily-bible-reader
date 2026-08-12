@@ -1,90 +1,78 @@
-# Content automation runbook
+# Daily content automation runbook
 
-Status: deterministic local foundation and one-reading commentary handoff implemented. Bounded D057 and D058 runs completed under stable work orders and were verified in private Drive after manual review/publication authorization. The generation gate is disabled again. No recurring task, private Drive staging area, or publication automation is enabled.
+This runbook operates the authorized one-reading T+7 lane. It never runs inside the reader and never uses an OpenAI API key. Work in an isolated task worktree. Resolve the canonical checkout from the absolute Git common directory, then link the ignored private directories to its existing stores. Verify those targets before creating the ignored links; never create empty substitute stores. Do not use a dirty shared worktree.
 
-The automation controller is deliberately read-only. It inspects versioned metadata, measures consecutive draft and published buffers, and selects at most one earliest next action. When—and only when—a private policy explicitly enables generation, it can emit a schema-validated one-reading work order for the repo-local `$draft-daily-commentary` skill. Neither command opens commentary bodies, invokes a model, writes Drive, changes the live manifest, or deploys the reader.
-
-## Why use a Codex scheduled task
-
-This workflow does not need an OpenAI API key or an AI backend inside the reader. Official OpenAI documentation says desktop scheduled tasks can work with local projects, either in the project directory or an isolated worktree; the computer must remain on and the app must be running when local files are required. Web-scheduled tasks can use connected tools but cannot directly work in a local folder. OpenAI also recommends testing the prompt normally and manually reviewing the first runs. Checked 2026-08-10: <https://learn.chatgpt.com/docs/automations>.
-
-Use an isolated worktree for the eventual scheduled task. The active repository frequently contains private ignored research and unfinished human review, so an unattended task must not share a mutable source worktree with an interactive task.
-
-## Versioned metadata
-
-- `content-automation-policy/v1` sets the Detroit timezone, seven-day draft target, five-day approved-live target, earliest-gap strategy, one-reading ceiling, validation/hash requirements, and permanent initial `autoPublish: false` gate.
-- `content-staging-index/v1` records only staging metadata: reading/day identity, state, private artifact reference, workflow/model/source-set versions, review state, hashes, validation result codes, prior hashes, and limitations.
-- `content-live-index/v1` records only the metadata needed to prove a reading is live: reading/day identity, publication and review status, live/manifest hashes, manifest presence, and validation state.
-- `content-readiness-report/v1` is the output. It contains consecutive horizons and one action; it contains no commentary, ESV wording, source extracts, credentials, identities, comments, or Google resource IDs.
-- `commentary-work-order/v1` is the scheduler-to-worker packet. It contains the exact plan entry, limited prior-day context IDs, required deliverables, workflow-document paths, and hard guards for one ignored unreviewed draft. Its ID is stable across retries of the same reading/reason.
-
-The tracked example policy deliberately has `generationEnabled: false`. Status remains available in that state; work-order issuance fails closed. Only a private automation policy may enable real generation after the recurring workflow and its authorized reading range are approved.
-
-Private working copies belong under ignored `private-content/automation/`. A future Drive staging index may use the same schemas, but creating the folder/files in Drive is a separate external action.
-
-## Read-only status command
-
-The tracked fabricated fixtures exercise the command without private data:
+## 1. Resolve the exact work order
 
 ```sh
-node scripts/content-automation.mjs status \
-  --plan fixtures/automation/plan.json \
-  --app-config fixtures/automation/app-config.json \
-  --policy config/content-automation.example.json \
-  --staging-index fixtures/automation/staging-index.json \
-  --live-index fixtures/automation/live-index.json \
-  --today 2026-08-10
+npm run study:next
 ```
 
-For a real local run, substitute the canonical active plan plus ignored policy/staging/live metadata paths. Never point the command at a public build directory. The command validates all three inputs, fails closed on duplicate/mismatched plan identities, and validates its report before printing it.
+Validate the result against `schemas/rolling-study-work-order.schema.json`.
 
-When the report selects `generate_or_repair_one`, the main scheduled task may request a work packet with the same arguments:
+- `none`: run the lightweight validation/readback audit and report no change.
+- `plan_complete`: report completion; do not invent a next plan.
+- `prepare_publish`: work only on `reading.readingId`.
+
+If `planExtensionRequired` is true, append only the named source day:
 
 ```sh
-node scripts/content-automation.mjs work-order \
-  --plan <active-plan.json> \
-  --app-config <app-config.json> \
-  --policy <private-enabled-policy.json> \
-  --staging-index <private-staging-index.json> \
-  --live-index <private-live-index.json>
+npm run bridge:extend -- --source-day <sourcePlanDay>
 ```
 
-The packet explicitly names `$draft-daily-commentary`. The skill works only in `private-content/automation/staging/<readingId>/`, prepares commentary, synthesis, registry/coverage, and validation artifacts, and leaves them `unreviewed`. It cannot publish or select a second reading. The primary task must execute the full main-commentary workflow itself. Do not invoke Spark here; the exact ChatGPT-authenticated `gpt-5.3-codex-spark` model is reserved for mass verse-by-verse Matthew Henry condensation. Preserve the D057 Spark-assisted artifact as a one-off calibration rather than a reusable precedent.
+The command checks the fixed Detroit start date, the configured seven-day lookahead, contiguity, reference-plan identity, and factual chapter metrics. Re-run `npm run study:next`; the reading must now match the active plan exactly.
 
-At the private publication boundary, `npm run bundle:private` follows the Matthew Henry library's checksum-bound `current.json` pointer and synchronizes every already attached chapter layer before validation. It therefore picks up a reviewed background regeneration instead of retaining an embedded older version. A corrupt pointer/catalog, checksum mismatch, missing reading, or newer `unreviewed` artifact fails closed. `DBR_MHC_LIBRARY_ROOT` may point a clean integration checkout at the canonical private library; it must never point into a public build or be committed as configuration.
+## 2. Prepare the complete study
 
-## Decision rules
+Invoke `$draft-daily-commentary` with the unchanged rolling work order. Read all workflow documents required by the skill. Work only in ignored private staging and the canonical ignored source registry.
 
-1. Count only consecutive readings from the current shared Detroit plan day. Later work never hides an earlier gap.
-2. A live, manifest-bound, hash-matching, validated reading may satisfy the draft buffer without a duplicate staging record.
-3. An unreviewed or in-review staging artifact may satisfy only the draft buffer after validation. `changes_requested`, failed validation, missing hashes, and research-only states do not count.
-4. Published readiness is strict: the live index must be present, validated, hash-matching, `reviewed` or `published`, and explicitly `approved`.
-5. Book introductions count as one reading exactly like chapters.
-6. If the draft target is short, select only its earliest missing/invalid reading as `generate_or_repair_one`.
-7. If the draft target is satisfied but the published target is short, select only the earliest live gap as `review_or_publish_one`.
-8. Nothing auto-publishes. Approval and publication remain separate human-initiated steps.
+The daily surface needs a brief standalone orientation, ESV reference only, one coherent main synthesis, one representative verse reference, and a concrete one-sentence action. The deep study uses custom headings suited to the passage and numbered citations. Writing should be content-rich and readable, aimed at highly educated Christian readers, confessional without pretending difficult evidence does not exist, and practical without filler. Secular or anti-supernatural critical proposals appear only when notably influential and are assessed rather than treated as neutral default explanations.
 
-The active bridge's legacy accepted studies still use `in_review` metadata in Drive. The installed reader has an explicit temporary compatibility rule for those three known readings. This automation contract intentionally does not inherit that exception: new work is not published-ready until its metadata says `approved`.
+For the Henry layer:
 
-## Scheduled-task rollout
+```sh
+node scripts/mhc-pipeline.mjs schedule-next --today <Detroit date> --days-ahead 7
+node scripts/review-mhc-schedule.mjs prepare --reading <readingId>
+```
 
-When Dustin explicitly enables the recurring task:
+Read the complete private `audit.md`, compare every condensation with its cited atom(s), and correct the general generation controller before regenerating if a recurring defect exists. Record any isolated wording corrections in the candidate, retain their reasons, set the candidate to `approved` only after the complete comparison, and apply that one hash-bound record once. Do not apply an `in_review` candidate and then prepare a second approval record: the canonical approval must remain bound to the raw generated bytes and retain every correction so later rebuilds can replay it.
 
-1. Reuse the validated ignored policy, staging-index, and live-index files; the policy must begin disabled.
-2. Reuse the completed D057 manual run as the real work-order/publication test; retain its one-off Spark calibration artifact for audit, but confirm the scheduled prompt keeps future main synthesis in the primary task.
-3. In a dedicated clean automation checkout or isolated task worktree, verify that private metadata is available from the configured canonical source; do not assume ignored files from another worktree exist.
-4. Create a desktop scheduled task, provisionally daily at 5:00 a.m. `America/Detroit`, and explicitly invoke `$draft-daily-commentary` in its prompt.
-5. Give it repository and web-research access only. Do not give deployment, Apps Script, Sheet, comment, ESV-key, or live-manifest write authority.
-6. Enable `generationEnabled` only for the scheduled lane after its prompt and authorized horizon are accepted. Review the first five run reports manually. A run may prepare one ignored draft; it may not publish it.
-7. Create a separate phone-initiated approval/publication workflow only after the draft lane has been reliable.
+```sh
+node scripts/review-mhc-schedule.mjs apply \
+  --reading <readingId> \
+  --review private-commentary/mhc/schedule/<readingId>/review-candidate.json
+node scripts/sync-latest-mhc.mjs \
+  --reading <readingId> \
+  --metadata private-content/bridge/celebration-y3q4/<readingId>.metadata.json
+```
 
-If the Mac may be asleep, the task can miss its scheduled time. The in-reader readiness warning remains the independent signal that the content buffer needs attention; a scheduled task is operational convenience, not a runtime dependency.
+The apply command rejects stale/reordered generation bytes and updates the checksum-bound private Henry library. A later schedule rebuild must reproduce the reviewed wording by replaying the same canonical approval and corrections against the raw generation. The bundle/sync step always follows that newest reviewed library pointer.
 
-## Failure and recovery
+If Spark reports an availability or account-quota limit, stop its retries. Do not substitute another model and do not write an AI condensation in its place. Add a `henrySourceLink` to a verified HTTPS page containing the complete public-domain chapter commentary, bind it to the consulted Matthew Henry source record, and validate that link as the reading's explicit fallback. The app treats this as prepared, labels it honestly, and opens the full source from verse details.
 
-- Invalid or inaccessible metadata: fail without choosing a reading.
-- Earliest draft fails research/validation: retain an audit, leave it non-ready, and retry the same stable reading ID next run.
-- Published buffer is low: report the exact owner-only gap; do not promote a draft.
-- Current commentary is missing: Scripture and comments continue independently; the app labels commentary unavailable.
-- Dirty/shared worktree: stop. Do not merge, reset, discard, publish, or overwrite another task's work.
-- Any suspected secret, ESV wording, private commentary, or source extract in a tracked/public path: stop and run repository safety before doing anything else.
+## 3. Validate and promote atomically
+
+Compute the commentary hash from the exact Markdown bytes, set the metadata to `in_review` only after primary review, and run:
+
+```sh
+npm run validate:sources
+npm run validate:private
+npm run safety
+npm run check
+```
+
+Build the private content bundle. Upload versioned content/config/plan/registry files first. Update the single private manifest only after every target exists. Re-read the files from Drive, compare exact hashes/bytes, verify the manifest refers to the new files, and confirm sharing did not broaden. The previous manifest remains the rollback pointer until the final update.
+
+If tracked code/plan metadata changed, commit intentionally, push `main`, publish the code-only Pages artifact, and update the existing token Apps Script backend if required. Never move the immutable USER_ACCESSING production deployment pointer. Never commit private content, ESV wording, source atoms, identifiers, codes, or secrets.
+
+## 4. Report
+
+Report the reading/date, source categories and limitations, Henry generation/review status, tests/gates, Drive readback, resulting ready-through date, commit, Pages release, and any failure. Do not include private IDs, reader codes, comments, ESV wording, or copyrighted source text.
+
+## Failure rules
+
+- A non-quota generation, citation, review, or validation failure leaves the reading non-ready and retries the same work order. A confirmed Spark availability/quota failure uses only the documented full-source-link fallback.
+- A Drive upload failure leaves the old manifest current.
+- Missing local private storage or a dirty checkout stops publication.
+- The workflow never skips to a later reading, generates a second reading, reads comments, calls the ESV API, or weakens a gate.
+- If the Mac misses the run, the app's first-gap warning remains the independent alert.

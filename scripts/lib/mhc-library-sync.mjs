@@ -62,21 +62,25 @@ export async function loadLatestHenryReading({libraryRoot, readingId, runtimeSch
   const reading = readingResult.value;
   if (reading.schema_version !== "mhc-portable-reading/v1" || reading.reading_id !== readingId ||
       reading.plan_version !== pointer.plan_version || reading.contains_scripture !== false ||
-      !Array.isArray(reading.chapters) || reading.chapters.length !== 1) {
-    throw new Error(`${readingId} is not a safe one-chapter Henry portable reading.`);
+      !Array.isArray(reading.chapters) || reading.chapters.length < 1 || reading.chapters.length > 5) {
+    throw new Error(`${readingId} is not a safe Henry portable reading.`);
   }
-  const runtime = reading.chapters[0] && reading.chapters[0].runtime;
   const runtimeSchema = JSON.parse(await readFile(runtimeSchemaPath, "utf8"));
-  assertSchemaValid(runtime, runtimeSchema, {label: `${readingId} latest Henry runtime`});
-  if (!["in_review", "approved"].includes(runtime.review_status)) {
-    throw new Error(`${readingId} newest Henry artifact is ${runtime.review_status}; review it before attachment.`);
-  }
+  const runtimes = reading.chapters.map((chapter, index) => {
+    const runtime = chapter && chapter.runtime;
+    assertSchemaValid(runtime, runtimeSchema, {label: `${readingId} latest Henry runtime ${index + 1}`});
+    if (!["in_review", "approved"].includes(runtime.review_status)) {
+      throw new Error(`${readingId} newest Henry artifact is ${runtime.review_status}; review it before attachment.`);
+    }
+    return runtime;
+  });
   return {
     pointer,
     catalog,
     descriptor,
     reading,
-    runtime,
+    runtime: runtimes.length === 1 ? runtimes[0] : null,
+    runtimes,
     artifactPath: readingPath,
     artifactSha256: readingResult.digest
   };
@@ -100,21 +104,34 @@ export async function syncLatestHenryRuntime({
   if (metadata.readingId !== readingId) {
     throw new Error(`${metadataPath} belongs to ${metadata.readingId || "an unknown reading"}, not ${readingId}.`);
   }
-  const current = metadata.verseCommentary;
-  const changed = !sameHenryRuntime(current, latest.runtime);
+  const current = Array.isArray(metadata.verseCommentaries)
+    ? metadata.verseCommentaries
+    : metadata.verseCommentary ? [metadata.verseCommentary] : [];
+  const changed = !sameHenryRuntime(current, latest.runtimes);
   if (checkOnly && changed) {
-    const attachedVersion = current && `${current.prompt_version} at ${current.generation_timestamp}` || "none";
-    throw new Error(`${readingId} has stale Henry commentary (attached ${attachedVersion}; latest ${latest.runtime.prompt_version} at ${latest.runtime.generation_timestamp}).`);
+    const attachedVersion = current.length
+      ? current.map((runtime) => `${runtime.prompt_version} at ${runtime.generation_timestamp}`).join(", ")
+      : "none";
+    const latestVersion = latest.runtimes
+      .map((runtime) => `${runtime.prompt_version} at ${runtime.generation_timestamp}`).join(", ");
+    throw new Error(`${readingId} has stale Henry commentary (attached ${attachedVersion}; latest ${latestVersion}).`);
   }
   if (changed && !checkOnly) {
-    metadata.verseCommentary = latest.runtime;
+    if (latest.runtimes.length === 1) {
+      metadata.verseCommentary = latest.runtimes[0];
+      delete metadata.verseCommentaries;
+    } else {
+      metadata.verseCommentaries = latest.runtimes;
+      delete metadata.verseCommentary;
+    }
     await writeFile(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`, "utf8");
   }
   return {
     changed,
     readingId,
-    promptVersion: latest.runtime.prompt_version,
-    generationTimestamp: latest.runtime.generation_timestamp,
+    promptVersion: latest.runtimes.map((runtime) => runtime.prompt_version).join(","),
+    generationTimestamp: latest.runtimes.map((runtime) => runtime.generation_timestamp).sort().at(-1),
+    chapterCount: latest.runtimes.length,
     artifactSha256: latest.artifactSha256,
     metadataPath
   };

@@ -52,9 +52,12 @@
   const BOOK_NAMES = {
     GEN: "Genesis",
     "1PE": "1 Peter",
+    "2PE": "2 Peter",
+    HAB: "Habakkuk",
     MIC: "Micah",
     NAM: "Nahum",
-    PRO: "Proverbs"
+    PRO: "Proverbs",
+    ZEP: "Zephaniah"
   };
   const FALLBACK_ESV_NOTICE = "Scripture quotations are from the ESV® Bible (The Holy Bible, English Standard Version®), © 2001 by Crossway, a publishing ministry of Good News Publishers. Used by permission. All rights reserved. The ESV text may not be quoted in any publication made available to the public by a Creative Commons license. The ESV may not be translated into any other language.\n\nUsers may not copy or download more than 500 verses of the ESV Bible or more than one half of any book of the ESV Bible.";
 
@@ -94,6 +97,7 @@
     selectedVerseRequestToken: 0,
     currentScripture: null,
     currentVerseCommentary: null,
+    currentHenrySourceLink: null,
     highlightEnhancer: null,
     verseOfTheDay: null,
     uiWired: false,
@@ -1242,6 +1246,22 @@
     return {bookId: selection.bookId, chapter: selection.chapter, verse: selection.verse};
   }
 
+  function normalizedHenrySourceLink(link, entry, sources) {
+    if (!link || !entry || entry.kind !== "chapter" ||
+        typeof link.sourceId !== "string" || !link.sourceId.trim() ||
+        typeof link.title !== "string" || !link.title.trim() || link.title.length > 200 ||
+        typeof link.note !== "string" || !link.note.trim() || link.note.length > 500 ||
+        !(sources || []).some((source) => source && source.sourceId === link.sourceId)) return null;
+    let url;
+    try {
+      url = new URL(String(link.url || ""));
+    } catch (_) {
+      return null;
+    }
+    if (url.protocol !== "https:" || url.username || url.password) return null;
+    return {sourceId: link.sourceId, title: link.title.trim(), url: url.href, note: link.note.trim()};
+  }
+
   function validMhcRuntimeProvenance(shard) {
     return Boolean(shard && typeof shard === "object" &&
       shard.schema_version === "mhc-runtime/v1" && shard.validation_status === "valid" &&
@@ -1305,6 +1325,33 @@
       } else if (record.source_atom_ids !== undefined) return null;
     }
     return shard;
+  }
+
+  function normalizedVerseCommentarySet(commentary, entry) {
+    const supplied = Array.isArray(commentary && commentary.verseCommentaries)
+      ? commentary.verseCommentaries
+      : commentary && commentary.verseCommentary ? [commentary.verseCommentary] : [];
+    const shards = supplied.map((shard) => normalizedVerseCommentaryShard(shard, entry)).filter(Boolean);
+    if (!shards.length || shards.length !== supplied.length) return null;
+    const records = {};
+    const sourceAtoms = {};
+    for (const shard of shards) {
+      for (const [recordId, record] of Object.entries(shard.records || {})) {
+        if (records[recordId]) return null;
+        records[recordId] = record;
+      }
+      for (const [atomId, atom] of Object.entries(shard.source_atoms || {})) {
+        if (sourceAtoms[atomId] && sourceAtoms[atomId].text_sha256 !== atom.text_sha256) return null;
+        sourceAtoms[atomId] = atom;
+      }
+    }
+    return {
+      label: shards[0].label,
+      source_layer_note: "Exact public-domain Matthew Henry commentary used for these condensations; embedded Scripture transcription is omitted.",
+      records,
+      source_atoms: sourceAtoms,
+      shards
+    };
   }
 
   function normalizedBookCommentaryResource(shard, entry) {
@@ -1440,7 +1487,8 @@
     }
     renderBookCommentaryResource(commentary.bookCommentary);
 
-    state.currentVerseCommentary = normalizedVerseCommentaryShard(commentary.verseCommentary, state.currentEntry);
+    state.currentVerseCommentary = normalizedVerseCommentarySet(commentary, state.currentEntry);
+    state.currentHenrySourceLink = normalizedHenrySourceLink(commentary.henrySourceLink, state.currentEntry, sources || []);
 
     const commentarySummary = normalizedCommentarySummary(commentary);
     const practicalTakeaway = commentary.practicalTakeaway || {markdown: "Practical takeaway unavailable.", sourceIds: []};
@@ -1563,6 +1611,7 @@
       entry: state.currentEntry,
       scripture: state.currentScripture,
       verseCommentary: state.currentVerseCommentary,
+      henrySourceLink: state.currentHenrySourceLink,
       participants: state.calendarParticipants.slice(),
       session: state.session ? {authorId: state.session.authorId, displayName: state.session.displayName} : null,
       online: serverCallsAllowed()
@@ -1735,7 +1784,8 @@
 
   function preparationEntry(entryInput, commentary) {
     if (entryInput && typeof entryInput === "object") return entryInput;
-    const shard = commentary && commentary.verseCommentary;
+    const shard = commentary && (commentary.verseCommentary ||
+      (Array.isArray(commentary.verseCommentaries) && commentary.verseCommentaries[0]));
     const readingId = typeof entryInput === "string" ? entryInput : commentary && commentary.readingId;
     if (commentary && commentary.bookCommentary) return {readingId, kind: "book_intro", bookId: commentary.bookCommentary.resource && commentary.bookCommentary.resource.book_id};
     if (shard && shard.book_id && Number.isInteger(shard.chapter)) {
@@ -1758,28 +1808,33 @@
   }
 
   function verseCommentaryIsComplete(commentary, entry) {
-    if (!chapterPassagesAreConfigured(entry) || entry.passages.length !== 1) return false;
-    const passage = entry.passages[0];
-    const shard = commentary && commentary.verseCommentary;
-    if (!shard || shard.schema_version !== "mhc-runtime/v1" || shard.validation_status !== "valid" ||
-        !["in_review", "approved"].includes(shard.review_status) || shard.book_id !== passage.bookId ||
-        shard.chapter !== passage.chapter || !substantiveStudyText(shard.source_layer_note, 5)) return false;
-    const records = shard.records && typeof shard.records === "object" ? shard.records : {};
-    const atoms = shard.source_atoms && typeof shard.source_atoms === "object" ? shard.source_atoms : {};
-    const startVerse = Number.isInteger(passage.verseStart) ? passage.verseStart : 1;
-    const expectedIds = Array.from({length: passage.verseCount}, (_, index) =>
-      `${passage.bookId}.${passage.chapter}.${startVerse + index}`
-    );
-    if (Object.keys(records).length !== expectedIds.length) return false;
-    return expectedIds.every((recordId) => {
-      const record = records[recordId];
-      if (!record || !substantiveStudyText(record.blurb, 4) ||
-          !substantiveStudyText(record.scope_note, 2) || !String(record.source_reference_label || "").trim() ||
-          !Array.isArray(record.source_unit_ids) || !record.source_unit_ids.length ||
-          !Array.isArray(record.source_atom_ids) || !record.source_atom_ids.length) return false;
-      return record.source_atom_ids.every((atomId) => {
-        const atom = atoms[atomId];
-        return Boolean(atom && atom.source_unit_id && atom.source_reference_label && substantiveStudyText(atom.text, 3));
+    if (!chapterPassagesAreConfigured(entry)) return false;
+    const supplied = Array.isArray(commentary && commentary.verseCommentaries)
+      ? commentary.verseCommentaries
+      : commentary && commentary.verseCommentary ? [commentary.verseCommentary] : [];
+    if (supplied.length !== entry.passages.length) return false;
+    return entry.passages.every((passage, passageIndex) => {
+      const shard = supplied[passageIndex];
+      if (!shard || shard.schema_version !== "mhc-runtime/v1" || shard.validation_status !== "valid" ||
+          !["in_review", "approved"].includes(shard.review_status) || shard.book_id !== passage.bookId ||
+          shard.chapter !== passage.chapter || !substantiveStudyText(shard.source_layer_note, 5)) return false;
+      const records = shard.records && typeof shard.records === "object" ? shard.records : {};
+      const atoms = shard.source_atoms && typeof shard.source_atoms === "object" ? shard.source_atoms : {};
+      const startVerse = Number.isInteger(passage.verseStart) ? passage.verseStart : 1;
+      const expectedIds = Array.from({length: passage.verseCount}, (_, index) =>
+        `${passage.bookId}.${passage.chapter}.${startVerse + index}`
+      );
+      if (Object.keys(records).length !== expectedIds.length) return false;
+      return expectedIds.every((recordId) => {
+        const record = records[recordId];
+        if (!record || !substantiveStudyText(record.blurb, 4) ||
+            !substantiveStudyText(record.scope_note, 2) || !String(record.source_reference_label || "").trim() ||
+            !Array.isArray(record.source_unit_ids) || !record.source_unit_ids.length ||
+            !Array.isArray(record.source_atom_ids) || !record.source_atom_ids.length) return false;
+        return record.source_atom_ids.every((atomId) => {
+          const atom = atoms[atomId];
+          return Boolean(atom && atom.source_unit_id && atom.source_reference_label && substantiveStudyText(atom.text, 3));
+        });
       });
     });
   }
@@ -1804,6 +1859,7 @@
       ? commentary.commentarySummary.paragraphs : []).forEach((paragraph) => add(paragraph.sourceIds));
     add(commentary && commentary.practicalTakeaway && commentary.practicalTakeaway.sourceIds);
     add(commentary && commentary.comprehensiveSynthesis && commentary.comprehensiveSynthesis.sourceIds);
+    add(commentary && commentary.henrySourceLink ? [commentary.henrySourceLink.sourceId] : []);
     return ids;
   }
 
@@ -1824,6 +1880,7 @@
     const synthesis = commentary && commentary.comprehensiveSynthesis;
     const citedSourceIds = citedPreparationSourceIds(commentary);
     const sources = payload && Array.isArray(payload.sources) ? payload.sources : [];
+    const henrySourceLinkReady = Boolean(normalizedHenrySourceLink(commentary && commentary.henrySourceLink, entry, sources));
     const sourceById = new Map(sources.map((source) => [source && source.sourceId, source]));
     const sourceRecordsReady = metadataReady && citedSourceIds.size >= 2 &&
       [...citedSourceIds].every((sourceId) => {
@@ -1843,8 +1900,10 @@
         : {id: "scripture", label: "ESV passage configuration", ready: chapterPassagesAreConfigured(entry)},
       ...(entry && entry.kind === "book_intro" ? [] : [{
         id: "henry",
-        label: "Matthew Henry verse commentary with full source text",
-        ready: metadataReady && verseCommentaryIsComplete(commentary, entry)
+        label: henrySourceLinkReady
+          ? "verified full Matthew Henry chapter link"
+          : "Matthew Henry verse commentary with full source text",
+        ready: metadataReady && (verseCommentaryIsComplete(commentary, entry) || henrySourceLinkReady)
       }]),
       {
         id: "main-synthesis",
@@ -1930,7 +1989,10 @@
     const calendarIndex = Math.min(entries.length - 1, Math.max(0, state.schedule.calendarDayIndex - 1));
     const startsTomorrow = state.schedule.status === "active";
     const startIndex = scheduleComplete ? entries.length : startsTomorrow ? Math.min(entries.length, calendarIndex + 1) : 0;
-    const target = scheduleComplete ? 0 : Math.min(3, entries.length - startIndex);
+    const configuredTarget = Number.isInteger(state.config && state.config.preparedAheadDays)
+      ? Math.max(1, Math.min(7, state.config.preparedAheadDays))
+      : 3;
+    const target = scheduleComplete ? 0 : Math.min(configuredTarget, entries.length - startIndex);
     const readiness = evaluateContentReadiness(entries, payloadsInput, startIndex, target);
     return {
       ...readiness,
@@ -1962,7 +2024,7 @@
   async function persistBootstrap(bootstrap) {
     const maxAgeSeconds = Number(bootstrap && bootstrap.config &&
       bootstrap.config.privateContentCacheMaxAgeSeconds || 0);
-    if (!Number.isInteger(maxAgeSeconds) || maxAgeSeconds <= 0 || maxAgeSeconds > 604800) return;
+    if (!Number.isInteger(maxAgeSeconds) || maxAgeSeconds <= 0 || maxAgeSeconds > 1209600) return;
     const cachedAt = new Date();
     const session = bootstrap.session || {};
     const payload = {
@@ -2011,6 +2073,9 @@
       commentary.commentaryVersion || "",
       commentary.generation && commentary.generation.contentHash || "",
       commentary.verseCommentary && commentary.verseCommentary.generation_timestamp || "",
+      ...(Array.isArray(commentary.verseCommentaries)
+        ? commentary.verseCommentaries.map((shard) => shard && shard.generation_timestamp || "") : []),
+      commentary.henrySourceLink && commentary.henrySourceLink.url || "",
       commentary.bookCommentary && commentary.bookCommentary.generation_timestamp || ""
     ].join(":");
   }
@@ -2027,7 +2092,7 @@
     const previous = state.privatePayloadByReadingId.get(readingId);
     state.privatePayloadByReadingId.set(readingId, payload);
     const maxAgeSeconds = Number(state.config && state.config.privateContentCacheMaxAgeSeconds || 0);
-    if (Number.isInteger(maxAgeSeconds) && maxAgeSeconds > 0 && maxAgeSeconds <= 604800) {
+    if (Number.isInteger(maxAgeSeconds) && maxAgeSeconds > 0 && maxAgeSeconds <= 1209600) {
       const cachedAt = new Date();
       await state.store.put("privateContent", {
         readingId,
@@ -2411,7 +2476,7 @@
       ? day.entry.sourcePlanDay
         ? `Original plan day ${day.entry.sourcePlanDay} of 92 · Bridge day ${day.entry.dayIndex} of ${state.plan.entries.length}`
         : `Day ${day.entry.dayIndex} of ${state.plan.entries.length}`
-      : "This date is outside the current seven-reading bridge.";
+      : "This date is outside the current active reading plan.";
     const completion = element("selectedDayCompletion");
     completion.replaceChildren();
     const completedAuthors = day.entry ? completionSet(day.entry.readingId) : new Set();
@@ -2689,6 +2754,7 @@
     state.commentSyncToken += 1;
     state.currentScripture = null;
     state.currentVerseCommentary = null;
+    state.currentHenrySourceLink = null;
     notifyHighlightEnhancer();
     element("readingView").hidden = true;
     element("homeView").hidden = false;
@@ -2719,6 +2785,7 @@
     state.currentEntry = entry;
     state.currentScripture = null;
     state.currentVerseCommentary = null;
+    state.currentHenrySourceLink = null;
     notifyHighlightEnhancer();
     element("readingDate").textContent = formatReadingDate(schedule.readingDate);
     element("readingPosition").textContent = entry.sourcePlanDay
@@ -2737,13 +2804,14 @@
 
     if (schedule.locked) {
       state.currentVerseCommentary = null;
+      state.currentHenrySourceLink = null;
       setBanner("This future reading is locked by the shared plan configuration.", "info");
     } else if (schedule.usingTestingOverride) {
       setBanner("Development override is active. The shared calendar has not been changed.", "info");
     } else if (schedule.status === "before_start") {
       setBanner("The shared plan has not started yet.", "info");
     } else if (schedule.status === "pilot_complete") {
-      setBanner("This seven-day bridge is complete. No later reading is active yet.", "info");
+      setBanner("The currently published bridge is complete. A later reading is not active yet.", "info");
     } else {
       setBanner("");
     }
@@ -2797,7 +2865,7 @@
       }
       try {
         // Cached bytes paint immediately, but today and tomorrow are always revalidated
-        // after authorization so a private-content revision cannot remain hidden for seven days.
+        // after authorization so a private-content revision cannot remain hidden behind the offline retention window.
         const batch = await state.adapter.getReadingPayloads(entries.map((entry) => entry.readingId));
         if (!batch || batch.planVersion !== state.plan.planVersion ||
             !batch.payloads || typeof batch.payloads !== "object") {
@@ -2840,7 +2908,7 @@
 
   async function prefetchOfflineWindow() {
     if (!state.plan || !state.config) return;
-    const target = Math.min(7, Math.max(1, Number(state.config.offlineReadingWindowDays) || 1));
+    const target = Math.min(8, Math.max(1, Number(state.config.offlineReadingWindowDays) || 1));
     const entries = state.plan.entries;
     const calendarIndex = Math.min(entries.length - 1, Math.max(0, state.schedule.calendarDayIndex - 1));
     let startIndex = calendarIndex;
@@ -3541,6 +3609,7 @@
     resetScriptureMemory();
     state.currentScripture = null;
     state.currentVerseCommentary = null;
+    state.currentHenrySourceLink = null;
     notifyHighlightEnhancer();
     state.calendarParticipants = [];
     state.completionByReadingId = new Map();

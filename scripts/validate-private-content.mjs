@@ -15,16 +15,6 @@ const SOURCE_SCHEMA_PATH = path.join(ROOT, "schemas/source.schema.json");
 const MHC_RUNTIME_SCHEMA_PATH = path.join(ROOT, "schemas/mhc-runtime.schema.json");
 const PLAN_PATH = path.join(ROOT, "fixtures/pilot-content/plan.json");
 const CONTENT_DIR = path.join(ROOT, "private-content/bridge/celebration-y3q4");
-const READINGS = [
-  {readingId: "CC-Y3Q4-D054", markdown: "CC-Y3Q4-D054.md", metadata: "CC-Y3Q4-D054.metadata.json", substantive: true},
-  {readingId: "CC-Y3Q4-D055", markdown: "CC-Y3Q4-D055.md", metadata: "CC-Y3Q4-D055.metadata.json", substantive: true},
-  {readingId: "CC-Y3Q4-D056", markdown: "CC-Y3Q4-D056.md", metadata: "CC-Y3Q4-D056.metadata.json", substantive: true},
-  {readingId: "CC-Y3Q4-D057", markdown: "CC-Y3Q4-D057.md", metadata: "CC-Y3Q4-D057.metadata.json", substantive: true, prepared: true},
-  {readingId: "CC-Y3Q4-D058", markdown: "CC-Y3Q4-D058.md", metadata: "CC-Y3Q4-D058.metadata.json", substantive: true, prepared: true},
-  {readingId: "CC-Y3Q4-D059", markdown: "CC-Y3Q4-D059.md", metadata: "CC-Y3Q4-D059.metadata.json", substantive: false},
-  {readingId: "CC-Y3Q4-D060", markdown: "CC-Y3Q4-D060.md", metadata: "CC-Y3Q4-D060.metadata.json", substantive: false}
-];
-const EXPECTED_FILES = new Set(READINGS.flatMap((reading) => [reading.markdown, reading.metadata]));
 const EXPECTED_HEADINGS = [
   "Brief overview",
   "Literary structure",
@@ -77,6 +67,7 @@ function citedSourceIds(commentary) {
   (commentary.sections || []).forEach((section) => section.sourceIds.forEach((sourceId) => ids.add(sourceId)));
   (commentary.comprehensiveSynthesis?.sourceIds || []).forEach((sourceId) => ids.add(sourceId));
   commentary.claims.forEach((claim) => claim.sourceIds.forEach((sourceId) => ids.add(sourceId)));
+  if (commentary.henrySourceLink && commentary.henrySourceLink.sourceId) ids.add(commentary.henrySourceLink.sourceId);
   return ids;
 }
 
@@ -130,14 +121,22 @@ async function main() {
     readFile(REGISTRY_PATH, "utf8").then(JSON.parse),
     readFile(PLAN_PATH, "utf8").then(JSON.parse)
   ]);
+  const readings = plan.entries.map((entry) => ({
+    readingId: entry.readingId,
+    markdown: `${entry.readingId}.md`,
+    metadata: `${entry.readingId}.metadata.json`,
+    substantive: true,
+    prepared: entry.sourcePlanDay >= 57
+  }));
+  const expectedFiles = new Set(readings.flatMap((reading) => [reading.markdown, reading.metadata]));
   assertSchemaValid(registry, sourceSchema, {label: "Private bridge source registry"});
   validateRegistryProvenance(registry);
   const registryById = new Map(registry.sources.map((source) => [source.sourceId, source]));
   const files = (await readdir(CONTENT_DIR)).filter((name) => !name.startsWith("."));
-  assert(files.length === EXPECTED_FILES.size, `Private bridge directory must contain exactly ${EXPECTED_FILES.size} files.`);
-  files.forEach((filename) => assert(EXPECTED_FILES.has(filename), `Unexpected private bridge file: ${filename}`));
+  assert(files.length === expectedFiles.size, `Private bridge directory must contain exactly ${expectedFiles.size} files.`);
+  files.forEach((filename) => assert(expectedFiles.has(filename), `Unexpected private bridge file: ${filename}`));
 
-  for (const reading of READINGS) {
+  for (const reading of readings) {
     const [markdown, commentary] = await Promise.all([
       readFile(path.join(CONTENT_DIR, reading.markdown), "utf8"),
       readFile(path.join(CONTENT_DIR, reading.metadata), "utf8").then(JSON.parse)
@@ -157,13 +156,28 @@ async function main() {
     assert(supportsSourceSetVersion(registry, commentary.generation.sourceSetVersion),
       `${reading.readingId}: source-set version is not supported by the current additive registry`);
     const entry = plan.entries.find((candidate) => candidate.readingId === reading.readingId);
-    const verseCommentary = commentary.verseCommentary;
-    if (verseCommentary) {
-      assert(entry && entry.kind === "chapter" && entry.passages.length === 1,
-        `${reading.readingId}: attached verse commentary requires exactly one configured chapter`);
-      const passage = entry.passages[0];
+    const verseCommentaries = Array.isArray(commentary.verseCommentaries)
+      ? commentary.verseCommentaries
+      : commentary.verseCommentary ? [commentary.verseCommentary] : [];
+    assert(!(commentary.verseCommentary && Array.isArray(commentary.verseCommentaries)),
+      `${reading.readingId}: use either verseCommentary or verseCommentaries, not both`);
+    const henrySourceLink = commentary.henrySourceLink;
+    let validHenrySourceLink = false;
+    if (henrySourceLink) {
+      let url;
+      try { url = new URL(henrySourceLink.url); } catch (_) {}
+      validHenrySourceLink = Boolean(url && url.protocol === "https:" && !url.username && !url.password &&
+        registryById.has(henrySourceLink.sourceId));
+      assert(validHenrySourceLink, `${reading.readingId}: Henry fallback must be a registered credential-free HTTPS source link`);
+      assert(!verseCommentaries.length, `${reading.readingId}: remove the Henry fallback after attaching reviewed verse commentary`);
+    }
+    if (verseCommentaries.length) {
+      assert(entry && entry.kind === "chapter" && entry.passages.length === verseCommentaries.length,
+        `${reading.readingId}: attached verse-commentary shards must match every configured chapter`);
+      verseCommentaries.forEach((verseCommentary, passageIndex) => {
+      const passage = entry.passages[passageIndex];
       assert(verseCommentary.book_id === passage.bookId && verseCommentary.chapter === passage.chapter,
-        `${reading.readingId}: attached verse commentary does not match the configured chapter`);
+        `${reading.readingId}: attached verse-commentary shard ${passageIndex + 1} does not match the configured chapter`);
       assert(["in_review", "approved"].includes(verseCommentary.review_status),
         `${reading.readingId}: an attached live verse-commentary layer must be in review or approved`);
       const startVerse = Number.isInteger(passage.verseStart) ? passage.verseStart : 1;
@@ -185,9 +199,10 @@ async function main() {
           });
         });
       }
+      });
     }
-    if (reading.prepared) assert(verseCommentary,
-      `${reading.readingId}: an end-to-end prepared chapter requires reviewed verse-by-verse Matthew Henry commentary`);
+    if (reading.prepared) assert(verseCommentaries.length === entry.passages.length || validHenrySourceLink,
+      `${reading.readingId}: an end-to-end prepared reading requires reviewed Matthew Henry shards or a verified full-commentary link`);
     const selectedVerse = commentary.verseOfTheDay;
     const selectedPassage = entry && entry.passages.find((passage) =>
       passage.bookId === selectedVerse.bookId && passage.chapter === selectedVerse.chapter
@@ -317,7 +332,10 @@ async function main() {
     });
   }
 
-  process.stdout.write(`Private content validation passed (2 end-to-end prepared studies; 5 syntheses; 2 explicit placeholders; ${registry.sources.length} registered sources; no stored Scripture).\n`);
+  const preparedCount = readings.filter((reading) => reading.prepared).length;
+  const synthesisCount = readings.filter((reading) => reading.substantive).length;
+  const placeholderCount = readings.length - synthesisCount;
+  process.stdout.write(`Private content validation passed (${preparedCount} end-to-end prepared studies; ${synthesisCount} syntheses; ${placeholderCount} explicit placeholders; ${registry.sources.length} registered sources; no stored Scripture).\n`);
 }
 
 main().catch((error) => {

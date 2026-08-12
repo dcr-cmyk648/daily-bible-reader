@@ -80,6 +80,25 @@
       "$ref": "mhc-runtime.schema.json#/$defs/chapterShard",
       "description": "Optional precomputed private chapter shard. The browser performs local verse lookup with no runtime AI call; a reviewed shard may include only the exact cited public-domain commentary atoms used by its condensations."
     },
+    "verseCommentaries": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 5,
+      "items": {"$ref": "mhc-runtime.schema.json#/$defs/chapterShard"},
+      "description": "Precomputed private chapter shards for a multi-chapter daily reading, in configured passage order. Use verseCommentary for legacy one-chapter records."
+    },
+    "henrySourceLink": {
+      "type": "object",
+      "required": ["sourceId", "title", "url", "note"],
+      "properties": {
+        "sourceId": {"type": "string", "minLength": 1, "maxLength": 200},
+        "title": {"type": "string", "minLength": 1, "maxLength": 200},
+        "url": {"type": "string", "pattern": "^https://", "maxLength": 1000},
+        "note": {"type": "string", "minLength": 1, "maxLength": 500}
+      },
+      "additionalProperties": false,
+      "description": "Optional verified full-text public-domain link used when a reviewed condensed Henry shard is unavailable. It contains no copied source text and must resolve to a registered source."
+    },
     "bookCommentary": {
       "$ref": "mhc-runtime.schema.json#/$defs/bookIntroShard",
       "description": "Optional precomputed private book-level resource; never represented as a fabricated verse."

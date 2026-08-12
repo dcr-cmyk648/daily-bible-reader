@@ -222,14 +222,22 @@ test("current worker validation rejects source-reporting prose instead of merely
   });
   assert.equal(validation.valid, false);
   assert.ok(validation.errors.some((error) => error.includes("source-reporting phrase")));
+
+  output.records[0].blurb = "This fabricated explanation preserves the substance thereof while remaining long enough for validation.";
+  const archaicValidation = pipeline.validateChapterOutput(output, {
+    schema: json("schemas/mhc-commentary-output.schema.json"), units, bookId: "GEN", chapter: 1,
+    verseCount: 2, expectedMetadata: spec.metadata
+  });
+  assert.equal(archaicValidation.valid, false);
+  assert.ok(archaicValidation.errors.some((error) => error.includes('archaic term "thereof"')));
 });
 
 test("autonomous Spark prompts separate grounded fact extraction from direct abridged prose", async () => {
   const {FACT_PROMPT_VERSION, PROMPT_VERSION} = await import("../scripts/lib/mhc-pipeline.mjs");
-  const factPrompt = fs.readFileSync(path.join(__dirname, "..", "prompts/mhc-fact-extractor-v5.md"), "utf8");
-  const writerPrompt = fs.readFileSync(path.join(__dirname, "..", "prompts/mhc-autonomous-writer-v2.md"), "utf8");
-  assert.equal(FACT_PROMPT_VERSION, "mhc-fact-extractor/v5");
-  assert.equal(PROMPT_VERSION, "mhc-autonomous-writer/v2");
+  const factPrompt = fs.readFileSync(path.join(__dirname, "..", "prompts/mhc-fact-extractor-v8.md"), "utf8");
+  const writerPrompt = fs.readFileSync(path.join(__dirname, "..", "prompts/mhc-autonomous-writer-v5.md"), "utf8");
+  assert.equal(FACT_PROMPT_VERSION, "mhc-fact-extractor/v8");
+  assert.equal(PROMPT_VERSION, "mhc-autonomous-writer/v5");
   assert.match(factPrompt, /concrete identities, relationships, historical setting/);
   assert.match(factPrompt, /Every atom listed in `target_marked_source_atom_ids`/);
   assert.match(factPrompt, /preserve who acts, who receives the action/);
@@ -270,6 +278,107 @@ test("Spark fact briefs require exact evidence, target facts, and explicit ident
   assert.equal(validation.valid, false);
   assert.ok(validation.errors.some((error) => error.includes("target-marked atom")));
   assert.ok(validation.errors.some((error) => error.includes('omitted explicit identity "Testperson"')));
+});
+
+test("fact jobs prefer a verse-specific marker over a broader block marker", async () => {
+  const {pipeline, units, sourceManifest} = await normalizedFixture();
+  const verseUnit = units.find((unit) => unit.unit_type === "verse_range");
+  const baseAtom = verseUnit.source_atoms.find((atom) => atom.atom_type === "commentary");
+  baseAtom.text = "FABRICATED broad treatment for vv. 1–2 with enough detail for this test.";
+  verseUnit.source_atoms.push({
+    ...structuredClone(baseAtom),
+    source_atom_id: `${baseAtom.source_atom_id}:specific`,
+    sequence: baseAtom.sequence + 1,
+    text: "FABRICATED specific treatment for v. 1 with enough detail for this test."
+  });
+  const spec = pipeline.buildChapterJobSpec({
+    units, sourceManifest, model: "gpt-5.3-codex-spark", bookId: "GEN", chapter: 1, verseCount: 2,
+    generatedAt: "2026-08-12T12:00:00.000Z"
+  });
+  const first = spec.requestedRecords.find((record) => record.verse_id === "GEN.1.1");
+  assert.deepEqual(first.target_marked_source_atom_ids, [`${baseAtom.source_atom_id}:specific`]);
+});
+
+test("fact admission caps material claims and rejects source-reporting ledgers", async () => {
+  const {pipeline, units, sourceManifest} = await normalizedFixture();
+  const spec = pipeline.buildChapterJobSpec({
+    units, sourceManifest, model: "gpt-5.3-codex-spark", bookId: "GEN", chapter: 1, verseCount: 2,
+    generatedAt: "2026-08-11T12:00:00.000Z"
+  });
+  const schema = json("schemas/mhc-fact-brief.schema.json");
+  const sourceReporting = validFactBrief(pipeline, spec);
+  sourceReporting.verse_briefs[0].facts[0].statement = "He adds a fabricated observation about the target.";
+  let validation = pipeline.validateFactBrief(sourceReporting, {schema, chapterJobSpec: spec});
+  assert.equal(validation.valid, true);
+  assert.deepEqual(validation.warnings, []);
+
+  const crowded = validFactBrief(pipeline, spec);
+  const baseFact = crowded.verse_briefs[0].facts[0];
+  for (let index = 2; index <= 4; index += 1) {
+    crowded.verse_briefs[0].facts.push({
+      ...structuredClone(baseFact),
+      fact_id: `GEN.1.1:f${String(index).padStart(2, "0")}`,
+      statement: `FABRICATED material fact number ${index} remains grounded in the same test evidence.`
+    });
+  }
+  validation = pipeline.validateFactBrief(crowded, {schema, chapterJobSpec: spec});
+  assert.equal(validation.valid, false);
+  assert.ok(validation.errors.some((error) => error.includes("no more than three material facts")));
+
+  const archaic = validFactBrief(pipeline, spec);
+  archaic.verse_briefs[0].facts[0].statement = "FABRICATED material remains thereof for this test.";
+  validation = pipeline.validateFactBrief(archaic, {schema, chapterJobSpec: spec});
+  assert.equal(validation.valid, false);
+  assert.ok(validation.errors.some((error) => error.includes('archaic term "thereof"')));
+});
+
+test("fact hydration protects a named actor against ambiguous downstream agency", async () => {
+  const {pipeline, units, sourceManifest} = await normalizedFixture();
+  const verseUnit = units.find((unit) => unit.unit_type === "verse_range");
+  verseUnit.source_atoms.find((atom) => atom.atom_type === "commentary").text =
+    "FABRICATED (v. 1) The Assyrians harmed Jacob and emptied his fields for this test.";
+  const spec = pipeline.buildChapterJobSpec({
+    units, sourceManifest, model: "gpt-5.3-codex-spark", bookId: "GEN", chapter: 1, verseCount: 2,
+    generatedAt: "2026-08-11T12:00:00.000Z"
+  });
+  const brief = validFactBrief(pipeline, spec);
+  const atom = spec.sourceUnits.flatMap((unit) => unit.source_atoms)
+    .find((candidate) => candidate.source_atom_id === brief.verse_briefs[0].facts[0].source_atom_id);
+  const snippet = pipeline.evidenceSnippetsForAtom(atom).find((candidate) => /Assyrians/.test(candidate.text));
+  const fact = brief.verse_briefs[0].facts[0];
+  fact.statement = "Assyria harmed Jacob and emptied his fields.";
+  fact.source_snippet_id = snippet.source_snippet_id;
+  fact.evidence_quote = "SPARK PLACEHOLDER";
+  fact.must_include_terms = ["emptied"];
+  const hydrated = pipeline.hydrateFactBriefEvidence(brief, {chapterJobSpec: spec});
+  assert.ok(hydrated.verse_briefs[0].facts[0].must_include_terms.includes("Assyrians"));
+});
+
+test("fact hydration derives verse relevance from source markers and prunes later-range detail", async () => {
+  const {pipeline, units, sourceManifest} = await normalizedFixture();
+  const verseUnit = units.find((unit) => unit.unit_type === "verse_range");
+  const atom = verseUnit.source_atoms.find((candidate) => candidate.atom_type === "commentary");
+  atom.text = "FABRICATED (v. 1) Direct target material remains here with enough words to close this sentence clearly. " +
+    "FABRICATED (v. 2) A later verse contains separate material with enough words to close this sentence clearly.";
+  const spec = pipeline.buildChapterJobSpec({
+    units, sourceManifest, model: "gpt-5.3-codex-spark", bookId: "GEN", chapter: 1, verseCount: 2,
+    generatedAt: "2026-08-11T12:00:00.000Z"
+  });
+  const brief = validFactBrief(pipeline, spec);
+  const sourceAtom = spec.sourceUnits.flatMap((unit) => unit.source_atoms)
+    .find((candidate) => candidate.source_atom_id === brief.verse_briefs[0].facts[0].source_atom_id);
+  const snippets = pipeline.evidenceSnippetsForAtom(sourceAtom);
+  const first = snippets.find((snippet) => /v\. 1/.test(snippet.text));
+  const second = snippets.find((snippet) => /v\. 2/.test(snippet.text));
+  brief.verse_briefs[0].facts = [
+    {...brief.verse_briefs[0].facts[0], fact_id: "GEN.1.1:f01", source_snippet_id: first.source_snippet_id,
+      evidence_quote: first.text, statement: "FABRICATED direct target material remains.", must_include_terms: ["target"]},
+    {...brief.verse_briefs[0].facts[0], fact_id: "GEN.1.1:f02", source_snippet_id: second.source_snippet_id,
+      evidence_quote: second.text, statement: "FABRICATED later material belongs to the next verse.", must_include_terms: ["later"]}
+  ];
+  const hydrated = pipeline.hydrateFactBriefEvidence(brief, {chapterJobSpec: spec});
+  assert.equal(hydrated.verse_briefs[0].facts.length, 1);
+  assert.equal(hydrated.verse_briefs[0].facts[0].verse_relevance, "target_marker");
 });
 
 test("the controller canonicalizes Spark evidence and shortens brittle writer anchors", async () => {
@@ -404,6 +513,31 @@ test("chapter job requests identify atoms that explicitly mark the target verse"
   assert.deepEqual(spec.requestedRecords[1].target_marked_source_atom_ids, []);
   assert.deepEqual(spec.requestedRecords[1].required_explicit_identity_terms, []);
   assert.deepEqual(spec.requestedRecords[1].required_explicit_relations, []);
+});
+
+test("ordinary words after a relationship noun are not treated as proper names", async () => {
+  const {pipeline, units, sourceManifest} = await normalizedFixture();
+  const verseUnit = units.find((unit) => unit.unit_type === "verse_range");
+  const targetAtom = verseUnit.source_atoms.find((atom) => atom.atom_type === "commentary");
+  targetAtom.text = "FABRICATED (v. 1) Her husband wears a conspicuously fabricated coat.";
+  const spec = pipeline.buildChapterJobSpec({
+    units, sourceManifest, model: "gpt-test", bookId: "GEN", chapter: 1, verseCount: 2,
+    generatedAt: "2026-08-11T12:00:00.000Z"
+  });
+  assert.deepEqual(spec.requestedRecords[0].required_explicit_relations, []);
+});
+
+test("Roman-numeral chapter cross-references are not mistaken for target verse markers", async () => {
+  const {pipeline, units, sourceManifest} = await normalizedFixture();
+  const verseUnit = units.find((unit) => unit.unit_type === "verse_range");
+  const targetAtom = verseUnit.source_atoms.find((atom) => atom.atom_type === "commentary");
+  targetAtom.text = "FABRICATED (v. 1) DIRECT DETAIL. A separate citation is Isa. v. 2.";
+  const spec = pipeline.buildChapterJobSpec({
+    units, sourceManifest, model: "gpt-test", bookId: "GEN", chapter: 1, verseCount: 2,
+    generatedAt: "2026-08-11T12:00:00.000Z"
+  });
+  assert.deepEqual(spec.requestedRecords[0].target_marked_source_atom_ids, [targetAtom.source_atom_id]);
+  assert.deepEqual(spec.requestedRecords[1].target_marked_source_atom_ids, []);
 });
 
 test("current worker validation rejects indirect source-reporting scaffolds", async () => {
@@ -634,7 +768,7 @@ test("source, prompt, schema, model, and fact-brief changes invalidate job finge
     {...baseline, prompt_version: "mhc-worker/v2"},
     {...baseline, schema_version: "mhc-commentary/v2"},
     {...baseline, worker_model: "gpt-two"},
-    {...baseline, fact_brief_hash: "f".repeat(64), fact_prompt_version: "mhc-fact-extractor/v5"}
+    {...baseline, fact_brief_hash: "f".repeat(64), fact_prompt_version: "mhc-fact-extractor/v8"}
   ].map(jobFingerprint);
   assert.equal(new Set(fingerprints).size, fingerprints.length);
 });
@@ -837,7 +971,7 @@ test("current-prompt portable readings reject source-reporting edits before stor
     source_archive_sha256: "a".repeat(64),
     source_manifest_ref: "FABRICATED-TEST-MANIFEST",
     worker_model: "gpt-5.3-codex-spark",
-    prompt_version: "mhc-autonomous-writer/v2",
+    prompt_version: "mhc-autonomous-writer/v5",
     generation_timestamp: "2026-08-11T12:00:00.000Z",
     validation_status: "valid",
     review_status: "unreviewed",
@@ -866,7 +1000,7 @@ test("current-prompt portable readings reject source-reporting edits before stor
         reading_id: "CC-Y3Q4-D057",
         source_plan_day: 57,
         worker_model: "gpt-5.3-codex-spark",
-        prompt_version: "mhc-autonomous-writer/v2",
+        prompt_version: "mhc-autonomous-writer/v5",
         review_status: "unreviewed",
         human_review: {status: "required"}
       },

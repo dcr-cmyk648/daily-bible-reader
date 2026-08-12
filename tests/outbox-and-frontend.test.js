@@ -661,6 +661,14 @@ test("today and tomorrow are the only priority warm readings", () => {
   assert.match(priorityWarmSource, /private-content revision cannot remain hidden behind the offline retention window/);
   assert.match(priorityWarmSource, /renderContentReadiness\(currentContentReadiness\(state\.privatePayloadByReadingId\)\)/);
   assert.doesNotMatch(priorityWarmSource, /missingPayloads/);
+  const offlineWarmSource = source.slice(
+    source.indexOf("async function prefetchOfflineWindow()"),
+    source.indexOf("function scheduleOfflinePrefetch()")
+  );
+  assert.match(offlineWarmSource, /getReadingPayloads\(readingIds\)/);
+  assert.match(offlineWarmSource, /windowEntries\.map\(\(entry\) => entry\.readingId\)/);
+  assert.match(offlineWarmSource, /Revalidate the whole current-plus-seven window/);
+  assert.doesNotMatch(offlineWarmSource, /missingEntries/);
   assert.match(source, /state\.adapter\.listComments/);
   assert.match(source, /getScriptureForReading\(entry\)/);
   assert.match(source, /scriptureMemoryOnly: true/);

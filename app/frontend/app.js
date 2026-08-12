@@ -2918,7 +2918,6 @@
     let contentCount = 0;
     let scriptureCount = 0;
     let scriptureEligible = 0;
-    const missingEntries = [];
     const payloadByReadingId = new Map();
 
     for (const entry of windowEntries) {
@@ -2927,18 +2926,22 @@
         contentCount += 1;
         payloadByReadingId.set(entry.readingId, payload);
       }
-      else missingEntries.push(entry);
     }
 
-    if (missingEntries.length && serverCallsAllowed()) {
+    if (windowEntries.length && serverCallsAllowed()) {
       try {
-        const readingIds = missingEntries.map((entry) => entry.readingId);
+        // The retained pack is a fast offline fallback, not an authority for whether
+        // a study is current. Revalidate the whole current-plus-seven window after
+        // authorization so a newly reviewed synthesis or Henry runtime replaces an
+        // older cached placeholder without waiting for its retention age to expire.
+        const readingIds = windowEntries.map((entry) => entry.readingId);
         const batch = await state.adapter.getReadingPayloads(readingIds);
         if (!batch || batch.planVersion !== state.plan.planVersion ||
             !batch.payloads || typeof batch.payloads !== "object") {
           throw appError("Offline reading batch did not match the active plan.", "CONTENT_MISMATCH");
         }
-        for (const entry of missingEntries) {
+        contentCount = 0;
+        for (const entry of windowEntries) {
           const payload = batch.payloads[entry.readingId];
           const commentary = payload && (payload.commentary || payload.metadata);
           if (!commentary || commentary.readingId !== entry.readingId) {
@@ -2949,7 +2952,8 @@
           contentCount += 1;
         }
       } catch {
-        // A partial pack is preferable to delaying the active reading.
+        // A stale or partial retained pack is preferable to delaying the active
+        // reading; the readiness banner remains honest about whatever is cached.
       }
     }
 

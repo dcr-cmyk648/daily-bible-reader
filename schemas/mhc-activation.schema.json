@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daily-bible-reader.local/schemas/mhc-activation.schema.json",
+  "title": "Matthew Henry plan-generator activation contract",
+  "$defs": {
+    "reviewStatus": {
+      "type": "string",
+      "enum": ["unreviewed", "in_review", "approved", "changes_requested"]
+    },
+    "humanReviewStatus": {
+      "type": "string",
+      "enum": ["required", "in_review", "approved", "changes_requested"]
+    },
+    "request": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "request_id",
+        "plan_version",
+        "requested_by",
+        "start_reading_id",
+        "reading_count",
+        "worker_model"
+      ],
+      "properties": {
+        "schema_version": {"type": "string", "const": "mhc-activation-request/v1"},
+        "request_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,99}$"},
+        "plan_version": {"type": "string", "minLength": 1, "maxLength": 200},
+        "requested_by": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,99}$"},
+        "start_reading_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,159}$"},
+        "reading_count": {"type": "integer", "minimum": 1, "maximum": 14},
+        "worker_model": {"type": "string", "const": "gpt-5.3-codex-spark"},
+        "reason": {"type": "string", "minLength": 1, "maxLength": 500}
+      },
+      "additionalProperties": false
+    },
+    "catalogReading": {
+      "type": "object",
+      "required": [
+        "reading_id",
+        "schedule_date",
+        "day_index",
+        "source_plan_day",
+        "file",
+        "sha256",
+        "passage_count",
+        "worker_model",
+        "prompt_version",
+        "review_status",
+        "human_review_status",
+        "first_stored_at",
+        "last_stored_at"
+      ],
+      "properties": {
+        "reading_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,159}$"},
+        "schedule_date": {"type": "string", "format": "date"},
+        "day_index": {"type": "integer", "minimum": 1, "maximum": 100000},
+        "source_plan_day": {"type": "integer", "minimum": 1, "maximum": 100000},
+        "file": {"type": "string", "pattern": "^plans/[A-Za-z0-9][A-Za-z0-9._-]{2,119}/readings/[A-Za-z0-9][A-Za-z0-9._:-]{2,159}\\.[a-f0-9]{16}\\.json$"},
+        "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "passage_count": {"type": "integer", "minimum": 1, "maximum": 5},
+        "worker_model": {"type": "string", "const": "gpt-5.3-codex-spark"},
+        "prompt_version": {"type": "string", "minLength": 1, "maxLength": 100},
+        "review_status": {"$ref": "#/$defs/reviewStatus"},
+        "human_review_status": {"$ref": "#/$defs/humanReviewStatus"},
+        "first_stored_at": {"type": "string", "format": "date-time"},
+        "last_stored_at": {"type": "string", "format": "date-time"}
+      },
+      "additionalProperties": false
+    },
+    "catalog": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "catalog_id",
+        "plan_version",
+        "updated_at",
+        "worker_model",
+        "prompt_version",
+        "publication_status",
+        "contains_scripture",
+        "readings"
+      ],
+      "properties": {
+        "schema_version": {"type": "string", "const": "mhc-library-catalog/v1"},
+        "catalog_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,199}$"},
+        "plan_version": {"type": "string", "minLength": 1, "maxLength": 200},
+        "updated_at": {"type": "string", "format": "date-time"},
+        "worker_model": {"type": "string", "const": "gpt-5.3-codex-spark"},
+        "prompt_version": {"type": "string", "minLength": 1, "maxLength": 100},
+        "publication_status": {"type": "string", "const": "not_published"},
+        "contains_scripture": {"type": "boolean", "const": false},
+        "readings": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 10000,
+          "items": {"$ref": "#/$defs/catalogReading"}
+        }
+      },
+      "additionalProperties": false
+    },
+    "pointer": {
+      "type": "object",
+      "required": ["schema_version", "plan_version", "catalog_file", "catalog_sha256", "updated_at"],
+      "properties": {
+        "schema_version": {"type": "string", "const": "mhc-library-pointer/v1"},
+        "plan_version": {"type": "string", "minLength": 1, "maxLength": 200},
+        "catalog_file": {"type": "string", "pattern": "^plans/[A-Za-z0-9][A-Za-z0-9._-]{2,119}/catalog\\.json$"},
+        "catalog_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "updated_at": {"type": "string", "format": "date-time"}
+      },
+      "additionalProperties": false
+    },
+    "artifactPointer": {
+      "type": "object",
+      "required": ["file", "sha256"],
+      "properties": {
+        "file": {"type": "string", "minLength": 1, "maxLength": 500},
+        "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      },
+      "additionalProperties": false
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "request_id",
+        "plan_version",
+        "requested_by",
+        "start_reading_id",
+        "requested_reading_count",
+        "completed_at",
+        "status",
+        "worker_model",
+        "prompt_version",
+        "publication_status",
+        "contains_scripture",
+        "reading_ids",
+        "current_window_manifest",
+        "library_catalog"
+      ],
+      "properties": {
+        "schema_version": {"type": "string", "const": "mhc-activation-result/v1"},
+        "request_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,99}$"},
+        "plan_version": {"type": "string", "minLength": 1, "maxLength": 200},
+        "requested_by": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,99}$"},
+        "start_reading_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,159}$"},
+        "requested_reading_count": {"type": "integer", "minimum": 1, "maximum": 14},
+        "completed_at": {"type": "string", "format": "date-time"},
+        "status": {"type": "string", "const": "completed"},
+        "worker_model": {"type": "string", "const": "gpt-5.3-codex-spark"},
+        "prompt_version": {"type": "string", "minLength": 1, "maxLength": 100},
+        "publication_status": {"type": "string", "const": "not_published"},
+        "contains_scripture": {"type": "boolean", "const": false},
+        "reading_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 14,
+          "items": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,159}$"}
+        },
+        "current_window_manifest": {"$ref": "#/$defs/artifactPointer"},
+        "library_catalog": {"$ref": "#/$defs/artifactPointer"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "$ref": "#/$defs/request"
+}

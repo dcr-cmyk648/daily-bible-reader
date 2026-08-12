@@ -147,12 +147,39 @@ function validChapterOutput(spec) {
     ...spec.metadata,
     records: [1, 2].map((verse) => ({
       verse_id: `GEN.1.${verse}`,
-      blurb: `Henry treats this fabricated verse as part of one shared test range, emphasizing only the supplied fabricated theme for verse ${verse}.`,
+      blurb: `This fabricated verse belongs to one shared test range and emphasizes only the supplied fabricated theme for verse ${verse}.`,
       coverage_type: "range-derived",
-      scope_note: "Henry treats verses 1–2 together.",
+      scope_note: "From fabricated Genesis 1:1–2.",
       source_unit_ids: [source.source_unit_id],
       source_atom_ids: [atom.source_atom_id],
       source_reference_label: source.reference_label
+    }))
+  };
+}
+
+function validFactBrief(pipeline, spec) {
+  const source = spec.sourceUnits.find((unit) => unit.unit_type === "verse_range");
+  const atom = source.source_atoms.find((candidate) => candidate.atom_type === "commentary");
+  const snippet = pipeline.evidenceSnippetsForAtom(atom)[0];
+  return {
+    ...pipeline.buildFactBriefJobSpec({chapterJobSpec: spec}).metadata,
+    verse_briefs: [1, 2].map((verse) => ({
+      verse_id: `GEN.1.${verse}`,
+      coverage_type: "range-derived",
+      source_unit_ids: [source.source_unit_id],
+      source_reference_label: source.reference_label,
+      facts: [{
+        fact_id: `GEN.1.${verse}:f01`,
+        importance: "required",
+        category: "action_or_event",
+        statement: "FABRICATED treatment joins verses one and two for testing only.",
+        source_atom_id: atom.source_atom_id,
+        source_snippet_id: snippet.source_snippet_id,
+        evidence_quote: snippet.text,
+        must_include_terms: ["FABRICATED", "verses"],
+        qualification: "none",
+        verse_relevance: "shared_range_context"
+      }]
     }))
   };
 }
@@ -179,6 +206,275 @@ test("chapter validation accepts exact coverage and rejects duplicate or missing
   assert.equal(invalid.valid, false);
   assert.ok(invalid.errors.some((error) => error.includes("appears 2 times")));
   assert.ok(invalid.errors.some((error) => error.includes("missing expected verse GEN.1.2")));
+});
+
+test("current worker validation rejects source-reporting prose instead of merely warning", async () => {
+  const {pipeline, units, sourceManifest} = await normalizedFixture();
+  const spec = pipeline.buildChapterJobSpec({
+    units, sourceManifest, model: "gpt-test", bookId: "GEN", chapter: 1, verseCount: 2,
+    generatedAt: "2026-08-11T12:00:00.000Z"
+  });
+  const output = validChapterOutput(spec);
+  output.records[0].blurb = "Henry treats this fabricated detail as important.";
+  const validation = pipeline.validateChapterOutput(output, {
+    schema: json("schemas/mhc-commentary-output.schema.json"), units, bookId: "GEN", chapter: 1,
+    verseCount: 2, expectedMetadata: spec.metadata
+  });
+  assert.equal(validation.valid, false);
+  assert.ok(validation.errors.some((error) => error.includes("source-reporting phrase")));
+});
+
+test("autonomous Spark prompts separate grounded fact extraction from direct abridged prose", async () => {
+  const {FACT_PROMPT_VERSION, PROMPT_VERSION} = await import("../scripts/lib/mhc-pipeline.mjs");
+  const factPrompt = fs.readFileSync(path.join(__dirname, "..", "prompts/mhc-fact-extractor-v5.md"), "utf8");
+  const writerPrompt = fs.readFileSync(path.join(__dirname, "..", "prompts/mhc-autonomous-writer-v2.md"), "utf8");
+  assert.equal(FACT_PROMPT_VERSION, "mhc-fact-extractor/v5");
+  assert.equal(PROMPT_VERSION, "mhc-autonomous-writer/v2");
+  assert.match(factPrompt, /concrete identities, relationships, historical setting/);
+  assert.match(factPrompt, /Every atom listed in `target_marked_source_atom_ids`/);
+  assert.match(factPrompt, /preserve who acts, who receives the action/);
+  assert.match(factPrompt, /controller canonicalizes that field from `source_snippet_id`/);
+  assert.match(writerPrompt, /Use only the validated fact-brief view supplied below/);
+  assert.match(writerPrompt, /Every fact marked `required` must be expressed faithfully/);
+  assert.match(writerPrompt, /Never mention Henry, a commentator, commentary, a source, an atom, a fact brief/);
+  assert.match(writerPrompt, /Do not assume a neighboring verse supplied information/);
+});
+
+test("Spark fact briefs require exact evidence, target facts, and explicit identities", async () => {
+  const {pipeline, units, sourceManifest} = await normalizedFixture();
+  const spec = pipeline.buildChapterJobSpec({
+    units, sourceManifest, model: "gpt-5.3-codex-spark", bookId: "GEN", chapter: 1, verseCount: 2,
+    generatedAt: "2026-08-11T12:00:00.000Z"
+  });
+  const schema = json("schemas/mhc-fact-brief.schema.json");
+  const brief = validFactBrief(pipeline, spec);
+  let validation = pipeline.validateFactBrief(brief, {schema, chapterJobSpec: spec});
+  assert.equal(validation.valid, true, validation.errors.join("\n"));
+
+  const inventedEvidence = structuredClone(brief);
+  inventedEvidence.verse_briefs[0].facts[0].evidence_quote = "FABRICATED EVIDENCE THAT DOES NOT OCCUR IN THE ATOM";
+  validation = pipeline.validateFactBrief(inventedEvidence, {schema, chapterJobSpec: spec});
+  assert.equal(validation.valid, false);
+  assert.ok(validation.errors.some((error) => error.includes("must exactly equal the controller-selected evidence snippet")));
+
+  const targetUnit = units.find((unit) => unit.unit_type === "verse_range");
+  targetUnit.source_atoms.find((atom) => atom.atom_type === "commentary").text =
+    "FABRICATED (v. 1) EXPLICIT TARGET DETAIL —Testperson and his spokesman Testspeaker.";
+  const targetSpec = pipeline.buildChapterJobSpec({
+    units, sourceManifest, model: "gpt-5.3-codex-spark", bookId: "GEN", chapter: 1, verseCount: 2,
+    generatedAt: "2026-08-11T12:00:00.000Z"
+  });
+  const omitted = validFactBrief(pipeline, targetSpec);
+  omitted.verse_briefs[0].facts[0].importance = "supporting";
+  validation = pipeline.validateFactBrief(omitted, {schema, chapterJobSpec: targetSpec});
+  assert.equal(validation.valid, false);
+  assert.ok(validation.errors.some((error) => error.includes("target-marked atom")));
+  assert.ok(validation.errors.some((error) => error.includes('omitted explicit identity "Testperson"')));
+});
+
+test("the controller canonicalizes Spark evidence and shortens brittle writer anchors", async () => {
+  const {pipeline, units, sourceManifest} = await normalizedFixture();
+  const spec = pipeline.buildChapterJobSpec({
+    units, sourceManifest, model: "gpt-5.3-codex-spark", bookId: "GEN", chapter: 1, verseCount: 2,
+    generatedAt: "2026-08-11T12:00:00.000Z"
+  });
+  const brief = validFactBrief(pipeline, spec);
+  brief.verse_briefs.forEach((verseBrief) => {
+    verseBrief.facts[0].evidence_quote = "SPARK NEED NOT TRANSCRIBE THIS FIELD EXACTLY.";
+    verseBrief.facts[0].must_include_terms = ["FABRICATED COMMENTARY TREATS VERSES"];
+  });
+
+  const hydrated = pipeline.hydrateFactBriefEvidence(brief, {chapterJobSpec: spec});
+  const schema = json("schemas/mhc-fact-brief.schema.json");
+  const validation = pipeline.validateFactBrief(hydrated, {schema, chapterJobSpec: spec});
+  assert.equal(validation.valid, true, validation.errors.join("\n"));
+  hydrated.verse_briefs.forEach((verseBrief) => {
+    const fact = verseBrief.facts[0];
+    const atom = spec.sourceUnits.flatMap((unit) => unit.source_atoms)
+      .find((candidate) => candidate.source_atom_id === fact.source_atom_id);
+    const snippet = pipeline.evidenceSnippetsForAtom(atom)
+      .find((candidate) => candidate.source_snippet_id === fact.source_snippet_id);
+    assert.equal(fact.evidence_quote, snippet.text);
+    assert.ok(fact.must_include_terms.every((term) => term.trim().split(/\s+/u).length === 1));
+  });
+});
+
+test("the fact validator preserves Henry's likely qualification cue", async () => {
+  const {pipeline, units, sourceManifest} = await normalizedFixture();
+  const source = units.find((unit) => unit.unit_type === "verse_range");
+  const atom = source.source_atoms.find((candidate) => candidate.atom_type === "commentary");
+  atom.text = "FABRICATED COMMENTARY very likely treats verses one and two together for testing only.";
+  const spec = pipeline.buildChapterJobSpec({
+    units, sourceManifest, model: "gpt-5.3-codex-spark", bookId: "GEN", chapter: 1, verseCount: 2,
+    generatedAt: "2026-08-11T12:00:00.000Z"
+  });
+  const brief = validFactBrief(pipeline, spec);
+  brief.verse_briefs.forEach((verseBrief) => {
+    verseBrief.facts[0].qualification = "uncertain";
+    verseBrief.facts[0].must_include_terms = ["likely"];
+  });
+  const hydrated = pipeline.hydrateFactBriefEvidence(brief, {chapterJobSpec: spec});
+  const validation = pipeline.validateFactBrief(hydrated, {
+    schema: json("schemas/mhc-fact-brief.schema.json"), chapterJobSpec: spec
+  });
+  assert.equal(validation.valid, true, validation.errors.join("\n"));
+  assert.ok(hydrated.verse_briefs.every((verseBrief) => verseBrief.facts[0].must_include_terms.includes("likely")));
+});
+
+test("autonomous writer receives only the validated fact layer and must retain required terms", async () => {
+  const {pipeline, units, sourceManifest} = await normalizedFixture();
+  const spec = pipeline.buildChapterJobSpec({
+    units, sourceManifest, model: "gpt-5.3-codex-spark", bookId: "GEN", chapter: 1, verseCount: 2,
+    generatedAt: "2026-08-11T12:00:00.000Z"
+  });
+  const factBrief = validFactBrief(pipeline, spec);
+  const prompt = pipeline.renderAutonomousWriterPrompt("FABRICATED WRITER CONTRACT", spec, factBrief);
+  assert.match(prompt, /Validated Spark fact brief/);
+  assert.match(prompt, /verses one and two/);
+  assert.doesNotMatch(prompt, /"source_atoms"/);
+  assert.doesNotMatch(prompt, /"worker_source_sha256"/);
+  assert.doesNotMatch(prompt, /"evidence_quote"/);
+  assert.doesNotMatch(prompt, /"source_snippet_id"/);
+
+  const output = validChapterOutput(spec);
+  output.records.forEach((record) => {
+    record.blurb = "FABRICATED verses one and two share a compact treatment for testing only.";
+  });
+  const base = pipeline.validateChapterOutput(output, {
+    schema: json("schemas/mhc-commentary-output.schema.json"), units, bookId: "GEN", chapter: 1,
+    verseCount: 2, expectedMetadata: spec.metadata
+  });
+  let validation = pipeline.validateFactBoundChapterOutput(output, {factBrief, baseValidation: base});
+  assert.equal(validation.valid, true, validation.errors.join("\n"));
+  output.records[0].blurb = "FABRICATED material shares a compact treatment for testing only.";
+  validation = pipeline.validateFactBoundChapterOutput(output, {factBrief, baseValidation: base});
+  assert.equal(validation.valid, false);
+  assert.ok(validation.errors.some((error) => error.includes('omitted must-include term "verses"')));
+
+  const inflectedBrief = structuredClone(factBrief);
+  inflectedBrief.verse_briefs.forEach((brief) => { brief.facts[0].must_include_terms = ["instruct"]; });
+  output.records.forEach((record) => {
+    record.blurb = "FABRICATED material instructs the reader through a compact treatment for testing only.";
+  });
+  validation = pipeline.validateFactBoundChapterOutput(output, {factBrief: inflectedBrief, baseValidation: base});
+  assert.equal(validation.valid, true, validation.errors.join("\n"));
+
+  inflectedBrief.verse_briefs.forEach((brief) => { brief.facts[0].must_include_terms = ["Saviour"]; });
+  validation = pipeline.validateFactBoundChapterOutput(output, {factBrief: inflectedBrief, baseValidation: base});
+  assert.equal(validation.valid, false);
+  assert.ok(validation.errors.some((error) => error.includes('omitted must-include term "Saviour"')));
+
+  const admitted = pipeline.requireAutonomousAdmission({valid: true, errors: [], warnings: ["FABRICATED WARNING"]});
+  assert.equal(admitted.valid, false);
+  assert.ok(admitted.errors.some((error) => error.includes("requires zero warnings")));
+});
+
+test("fact extraction is split into bounded verse chunks before Spark repair", async () => {
+  const controller = await import("../scripts/mhc-pipeline.mjs");
+  const {pipeline, units, sourceManifest} = await normalizedFixture();
+  const spec = pipeline.buildChapterJobSpec({
+    units, sourceManifest, model: "gpt-5.3-codex-spark", bookId: "GEN", chapter: 1, verseCount: 2,
+    generatedAt: "2026-08-11T12:00:00.000Z"
+  });
+  const chunks = controller.buildFactChunks(spec, 1);
+  assert.deepEqual(chunks.map((chunk) => chunk.chunkId), ["001-001", "002-002"]);
+  assert.deepEqual(chunks.map((chunk) => chunk.chapterJobSpec.requestedRecords.map((record) => record.verse_id)), [
+    ["GEN.1.1"], ["GEN.1.2"]
+  ]);
+  assert.ok(chunks.every((chunk) => chunk.chapterJobSpec.sourceUnits.length === 1));
+  const writerChunks = controller.buildWriterChunks(spec, validFactBrief(pipeline, spec), 1);
+  assert.deepEqual(writerChunks.map((chunk) => chunk.chunkId), ["001-001", "002-002"]);
+  assert.deepEqual(writerChunks.map((chunk) => chunk.factBrief.verse_briefs.map((brief) => brief.verse_id)), [
+    ["GEN.1.1"], ["GEN.1.2"]
+  ]);
+});
+
+test("chapter job requests identify atoms that explicitly mark the target verse", async () => {
+  const {pipeline, units, sourceManifest} = await normalizedFixture();
+  const verseUnit = units.find((unit) => unit.unit_type === "verse_range");
+  const targetAtom = verseUnit.source_atoms.find((atom) => atom.atom_type === "commentary");
+  targetAtom.text = "FABRICATED (v. 1) EXPLICIT TARGET DETAIL —Testperson and his spokesman Testspeaker.";
+  const spec = pipeline.buildChapterJobSpec({
+    units, sourceManifest, model: "gpt-test", bookId: "GEN", chapter: 1, verseCount: 2,
+    generatedAt: "2026-08-11T12:00:00.000Z"
+  });
+  assert.deepEqual(spec.requestedRecords[0].target_marked_source_atom_ids, [targetAtom.source_atom_id]);
+  assert.deepEqual(spec.requestedRecords[0].required_explicit_identity_terms, ["Testperson", "Testspeaker"]);
+  assert.deepEqual(spec.requestedRecords[0].required_explicit_relations, [{term: "Testspeaker", relation: "spokesman"}]);
+  assert.deepEqual(spec.requestedRecords[1].target_marked_source_atom_ids, []);
+  assert.deepEqual(spec.requestedRecords[1].required_explicit_identity_terms, []);
+  assert.deepEqual(spec.requestedRecords[1].required_explicit_relations, []);
+});
+
+test("current worker validation rejects indirect source-reporting scaffolds", async () => {
+  const {pipeline, units, sourceManifest} = await normalizedFixture();
+  const spec = pipeline.buildChapterJobSpec({
+    units, sourceManifest, model: "gpt-test", bookId: "GEN", chapter: 1, verseCount: 2,
+    generatedAt: "2026-08-11T12:00:00.000Z"
+  });
+  for (const phrase of ["The note says this fabricated detail matters.", "The text likens this fabricated detail to another.", "The warning is that this fabricated detail matters.", "Tradition ties this fabricated detail to another.", "This is treated as a fabricated warning.", "Traditions are cited for this fabricated detail.", "This passage asks why the fabricated detail matters.", "The burden introduces a fabricated detail.", "The detail is presented as important.", "This consequence is treated as certain.", "The event is announced as final.", "The person is described as faithful.", "The messenger is pictured coming near.", "The detail is likened to a fabricated object."]) {
+    const output = validChapterOutput(spec);
+    output.records[0].blurb = phrase;
+    const validation = pipeline.validateChapterOutput(output, {
+      schema: json("schemas/mhc-commentary-output.schema.json"), units, bookId: "GEN", chapter: 1,
+      verseCount: 2, expectedMetadata: spec.metadata
+    });
+    assert.equal(validation.valid, false, phrase);
+    assert.ok(validation.errors.some((error) => error.includes("source-reporting phrase")), phrase);
+  }
+
+  const directOutput = validChapterOutput(spec);
+  directOutput.records[0].blurb = "His fabricated power is shown through the supplied fabricated event.";
+  const directValidation = pipeline.validateChapterOutput(directOutput, {
+    schema: json("schemas/mhc-commentary-output.schema.json"), units, bookId: "GEN", chapter: 1,
+    verseCount: 2, expectedMetadata: spec.metadata
+  });
+  assert.equal(directValidation.valid, true, directValidation.errors.join("\n"));
+});
+
+test("current worker validation requires explicit identities from target-marked atoms", async () => {
+  const {pipeline, units, sourceManifest} = await normalizedFixture();
+  const verseUnit = units.find((unit) => unit.unit_type === "verse_range");
+  const targetAtom = verseUnit.source_atoms.find((atom) => atom.atom_type === "commentary");
+  targetAtom.text = "FABRICATED (v. 1) EXPLICIT TARGET DETAIL —Testperson and his spokesman Testspeaker.";
+  const spec = pipeline.buildChapterJobSpec({
+    units, sourceManifest, model: "gpt-test", bookId: "GEN", chapter: 1, verseCount: 2,
+    generatedAt: "2026-08-11T12:00:00.000Z"
+  });
+  const output = validChapterOutput(spec);
+  let validation = pipeline.validateChapterOutput(output, {
+    schema: json("schemas/mhc-commentary-output.schema.json"), units, bookId: "GEN", chapter: 1,
+    verseCount: 2, expectedMetadata: spec.metadata
+  });
+  assert.equal(validation.valid, false);
+  assert.ok(validation.errors.some((error) => error.includes('omitted explicit identity "Testperson"')));
+  assert.ok(validation.errors.some((error) => error.includes('omitted explicit identity "Testspeaker"')));
+  output.records[0].blurb = "Testperson works through his spokesman Testspeaker in this conspicuously fabricated condensation.";
+  validation = pipeline.validateChapterOutput(output, {
+    schema: json("schemas/mhc-commentary-output.schema.json"), units, bookId: "GEN", chapter: 1,
+    verseCount: 2, expectedMetadata: spec.metadata
+  });
+  assert.equal(validation.valid, true, validation.errors.join("\n"));
+});
+
+test("current worker validation preserves explicit roles and catches misspelled proper names", async () => {
+  const {pipeline, units, sourceManifest} = await normalizedFixture();
+  const verseUnit = units.find((unit) => unit.unit_type === "verse_range");
+  const targetAtom = verseUnit.source_atoms.find((atom) => atom.atom_type === "commentary");
+  targetAtom.text = "FABRICATED (v. 1) EXPLICIT TARGET DETAIL —Testperson and his spokesman Testspeaker.";
+  const spec = pipeline.buildChapterJobSpec({
+    units, sourceManifest, model: "gpt-test", bookId: "GEN", chapter: 1, verseCount: 2,
+    generatedAt: "2026-08-11T12:00:00.000Z"
+  });
+  const output = validChapterOutput(spec);
+  output.records[0].blurb = "Testperson and Testspeaker oppose Midspelledname in this conspicuously fabricated condensation.";
+  const validation = pipeline.validateChapterOutput(output, {
+    schema: json("schemas/mhc-commentary-output.schema.json"), units, bookId: "GEN", chapter: 1,
+    verseCount: 2, expectedMetadata: spec.metadata
+  });
+  assert.equal(validation.valid, false);
+  assert.ok(validation.errors.some((error) => error.includes('explicit relation "spokesman Testspeaker"')));
+  assert.ok(validation.errors.some((error) => error.includes('capitalized term "Midspelledname"')));
 });
 
 test("chapter validation rejects unknown and non-covering source-unit references", async () => {
@@ -265,7 +561,68 @@ test("resume matching skips only completed, schema-valid, source-matching jobs",
   assert.equal(shouldSkipCompletedJob(manifest, {...metadata, source_hash: "c".repeat(64)}, {valid: true}), false);
 });
 
-test("source, prompt, schema, and model changes invalidate job fingerprints", async () => {
+test("validation repair prompts preserve the full contract and give exact deterministic errors", async () => {
+  const controller = await import("../scripts/mhc-pipeline.mjs");
+  const prompt = controller.renderValidationRepairPrompt({
+    prompt: "FABRICATED COMPLETE WORKER CONTRACT",
+    output: {schema_version: "fabricated/v1", records: [{verse_id: "GEN.1.1"}]},
+    validation: {errors: ["FABRICATED ERROR: omitted explicit identity Testperson"]}
+  });
+  assert.match(prompt, /FABRICATED COMPLETE WORKER CONTRACT/);
+  assert.match(prompt, /omitted explicit identity Testperson/);
+  assert.match(prompt, /Return the entire corrected JSON object/);
+  assert.match(prompt, /Make the smallest possible correction/);
+  assert.match(prompt, /Do not remove a required term while fixing another defect/);
+  assert.match(prompt, /"verse_id": "GEN\.1\.1"/);
+});
+
+test("hash-bound human review overrides replace only named verse blurbs and preserve raw provenance", async () => {
+  const controller = await import("../scripts/mhc-pipeline.mjs");
+  const output = {
+    records: [
+      {verse_id: "GEN.1.1", blurb: "FABRICATED ORIGINAL ONE", source_atom_ids: ["fabricated:a1"]},
+      {verse_id: "GEN.1.2", blurb: "FABRICATED ORIGINAL TWO", source_atom_ids: ["fabricated:a2"]}
+    ]
+  };
+  const review = {
+    schema_version: "mhc-human-review-overrides/v1",
+    reading_id: "FABRICATED-READING",
+    job_id: "GEN-001",
+    fingerprint: "f".repeat(64),
+    prompt_version: "mhc-worker/v11",
+    base_output_sha256: "a".repeat(64),
+    reviewed_at: "2026-08-11T12:00:00Z",
+    reviewer: "FABRICATED REVIEWER",
+    status: "in_review",
+    corrections: [{
+      verse_id: "GEN.1.1",
+      blurb: "FABRICATED REVIEWED ONE",
+      reason: "FABRICATED REVIEW REASON"
+    }]
+  };
+  const applied = controller.applyReviewCorrections({
+    output,
+    review,
+    expectedReadingId: review.reading_id,
+    jobSpec: {metadata: {job_id: review.job_id, prompt_version: review.prompt_version}},
+    fingerprint: review.fingerprint,
+    baseOutputSha256: review.base_output_sha256
+  });
+  assert.equal(output.records[0].blurb, "FABRICATED ORIGINAL ONE");
+  assert.equal(applied.output.records[0].blurb, "FABRICATED REVIEWED ONE");
+  assert.equal(applied.output.records[1].blurb, "FABRICATED ORIGINAL TWO");
+  assert.deepEqual(applied.humanReview.corrected_verse_ids, ["GEN.1.1"]);
+  assert.throws(() => controller.applyReviewCorrections({
+    output,
+    review,
+    expectedReadingId: review.reading_id,
+    jobSpec: {metadata: {job_id: review.job_id, prompt_version: review.prompt_version}},
+    fingerprint: review.fingerprint,
+    baseOutputSha256: "b".repeat(64)
+  }), /do not match the exact/);
+});
+
+test("source, prompt, schema, model, and fact-brief changes invalidate job fingerprints", async () => {
   const {jobFingerprint} = await import("../scripts/lib/mhc-pipeline.mjs");
   const baseline = {
     schema_version: "mhc-commentary/v1", source_hash: "d".repeat(64),
@@ -276,7 +633,8 @@ test("source, prompt, schema, and model changes invalidate job fingerprints", as
     {...baseline, source_hash: "e".repeat(64)},
     {...baseline, prompt_version: "mhc-worker/v2"},
     {...baseline, schema_version: "mhc-commentary/v2"},
-    {...baseline, worker_model: "gpt-two"}
+    {...baseline, worker_model: "gpt-two"},
+    {...baseline, fact_brief_hash: "f".repeat(64), fact_prompt_version: "mhc-fact-extractor/v5"}
   ].map(jobFingerprint);
   assert.equal(new Set(fingerprints).size, fingerprints.length);
 });
@@ -319,7 +677,7 @@ test("book introduction remains a separate validated book-level runtime resource
       resource_id: "intro-GEN",
       book_id: "GEN",
       resource_type: "book_intro",
-      blurb: "Henry's fabricated book-level test summary remains distinct from every verse record.",
+      blurb: "This fabricated book-level test summary remains distinct from every verse record.",
       scope_note: "This is a fabricated Genesis book-introduction scope for testing only.",
       source_unit_ids: [source.source_unit_id],
       source_reference_label: source.reference_label
@@ -345,8 +703,8 @@ test("full-corpus execution requires the explicit safeguard", async () => {
   assert.equal(requireFullCorpusConfirmation({all: false}), true);
 });
 
-test("day-ahead resolution uses Detroit civil dates and the rolling window stops at two days", async () => {
-  const {resolveScheduledReading, resolveScheduledWindow} = await import("../scripts/lib/mhc-pipeline.mjs");
+test("schedule resolution supports the interactive window and caller-selected activation counts", async () => {
+  const {resolveScheduledBatch, resolveScheduledReading, resolveScheduledWindow} = await import("../scripts/lib/mhc-pipeline.mjs");
   const plan = json("fixtures/pilot-content/plan.json");
   const appConfig = json("fixtures/pilot-content/app-config.json");
   const resolved = resolveScheduledReading({
@@ -367,7 +725,24 @@ test("day-ahead resolution uses Detroit civil dates and the rolling window stops
   assert.deepEqual(window.targets.map((target) => target.entry.readingId), [
     "CC-Y3Q4-D056", "CC-Y3Q4-D057", "CC-Y3Q4-D058"
   ]);
-  assert.throws(() => resolveScheduledWindow({plan, appConfig, today: "2026-08-10", daysAhead: 3}), /two days ahead/);
+  assert.throws(() => resolveScheduledWindow({plan, appConfig, today: "2026-08-10", daysAhead: 3}), /interactive rolling audit window/);
+
+  const activation = resolveScheduledBatch({
+    plan,
+    appConfig,
+    today: "2026-08-10",
+    startReadingId: "CC-Y3Q4-D057",
+    readingCount: 2
+  });
+  assert.equal(activation.readingCount, 2);
+  assert.deepEqual(activation.targets.map((target) => target.entry.readingId), ["CC-Y3Q4-D057", "CC-Y3Q4-D058"]);
+  const fiveReadings = resolveScheduledWindow({plan, appConfig, today: "2026-08-10", readingCount: 5});
+  assert.deepEqual(fiveReadings.targets.map((target) => target.entry.readingId), [
+    "CC-Y3Q4-D056", "CC-Y3Q4-D057", "CC-Y3Q4-D058", "CC-Y3Q4-D059", "CC-Y3Q4-D060"
+  ]);
+  assert.throws(() => resolveScheduledBatch({
+    plan, appConfig, today: "2026-08-10", startReadingId: "CC-Y3Q4-D056", readingCount: 15
+  }), /between 1 and 14/);
 });
 
 test("portable window records are app-neutral, hashed, and explicitly unreviewed", async () => {
@@ -433,9 +808,10 @@ test("portable window records are app-neutral, hashed, and explicitly unreviewed
     window: {
       preparedOn: "2026-08-10",
       timezone: "America/Detroit",
-      daysAhead: 2,
-      windowStartDate: "2026-08-10",
-      windowEndDate: "2026-08-12"
+      readingCount: 1,
+      daysAhead: 0,
+      windowStartDate: "2026-08-11",
+      windowEndDate: "2026-08-11"
     },
     generatedAt: "2026-08-10T13:00:00.000Z",
     readings: [descriptor]
@@ -450,6 +826,190 @@ test("portable window records are app-neutral, hashed, and explicitly unreviewed
   assert.equal(reading.publication_status, "not_published");
   assert.equal(reading.human_review_status, "required");
   assert.equal(JSON.stringify(reading).includes("source_text"), false);
+});
+
+test("current-prompt portable readings reject source-reporting edits before storage", async () => {
+  const controller = await import("../scripts/mhc-pipeline.mjs");
+  const runtime = {
+    schema_version: "mhc-runtime/v1",
+    source_id: "fabricated-mhc-test",
+    source_version: "test-only",
+    source_archive_sha256: "a".repeat(64),
+    source_manifest_ref: "FABRICATED-TEST-MANIFEST",
+    worker_model: "gpt-5.3-codex-spark",
+    prompt_version: "mhc-autonomous-writer/v2",
+    generation_timestamp: "2026-08-11T12:00:00.000Z",
+    validation_status: "valid",
+    review_status: "unreviewed",
+    label: "Matthew Henry — condensed paraphrase",
+    book_id: "NAM",
+    chapter: 1,
+    records: {
+      "NAM.1.1": {
+        blurb: "Henry treats this fabricated detail as important.",
+        coverage_type: "direct",
+        scope_note: "Fabricated direct scope.",
+        source_unit_ids: ["fabricated:NAM:001:001"],
+        source_reference_label: "FABRICATED Nahum 1:1"
+      }
+    }
+  };
+  assert.throws(() => controller.buildPortableWindowReading({
+    plan: {planVersion: "fabricated-plan-v1"},
+    scheduledResult: {
+      target: {
+        scheduleDate: "2026-08-11",
+        dayIndex: 4,
+        timezone: "America/Detroit"
+      },
+      audit: {
+        reading_id: "CC-Y3Q4-D057",
+        source_plan_day: 57,
+        worker_model: "gpt-5.3-codex-spark",
+        prompt_version: "mhc-autonomous-writer/v2",
+        review_status: "unreviewed",
+        human_review: {status: "required"}
+      },
+      passageResults: [{book_id: "NAM", chapter: 1, verse_count: 1, runtime}]
+    }
+  }), /forbidden source-reporting phrase/);
+});
+
+test("plan generators can request a bounded count while the durable catalog retains earlier readings", async () => {
+  const controller = await import("../scripts/mhc-pipeline.mjs");
+  const schema = json("schemas/mhc-activation.schema.json");
+  const {validateAgainstSchema} = await import("../scripts/lib/schema-validator.mjs");
+  const request = {
+    schema_version: "mhc-activation-request/v1",
+    request_id: "fabricated-generator-001",
+    plan_version: "fabricated-plan-v1",
+    requested_by: "fabricated-plan-generator",
+    start_reading_id: "CC-Y3Q4-D057",
+    reading_count: 1,
+    worker_model: "gpt-5.3-codex-spark",
+    reason: "FABRICATED ACTIVATION FOR CONTRACT TESTING ONLY"
+  };
+  assert.deepEqual(validateAgainstSchema(request, {...schema, $ref: "#/$defs/request"}), []);
+  assert.equal(controller.parseArgs(["activate", "--request", "/tmp/fabricated-request.json", "--dry-run"]).request,
+    "/tmp/fabricated-request.json");
+
+  const descriptor = (readingId, dayIndex, checksum) => ({
+    reading_id: readingId,
+    schedule_date: `2026-08-${String(dayIndex + 7).padStart(2, "0")}`,
+    day_index: dayIndex,
+    source_plan_day: dayIndex + 53,
+    file: `plans/fabricated-plan-v1-aaaaaaaaaaaa/readings/${readingId}.${checksum.slice(0, 16)}.json`,
+    sha256: checksum,
+    passage_count: 1,
+    worker_model: "gpt-5.3-codex-spark",
+    prompt_version: "mhc-worker/v4",
+    review_status: "unreviewed",
+    human_review_status: "required"
+  });
+  const plan = {planVersion: request.plan_version};
+  const firstStoredAt = "2026-08-10T12:00:00.000Z";
+  const updatedAt = "2026-08-10T13:00:00.000Z";
+  const prior = controller.buildLibraryCatalog({
+    plan,
+    priorCatalog: null,
+    storedAt: firstStoredAt,
+    readings: [descriptor("CC-Y3Q4-D056", 3, "a".repeat(64))]
+  });
+  const merged = controller.buildLibraryCatalog({
+    plan,
+    priorCatalog: prior,
+    storedAt: updatedAt,
+    readings: [descriptor("CC-Y3Q4-D057", 4, "b".repeat(64))]
+  });
+  assert.deepEqual(merged.readings.map((reading) => reading.reading_id), ["CC-Y3Q4-D056", "CC-Y3Q4-D057"]);
+  assert.equal(merged.readings[0].first_stored_at, firstStoredAt);
+  assert.equal(merged.readings[0].last_stored_at, firstStoredAt);
+  assert.equal(merged.readings[1].last_stored_at, updatedAt);
+  assert.deepEqual(validateAgainstSchema(merged, {...schema, $ref: "#/$defs/catalog"}), []);
+
+  const pointer = controller.buildLibraryPointer({
+    plan,
+    catalogFile: "plans/fabricated-plan-v1-aaaaaaaaaaaa/catalog.json",
+    catalogSha256: "c".repeat(64),
+    updatedAt
+  });
+  assert.deepEqual(validateAgainstSchema(pointer, {...schema, $ref: "#/$defs/pointer"}), []);
+  const privateRoot = path.join(__dirname, "../private-commentary/mhc");
+  const result = controller.buildActivationResult({
+    request,
+    completedAt: updatedAt,
+    scheduledResults: [{audit: {reading_id: "CC-Y3Q4-D057"}}],
+    store: {
+      manifestPath: path.join(privateRoot, "stores/current-window/manifest.json"),
+      manifestSha256: "d".repeat(64),
+      catalogPath: path.join(privateRoot, "stores/library/plans/fabricated-plan-v1-aaaaaaaaaaaa/catalog.json"),
+      catalogSha256: "e".repeat(64)
+    }
+  });
+  assert.deepEqual(validateAgainstSchema(result, {...schema, $ref: "#/$defs/result"}), []);
+  assert.equal(result.requested_reading_count, 1);
+  assert.equal(result.contains_scripture, false);
+  assert.equal(result.publication_status, "not_published");
+});
+
+test("main-thread ensure requests reuse sound readings and select only missing targets for Spark", async () => {
+  const controller = await import("../scripts/mhc-pipeline.mjs");
+  const schema = json("schemas/mhc-ensure.schema.json");
+  const {validateAgainstSchema} = await import("../scripts/lib/schema-validator.mjs");
+  const request = {
+    schema_version: "mhc-ensure-request/v1",
+    request_id: "fabricated-main-thread-001",
+    plan_version: "fabricated-plan-v1",
+    requested_by: "fabricated-main-thread",
+    start_reading_id: "CC-Y3Q4-D056",
+    reading_count: 2,
+    worker_model: "gpt-5.3-codex-spark",
+    generation_mode: "spark-autonomous-chunked-two-stage/v4",
+    only_if_missing: true,
+    reason: "FABRICATED ENSURE REQUEST FOR TESTING ONLY"
+  };
+  assert.deepEqual(validateAgainstSchema(request, {...schema, $ref: "#/$defs/request"}), []);
+  assert.equal(controller.parseArgs(["ensure", "--request", "/tmp/fabricated-ensure.json", "--dry-run"]).request,
+    "/tmp/fabricated-ensure.json");
+  const targets = ["CC-Y3Q4-D056", "CC-Y3Q4-D057"].map((readingId, index) => ({
+    entry: {readingId},
+    dayIndex: index + 1
+  }));
+  const partition = controller.partitionTargetsByAvailability({
+    targets,
+    availableReadingIds: ["CC-Y3Q4-D056"]
+  });
+  assert.deepEqual(partition.reused.map((target) => target.entry.readingId), ["CC-Y3Q4-D056"]);
+  assert.deepEqual(partition.missing.map((target) => target.entry.readingId), ["CC-Y3Q4-D057"]);
+
+  const result = controller.buildEnsureResult({
+    request,
+    completedAt: "2026-08-11T12:00:00.000Z",
+    window: {targets},
+    generatedReadingIds: ["CC-Y3Q4-D057"],
+    reusedReadingIds: ["CC-Y3Q4-D056"],
+    catalogPath: path.join(__dirname, "../private-commentary/mhc/stores/library/plans/fabricated/catalog.json"),
+    catalogSha256: "a".repeat(64)
+  });
+  assert.deepEqual(validateAgainstSchema(result, {...schema, $ref: "#/$defs/result"}), []);
+  assert.equal(result.status, "ready");
+  assert.equal(result.generation_mode, "spark-autonomous-chunked-two-stage/v4");
+  assert.deepEqual(result.generated_reading_ids, ["CC-Y3Q4-D057"]);
+  assert.deepEqual(result.reused_reading_ids, ["CC-Y3Q4-D056"]);
+});
+
+test("durable store pointers are replaced atomically only after immutable readings", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../scripts/mhc-pipeline.mjs"), "utf8");
+  assert.match(source, /await rename\(temporaryPath, filePath\)/);
+  const writer = source.slice(source.indexOf("async function writePortableStores"), source.indexOf("async function scheduleNext"));
+  const contentWrite = writer.indexOf("writeContentAddressed(outputPath");
+  const catalogWrite = writer.indexOf("writeJsonAtomic(catalogPath");
+  const pointerWrite = writer.indexOf("writeJsonAtomic(pointerPath");
+  const windowWrite = writer.indexOf("writeJsonAtomic(manifestPath");
+  assert.ok(contentWrite >= 0 && contentWrite < catalogWrite);
+  assert.ok(catalogWrite < pointerWrite);
+  assert.ok(pointerWrite < windowWrite);
+  assert.doesNotMatch(writer, /unlink|rmSync|rmdir/);
 });
 
 test("Codex worker arguments are ephemeral, standard-speed, read-only, and single-agent", async () => {
@@ -483,7 +1043,8 @@ test("Codex output schemas give every const and enum an explicit type", () => {
 
   for (const schemaPath of [
     "schemas/mhc-commentary-output.schema.json",
-    "schemas/mhc-book-intro-output.schema.json"
+    "schemas/mhc-book-intro-output.schema.json",
+    "schemas/mhc-fact-brief.schema.json"
   ]) {
     const schema = json(schemaPath);
     visit(schema);

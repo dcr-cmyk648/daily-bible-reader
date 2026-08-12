@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daily-bible-reader.local/schemas/mhc-fact-brief.schema.json",
+  "title": "Spark-extracted Matthew Henry verse fact brief",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "job_id",
+    "source_id",
+    "source_version",
+    "source_hash",
+    "worker_model",
+    "prompt_version",
+    "generation_timestamp",
+    "book_id",
+    "chapter",
+    "verse_briefs"
+  ],
+  "properties": {
+    "schema_version": {"type": "string", "const": "mhc-fact-brief/v2"},
+    "job_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,159}$"},
+    "source_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,99}$"},
+    "source_version": {"type": "string", "minLength": 1, "maxLength": 80},
+    "source_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "worker_model": {"type": "string", "const": "gpt-5.3-codex-spark"},
+    "prompt_version": {"type": "string", "const": "mhc-fact-extractor/v5"},
+    "generation_timestamp": {"type": "string", "format": "date-time"},
+    "book_id": {"type": "string", "pattern": "^[A-Z0-9]{2,8}$"},
+    "chapter": {"type": "integer", "minimum": 1, "maximum": 200},
+    "verse_briefs": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 200,
+      "items": {
+        "type": "object",
+        "required": [
+          "verse_id",
+          "coverage_type",
+          "source_unit_ids",
+          "source_reference_label",
+          "facts"
+        ],
+        "properties": {
+          "verse_id": {"type": "string", "pattern": "^[A-Z0-9]{2,8}\\.[1-9][0-9]{0,2}\\.[1-9][0-9]{0,2}$"},
+          "coverage_type": {"type": "string", "enum": ["direct", "range-derived", "no-distinct-comment"]},
+          "source_unit_ids": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 8,
+            "items": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,159}$"}
+          },
+          "source_reference_label": {"type": "string", "minLength": 1, "maxLength": 200},
+          "facts": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 12,
+            "items": {
+              "type": "object",
+              "required": [
+                "fact_id",
+                "importance",
+                "category",
+                "statement",
+                "source_atom_id",
+                "source_snippet_id",
+                "evidence_quote",
+                "must_include_terms",
+                "qualification",
+                "verse_relevance"
+              ],
+              "properties": {
+                "fact_id": {"type": "string", "pattern": "^[A-Z0-9]{2,8}\\.[1-9][0-9]{0,2}\\.[1-9][0-9]{0,2}:f[0-9]{2}$"},
+                "importance": {"type": "string", "enum": ["required", "supporting"]},
+                "category": {
+                  "type": "string",
+                  "enum": [
+                    "identity",
+                    "relationship",
+                    "historical_context",
+                    "action_or_event",
+                    "cause",
+                    "consequence",
+                    "image",
+                    "theological_claim",
+                    "interpretive_option",
+                    "qualification",
+                    "application"
+                  ]
+                },
+                "statement": {"type": "string", "minLength": 3, "maxLength": 500},
+                "source_atom_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,199}$"},
+                "source_snippet_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,239}$"},
+                "evidence_quote": {"type": "string", "minLength": 3, "maxLength": 500},
+                "must_include_terms": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 3,
+                  "items": {"type": "string", "minLength": 1, "maxLength": 80}
+                },
+                "qualification": {"type": "string", "enum": ["none", "some_understand", "alternative", "uncertain"]},
+                "verse_relevance": {"type": "string", "enum": ["target_marker", "anchor_supported", "shared_range_context"]}
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

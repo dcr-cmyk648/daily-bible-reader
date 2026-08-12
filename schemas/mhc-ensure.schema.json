@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daily-bible-reader.local/schemas/mhc-ensure.schema.json",
+  "title": "Matthew Henry ensure-missing contract",
+  "$defs": {
+    "artifactPointer": {
+      "type": "object",
+      "required": ["file", "sha256"],
+      "properties": {
+        "file": {"type": "string", "minLength": 1, "maxLength": 500},
+        "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      },
+      "additionalProperties": false
+    },
+    "readingIds": {
+      "type": "array",
+      "maxItems": 14,
+      "items": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,159}$"}
+    },
+    "request": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "request_id",
+        "plan_version",
+        "requested_by",
+        "start_reading_id",
+        "reading_count",
+        "worker_model",
+        "generation_mode",
+        "only_if_missing"
+      ],
+      "properties": {
+        "schema_version": {"type": "string", "const": "mhc-ensure-request/v1"},
+        "request_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,99}$"},
+        "plan_version": {"type": "string", "minLength": 1, "maxLength": 200},
+        "requested_by": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,99}$"},
+        "start_reading_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,159}$"},
+        "reading_count": {"type": "integer", "minimum": 1, "maximum": 14},
+        "worker_model": {"type": "string", "const": "gpt-5.3-codex-spark"},
+        "generation_mode": {"type": "string", "const": "spark-autonomous-chunked-two-stage/v4"},
+        "only_if_missing": {"type": "boolean", "const": true},
+        "reason": {"type": "string", "minLength": 1, "maxLength": 500}
+      },
+      "additionalProperties": false
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "request_id",
+        "plan_version",
+        "requested_by",
+        "start_reading_id",
+        "requested_reading_count",
+        "completed_at",
+        "status",
+        "worker_model",
+        "prompt_version",
+        "generation_mode",
+        "publication_status",
+        "contains_scripture",
+        "requested_reading_ids",
+        "generated_reading_ids",
+        "reused_reading_ids",
+        "library_catalog"
+      ],
+      "properties": {
+        "schema_version": {"type": "string", "const": "mhc-ensure-result/v1"},
+        "request_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,99}$"},
+        "plan_version": {"type": "string", "minLength": 1, "maxLength": 200},
+        "requested_by": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,99}$"},
+        "start_reading_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,159}$"},
+        "requested_reading_count": {"type": "integer", "minimum": 1, "maximum": 14},
+        "completed_at": {"type": "string", "format": "date-time"},
+        "status": {"type": "string", "const": "ready"},
+        "worker_model": {"type": "string", "const": "gpt-5.3-codex-spark"},
+        "prompt_version": {"type": "string", "const": "mhc-autonomous-writer/v2"},
+        "generation_mode": {"type": "string", "const": "spark-autonomous-chunked-two-stage/v4"},
+        "publication_status": {"type": "string", "const": "not_published"},
+        "contains_scripture": {"type": "boolean", "const": false},
+        "requested_reading_ids": {"$ref": "#/$defs/readingIds"},
+        "generated_reading_ids": {"$ref": "#/$defs/readingIds"},
+        "reused_reading_ids": {"$ref": "#/$defs/readingIds"},
+        "library_catalog": {"$ref": "#/$defs/artifactPointer"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "$ref": "#/$defs/request"
+}

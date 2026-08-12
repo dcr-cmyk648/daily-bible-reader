@@ -1,11 +1,13 @@
 # Matthew Henry preprocessing pipeline
 
-This is an offline, resumable source-preprocessing workflow. It never runs AI in the browser or Apps Script, never downloads ESV text, and never publishes commentary automatically. It supports two bounded uses:
+This is an offline, resumable source-preprocessing workflow. It never runs AI in the browser or Apps Script, never downloads ESV text, and never publishes commentary automatically. It supports four bounded uses:
 
 - the preserved Genesis book-introduction/Genesis 1 Spark-versus-Luna calibration; and
-- a schedule-aware Spark audit lane that resolves the active reading from today through at most two days ahead.
+- an autonomous Spark fact-ledger and prose pipeline for approved chapter calibrations;
+- a schedule-aware Spark audit lane that resolves the active reading from today through at most two days ahead; and
+- plan-generator activation and ensure-missing contracts that accept a start reading plus a bounded caller-selected count.
 
-The rolling lane was explicitly exercised on 2026-08-10 for `CC-Y3Q4-D056` (1 Peter 5), `CC-Y3Q4-D057` (Nahum 1), and `CC-Y3Q4-D058` (Nahum 2). D057 and D058 now have private multi-source main drafts plus separately reviewed, attached Henry layers, all marked `in_review`; D059 was not generated. Generated shards, audits, portable-store files, and raw worker output remain ignored and private. The publication handoff follows the library's checksum-bound current pointer, attaches the newest reviewed artifact for the requested reading, and rejects an unreviewed newer artifact rather than silently retaining an older version.
+The rolling lane was explicitly exercised on 2026-08-10 for `CC-Y3Q4-D056` (1 Peter 5), `CC-Y3Q4-D057` (Nahum 1), and `CC-Y3Q4-D058` (Nahum 2). The two Nahum readings retain their tracked main-commentary placeholders. Every generated Henry shard, audit, and portable-store file remains ignored, private, and unapproved; D059 was not generated.
 
 ## Selected source and rights record
 
@@ -33,34 +35,44 @@ Genesis 1 has ten shared/single source ranges. Nahum 1 has a chapter introductio
 
 The first Genesis preverse also contains volume, book, and chapter material. `config/mhc-source-boundaries.json` hash-locks the reviewed `gen15`–`gen19` book-introduction milestones for this exact archive. The typed chapter introduction is normalized separately. Remaining volume-preface material is preserved in the private exception file rather than guessed into either introduction. Other books without a reviewed opener boundary preserve preverse material as an explicit exception.
 
-## Worker contract and validation
+## Autonomous Spark contract and validation
 
-The active prompt is `prompts/mhc-worker-v4.md`. Chapter output uses `mhc-commentary/v2`; the prior v1 schema remains available only to revalidate preserved Genesis jobs.
+The current autonomous mode is `spark-autonomous-chunked-two-stage/v4`. It uses `mhc-fact-extractor/v5` followed by `mhc-autonomous-writer/v2`; chapter output remains `mhc-commentary/v2`. `mhc-worker/v11` and the older output schema remain only for preserved calibration/review artifacts.
 
-The active contract requires:
+The two stages deliberately separate grounding from prose:
+
+1. Spark receives normalized commentary atoms plus stable controller-generated evidence snippets and emits `mhc-fact-brief/v2`. Every fact selects one exact snippet, preserves agency, identity, relationship, historical detail, application, alternative, and qualification, and marks facts whose omission would materially weaken the verse summary.
+2. The controller replaces Spark's evidence transcription with the canonical selected snippet, derives compact ordinary-word anchors, and protects exact names, roles, and qualification cues. It rejects ungrounded facts, missing target-marked atoms, unsupported names, or incomplete explicit identities/relationships.
+3. The prose-stage view keeps the validated fact statements, short anchors, qualifications, and atom IDs but strips `evidence_quote` and `source_snippet_id`. Exact Henry text remains in the stored audit/source layer and is not shown to the writer. This lets Spark paraphrase freely while preserving a direct route back to Henry.
+4. Spark writes direct abridged prose. Deterministic validation supplies exact repair errors; a failed multi-verse chunk falls back to independently resumable verse chunks. A zero-error, zero-warning draft is admitted unchanged. The removed extra self-review rewrite had regressed already-valid drafts and is not part of v4.
+
+The final contract requires:
 
 - exactly one concise record for every requested verse;
 - direct condensed authorial prose, without “Henry says,” source-reporting language, or commentary about the generation process;
+- preservation of reader-useful concrete facts, especially an explicit identification of an otherwise unnamed figure, with exact spelling and relationships retained;
 - the exact allowed shared-range label;
 - one or more exact `source_atom_id` citations that materially support the blurb;
 - no claim imported from another indexed source range; and
 - no reconstruction or quotation of the excluded embedded Scripture transcription.
 
-The controller deterministically checks schema conformance, exact verse completeness, duplicates/extras, source-unit coverage, coverage types, exact atom existence and parent linkage, range labels, provenance/job metadata, length, suspicious twelve-word source overlap, selected unsupported named concepts, and prohibited “Henry” wording. Model-valid JSON remains `unreviewed` until direct human comparison with its cited atoms.
+The controller deterministically checks schema conformance, exact verse completeness, duplicates/extras, source-unit coverage, coverage types, exact atom existence and parent linkage, range labels, provenance/job metadata, length, suspicious twelve-word source overlap, unsupported names/concepts, explicit identity and role preservation, and prohibited source-reporting wording. It rejects direct or indirect narration of Henry/the source and scaffolds such as a passage that “asks,” “introduces,” “treats,” or “describes”; ordinary direct claims such as “his power is shown” are not misclassified as source reporting. Proper names remain exact, while ordinary one-word grammatical inflections may satisfy an anchor. Any warning becomes an autonomous-admission error. Model-valid JSON remains `unreviewed` until direct human comparison with its cited atoms.
 
 The compact private runtime conforms to `mhc-runtime/v1`. It contains only the cited commentary atoms, deduplicated and hash-linked, under the label `Matthew Henry — condensed paraphrase`. Tapping a verse performs an in-memory lookup. Expanding **Read Henry** reveals the exact public-domain atom or atoms used for that condensation, with a notice that the embedded Scripture transcription was omitted. There is no per-click server request and no runtime AI.
 
 ## Authentication and controller behavior
 
-The controller requires `codex login status` to report a ChatGPT login and refuses an API-key state. It checks the installed model catalog and never substitutes an unrequested model. Worker invocations are noninteractive, ephemeral, read-only, sequential, standard-speed, and disable both multi-agent feature flags. Final JSON is written to an explicit fingerprinted private path and validated after every job.
+The controller requires `codex login status` to report a ChatGPT login and refuses an API-key state. It never substitutes an unrequested model. Because the local discovery catalog may omit the Spark alias, the exact configured `gpt-5.3-codex-spark` slug is allowed through preflight and must still succeed in a real invocation; arbitrary undiscovered model names remain blocked. Worker invocations are noninteractive, ephemeral, read-only, sequential, standard-speed, and disable both multi-agent feature flags. Final JSON is written to an explicit fingerprinted private path and validated after every job.
 
-The fingerprint includes source hash, prompt version, output schema version, and requested model. A restart skips only a completed result with the same fingerprint that still validates. Changed inputs create a new directory and mark a prior completed manifest record superseded; an approved output is not overwritten. Transient failures receive at most two retries by default with bounded exponential backoff.
+The writer fingerprint includes source hash, prompt/schema/model versions, autonomous mode, fact-prompt version, and exact fact-brief hash. Validated fact-ledger caching is independent of downstream writer-admission revisions, so a prose-prompt change does not spend Spark budget re-extracting unchanged facts. A restart skips only a completed result whose current bytes still validate. Changed inputs create a new directory; prior attempts remain preserved. Transient process failures use bounded retries, and invalid structured drafts receive at most the configured bounded validation-guided repairs.
+
+Human corrections remain a separate legacy/review layer for preserved jobs. The autonomous Spark chapter path rejects `review-overrides.json`; failures must be addressed by a general controller/prompt revision and a new versioned run, not by silently patching individual prose. Older schedule-local overrides remain hash-bound to the exact reading, job, prompt, fingerprint, and raw-output SHA-256 and cannot change citations, ranges, metadata, or publication status.
 
 ## Rolling two-day-ahead Spark lane
 
-`schedule-window` resolves the inclusive active-plan window from the Detroit civil date through two days ahead. `--days-ahead` accepts only `0`, `1`, or `2`; two is the default and hard maximum. The older `schedule-next` command remains a compatible single-reading tool whose offset accepts only `0` or `1`. Both paths:
+`schedule-window` resolves the inclusive active-plan window from the Detroit civil date through two days ahead. `--days-ahead` accepts only `0`, `1`, or `2`; two is the default interactive maximum. A caller may instead pass `--reading-count 1..14`. The older `schedule-next` command remains a compatible single-reading tool whose offset accepts only `0` or `1`. These paths:
 
-1. rejects book/chapter/corpus selectors and any model other than exact `gpt-5.3-codex-spark`;
+1. reject book/chapter/corpus selectors and any model other than exact `gpt-5.3-codex-spark`;
 2. resolves the active scheduled reading rather than accepting an arbitrary passage;
 3. requires a chapter reading and validates every scheduled passage and verse count against the indexed Henry source;
 4. normalizes, generates, validates, and exports each scheduled chapter sequentially;
@@ -69,19 +81,72 @@ The fingerprint includes source hash, prompt version, output schema version, and
 
 The audit preserves human findings across a same-prompt rerun and stays `unreviewed` until approval is recorded. Range bleed within one indexed Henry treatment is a review judgment, not an automatic defect. Cross-range drift, invented distinctions, copied wording, and unsupported named concepts remain defects.
 
-After every target succeeds, `schedule-window` writes an app-neutral, checksum-addressed exchange store under `private-commentary/mhc/stores/current-window/`. `manifest.json` declares `mhc-window-store/v1`, the plan/window/model/prompt, `contains_scripture: false`, `publication_status: not_published`, review states, and each reading file's relative path and SHA-256. Each `mhc-portable-reading/v1` file embeds one or more validated `mhc-runtime/v1` chapter shards. Reading filenames include a hash prefix and the manifest is replaced last, so an interrupted run cannot point consumers at a partially replaced window. Old unreferenced private files are harmless and are not deleted automatically.
+After every target succeeds, the controller writes an app-neutral, checksum-addressed exchange window under `private-commentary/mhc/stores/current-window/`. `manifest.json` declares `mhc-window-store/v1`, the requested count, plan/window/model/prompt, `contains_scripture: false`, `publication_status: not_published`, review states, and each reading file's relative path and SHA-256. Each `mhc-portable-reading/v1` file embeds one or more validated `mhc-runtime/v1` chapter shards.
+
+The same immutable reading bytes are merged into `stores/library/plans/<plan-key>/` and indexed by `mhc-library-catalog/v1`. `stores/library/current.json` points to the complete current-plan catalog and hashes its exact bytes. A later one-reading request replaces only that reading's catalog pointer; it never drops other retained readings or deletes an older content-addressed version. Reading objects are written first, then the catalog, pointer, and request-window manifest are replaced atomically. An interrupted or unavailable worker therefore leaves the last complete catalog/pointers readable.
+
+## Plan-generator activation contract
+
+The main content generator activates Henry with `mhc-activation-request/v1`, validated by `schemas/mhc-activation.schema.json`. The caller controls only the plan version, stable start reading, and amount of consecutive plan content. It cannot choose arbitrary chapters, an output directory, publication status, prompt, corpus mode, or a substitute model.
+
+```json
+{
+  "schema_version": "mhc-activation-request/v1",
+  "request_id": "celebration-20260810-d056-count3-v1",
+  "plan_version": "celebration-y3q4-bridge-2026-v1",
+  "requested_by": "reading-plan-content-generator",
+  "start_reading_id": "CC-Y3Q4-D056",
+  "reading_count": 3,
+  "worker_model": "gpt-5.3-codex-spark",
+  "reason": "Prepare the next three plan readings for private review."
+}
+```
+
+Invoke it with:
+
+```sh
+npm run mhc:activate -- --request /absolute/or/repository-relative/request.json
+```
+
+`--dry-run` validates and resolves the exact reading IDs without writing or contacting the worker. A successful real run writes the validated request plus an `mhc-activation-result/v1` receipt containing the produced reading IDs and hashes for both the request-window manifest and durable catalog. The generator can consume that receipt rather than parsing human log output.
+
+This is a prepublication handoff. After editorial approval, the broader content process embeds the approved runtime shard in the private reading payload and publishes that payload through the existing Drive/manifest workflow. The deployed app reads those stored payloads and its bounded IndexedDB snapshot; it never calls this controller or Codex. If Codex is unavailable, a new activation fails without replacing the last good catalog/window, while already published and downloaded readings continue to work.
+
+## Main-thread ensure-missing contract
+
+The ordinary content-generation thread should use `mhc-ensure-request/v1` when it needs a bounded plan range to exist but does not want to regenerate sound stored readings. The request fixes the plan, start reading, count from 1 through 14, exact Spark model, current autonomous mode, and `only_if_missing: true`.
+
+```json
+{
+  "schema_version": "mhc-ensure-request/v1",
+  "request_id": "main-thread-current-three-20260811",
+  "plan_version": "celebration-y3q4-bridge-2026-v1",
+  "requested_by": "reading-plan-main-thread",
+  "start_reading_id": "CC-Y3Q4-D056",
+  "reading_count": 3,
+  "worker_model": "gpt-5.3-codex-spark",
+  "generation_mode": "spark-autonomous-chunked-two-stage/v4",
+  "only_if_missing": true
+}
+```
+
+```sh
+npm run mhc:ensure -- --request /path/to/mhc-ensure-request.json
+```
+
+The controller verifies the catalog pointer, catalog hash/schema, immutable reading hash/schema, chapter runtime, and exact requested plan membership before treating a reading as available. It invokes Spark only for missing or invalid targets, merges successful results into the durable catalog without replacing the latest rolling-window manifest, verifies the complete requested set again, and writes `mhc-ensure-result/v1`. If every reading already exists, no model call occurs. If generation fails or Codex is unavailable, prior stored and published content remains intact.
 
 ### Nahum 1 troubleshooting result
 
-The bounded D057 exercise preserved three fingerprinted Spark attempts:
+The final autonomy calibration on 2026-08-11 used fact prompt v5, writer prompt v2, and mode v4. Nahum 1 produced fifteen valid records with zero warnings and one automatic writer-chunk fallback; 1 Peter 5 supplied a structurally different fourteen-verse test and passed with zero warnings and no writer fallback. Both runs used exact Spark for fact extraction, prose, and bounded error repair, and both record `human_override_applied: false`. The prose model never received exact evidence snippets. Nahum 1:11 directly identifies Sennacherib and Rabshakeh as his spokesman and retains the Assyrian surrender counsel and Hezekiah detail. These calibration jobs remain ignored, private, unreviewed, and unpublished.
 
-- The first structurally valid result exposed material verse drift within Henry's `9–15` treatment.
-- The anchor-aware revision corrected the verse centering but was safely rejected after changing the required shared source label.
-- Prompt v4 preserved the exact range label and produced 15 valid records with no deterministic warnings.
+The durable D057 localhost catalog still points to the separately reviewed v11 derivative described below. The v4 calibration was intentionally not substituted for that review artifact merely because it validated.
 
-Human review confirmed that the final records cite only atoms from their indexed ranges, use direct condensed authorial voice, and contain no embedded Scripture transcription. Verses 5 and 14 received the recorded copy edits, and verse 11's abstract phrase was replaced with wording directly grounded in its cited atom. The raw fingerprinted Spark output remains unchanged; the corrected result is a separate content-addressed reviewed artifact, remains `in_review` rather than `approved`, and is attached to D057's private metadata with all 15 verses covered.
+The D057 audit now exercises prompt v11 and the review layer. Earlier attempts established range anchoring and explicit identity preservation. A first complete-chapter v10 redraft exposed broader indirect reporting constructions; v11 turned those constructions into hard failures and added an explicit agency-preservation instruction. The controller rejected the raw v11 result after bounded repairs still left “is shown,” “the image teaches,” “is treated,” and “the note warns,” plus two names outside the selected atoms. Every rejected attempt remains preserved privately.
 
-The D056 result remains a private, unattached review aid. It requires a source-copy edit at verse 6, correction of the awkward/unsupported construction at verse 11, and softening of a small exclusivity overstatement at verse 5; its verse-12 `church` warning was judged acceptable contextual shorthand. D058's verse-10 overstatement was corrected against its exact cited atom and the resulting content-addressed artifact was attached to the Nahum 2 study as `in_review`. Natural reuse of one exact Henry range across neighboring verses was explicitly accepted and is not repeated as a warning on every record.
+A hash-bound `in_review` derivative now replaces the prose for all fifteen verses while leaving the raw v11 output and every citation, range, and metadata field unchanged. The review restores reader-useful details across the chapter: Nahum's Elkoshite background and Nineveh's earlier Jonah reprieve; the Chaldean judgment of Assyria; Sennacherib, Rabshakeh, Hezekiah, Jerusalem, and the Assyrian appeal; the destroying angel; the alternative readings of Sennacherib's death, idols, grave, and empire; and the Isaiah/apostolic use of the peace-messenger language. Verse 11 retains the user-approved direct identification of Sennacherib as the wicked counsellor from Nineveh and Rabshakeh as his spokesman. All fifteen records validate with zero warnings, contain no embedded Scripture transcription, and remain unapproved and unpublished.
+
+The D056 and D058 results are also `in_review`. D056 requires a source-copy edit at verse 6, correction of the awkward/unsupported construction at verse 11, and softening of a small exclusivity overstatement at verse 5; its verse-12 `church` warning was judged acceptable contextual shorthand. D058 is otherwise well grounded, with one rhetorical comparison at verse 10 to soften before approval. Natural reuse of one exact Henry range across neighboring verses was explicitly accepted and is not repeated as a warning on every record.
 
 ## Commands
 
@@ -94,6 +159,16 @@ npm run mhc:window:dry-run
 
 # Generate/resume today through two days ahead and atomically export the private store.
 npm run mhc:window:spark
+
+# Let the reading-plan generator choose the starting reading and amount.
+npm run mhc:activate -- --request /path/to/mhc-activation-request.json
+
+# Let the main thread verify durable readings and generate only missing targets.
+npm run mhc:ensure -- --request /path/to/mhc-ensure-request.json
+
+# Re-run the two current autonomous calibration chapters.
+npm run mhc:autonomy:nahum
+npm run mhc:autonomy:1peter5
 
 # Optional narrower single-reading compatibility lane.
 npm run mhc:next:dry-run
@@ -116,13 +191,20 @@ Expected private locations:
 - Normalized units: `private-commentary/mhc/normalized/<BOOK>/<CHAPTER>.jsonl`
 - Exceptions: `private-commentary/mhc/exceptions/<BOOK>/<CHAPTER>.jsonl`
 - Raw worker outputs: `private-commentary/mhc/jobs/<BOOK>-<CHAPTER>/<model>/<fingerprint>/raw-output.json`
+- Validated fact ledgers: `private-commentary/mhc/fact-briefs/<BOOK>-<CHAPTER>/<model>/<fingerprint>/fact-brief.json`
 - Schedule audit: `private-commentary/mhc/schedule/<readingId>/audit.{json,md}`
+- Human review overrides: `private-commentary/mhc/schedule/<readingId>/review-overrides.json`
+- Preserved raw/reviewed job pair: `private-commentary/mhc/jobs/<BOOK>-<CHAPTER>/<model>/<fingerprint>/{raw-output,reviewed-output}.json`
 - Runtime chapter: `private-commentary/mhc/runtime/<BOOK>/<CHAPTER>.json`
 - Portable current-window manifest: `private-commentary/mhc/stores/current-window/manifest.json`
 - Portable reading: `private-commentary/mhc/stores/current-window/readings/<readingId>.<hash-prefix>.json`
+- Durable catalog pointer: `private-commentary/mhc/stores/library/current.json`
+- Durable per-plan catalog/readings: `private-commentary/mhc/stores/library/plans/<plan-key>/`
+- Activation request/result: `private-commentary/mhc/stores/activations/<request-key>/{request,result}.json`
+- Ensure receipt: `private-commentary/mhc/stores/ensure-requests/<request-key>/result.json`
 - Genesis comparison: `private-commentary/mhc/reports/GEN-001-spark-vs-luna.{json,md}`
 
-For a localhost audit, run `npm run dev`, open `http://127.0.0.1:4173/app/frontend/?privateDraft=1`, select a generated schedule day, open Scripture, tap a verse, and expand **Read Henry**. The same server exposes the current manifest at `/__mhc/window/manifest.json` and an included portable record at `/__mhc/window/readings/<readingId>.json`; it verifies the manifest checksum before serving or attaching that reading. The private adapter accepts only active bridge IDs, sends `no-store`, and is stripped from production builds. The separate `?mhcPilot=1` route preserves the inactive Genesis calibration.
+For a localhost audit, run `npm run dev`, open `http://127.0.0.1:4173/app/frontend/?privateDraft=1`, select a generated schedule day, open Scripture, tap a verse, and expand **Read Henry**. The server exposes the retained catalog at `/__mhc/library/catalog.json` and a reading at `/__mhc/library/readings/<readingId>.json`; `/__mhc/window/` exposes only the most recent request. It verifies catalog/reading hashes and prefers the durable library when attaching a shard. The private adapter accepts only active bridge IDs, sends `no-store`, and is stripped from production builds. The separate `?mhcPilot=1` route preserves the inactive Genesis calibration.
 
 ## Full-corpus lock and limitations
 

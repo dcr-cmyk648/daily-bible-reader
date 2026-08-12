@@ -21,7 +21,11 @@ export const NORMALIZED_SCHEMA_VERSION = "mhc-normalized-source/v3";
 export const COMMENTARY_SCHEMA_VERSION = "mhc-commentary/v2";
 export const BOOK_INTRO_SCHEMA_VERSION = "mhc-book-intro/v1";
 export const RUNTIME_SCHEMA_VERSION = "mhc-runtime/v1";
-export const PROMPT_VERSION = "mhc-worker/v4";
+export const FACT_BRIEF_SCHEMA_VERSION = "mhc-fact-brief/v2";
+export const FACT_PROMPT_VERSION = "mhc-fact-extractor/v5";
+export const LEGACY_PROMPT_VERSION = "mhc-worker/v11";
+export const PROMPT_VERSION = "mhc-autonomous-writer/v2";
+export const AUTONOMOUS_GENERATION_MODE = "spark-autonomous-chunked-two-stage/v4";
 
 export const OSIS_BOOKS = Object.freeze([
   ["Gen", "GEN", "Genesis"], ["Exod", "EXO", "Exodus"], ["Lev", "LEV", "Leviticus"],
@@ -559,6 +563,82 @@ function wordCount(value) {
   return String(value || "").trim().split(/\s+/).filter(Boolean).length;
 }
 
+const SOURCE_REPORTING_PATTERNS = Object.freeze([
+  /\b(?:Matthew\s+)?Henry\b/i,
+  /\b(?:the\s+)?commentator(?:'s)?\b/i,
+  /\b(?:the\s+)?commentary\b/i,
+  /\b(?:the\s+)?source\b/i,
+  /\b(?:the\s+)?atom\b/i,
+  /\b(?:the|this|that|same)\s+(?:heading|burden|account|chapter|section|record|passage|text|verse|oracle|prophecy|note|comment|warning|description|image|imagery)\s+(?:says?|states?|asks?|names?|introduces?|sets?|presents?|treats?|depicts?|pictures?|describes?|identifies?|interprets?|observes?|applies?|allows?|draws?|likens?|calls?|teaches?|shows?|warns?|explains?|adds?|makes?)\b/i,
+  /\b(?:the|this)\s+(?:point|warning|lesson|application|practical\s+sense)\s+is\b/i,
+  /\btraditions?\s+(?:(?:is|are)\s+)?(?:says?|holds?|ties?|identifies?|takes?|cited|reported|mentioned)\b/i,
+  /\b(?:is|are|was|were)\s+(?:treated|presented|described|interpreted|understood|depicted|portrayed|pictured|declared|announced|held|framed|extended)\b/i,
+  /\b(?:is|are|was|were)\s+called\s+(?:as\s+)?(?:a|an|the)\b/i,
+  /\b(?:is|are|was|were)\s+likened\s+(?:as|to)\b/i,
+  /\b(?:the|this)\s+image(?:ry)?\s+is\b/i
+]);
+
+export function findSourceReportingPhrase(value) {
+  const text = String(value || "");
+  for (const pattern of SOURCE_REPORTING_PATTERNS) {
+    const match = pattern.exec(text);
+    if (match) return match[0];
+  }
+  return null;
+}
+
+function atomExplicitlyMarksVerse(atom, verse) {
+  const text = String(atom && atom.text || "");
+  return new RegExp(`\\b(?:v|ver|verse)\\.?\\s*${verse}\\b`, "i").test(text);
+}
+
+function explicitIdentityTermsForAtom(atom) {
+  const text = String(atom && atom.text || "");
+  const terms = [];
+  const patterns = [
+    /[—–]\s*([A-Z][A-Za-z'’-]{2,})\b/g,
+    /\b(?:named|called|namely|spokesman|son|daughter|brother|sister|father|mother|wife|husband)\s+([A-Z][A-Za-z'’-]{2,})\b/g
+  ];
+  const ignored = new Set(["And", "But", "For", "He", "Her", "His", "It", "Its", "She", "That", "The", "Their", "There", "These", "They", "This", "Those", "We", "What", "When", "Where", "Who"]);
+  patterns.forEach((pattern) => {
+    for (const match of text.matchAll(pattern)) {
+      if (!ignored.has(match[1]) && !terms.includes(match[1])) terms.push(match[1]);
+    }
+  });
+  return terms;
+}
+
+function explicitRelationsForAtom(atom) {
+  const text = String(atom && atom.text || "");
+  const relations = [];
+  const pattern = /\b(?:his|her|their)\s+(spokesman|son|daughter|brother|sister|father|mother|wife|husband)\s+([A-Z][A-Za-z'’-]{2,})\b/gi;
+  for (const match of text.matchAll(pattern)) {
+    const relation = match[1].toLowerCase();
+    const term = match[2];
+    if (!relations.some((candidate) => candidate.term === term && candidate.relation === relation)) {
+      relations.push({term, relation});
+    }
+  }
+  return relations;
+}
+
+function unsupportedMidSentenceCapitalizedTerms(value, sourceTexts) {
+  const text = String(value || "");
+  const ignored = new Set(["And", "But", "For", "From", "He", "Her", "His", "It", "Its", "Nor", "Or", "She", "So", "That", "The", "Their", "There", "These", "They", "This", "Those", "Thus", "We", "What", "When", "Where", "Who", "Yet"]);
+  const candidates = [];
+  for (const match of text.matchAll(/\b[A-Z][A-Za-z'’-]{2,}\b/g)) {
+    const before = text.slice(0, match.index).trimEnd();
+    const sentenceInitial = !before || /[.!?]$/.test(before);
+    const normalizedTerm = match[0].replace(/[’']s$/i, "");
+    if (!sentenceInitial && !ignored.has(normalizedTerm) && !candidates.includes(normalizedTerm)) candidates.push(normalizedTerm);
+  }
+  return candidates.filter((term) => {
+    const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = new RegExp(`\\b${escapedTerm}\\b`, "i");
+    return !sourceTexts.some((sourceText) => pattern.test(sourceText));
+  });
+}
+
 function copiedSequence(blurb, sourceTexts, size = 12) {
   const normalize = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9' ]+/g, " ").replace(/\s+/g, " ").trim();
   const words = normalize(blurb).split(" ").filter(Boolean);
@@ -571,13 +651,21 @@ function copiedSequence(blurb, sourceTexts, size = 12) {
   return null;
 }
 
-export function validateChapterOutput(output, {schema, units, bookId, chapter, verseCount, expectedMetadata = {}}) {
+export function validateChapterOutput(output, {
+  schema,
+  units,
+  bookId,
+  chapter,
+  verseCount,
+  expectedMetadata = {},
+  expectedVerseIdsOverride = null
+}) {
   const errors = validateAgainstSchema(output, schema, {instancePath: "$"});
   const warnings = [];
   const verseUnits = units.filter((unit) => unit.unit_type === "verse_range");
   const byUnitId = new Map(units.map((unit) => [unit.source_unit_id, unit]));
   const byAtomId = new Map(units.flatMap((unit) => (unit.source_atoms || []).map((atom) => [atom.source_atom_id, {...atom, source_unit_id: unit.source_unit_id}])));
-  const expected = expectedVerseIds(bookId, chapter, verseCount);
+  const expected = expectedVerseIdsOverride || expectedVerseIds(bookId, chapter, verseCount);
   const records = Array.isArray(output && output.records) ? output.records : [];
   const counts = new Map();
   records.forEach((record) => counts.set(record.verse_id, (counts.get(record.verse_id) || 0) + 1));
@@ -642,17 +730,50 @@ export function validateChapterOutput(output, {schema, units, bookId, chapter, v
         errors.push(`$.records[${index}].source_atom_ids: ${atomId} belongs to an uncited source unit`);
       }
     });
+    if (expectedMetadata.prompt_version === PROMPT_VERSION) {
+      const targetMarkedAtoms = expectedCoverage.sourceUnits.flatMap((unit) =>
+        (unit.source_atoms || []).filter((atom) => atomExplicitlyMarksVerse(atom, targetVerse))
+      );
+      const targetMarkedAtomIds = targetMarkedAtoms.map((atom) => atom.source_atom_id);
+      if (targetMarkedAtomIds.length && !citedAtomIds.some((atomId) => targetMarkedAtomIds.includes(atomId))) {
+        errors.push(`$.records[${index}].source_atom_ids: cite at least one atom that explicitly marks ${record.verse_id}`);
+      }
+      const requiredIdentityTerms = [...new Set(targetMarkedAtoms.flatMap(explicitIdentityTermsForAtom))];
+      requiredIdentityTerms.forEach((term) => {
+        const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        if (!new RegExp(`\\b${escapedTerm}\\b`, "i").test(record.blurb || "")) {
+          errors.push(`$.records[${index}].blurb: omitted explicit identity ${JSON.stringify(term)} from the target-marked commentary atom`);
+        }
+      });
+      const requiredRelations = targetMarkedAtoms.flatMap(explicitRelationsForAtom);
+      requiredRelations.forEach(({term, relation}) => {
+        const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const escapedRelation = relation.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const relationPattern = new RegExp(`(?:\\b${escapedRelation}\\b.{0,50}\\b${escapedTerm}\\b|\\b${escapedTerm}\\b.{0,50}\\b${escapedRelation}\\b)`, "i");
+        if (!relationPattern.test(record.blurb || "")) {
+          errors.push(`$.records[${index}].blurb: omitted or reassigned explicit relation ${JSON.stringify(`${relation} ${term}`)}`);
+        }
+      });
+    }
     const count = wordCount(record.blurb);
     if (count > 110) warnings.push(`${record.verse_id}: blurb is ${count} words (review above 110)`);
-    if (/\b(?:Matthew\s+)?Henry\b/i.test(record.blurb || "")) {
-      warnings.push(`${record.verse_id}: summary names Henry instead of staying in condensed authorial voice`);
+    const sourceReportingPhrase = findSourceReportingPhrase(record.blurb);
+    if (expectedMetadata.prompt_version === PROMPT_VERSION && sourceReportingPhrase) {
+      errors.push(`$.records[${index}].blurb: source-reporting phrase ${JSON.stringify(sourceReportingPhrase)} is forbidden; state the abridged substance directly`);
     }
     const citedAtomTexts = citedAtomIds.map((atomId) => byAtomId.get(atomId)).filter(Boolean).map((atom) => atom.text);
+    if (expectedMetadata.prompt_version === PROMPT_VERSION) {
+      unsupportedMidSentenceCapitalizedTerms(record.blurb, citedAtomTexts).forEach((term) => {
+        errors.push(`$.records[${index}].blurb: capitalized term ${JSON.stringify(term)} is absent from the cited source atoms`);
+      });
+    }
     ["apostle", "Christ", "church", "covenant", "gospel", "Hezekiah", "Jerome", "Jesus", "Jonah", "providence", "Rabshakeh", "Sennacherib", "Yahweh", "Zion"]
       .forEach((term) => {
         const termPattern = new RegExp(`\\b${term}\\b`, "i");
         if (termPattern.test(record.blurb || "") && !citedAtomTexts.some((text) => termPattern.test(text))) {
-          warnings.push(`${record.verse_id}: named concept ${JSON.stringify(term)} is absent from the cited source atoms`);
+          const message = `${record.verse_id}: named concept ${JSON.stringify(term)} is absent from the cited source atoms`;
+          if (expectedMetadata.prompt_version === PROMPT_VERSION) errors.push(message);
+          else warnings.push(message);
         }
       });
     const copied = copiedSequence(record.blurb, covering.flatMap((unit) =>
@@ -689,6 +810,10 @@ export function validateBookIntroOutput(output, {schema, units, bookId, expected
   }
   const count = wordCount(resource.blurb);
   if (count > 130) warnings.push(`intro-${bookId}: blurb is ${count} words (review above 130)`);
+  const sourceReportingPhrase = findSourceReportingPhrase(resource.blurb);
+  if (expectedMetadata.prompt_version === PROMPT_VERSION && sourceReportingPhrase) {
+    errors.push(`$.resource.blurb: source-reporting phrase ${JSON.stringify(sourceReportingPhrase)} is forbidden; state the abridged substance directly`);
+  }
   const copied = copiedSequence(resource.blurb, cited.filter(Boolean).map((unit) => unit.source_text));
   if (copied) warnings.push(`intro-${bookId}: possible 12-word source copy: ${JSON.stringify(copied)}`);
   return {valid: errors.length === 0, errors, warnings};
@@ -734,7 +859,17 @@ function workerSourceUnit(unit) {
   };
 }
 
-export function buildChapterJobSpec({units, sourceManifest, model, bookId, chapter, verseCount, generatedAt}) {
+export function buildChapterJobSpec({
+  units,
+  sourceManifest,
+  model,
+  bookId,
+  chapter,
+  verseCount,
+  generatedAt,
+  promptVersion = PROMPT_VERSION,
+  schemaVersion = COMMENTARY_SCHEMA_VERSION
+}) {
   const selectedNormalizedUnits = units.filter((unit) => unit.book_id === bookId && unit.chapter === chapter &&
     unit.unit_type === "verse_range");
   const selectedUnits = selectedNormalizedUnits.map(workerSourceUnit);
@@ -745,11 +880,17 @@ export function buildChapterJobSpec({units, sourceManifest, model, bookId, chapt
     if (!coverage.sourceUnits.length) {
       throw new Error(`${verseId} has no normalized source unit or deterministic surrounding treatment.`);
     }
+    const targetMarkedAtoms = coverage.sourceUnits.flatMap((unit) =>
+      unit.source_atoms.filter((atom) => atomExplicitlyMarksVerse(atom, index + 1))
+    );
     return {
       verse_id: verseId,
       required_coverage_type: coverage.coverageType,
       allowed_source_unit_ids: coverage.sourceUnits.map((unit) => unit.source_unit_id),
       allowed_source_atom_ids: coverage.sourceUnits.flatMap((unit) => unit.source_atoms.map((atom) => atom.source_atom_id)),
+      target_marked_source_atom_ids: targetMarkedAtoms.map((atom) => atom.source_atom_id),
+      required_explicit_identity_terms: [...new Set(targetMarkedAtoms.flatMap(explicitIdentityTermsForAtom))],
+      required_explicit_relations: targetMarkedAtoms.flatMap(explicitRelationsForAtom),
       verse_anchor_terms: coverage.sourceUnits.flatMap((unit) =>
         (unit.verse_anchors || []).filter((anchor) => anchor.verse === index + 1).flatMap((anchor) => anchor.anchor_terms)
       ),
@@ -758,14 +899,14 @@ export function buildChapterJobSpec({units, sourceManifest, model, bookId, chapt
   });
   return {
     metadata: {
-      schema_version: COMMENTARY_SCHEMA_VERSION,
+      schema_version: schemaVersion,
       job_id: jobId,
       source_id: sourceManifest.source_id,
       source_version: sourceManifest.module_version,
       source_manifest_ref: "source-manifest.json",
       source_hash: sourceHash,
       worker_model: model,
-      prompt_version: PROMPT_VERSION,
+      prompt_version: promptVersion,
       generation_timestamp: generatedAt,
       validation_status: "unvalidated",
       review_status: "unreviewed",
@@ -777,7 +918,14 @@ export function buildChapterJobSpec({units, sourceManifest, model, bookId, chapt
   };
 }
 
-export function buildBookIntroJobSpec({units, sourceManifest, model, bookId, generatedAt}) {
+export function buildBookIntroJobSpec({
+  units,
+  sourceManifest,
+  model,
+  bookId,
+  generatedAt,
+  promptVersion = LEGACY_PROMPT_VERSION
+}) {
   const selectedUnits = units.filter((unit) => unit.book_id === bookId && unit.unit_type === "book_intro");
   if (selectedUnits.length !== 1) throw new Error(`Expected exactly one ${bookId} book-introduction source unit.`);
   return {
@@ -789,7 +937,7 @@ export function buildBookIntroJobSpec({units, sourceManifest, model, bookId, gen
       source_manifest_ref: "source-manifest.json",
       source_hash: normalizedBatchHash(selectedUnits),
       worker_model: model,
-      prompt_version: PROMPT_VERSION,
+      prompt_version: promptVersion,
       generation_timestamp: generatedAt,
       validation_status: "unvalidated",
       review_status: "unreviewed"
@@ -812,12 +960,390 @@ export function renderWorkerPrompt(template, jobSpec, kind) {
   return `${String(template || "").trim()}\n\n## Job kind\n\n${kind}\n\n${instructions}\n\n## Exact job metadata and requested output\n\n${JSON.stringify({metadata: jobSpec.metadata, requested_records: jobSpec.requestedRecords, requested_resource: jobSpec.requestedResource}, null, 2)}\n\n## Supplied normalized source units\n\n${JSON.stringify(jobSpec.sourceUnits, null, 2)}\n`;
 }
 
+export function buildFactBriefJobSpec({chapterJobSpec, generatedAt}) {
+  if (!chapterJobSpec || !chapterJobSpec.metadata || !Array.isArray(chapterJobSpec.requestedRecords)) {
+    throw new Error("A chapter job specification is required for fact extraction.");
+  }
+  const metadata = chapterJobSpec.metadata;
+  return {
+    metadata: {
+      schema_version: FACT_BRIEF_SCHEMA_VERSION,
+      job_id: metadata.job_id,
+      source_id: metadata.source_id,
+      source_version: metadata.source_version,
+      source_hash: metadata.source_hash,
+      worker_model: metadata.worker_model,
+      prompt_version: FACT_PROMPT_VERSION,
+      generation_timestamp: generatedAt || metadata.generation_timestamp,
+      book_id: metadata.book_id,
+      chapter: metadata.chapter
+    },
+    requestedVerses: chapterJobSpec.requestedRecords,
+    sourceUnits: chapterJobSpec.sourceUnits.map((unit) => ({
+      ...unit,
+      source_atoms: (unit.source_atoms || []).map((atom) => ({
+        ...atom,
+        evidence_snippets: evidenceSnippetsForAtom(atom)
+      }))
+    }))
+  };
+}
+
+export function renderFactExtractionPrompt(template, factJobSpec) {
+  return `${String(template || "").trim()}\n\n## Exact fact-brief metadata and requested verses\n\n${JSON.stringify({metadata: factJobSpec.metadata, requested_verses: factJobSpec.requestedVerses}, null, 2)}\n\n## Supplied normalized source units\n\n${JSON.stringify(factJobSpec.sourceUnits, null, 2)}\n`;
+}
+
+export function renderAutonomousWriterPrompt(template, chapterJobSpec, factBrief) {
+  const writerView = {
+    ...Object.fromEntries(Object.entries(factBrief).filter(([key]) => key !== "verse_briefs")),
+    verse_briefs: (factBrief.verse_briefs || []).map((brief) => ({
+      ...brief,
+      facts: (brief.facts || []).map(({evidence_quote: _evidenceQuote, source_snippet_id: _sourceSnippetId, ...fact}) => fact)
+    }))
+  };
+  return `${String(template || "").trim()}\n\n## Exact commentary job metadata and requested records\n\n${JSON.stringify({metadata: chapterJobSpec.metadata, requested_records: chapterJobSpec.requestedRecords}, null, 2)}\n\n## Validated Spark fact brief view\n\n${JSON.stringify(writerView, null, 2)}\n`;
+}
+
+function normalizedEvidence(value) {
+  return String(value || "").normalize("NFKC").replace(/\s+/g, " ").trim();
+}
+
+export function evidenceSnippetsForAtom(atom) {
+  const text = normalizedEvidence(atom && atom.text);
+  if (!text) return [];
+  const words = text.split(" ");
+  const spans = [];
+  let start = 0;
+  for (let index = 0; index < words.length; index += 1) {
+    const length = index - start + 1;
+    const token = words[index];
+    const strongBoundary = /[.!?]["')\]]?$/u.test(token);
+    const clauseBoundary = /[;:]["')\]]?$/u.test(token);
+    const softBoundary = /,["')\]]?$/u.test(token);
+    if ((length >= 8 && (strongBoundary || clauseBoundary)) || (length >= 28 && softBoundary) || length >= 40) {
+      spans.push(words.slice(start, index + 1).join(" "));
+      start = index + 1;
+    }
+  }
+  if (start < words.length) spans.push(words.slice(start).join(" "));
+  if (spans.length > 1 && wordCount(spans.at(-1)) < 3) {
+    spans[spans.length - 2] = `${spans[spans.length - 2]} ${spans.at(-1)}`;
+    spans.pop();
+  }
+  return spans.map((snippetText, index) => ({
+    source_snippet_id: `${atom.source_atom_id}:s${String(index + 1).padStart(3, "0")}`,
+    source_atom_id: atom.source_atom_id,
+    sequence: index + 1,
+    text: snippetText,
+    text_sha256: sha256(snippetText)
+  }));
+}
+
+export function hydrateFactBriefEvidence(factBrief, {chapterJobSpec}) {
+  const hydrated = structuredClone(factBrief);
+  const snippets = new Map(chapterJobSpec.sourceUnits.flatMap((unit) =>
+    (unit.source_atoms || []).flatMap((atom) => evidenceSnippetsForAtom(atom).map((snippet) => [snippet.source_snippet_id, snippet]))
+  ));
+  const requestByVerse = new Map(chapterJobSpec.requestedRecords.map((record) => [record.verse_id, record]));
+  const stopWords = new Set(["a", "an", "and", "are", "as", "at", "be", "been", "but", "by", "for", "from", "had", "has", "have", "he", "her", "his", "i", "in", "is", "it", "its", "of", "on", "or", "that", "the", "their", "them", "they", "this", "to", "was", "were", "will", "with"]);
+  const wordTokens = (value) => String(value || "").match(/[A-Za-z0-9]+(?:[’'-][A-Za-z0-9]+)*/gu) || [];
+  const qualificationAnchor = (evidence, qualification) => {
+    if (qualification === "some_understand") {
+      const match = /\bsome\s+(?:think|understand|take|make|interpret)(?:s|ing|ed)?\b/i.exec(evidence);
+      return match && match[0];
+    }
+    if (qualification === "alternative") {
+      const match = /\b(?:or it may|either|another|otherwise|or)\b/i.exec(evidence);
+      return match && match[0];
+    }
+    if (qualification === "uncertain") {
+      const match = /\b(?:may|might|perhaps|possibly|probably|likely|uncertain|unclear)\b/i.exec(evidence);
+      return match && match[0];
+    }
+    return null;
+  };
+  const chooseShortAnchor = (term, statement, evidence) => {
+    const cleanTerm = normalizedEvidence(term);
+    if (wordCount(cleanTerm) === 1 && containsRequiredTerm(evidence, cleanTerm)) return cleanTerm;
+    const statementWords = new Set(wordTokens(statement).map((word) => word.toLowerCase()));
+    const candidates = wordTokens(cleanTerm).filter((word) => containsRequiredTerm(evidence, word));
+    const fallback = wordTokens(evidence).filter((word) => statementWords.has(word.toLowerCase()));
+    const pool = candidates.length ? candidates : fallback;
+    const ranked = pool.filter((word) => !stopWords.has(word.toLowerCase())).sort((left, right) => {
+      const properDifference = Number(/^[A-Z]/.test(right)) - Number(/^[A-Z]/.test(left));
+      return properDifference || right.length - left.length || left.localeCompare(right);
+    });
+    return ranked[0] || pool[0] || null;
+  };
+  const addProtectedAnchor = (fact, anchor) => {
+    if (!anchor || !containsRequiredTerm(fact.evidence_quote, anchor) ||
+        (fact.must_include_terms || []).some((term) => containsRequiredTerm(term, anchor))) return;
+    const qualifier = qualificationAnchor(fact.evidence_quote, fact.qualification);
+    const retained = (fact.must_include_terms || []).filter((term) => !qualifier || term !== qualifier);
+    fact.must_include_terms = [...(qualifier ? [qualifier] : []), anchor, ...retained]
+      .filter((term, index, values) => values.findIndex((candidate) => candidate.toLowerCase() === term.toLowerCase()) === index)
+      .slice(0, 3);
+  };
+  for (const brief of hydrated && hydrated.verse_briefs || []) {
+    for (const fact of brief.facts || []) {
+      const snippet = snippets.get(fact.source_snippet_id);
+      if (snippet && snippet.source_atom_id === fact.source_atom_id) {
+        fact.evidence_quote = snippet.text;
+        const qualifier = qualificationAnchor(snippet.text, fact.qualification);
+        const anchors = (fact.must_include_terms || [])
+          .map((term) => chooseShortAnchor(term, fact.statement, snippet.text))
+          .filter(Boolean);
+        fact.must_include_terms = [...(qualifier ? [qualifier] : []), ...anchors]
+          .filter((term, index, values) => values.findIndex((candidate) => candidate.toLowerCase() === term.toLowerCase()) === index)
+          .slice(0, 3);
+        if (!fact.must_include_terms.length) {
+          const fallback = chooseShortAnchor("", fact.statement, snippet.text);
+          if (fallback) fact.must_include_terms = [fallback];
+        }
+      }
+    }
+    const request = requestByVerse.get(brief.verse_id);
+    const requiredFacts = (brief.facts || []).filter((fact) => fact.importance === "required");
+    for (const identity of request && request.required_explicit_identity_terms || []) {
+      const fact = requiredFacts.find((candidate) => containsRequiredTerm(candidate.evidence_quote, identity));
+      if (fact) addProtectedAnchor(fact, identity);
+    }
+    for (const relation of request && request.required_explicit_relations || []) {
+      const fact = requiredFacts.find((candidate) => containsRequiredTerm(candidate.evidence_quote, relation.term) &&
+        containsRequiredTerm(candidate.evidence_quote, relation.relation));
+      if (fact) {
+        addProtectedAnchor(fact, relation.term);
+        addProtectedAnchor(fact, relation.relation);
+      }
+    }
+  }
+  return hydrated;
+}
+
+function containsRequiredTerm(value, term) {
+  const haystack = normalizedEvidence(value).toLowerCase();
+  const needle = normalizedEvidence(term).toLowerCase();
+  if (!needle) return false;
+  const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?:^|[^a-z0-9])${escaped}(?:$|[^a-z0-9])`, "i").test(haystack);
+}
+
+function inflectionForms(value) {
+  const word = String(value || "").toLowerCase();
+  const forms = new Set([word]);
+  if (word.length < 5) return forms;
+  if (word.endsWith("ies") && word.length > 5) forms.add(`${word.slice(0, -3)}y`);
+  if (word.endsWith("es")) {
+    forms.add(word.slice(0, -1));
+    forms.add(word.slice(0, -2));
+  }
+  if (word.endsWith("s") && !word.endsWith("ss")) forms.add(word.slice(0, -1));
+  if (word.endsWith("ing") && word.length > 6) {
+    const base = word.slice(0, -3);
+    forms.add(base);
+    forms.add(`${base}e`);
+    if (/(.)\1$/u.test(base)) forms.add(base.slice(0, -1));
+  }
+  if (word.endsWith("ed") && word.length > 5) {
+    const base = word.slice(0, -2);
+    forms.add(base);
+    forms.add(`${base}e`);
+    if (/(.)\1$/u.test(base)) forms.add(base.slice(0, -1));
+  }
+  return forms;
+}
+
+function containsWriterAnchor(value, term) {
+  if (containsRequiredTerm(value, term)) return true;
+  const cleanTerm = normalizedEvidence(term);
+  if (!/^[a-z][a-z'-]{4,}$/u.test(cleanTerm)) return false;
+  const requiredForms = inflectionForms(cleanTerm);
+  return (String(value || "").match(/[A-Za-z]+(?:[’'-][A-Za-z]+)*/gu) || [])
+    .some((word) => [...inflectionForms(word)].some((form) => requiredForms.has(form)));
+}
+
+function evidenceAppearsInAtom(atomText, evidence) {
+  const atom = normalizedEvidence(atomText);
+  const quote = normalizedEvidence(evidence);
+  if (!quote) return false;
+  if (atom.includes(quote) || atom.toLowerCase().includes(quote.toLowerCase())) return true;
+  const wordsOnly = (value) => value.toLowerCase().replace(/[’']/gu, "'")
+    .replace(/[^a-z0-9']+/gu, " ").replace(/\s+/g, " ").trim();
+  const canonicalQuote = wordsOnly(quote);
+  return canonicalQuote.length >= 3 && wordsOnly(atom).includes(canonicalQuote);
+}
+
+function textContainsQualificationCue(value, qualification) {
+  const text = String(value || "");
+  if (qualification === "none") return true;
+  if (qualification === "some_understand") {
+    return /\bsome\b.{0,50}\b(?:think|understand|take|make|interpret)(?:s|ing|ed)?\b/i.test(text);
+  }
+  if (qualification === "alternative") {
+    return /\b(?:or|either|alternative|another|otherwise|others?)\b/i.test(text);
+  }
+  return /\b(?:may|might|perhaps|possibly|probably|likely|uncertain|unclear)\b/i.test(text);
+}
+
+export function validateFactBrief(factBrief, {schema, chapterJobSpec}) {
+  const errors = validateAgainstSchema(factBrief, schema, {instancePath: "$"});
+  const warnings = [];
+  const expectedMetadata = buildFactBriefJobSpec({
+    chapterJobSpec,
+    generatedAt: factBrief && factBrief.generation_timestamp || chapterJobSpec.metadata.generation_timestamp
+  }).metadata;
+  Object.entries(expectedMetadata).forEach(([key, value]) => {
+    if (factBrief && factBrief[key] !== value) errors.push(`$.${key}: does not match the requested fact-extraction metadata`);
+  });
+  const expectedByVerse = new Map(chapterJobSpec.requestedRecords.map((record) => [record.verse_id, record]));
+  const sourceAtoms = new Map(chapterJobSpec.sourceUnits.flatMap((unit) =>
+    (unit.source_atoms || []).map((atom) => [atom.source_atom_id, atom])
+  ));
+  const sourceSnippets = new Map(chapterJobSpec.sourceUnits.flatMap((unit) =>
+    (unit.source_atoms || []).flatMap((atom) => evidenceSnippetsForAtom(atom).map((snippet) => [snippet.source_snippet_id, snippet]))
+  ));
+  const briefs = Array.isArray(factBrief && factBrief.verse_briefs) ? factBrief.verse_briefs : [];
+  const counts = new Map();
+  briefs.forEach((brief) => counts.set(brief.verse_id, (counts.get(brief.verse_id) || 0) + 1));
+  expectedByVerse.forEach((_request, verseId) => {
+    if (!counts.has(verseId)) errors.push(`$.verse_briefs: missing expected verse ${verseId}`);
+    else if (counts.get(verseId) !== 1) errors.push(`$.verse_briefs: ${verseId} appears ${counts.get(verseId)} times`);
+  });
+  counts.forEach((_count, verseId) => {
+    if (!expectedByVerse.has(verseId)) errors.push(`$.verse_briefs: unexpected verse ${verseId}`);
+  });
+  const seenFactIds = new Set();
+  briefs.forEach((brief, briefIndex) => {
+    const request = expectedByVerse.get(brief.verse_id);
+    if (!request) return;
+    if (brief.coverage_type !== request.required_coverage_type) {
+      errors.push(`$.verse_briefs[${briefIndex}].coverage_type: expected ${request.required_coverage_type}`);
+    }
+    if (JSON.stringify(brief.source_unit_ids) !== JSON.stringify(request.allowed_source_unit_ids)) {
+      errors.push(`$.verse_briefs[${briefIndex}].source_unit_ids: must exactly echo the requested source units`);
+    }
+    if (!request.source_reference_labels.includes(brief.source_reference_label)) {
+      errors.push(`$.verse_briefs[${briefIndex}].source_reference_label: is not permitted for ${brief.verse_id}`);
+    }
+    const facts = Array.isArray(brief.facts) ? brief.facts : [];
+    if (!facts.some((fact) => fact.importance === "required")) {
+      errors.push(`$.verse_briefs[${briefIndex}].facts: at least one required fact is needed`);
+    }
+    const normalizedStatements = new Set();
+    facts.forEach((fact, factIndex) => {
+      const expectedFactId = `${brief.verse_id}:f${String(factIndex + 1).padStart(2, "0")}`;
+      const factPath = `$.verse_briefs[${briefIndex}].facts[${factIndex}]`;
+      if (fact.fact_id !== expectedFactId) errors.push(`${factPath}.fact_id: expected ${expectedFactId}`);
+      if (seenFactIds.has(fact.fact_id)) errors.push(`${factPath}.fact_id: duplicate fact ID ${fact.fact_id}`);
+      seenFactIds.add(fact.fact_id);
+      if (!request.allowed_source_atom_ids.includes(fact.source_atom_id)) {
+        errors.push(`${factPath}.source_atom_id: is outside the permitted atoms for ${brief.verse_id}`);
+      }
+      const atom = sourceAtoms.get(fact.source_atom_id);
+      if (!atom) errors.push(`${factPath}.source_atom_id: unknown source atom ${fact.source_atom_id}`);
+      const snippet = sourceSnippets.get(fact.source_snippet_id);
+      if (!snippet) errors.push(`${factPath}.source_snippet_id: unknown evidence snippet ${fact.source_snippet_id}`);
+      else if (snippet.source_atom_id !== fact.source_atom_id) {
+        errors.push(`${factPath}.source_snippet_id: does not belong to cited atom ${fact.source_atom_id}`);
+      }
+      const evidence = normalizedEvidence(fact.evidence_quote);
+      const atomText = normalizedEvidence(atom && atom.text);
+      if (snippet && evidence !== normalizedEvidence(snippet.text)) {
+        errors.push(`${factPath}.evidence_quote: must exactly equal the controller-selected evidence snippet`);
+      } else if (atom && !evidenceAppearsInAtom(atomText, evidence)) {
+        errors.push(`${factPath}.evidence_quote: selected snippet is not a contiguous span of the cited atom`);
+      }
+      const evidenceWords = wordCount(evidence);
+      if (evidenceWords < 1 || evidenceWords > 50) errors.push(`${factPath}.evidence_quote: must contain 1–50 words`);
+      (fact.must_include_terms || []).forEach((term, termIndex) => {
+        if (!containsRequiredTerm(evidence, term)) errors.push(`${factPath}.must_include_terms[${termIndex}]: is absent from the evidence quote`);
+        if (wordCount(term) > 3) errors.push(`${factPath}.must_include_terms[${termIndex}]: must be a short anchor of no more than three words`);
+      });
+      unsupportedMidSentenceCapitalizedTerms(fact.statement, [atom && atom.text || ""]).forEach((term) => {
+        errors.push(`${factPath}.statement: capitalized term ${JSON.stringify(term)} is absent from the cited atom`);
+      });
+      const statementKey = normalizedEvidence(fact.statement).toLowerCase();
+      if (normalizedStatements.has(statementKey)) errors.push(`${factPath}.statement: duplicate fact statement within ${brief.verse_id}`);
+      normalizedStatements.add(statementKey);
+      if (!textContainsQualificationCue(evidence, fact.qualification)) {
+        errors.push(`${factPath}.qualification: ${fact.qualification} lacks its corresponding cue in the evidence quote`);
+      }
+      if (!textContainsQualificationCue((fact.must_include_terms || []).join(" "), fact.qualification)) {
+        errors.push(`${factPath}.must_include_terms: must carry the ${fact.qualification} cue into the writer contract`);
+      }
+    });
+    request.target_marked_source_atom_ids.forEach((atomId) => {
+      if (!facts.some((fact) => fact.importance === "required" && fact.source_atom_id === atomId)) {
+        errors.push(`$.verse_briefs[${briefIndex}].facts: target-marked atom ${atomId} needs a required fact`);
+      }
+    });
+    const requiredFactText = facts.filter((fact) => fact.importance === "required")
+      .map((fact) => `${fact.statement} ${(fact.must_include_terms || []).join(" ")}`).join(" ");
+    const requiredTermText = facts.filter((fact) => fact.importance === "required")
+      .flatMap((fact) => fact.must_include_terms || []).join(" ");
+    request.required_explicit_identity_terms.forEach((term) => {
+      if (!containsRequiredTerm(requiredFactText, term) || !containsRequiredTerm(requiredTermText, term)) {
+        errors.push(`$.verse_briefs[${briefIndex}].facts: omitted explicit identity ${JSON.stringify(term)}`);
+      }
+    });
+    request.required_explicit_relations.forEach(({term, relation}) => {
+      if (!containsRequiredTerm(requiredFactText, term) || !containsRequiredTerm(requiredFactText, relation) ||
+          !containsRequiredTerm(requiredTermText, term) || !containsRequiredTerm(requiredTermText, relation)) {
+        errors.push(`$.verse_briefs[${briefIndex}].facts: omitted explicit relation ${JSON.stringify(`${relation} ${term}`)}`);
+      }
+    });
+  });
+  return {valid: errors.length === 0, errors, warnings};
+}
+
+export function validateFactBoundChapterOutput(output, {factBrief, baseValidation}) {
+  const errors = [...(baseValidation && baseValidation.errors || [])];
+  const warnings = [...(baseValidation && baseValidation.warnings || [])];
+  const records = new Map((output && output.records || []).map((record) => [record.verse_id, record]));
+  for (const brief of factBrief && factBrief.verse_briefs || []) {
+    const record = records.get(brief.verse_id);
+    if (!record) continue;
+    const allAtomIds = new Set((brief.facts || []).map((fact) => fact.source_atom_id));
+    const citedAtomIds = new Set(record.source_atom_ids || []);
+    for (const atomId of citedAtomIds) {
+      if (!allAtomIds.has(atomId)) errors.push(`${brief.verse_id}: cited atom ${atomId} is absent from the validated fact brief`);
+    }
+    for (const fact of (brief.facts || []).filter((candidate) => candidate.importance === "required")) {
+      if (!citedAtomIds.has(fact.source_atom_id)) {
+        errors.push(`${brief.verse_id}: required fact ${fact.fact_id} is not backed by a cited atom`);
+      }
+      for (const term of fact.must_include_terms || []) {
+        if (!containsWriterAnchor(record.blurb, term)) {
+          errors.push(`${brief.verse_id}: required fact ${fact.fact_id} omitted must-include term ${JSON.stringify(term)}`);
+        }
+      }
+    }
+    if (JSON.stringify(record.source_unit_ids) !== JSON.stringify(brief.source_unit_ids)) {
+      errors.push(`${brief.verse_id}: source-unit IDs do not match the validated fact brief`);
+    }
+    if (record.source_reference_label !== brief.source_reference_label) {
+      errors.push(`${brief.verse_id}: source-reference label does not match the validated fact brief`);
+    }
+  }
+  return {valid: errors.length === 0, errors, warnings};
+}
+
+export function requireAutonomousAdmission(validation) {
+  const errors = [...(validation && validation.errors || [])];
+  const warnings = [...(validation && validation.warnings || [])];
+  warnings.forEach((warning) => errors.push(`Autonomous admission requires zero warnings: ${warning}`));
+  return {valid: errors.length === 0, errors, warnings: []};
+}
+
 export function jobFingerprint(metadata) {
   return sha256(stableJson({
     schema_version: metadata.schema_version,
     source_hash: metadata.source_hash,
     prompt_version: metadata.prompt_version,
-    worker_model: metadata.worker_model
+    worker_model: metadata.worker_model,
+    generation_mode: metadata.generation_mode || null,
+    fact_brief_hash: metadata.fact_brief_hash || null,
+    fact_prompt_version: metadata.fact_prompt_version || null
   }));
 }
 
@@ -966,6 +1492,56 @@ function scheduledTarget({plan, appConfig, preparedOn, timezone, daysAhead}) {
   return {preparedOn, scheduleDate, daysAhead, timezone, dayIndex, entry};
 }
 
+export const MAX_SCHEDULE_READING_COUNT = 14;
+
+export function resolveScheduledBatch({
+  plan,
+  appConfig,
+  startReadingId,
+  readingCount,
+  now = new Date(),
+  today
+}) {
+  if (!Number.isInteger(readingCount) || readingCount < 1 || readingCount > MAX_SCHEDULE_READING_COUNT) {
+    throw new Error(`A schedule activation must request between 1 and ${MAX_SCHEDULE_READING_COUNT} consecutive readings.`);
+  }
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{2,159}$/.test(String(startReadingId || ""))) {
+    throw new Error("A schedule activation requires a valid start reading ID.");
+  }
+  const context = scheduleContext({plan, appConfig, now, today});
+  const startMatches = plan.entries.filter((entry) => entry.readingId === startReadingId);
+  if (startMatches.length !== 1) throw new Error(`No unique active reading matches ${startReadingId}.`);
+  const startDayIndex = startMatches[0].dayIndex;
+  const targets = Array.from({length: readingCount}, (_, offset) => {
+    const dayIndex = startDayIndex + offset;
+    const matches = plan.entries.filter((entry) => entry.dayIndex === dayIndex);
+    if (matches.length !== 1) throw new Error(`No unique active reading follows ${startReadingId} at day index ${dayIndex}.`);
+    const entry = matches[0];
+    if (Array.isArray(appConfig.testingReadingIds) && !appConfig.testingReadingIds.includes(entry.readingId)) {
+      throw new Error(`${entry.readingId} is outside the active allowlisted schedule window.`);
+    }
+    const scheduleDate = addCivilDays(appConfig.sharedStartDate, dayIndex - 1);
+    return {
+      preparedOn: context.preparedOn,
+      scheduleDate,
+      daysAhead: civilDayNumber(scheduleDate) - civilDayNumber(context.preparedOn),
+      timezone: context.timezone,
+      dayIndex,
+      entry
+    };
+  });
+  return {
+    preparedOn: context.preparedOn,
+    timezone: context.timezone,
+    readingCount,
+    daysAhead: readingCount - 1,
+    startReadingId,
+    windowStartDate: targets[0].scheduleDate,
+    windowEndDate: targets.at(-1).scheduleDate,
+    targets
+  };
+}
+
 export function resolveScheduledReading({plan, appConfig, now = new Date(), today, daysAhead = 1}) {
   if (!Number.isInteger(daysAhead) || daysAhead < 0 || daysAhead > 1) {
     throw new Error("The single-reading audit pipeline is deliberately limited to today or one day ahead.");
@@ -974,20 +1550,22 @@ export function resolveScheduledReading({plan, appConfig, now = new Date(), toda
   return scheduledTarget({plan, appConfig, ...context, daysAhead});
 }
 
-export function resolveScheduledWindow({plan, appConfig, now = new Date(), today, daysAhead = 2}) {
-  if (!Number.isInteger(daysAhead) || daysAhead < 0 || daysAhead > 7) {
-    throw new Error("The rolling audit window is limited to today through seven days ahead.");
+export function resolveScheduledWindow({plan, appConfig, now = new Date(), today, daysAhead = 2, readingCount}) {
+  if (readingCount === undefined && (!Number.isInteger(daysAhead) || daysAhead < 0 || daysAhead > 2)) {
+    throw new Error("The interactive rolling audit window is deliberately limited to today through two days ahead.");
+  }
+  const resolvedCount = readingCount === undefined ? daysAhead + 1 : readingCount;
+  if (!Number.isInteger(resolvedCount) || resolvedCount < 1 || resolvedCount > MAX_SCHEDULE_READING_COUNT) {
+    throw new Error(`A rolling schedule request must contain between 1 and ${MAX_SCHEDULE_READING_COUNT} readings.`);
   }
   const context = scheduleContext({plan, appConfig, now, today});
-  const targets = Array.from({length: daysAhead + 1}, (_, offset) =>
-    scheduledTarget({plan, appConfig, ...context, daysAhead: offset})
-  );
-  return {
-    preparedOn: context.preparedOn,
-    timezone: context.timezone,
-    daysAhead,
-    windowStartDate: targets[0].scheduleDate,
-    windowEndDate: targets.at(-1).scheduleDate,
-    targets
-  };
+  const first = scheduledTarget({plan, appConfig, ...context, daysAhead: 0});
+  return resolveScheduledBatch({
+    plan,
+    appConfig,
+    startReadingId: first.entry.readingId,
+    readingCount: resolvedCount,
+    now,
+    today: context.preparedOn
+  });
 }

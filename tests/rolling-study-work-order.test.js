@@ -19,7 +19,7 @@ test("the daily work order selects exactly the reading entering T+7", () => {
   assert.equal(order.action, "prepare_publish");
   assert.equal(order.targetDate, "2026-08-20");
   assert.equal(order.reading.readingId, "CC-Y3Q4-D066");
-  assert.equal(order.planExtensionRequired, true);
+  assert.equal(order.planExtensionRequired, false);
   assert.equal(order.guards.maxReadings, 1);
   assert.equal(order.guards.sparkScope, "matthew_henry_verse_layer_only");
 });

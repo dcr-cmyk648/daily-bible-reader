@@ -196,6 +196,21 @@
       "confidence": "high",
       "notes": "The orientation may complete Zephaniah's movement from judgment to restoration while remaining understandable on its own.",
       "sourceIds": ["youversion_celebration_y3q4_plan_3805"]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 13,
+      "sourcePlanDay": 66,
+      "readingId": "CC-Y3Q4-D066",
+      "kind": "chapter",
+      "bookId": "2PE",
+      "chapter": 2,
+      "passages": [{"bookId": "2PE", "chapter": 2, "verseCount": 22}],
+      "orderingRationale": "Temporary bridge preserves Day 66 of Celebration Church's published Year 3, Quarter 4 sequence.",
+      "chronologyBasis": "pragmatic",
+      "confidence": "high",
+      "notes": "One chapter appears on the Scripture page.",
+      "sourceIds": ["youversion_celebration_y3q4_plan_3805"]
     }
   ],
   "bookMetrics": {

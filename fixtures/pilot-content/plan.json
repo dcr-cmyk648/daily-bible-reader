@@ -361,6 +361,29 @@
       "sourceIds": [
         "youversion_celebration_y3q4_plan_3805"
       ]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 15,
+      "sourcePlanDay": 68,
+      "readingId": "CC-Y3Q4-D068",
+      "kind": "chapter",
+      "bookId": "2PE",
+      "chapter": 3,
+      "passages": [
+        {
+          "bookId": "2PE",
+          "chapter": 3,
+          "verseCount": 18
+        }
+      ],
+      "orderingRationale": "Temporary bridge preserves Day 68 of Celebration Church's published Year 3, Quarter 4 sequence.",
+      "chronologyBasis": "pragmatic",
+      "confidence": "high",
+      "notes": "One chapter appears on the Scripture page.",
+      "sourceIds": [
+        "youversion_celebration_y3q4_plan_3805"
+      ]
     }
   ],
   "bookMetrics": {

@@ -660,6 +660,9 @@ test("today and tomorrow are the only priority warm readings", () => {
   assert.match(priorityWarmSource, /getReadingPayloads\(entries\.map\(\(entry\) => entry\.readingId\)\)/);
   assert.match(priorityWarmSource, /private-content revision cannot remain hidden behind the offline retention window/);
   assert.match(priorityWarmSource, /renderContentReadiness\(currentContentReadiness\(state\.privatePayloadByReadingId\)\)/);
+  assert.match(priorityWarmSource, /scripturePrefetchPassageIndex\(entry, state\.plan\.bookMetrics, state\.policy\)/);
+  assert.match(priorityWarmSource, /retainFullPassage: false/);
+  assert.match(priorityWarmSource, /persist: false/);
   assert.doesNotMatch(priorityWarmSource, /missingPayloads/);
   const offlineWarmSource = source.slice(
     source.indexOf("async function prefetchOfflineWindow()"),
@@ -668,6 +671,8 @@ test("today and tomorrow are the only priority warm readings", () => {
   assert.match(offlineWarmSource, /getReadingPayloads\(readingIds\)/);
   assert.match(offlineWarmSource, /windowEntries\.map\(\(entry\) => entry\.readingId\)/);
   assert.match(offlineWarmSource, /Revalidate the whole current-plus-seven window/);
+  assert.match(offlineWarmSource, /scriptureRetentionTargetCount/);
+  assert.match(offlineWarmSource, /keep the first chapter ready and stream later chapters/);
   assert.doesNotMatch(offlineWarmSource, /missingEntries/);
   assert.match(source, /state\.adapter\.listComments/);
   assert.match(source, /getScriptureForReading\(entry, \{/);
@@ -957,9 +962,34 @@ test("a multi-chapter bridge day stays one reading and one Scripture page", () =
     ]
   };
   assert.equal(app.readingRequiresPartitionedScripture(habakkuk, {HAB: {verseCount: 56}}, {maxBookFraction: 0.5}), true);
+  assert.equal(app.scripturePrefetchPassageIndex(habakkuk, {HAB: {verseCount: 56}}, {maxBookFraction: 0.5}), 0);
+  assert.equal(app.scriptureRetentionTargetCount(habakkuk, {HAB: {verseCount: 56}}, {maxBookFraction: 0.5}), 1);
   assert.equal(app.scripturePassageIndexForSelection(habakkuk, {bookId: "HAB", chapter: 3, verse: 17}), 2);
   assert.equal(app.esvUrlForPassages(habakkuk.passages),
     "https://www.esv.org/Habakkuk+1%3B+Habakkuk+2%3B+Habakkuk+3/");
+});
+
+test("transient Scripture failures retry once without retrying policy failures", async () => {
+  let transientCalls = 0;
+  const recovered = await app.requestScriptureWithRetry(async () => {
+    transientCalls += 1;
+    return transientCalls === 1
+      ? {available: false, code: "ESV_UNAVAILABLE"}
+      : {available: true, translation: "MOCK"};
+  }, 0);
+  assert.equal(transientCalls, 2);
+  assert.equal(recovered.available, true);
+  assert.equal(app.scriptureFailureMayRetry({code: "SERVER_TIMEOUT"}), true);
+  assert.equal(app.scriptureFailureMayRetry(new Error("connection reset")), true);
+
+  let policyCalls = 0;
+  const refused = await app.requestScriptureWithRetry(async () => {
+    policyCalls += 1;
+    return {available: false, code: "PROVIDER_DISPLAY_LIMIT"};
+  }, 0);
+  assert.equal(policyCalls, 1);
+  assert.equal(refused.code, "PROVIDER_DISPLAY_LIMIT");
+  assert.equal(app.scriptureFailureMayRetry({code: "READER_CODE_INVALID"}), false);
 });
 
 test("local private-draft preview is localhost-only and restricted to active plan IDs", () => {

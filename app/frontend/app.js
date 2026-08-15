@@ -28,6 +28,15 @@
   const BOOTSTRAP_CACHE_KEY = "__app-bootstrap__";
   const BOOTSTRAP_CACHE_SCHEMA = "bootstrap-cache/v1";
   const HOT_READING_COUNT = 2;
+  const SCRIPTURE_RETRY_DELAY_MS = 350;
+  const RETRYABLE_SCRIPTURE_CODES = new Set([
+    "BRIDGE_UNAVAILABLE",
+    "ESV_INVALID_RESPONSE",
+    "ESV_UNAVAILABLE",
+    "SERVER_ERROR",
+    "SERVER_TIMEOUT",
+    "SERVER_UNAVAILABLE"
+  ]);
   const READING_PREPARATION_SCHEMA = "reading-preparation/v1";
   const STARTUP_TIMING_SCHEMA = "startup-timing/v1";
   const STARTUP_MILESTONE_ORDER = [
@@ -1458,6 +1467,38 @@
     return index >= 0 ? index : null;
   }
 
+  function scripturePrefetchPassageIndex(entry, bookMetrics, policy) {
+    return readingRequiresPartitionedScripture(entry, bookMetrics, policy) ? 0 : null;
+  }
+
+  function scriptureRetentionTargetCount(entry, bookMetrics, policy) {
+    if (!entry || entry.kind !== "chapter" || !Array.isArray(entry.passages)) return 0;
+    return readingRequiresPartitionedScripture(entry, bookMetrics, policy) ? 1 : entry.passages.length;
+  }
+
+  function scriptureFailureMayRetry(failure) {
+    const code = String(failure && failure.code || "");
+    return !code || RETRYABLE_SCRIPTURE_CODES.has(code);
+  }
+
+  async function requestScriptureWithRetry(request, delayMs) {
+    const pauseMs = Number.isFinite(delayMs) ? Math.max(0, delayMs) : SCRIPTURE_RETRY_DELAY_MS;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const response = await request();
+        if (attempt === 0 && response && response.available === false && scriptureFailureMayRetry(response)) {
+          if (pauseMs) await new Promise((resolve) => root.setTimeout(resolve, pauseMs));
+          continue;
+        }
+        return response;
+      } catch (error) {
+        if (attempt > 0 || !scriptureFailureMayRetry(error)) throw error;
+        if (pauseMs) await new Promise((resolve) => root.setTimeout(resolve, pauseMs));
+      }
+    }
+    throw appError("Scripture provider is unavailable.", "ESV_UNAVAILABLE");
+  }
+
   function normalizedScripturePassageIndex(entry, requestedIndex) {
     if (!entry || !Array.isArray(entry.passages)) return null;
     if (Number.isInteger(requestedIndex) && requestedIndex >= 0 && requestedIndex < entry.passages.length) {
@@ -2396,6 +2437,8 @@
   async function getScriptureForReading(entry, options) {
     syncScriptureMemoryWindow();
     const passageIndex = normalizedScripturePassageIndex(entry, options && options.passageIndex);
+    const retainFullPassage = !options || options.retainFullPassage !== false;
+    const persist = !options || options.persist !== false;
     const remembered = state.scriptureMemoryByReadingId.get(entry.readingId);
     if (remembered && (passageIndex === null || remembered.passageIndex === passageIndex)) {
       return {scripture: remembered, source: "memory"};
@@ -2403,32 +2446,30 @@
     const requestKey = `${entry.readingId}:${passageIndex === null ? "all" : passageIndex}`;
     let pending = state.scriptureRequestByReadingId.get(requestKey);
     if (!pending) {
-      const memoryEpoch = state.scriptureMemoryEpoch;
-      pending = state.adapter.getScripture(entry.readingId, passageIndex)
-        .then(async (scripture) => {
-          if (scripture && scripture.readingId && scripture.readingId !== entry.readingId) {
-            throw appError("Scripture did not match the requested reading.", "CONTENT_MISMATCH");
-          }
-          if (scripture && scripture.partitioned === true && scripture.passageIndex !== passageIndex) {
-            throw appError("Scripture did not match the selected chapter.", "CONTENT_MISMATCH");
-          }
-          const currentPriorityIds = new Set(priorityReadingEntries(state.plan, state.schedule, HOT_READING_COUNT)
-            .map((candidate) => candidate.readingId));
-          if (scripture && scripture.available !== false &&
-              ["ESV", "MOCK"].includes(scripture.translation) && memoryEpoch === state.scriptureMemoryEpoch &&
-              currentPriorityIds.has(entry.readingId)) {
-            state.scriptureMemoryByReadingId.set(entry.readingId, scripture);
-          }
-          if (scripture && scripture.available !== false && ["ESV", "MOCK"].includes(scripture.translation)) {
-            rememberVerseOfDayFromScripture(scripture, entry);
-            if (scripture.translation === "ESV") await persistScripture(scripture);
-          }
-          return {scripture, source: "network"};
-        })
+      pending = requestScriptureWithRetry(() => state.adapter.getScripture(entry.readingId, passageIndex))
         .finally(() => state.scriptureRequestByReadingId.delete(requestKey));
       state.scriptureRequestByReadingId.set(requestKey, pending);
     }
-    return pending;
+    const memoryEpoch = state.scriptureMemoryEpoch;
+    const scripture = await pending;
+    if (scripture && scripture.readingId && scripture.readingId !== entry.readingId) {
+      throw appError("Scripture did not match the requested reading.", "CONTENT_MISMATCH");
+    }
+    if (scripture && scripture.partitioned === true && scripture.passageIndex !== passageIndex) {
+      throw appError("Scripture did not match the selected chapter.", "CONTENT_MISMATCH");
+    }
+    const currentPriorityIds = new Set(priorityReadingEntries(state.plan, state.schedule, HOT_READING_COUNT)
+      .map((candidate) => candidate.readingId));
+    if (retainFullPassage && scripture && scripture.available !== false &&
+        ["ESV", "MOCK"].includes(scripture.translation) && memoryEpoch === state.scriptureMemoryEpoch &&
+        currentPriorityIds.has(entry.readingId)) {
+      state.scriptureMemoryByReadingId.set(entry.readingId, scripture);
+    }
+    if (scripture && scripture.available !== false && ["ESV", "MOCK"].includes(scripture.translation)) {
+      rememberVerseOfDayFromScripture(scripture, entry);
+      if (persist && scripture.translation === "ESV") await persistScripture(scripture);
+    }
+    return {scripture, source: "network"};
   }
 
   async function loadScripture(entry, options) {
@@ -2636,7 +2677,11 @@
         : "Open this reading to stream the exact ESV wording; no alternate translation will be substituted.");
       if (!isPriorityReading || !serverCallsAllowed()) return;
       try {
-        const result = await getScriptureForReading(day.entry, {passageIndex: selectionIndex});
+        const result = await getScriptureForReading(day.entry, {
+          passageIndex: selectionIndex,
+          retainFullPassage: false,
+          persist: false
+        });
         if (token !== state.selectedVerseRequestToken || state.selectedCalendarDate !== day.date) return;
         if (!result.scripture || result.scripture.available === false) {
           throw appError("Scripture provider is unavailable.", result.scripture && result.scripture.code || "ESV_UNAVAILABLE");
@@ -3148,12 +3193,20 @@
       }));
       await Promise.allSettled(entries
         .filter((entry) => entry.kind === "chapter")
-        .map((entry) => {
+        .map(async (entry) => {
           const payload = state.privatePayloadByReadingId.get(entry.readingId);
           const selection = selectedDayVerseSelection(payload, entry);
-          return getScriptureForReading(entry, {
-            passageIndex: scripturePassageIndexForSelection(entry, selection)
-          });
+          const prefetchIndex = scripturePrefetchPassageIndex(entry, state.plan.bookMetrics, state.policy);
+          await getScriptureForReading(entry, {passageIndex: prefetchIndex});
+          const selectionIndex = scripturePassageIndexForSelection(entry, selection);
+          if (prefetchIndex !== null && selectionIndex !== null && selectionIndex !== prefetchIndex) {
+            await getScriptureForReading(entry, {
+              passageIndex: selectionIndex,
+              retainFullPassage: false,
+              persist: false
+            });
+          }
+          return null;
         }));
       const selectedDay = state.calendarWindow && state.calendarWindow.days
         .find((day) => day.date === state.selectedCalendarDate);
@@ -3225,18 +3278,16 @@
 
     let scriptureRestrictedReadings = 0;
     const scriptureEntries = windowEntries.filter((entry) => entry.kind === "chapter");
-    scriptureEligible = scriptureEntries.reduce((total, entry) => total + entry.passages.length, 0);
+    scriptureEligible = scriptureEntries.reduce((total, entry) => total +
+      scriptureRetentionTargetCount(entry, state.plan.bookMetrics, state.policy), 0);
     for (const entry of scriptureEntries.slice().reverse()) {
       const partitioned = readingRequiresPartitionedScripture(entry, state.plan.bookMetrics, state.policy);
       if (partitioned) scriptureRestrictedReadings += 1;
-      const payload = payloadByReadingId.get(entry.readingId);
-      const selection = selectedDayVerseSelection(payload, entry);
-      const passageIndex = partitioned ? scripturePassageIndexForSelection(entry, selection) ?? 0 : null;
+      const passageIndex = scripturePrefetchPassageIndex(entry, state.plan.bookMetrics, state.policy);
       try {
         let scripture = await cachedScripture(entry, passageIndex);
         if (!scripture && serverCallsAllowed()) {
-          scripture = await state.adapter.getScripture(entry.readingId, passageIndex);
-          if (scripture && scripture.available !== false) await persistScripture(scripture);
+          scripture = (await getScriptureForReading(entry, {passageIndex})).scripture;
         }
       } catch {
         // A chapter may be unavailable or ineligible under the provider's per-book limit.
@@ -3245,15 +3296,21 @@
     if (state.policy.offlinePersistenceAllowed) {
       const windowIds = new Set(scriptureEntries.map((entry) => entry.readingId));
       const now = Date.now();
-      scriptureCount = (await state.store.getAll("scriptureCache")).filter((record) =>
+      const retainedKeys = new Set((await state.store.getAll("scriptureCache")).filter((record) =>
         windowIds.has(record.readingId) && record.policyVersion === state.policy.policyVersion &&
         !root.DBRProviderPolicy.isExpired(record, state.policy, now)
-      ).length;
+      ).map((record) => record.cacheKey));
+      scriptureCount = scriptureEntries.reduce((total, entry) => {
+        const targetIndices = readingRequiresPartitionedScripture(entry, state.plan.bookMetrics, state.policy)
+          ? [0]
+          : entry.passages.map((_, index) => index);
+        return total + targetIndices.filter((index) => retainedKeys.has(`ESV:${entry.readingId}:${index}`)).length;
+      }, 0);
     }
 
     const scriptureStatus = state.policy.offlinePersistenceAllowed
-      ? `${scriptureCount}/${scriptureEligible} scheduled chapter${scriptureEligible === 1 ? "" : "s"} retained within ESV limits` +
-        (scriptureRestrictedReadings ? ` · ${scriptureRestrictedReadings} multi-chapter reading${scriptureRestrictedReadings === 1 ? "" : "s"} stream one chapter at a time` : "")
+      ? `${scriptureCount}/${scriptureEligible} priority chapter${scriptureEligible === 1 ? "" : "s"} retained within ESV limits` +
+        (scriptureRestrictedReadings ? ` · ${scriptureRestrictedReadings} multi-chapter reading${scriptureRestrictedReadings === 1 ? "" : "s"} keep the first chapter ready and stream later chapters` : "")
       : "ESV text stays network-only by provider policy";
     const readiness = currentContentReadiness(payloadByReadingId);
     renderContentReadiness(readiness);
@@ -4157,7 +4214,11 @@
     safeExternalUrl,
     safeVersionedAppUrl,
     selectedDayVerseSelection,
+    scriptureFailureMayRetry,
     scripturePassageIndexForSelection,
+    scripturePrefetchPassageIndex,
+    scriptureRetentionTargetCount,
+    requestScriptureWithRetry,
     splitNumberedVerses,
     splitComprehensiveSections,
     submitCurrentHighlightEvent,

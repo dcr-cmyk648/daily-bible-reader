@@ -2,7 +2,7 @@
 
 Status: authorized for the private Celebration bridge. The live device window is the current Detroit reading plus seven future readings. On each daily run, the content workflow checks the reading exactly seven civil days ahead and prepares/publishes only that one reading if it is absent or stale. The first fill is D059–D065; subsequent runs append one reference-plan day at a time through D092. The new long-term plan remains out of scope.
 
-This is offline prepublication automation, not runtime AI. The installed reader never calls a model. A local Codex scheduled task performs research and generation in an isolated checkout, Spark performs only the Matthew Henry verse layer, and Google Drive remains canonical for private studies. The device keeps the validated private current-plus-seven batch in IndexedDB. ESV wording remains server-fetched and session-memory-only because provider policy, not convenience, controls Scripture persistence.
+This is offline prepublication automation, not runtime AI. The installed reader never calls a model. A local Codex scheduled task performs research and generation in an isolated checkout, Spark performs only the Matthew Henry verse layer, and Google Drive remains canonical for private studies. The device keeps the validated private current-plus-seven batch in IndexedDB. ESV wording remains server-fetched and may persist only in the separate bounded provider-policy store; provider limits, not convenience, determine which chapters fit.
 
 ## Daily invariant
 
@@ -38,7 +38,7 @@ A failed run never advances the private manifest. The next run returns the same 
 
 ## Health signal and device retention
 
-The reader asks for a batch of eight validated private records: today plus seven future readings. It writes that private commentary batch to IndexedDB under the plan/version/identity cache boundary and keeps it until age, identity, plan, or content version invalidates it. Cached records paint immediately, but successful authorization revalidates the complete eight-record batch so a new review or Henry revision cannot remain hidden behind the retention window. It warms today's and tomorrow's ESV responses into memory without writing them to persistent browser/service-worker storage. Other days stream Scripture when opened.
+The reader asks for a batch of eight validated private records: today plus seven future readings. It writes that private commentary batch to IndexedDB under the plan/version/identity cache boundary and keeps it until age, identity, plan, or content version invalidates it. Cached records paint immediately, but successful authorization revalidates the complete eight-record batch so a new review or Henry revision cannot remain hidden behind the retention window. It separately attempts ESV passage retention for the same horizon under total/per-book/age eviction, warms today's and tomorrow's verse path first, and streams any missing or ineligible chapter when opened.
 
 The calendar warning is computed from complete end-to-end records, not merely filenames. It shows the first consecutive gap. This is independent of the scheduled task and remains the visible alarm if the Mac was asleep, Codex was not running, research failed, Drive publication failed, or a version mismatch invalidated local content.
 

@@ -670,8 +670,9 @@ test("today and tomorrow are the only priority warm readings", () => {
   assert.match(offlineWarmSource, /Revalidate the whole current-plus-seven window/);
   assert.doesNotMatch(offlineWarmSource, /missingEntries/);
   assert.match(source, /state\.adapter\.listComments/);
-  assert.match(source, /getScriptureForReading\(entry\)/);
-  assert.match(source, /scriptureMemoryOnly: true/);
+  assert.match(source, /getScriptureForReading\(entry, \{/);
+  assert.match(source, /scriptureMemoryOnly: false/);
+  assert.match(source, /scripturePersistentEntries: scripture\.length/);
 });
 
 test("startup diagnostics are session-only and strip unapproved fields", () => {
@@ -700,7 +701,7 @@ test("startup diagnostics are session-only and strip unapproved fields", () => {
 test("every production RPC accepts the reader code as its first argument while enrollment may satisfy it", () => {
   const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
   ["getBootstrapData", "getReadingPayload", "getReadingPayloads", "getScripture", "listComments", "listCommentActivity", "submitCommentEvent", "listHighlights", "submitHighlightEvent", "forgetReaderEnrollment"].forEach((name) => {
-    assert.match(source, new RegExp(`appsScriptRpc\\(\"${name}\", state\\.readerCode`));
+    assert.match(source, new RegExp(`appsScriptRpc\\(\\s*\"${name}\",\\s*state\\.readerCode`));
   });
 });
 
@@ -799,6 +800,10 @@ test("editorial contract requires practical prose and confessional evidentiary w
   assert.match(workflow, /assumed prophecy, miracle, or divine action was impossible/);
   assert.match(stance, /church-confessional and Christian academic sources/);
   assert.match(stance, /must never mention internal “rules,” prompts, source quotas, or editorial instructions/);
+  assert.match(stance, /Default to an achievable inward focus/);
+  assert.match(stance, /Reject vague moral heroics such as “fix an injustice,”/);
+  assert.match(workflow, /attitude, temptation, motive, habit of attention, or response to watch in oneself/);
+  assert.match(workflow, /aimed mainly at correcting other people/);
   assert.match(stance, /contextReadingIds/);
   assert.match(workflow, /do not manufacture neutrality or spend the reader's time on fringe catalogues/);
   assert.match(workflow, /do not repeat the same background dispute chapter after chapter/);
@@ -914,8 +919,8 @@ test("calendar uses a compact monthly selector with two-reader dots and a date-s
 test("successful ESV rendering omits the informational banner above Scripture", () => {
   const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
   const successRender = source.slice(source.indexOf('element("translationLabel").textContent = "Page 2 · ESV Scripture"'), source.indexOf("async function persistScripture"));
-  assert.match(successRender, /scriptureState\.hidden = true/);
-  assert.match(successRender, /scriptureState\.textContent = ""/);
+  assert.match(successRender, /scriptureState\.hidden = sourceLabel !== "cache"/);
+  assert.match(successRender, /Saved ESV text is shown from this device/);
   assert.doesNotMatch(successRender, /Official ESV text retrieved for this screen/);
   assert.match(source, /function renderScriptureUnavailable\(message\)[\s\S]*scriptureState\.hidden = false/);
   assert.match(source, /Retrieving official ESV text through the authenticated server/);
@@ -936,8 +941,25 @@ test("a multi-chapter bridge day stays one reading and one Scripture page", () =
   assert.equal(app.titleForEntry(micah), "Micah 3–4");
   assert.match(frontend, /passages\.forEach\(\(passage\) =>/);
   assert.match(frontend, /section\.className = "scripture-passage"/);
+  assert.match(frontend, /scripturePassageTabs/);
+  assert.match(frontend, /loadScripture\(entry, \{passageIndex: index\}\)/);
   assert.match(server, /UrlFetchApp\.fetchAll\(requests\)/);
-  assert.match(server, /cacheAllowed:\s*false/);
+  assert.match(server, /selectScripturePassages/);
+  assert.match(server, /cacheAllowed:\s*true/);
+
+  const habakkuk = {
+    kind: "chapter",
+    bookId: "HAB",
+    passages: [
+      {bookId: "HAB", chapter: 1, verseCount: 17},
+      {bookId: "HAB", chapter: 2, verseCount: 20},
+      {bookId: "HAB", chapter: 3, verseCount: 19}
+    ]
+  };
+  assert.equal(app.readingRequiresPartitionedScripture(habakkuk, {HAB: {verseCount: 56}}, {maxBookFraction: 0.5}), true);
+  assert.equal(app.scripturePassageIndexForSelection(habakkuk, {bookId: "HAB", chapter: 3, verse: 17}), 2);
+  assert.equal(app.esvUrlForPassages(habakkuk.passages),
+    "https://www.esv.org/Habakkuk+1%3B+Habakkuk+2%3B+Habakkuk+3/");
 });
 
 test("local private-draft preview is localhost-only and restricted to active plan IDs", () => {

@@ -73,15 +73,15 @@ const DBR_HIGHLIGHT_COLUMNS = [
 const DBR_ESV_POLICY = {
   provider: "Crossway ESV API",
   translation: "ESV",
-  policyVersion: "esv-api-2026-08-08-v4-session-hot-window",
-  verifiedAt: "2026-08-08",
+  policyVersion: "esv-api-2026-08-15-v5-bounded-offline",
+  verifiedAt: "2026-08-15",
   termsUrl: "https://api.esv.org/",
   maxVersesPerRequest: 500,
   maxTotalCachedVerses: 500,
   maxBookFraction: 0.5,
-  maxCacheAgeSeconds: 0,
-  offlinePersistenceAllowed: false,
-  refreshBehavior: "session_hot_window",
+  maxCacheAgeSeconds: 691200,
+  offlinePersistenceAllowed: true,
+  refreshBehavior: "network_first",
   downloadAllowed: false,
   bulkCopyAllowed: false,
   apiKeyMayReachClient: false,
@@ -96,6 +96,7 @@ const DBR_BOOK_NAMES = {
   "1PE": "1 Peter",
   "2PE": "2 Peter",
   HAB: "Habakkuk",
+  HAG: "Haggai",
   MIC: "Micah",
   NAM: "Nahum",
   PRO: "Proverbs",
@@ -219,20 +220,36 @@ function dbrBuildReadingPayload_(privateState, registry, readingId) {
   return {commentary: commentary, sources: sources};
 }
 
-function getScripture(readerCode, readingId) {
+function dbrEsvReference_(passage) {
+  return DBR_BOOK_NAMES[passage.bookId] + " " + passage.chapter +
+    (Number.isInteger(passage.verseStart) ? ":" + passage.verseStart + "-" + passage.verseEnd : "");
+}
+
+function dbrEsvUrlForPassages_(passages) {
+  const reference = passages.map(dbrEsvReference_).join("; ");
+  return "https://www.esv.org/" + encodeURIComponent(reference).replace(/%20/g, "+") + "/";
+}
+
+function getScripture(readerCode, scriptureRequest) {
   return dbrRpc_(function () {
     const context = dbrAuthorizedContext_(readerCode);
     dbrEnforceRateLimit_("scripture", 60, 60);
     const privateState = dbrReadPrivateState_(context);
+    const readingId = DBRServerCore.scriptureReadingId(scriptureRequest);
     const entry = DBRServerCore.getPlanEntry(privateState.plan, readingId);
     if (entry.kind !== "chapter") {
       return {available: false, code: "NOT_A_CONFIGURED_CHAPTER"};
     }
-    const requestedPassages = Array.isArray(entry.passages) ? entry.passages : [];
+    const selection = DBRServerCore.selectScripturePassages(
+      scriptureRequest,
+      entry,
+      privateState.plan.bookMetrics,
+      DBR_ESV_POLICY
+    );
+    const requestedPassages = selection.passages;
     if (!requestedPassages.length || requestedPassages.length > 5) {
       throw dbrError_("CONTENT_INVALID", "The daily Scripture references are invalid.");
     }
-    const versesByBook = {};
     requestedPassages.forEach(function (passage) {
       const hasRange = Number.isInteger(passage && passage.verseStart) || Number.isInteger(passage && passage.verseEnd);
       if (!passage || !DBR_BOOK_NAMES[passage.bookId] || !Number.isInteger(passage.chapter) ||
@@ -247,19 +264,11 @@ function getScripture(readerCode, readingId) {
           passage.chapter > metrics.chapterCount) {
         throw dbrError_("PROVIDER_METRICS_MISSING", "Provider metrics are unavailable for this passage.");
       }
-      versesByBook[passage.bookId] = (versesByBook[passage.bookId] || 0) + passage.verseCount;
-    });
-    Object.keys(versesByBook).forEach(function (bookId) {
-      const bookVerseCount = privateState.plan.bookMetrics[bookId].verseCount;
-      if (versesByBook[bookId] > Math.floor(bookVerseCount * DBR_ESV_POLICY.maxBookFraction)) {
-        throw dbrError_("PROVIDER_DISPLAY_LIMIT", "This combined reading exceeds the ESV per-book display limit.");
-      }
     });
     const apiKey = PropertiesService.getScriptProperties().getProperty(DBR_PROPERTIES.esvApiKey);
     if (!apiKey) return {available: false, code: "ESV_NOT_CONFIGURED"};
     const requests = requestedPassages.map(function (passage) {
-      const reference = DBR_BOOK_NAMES[passage.bookId] + " " + passage.chapter +
-        (Number.isInteger(passage.verseStart) ? ":" + passage.verseStart + "-" + passage.verseEnd : "");
+      const reference = dbrEsvReference_(passage);
       const query = [
         "q=" + encodeURIComponent(reference),
         "include-passage-references=true",
@@ -290,8 +299,7 @@ function getScripture(readerCode, readingId) {
     try {
       validatedPassages = responses.map(function (response, index) {
         const requested = requestedPassages[index];
-        const reference = DBR_BOOK_NAMES[requested.bookId] + " " + requested.chapter +
-          (Number.isInteger(requested.verseStart) ? ":" + requested.verseStart + "-" + requested.verseEnd : "");
+        const reference = dbrEsvReference_(requested);
         const parsed = JSON.parse(response.getContentText("UTF-8"));
         const validated = DBRServerCore.validateEsvPayload(parsed, {
           verseCount: requested.verseCount,
@@ -307,7 +315,7 @@ function getScripture(readerCode, readingId) {
           passage: validated.passage,
           verseCount: validated.verseCount,
           bookVerseCount: privateState.plan.bookMetrics[requested.bookId].verseCount,
-          esvUrl: "https://www.esv.org/" + reference.replace(/\s+/g, "+") + "/"
+          esvUrl: dbrEsvUrlForPassages_([requested])
         };
       });
     } catch (error) {
@@ -321,9 +329,22 @@ function getScripture(readerCode, readingId) {
       passages: validatedPassages,
       verseCount: validatedPassages.reduce(function (total, passage) { return total + passage.verseCount; }, 0),
       fetchedAt: new Date().toISOString(),
-      esvUrl: validatedPassages[0].esvUrl,
+      esvUrl: dbrEsvUrlForPassages_(requestedPassages),
+      readingEsvUrl: dbrEsvUrlForPassages_(entry.passages),
+      partitioned: selection.partitioned,
+      passageIndex: selection.passageIndex,
+      passageCount: selection.passageCount,
+      passageOptions: selection.partitioned ? entry.passages.map(function (passage, index) {
+        return {
+          index: index,
+          bookId: passage.bookId,
+          chapter: passage.chapter,
+          canonical: dbrEsvReference_(passage),
+          esvUrl: dbrEsvUrlForPassages_([passage])
+        };
+      }) : [],
       policyVersion: DBR_ESV_POLICY.policyVersion,
-      cacheAllowed: false
+      cacheAllowed: true
     };
   });
 }
@@ -483,6 +504,7 @@ function dbrPublicError_(error) {
     ESV_RANGE_MISMATCH: "Scripture response did not match the configured chapter.",
     INVALID_ESV_RESPONSE: "Scripture provider returned an invalid response.",
     PROVIDER_METRICS_MISSING: "Scripture cache metrics are unavailable.",
+    PROVIDER_DISPLAY_LIMIT: "This passage exceeds the ESV per-book display limit.",
     CONTENT_INVALID: "Private commentary is invalid.",
     CONTENT_MISMATCH: "Private commentary does not match this reading.",
     SOURCE_REGISTRY_INVALID: "Source registry is invalid."

@@ -449,6 +449,54 @@ test("ESV parsed range count and expected range validation", () => {
   assert.throws(() => core.countParsedVerses([[1001031, 1002001]]), {code: "INVALID_ESV_RESPONSE"});
 });
 
+test("an over-half-book daily reading is partitioned into validated chapter requests", () => {
+  const entry = plan.entries.find((candidate) => candidate.readingId === "CC-Y3Q4-D061");
+  const policy = {maxBookFraction: 0.5, maxTotalCachedVerses: 500};
+  const initial = core.selectScripturePassages(entry.readingId, entry, plan.bookMetrics, policy);
+  assert.equal(initial.partitioned, true);
+  assert.equal(initial.passageIndex, 0);
+  assert.equal(initial.passageCount, 3);
+  assert.deepEqual(initial.passages, [entry.passages[0]]);
+
+  const third = core.selectScripturePassages({readingId: entry.readingId, passageIndex: 2}, entry, plan.bookMetrics, policy);
+  assert.equal(third.partitioned, true);
+  assert.equal(third.passageIndex, 2);
+  assert.deepEqual(third.passages, [entry.passages[2]]);
+  assert.throws(() => core.selectScripturePassages({readingId: entry.readingId, passageIndex: 3}, entry, plan.bookMetrics, policy),
+    {code: "INVALID_READING"});
+  assert.throws(() => core.selectScripturePassages({readingId: entry.readingId, passageIndex: 1, extra: true}, entry, plan.bookMetrics, policy),
+    {code: "INVALID_READING"});
+});
+
+test("a single chapter that itself exceeds half a short book fails with a specific provider limit", () => {
+  const entry = {
+    readingId: "TEST-HAG-002",
+    kind: "chapter",
+    passages: [{bookId: "HAG", chapter: 2, verseCount: 23}]
+  };
+  assert.throws(() => core.selectScripturePassages(entry.readingId, entry, {HAG: {verseCount: 38}}, {
+    maxBookFraction: 0.5,
+    maxTotalCachedVerses: 500
+  }),
+    {code: "PROVIDER_DISPLAY_LIMIT"});
+});
+
+test("a combined page above the 500-verse display ceiling is refused", () => {
+  const entry = {
+    readingId: "TEST-LONG-001",
+    kind: "chapter",
+    passages: [
+      {bookId: "AAA", chapter: 1, verseCount: 260},
+      {bookId: "BBB", chapter: 1, verseCount: 241}
+    ]
+  };
+  const metrics = {AAA: {verseCount: 1000}, BBB: {verseCount: 1000}};
+  assert.throws(() => core.selectScripturePassages(entry.readingId, entry, metrics, {
+    maxBookFraction: 0.5,
+    maxTotalCachedVerses: 500
+  }), {code: "PROVIDER_DISPLAY_LIMIT"});
+});
+
 test("long-term plan validation enforces four streams, intro adjacency, continuity, and partial ranges", () => {
   const streamIds = ["old_testament", "new_testament", "psalms", "proverbs"];
   const entries = [];

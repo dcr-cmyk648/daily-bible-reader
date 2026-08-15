@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-pwa-release="ad8ad65b5b38f49e">
+<html lang="en" data-pwa-release="a2134c9e8a7b06a5">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -12,7 +12,7 @@
     <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon-180.png">
     <link rel="icon" type="image/png" sizes="192x192" href="assets/bible-reader-icon-192.png">
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="../releases/3ecddffa6a4a079a/styles.css" integrity="sha384-2yoQ0I4Sa7IjGQgmcgUKzEj2et9KLGJhlSg59u//7QAAc+4nagOdEr4BENNEpSlI" crossorigin="anonymous">
+    <link rel="stylesheet" href="../releases/b23089771f9d5010/styles.css" integrity="sha384-bCfHZOB1qwt0gONZlzQtmAsfIj1kRhajJ081EnL3HVkJsxqG8i7nNj1zRQIGb4w+" crossorigin="anonymous">
   </head>
   <body>
     <a id="skipLink" class="skip-link" href="#selectedDayTitle">Skip to today’s reading</a>
@@ -121,7 +121,7 @@
           <div>
             <p class="eyebrow">Local privacy</p>
             <h2 id="storageHeading">Downloaded data</h2>
-            <p class="muted">The app keeps today plus seven future private studies on this device and warms today plus tomorrow first. ESV Scripture stays out of persistent storage; those two readings may remain only in session memory.</p>
+            <p class="muted">The app keeps today plus seven future private studies on this device. It also retains eligible ESV chapters for up to eight days while enforcing the 500-verse and half-book limits; short-book assignments may remain partial and stream one chapter at a time.</p>
             <p id="offlinePackStatus" class="muted" aria-live="polite">Offline pack has not been prepared yet.</p>
           </div>
           <div class="storage-actions">
@@ -198,6 +198,10 @@
                 </div>
               </div>
               <div id="scriptureState" class="inline-state" role="status" aria-live="polite">Scripture loads when the chapter opens.</div>
+              <div id="scripturePassageControls" class="scripture-passage-controls" hidden>
+                <p id="scripturePassagePolicyNote" class="muted">This assignment is shown one chapter at a time under the ESV display and cache limits.</p>
+                <div id="scripturePassageTabs" class="scripture-passage-tabs" role="tablist" aria-label="Chapters in this reading"></div>
+              </div>
               <p id="highlightHelp" class="highlight-help" hidden>Tap a verse for its precomputed commentary and shared highlights.</p>
               <div id="scriptureContent" class="scripture-content"></div>
               <div class="esv-attribution" aria-label="ESV copyright and use notice">
@@ -350,6 +354,6 @@
       <p>Private two-person bridge · Seven scheduled days · No runtime AI</p>
     </footer>
 
-    <script src="assets/pwa-client.ad8ad65b5b38f49e.js"></script>
+    <script src="assets/pwa-client.a2134c9e8a7b06a5.js"></script>
   </body>
 </html>

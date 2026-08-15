@@ -7,7 +7,7 @@ This project makes source use traceable and conservative; it does not declare th
 - Git/Pages: source, schemas, tools, safe bibliographic metadata, fabricated fixtures, and built code/style releases only. Pages never receives commentary, source notes/extracts, ESV wording, comments, or deployment configuration.
 - Ignored local research workspace: lawfully accessed research inputs and working notes. Do not sync this folder to the friend or include it in logs/builds.
 - Private Drive publication: original synthesis, source metadata, coverage report, and short justified quotations only. A reviewed Matthew Henry verse shard may additionally contain only the exact cited atoms from the selected public-domain edition for its **Read Henry** disclosure. The ignored portable audit store follows the same rule and declares `contains_scripture: false` plus `publication_status: not_published`; another app must keep it private and must not treat it as approved content. No ESV passages, embedded source-module Scripture transcription, or raw commentary library.
-- Browser: the published synthesis, comments, and any reviewed citation-driven Henry disclosure; current ESV responses remain network-only in page memory.
+- Browser: the published synthesis, comments, reviewed citation-driven Henry disclosure, and ESV passage records only within the verified provider cache policy (500 verses total, half of a book, eight-day expiry, automatic eviction). ESV never enters a public artifact, export, Drive commentary file, log, or service-worker cache.
 
 Private two-person use can reduce practical exposure but does not itself grant permission.
 

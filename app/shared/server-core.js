@@ -185,6 +185,74 @@
     return entry;
   }
 
+  function scriptureReadingId(request) {
+    const readingId = typeof request === "string"
+      ? request
+      : request && typeof request === "object" && !Array.isArray(request)
+        ? request.readingId
+        : "";
+    if (!READING_ID.test(String(readingId || ""))) {
+      throw domainError("INVALID_READING", "Reading ID is invalid.");
+    }
+    return String(readingId);
+  }
+
+  function selectScripturePassages(request, entry, bookMetrics, providerPolicy) {
+    if (!entry || entry.kind !== "chapter" || scriptureReadingId(request) !== entry.readingId) {
+      throw domainError("INVALID_READING", "Scripture request does not match the selected reading.");
+    }
+    const passages = Array.isArray(entry.passages) ? entry.passages : [];
+    if (!passages.length) {
+      throw domainError("CONTENT_INVALID", "The daily Scripture references are invalid.");
+    }
+    const maxBookFraction = Number(providerPolicy && providerPolicy.maxBookFraction);
+    const maxDisplayedVerses = Number(providerPolicy && providerPolicy.maxTotalCachedVerses);
+    if (!(maxBookFraction > 0 && maxBookFraction <= 1)) {
+      throw domainError("INVALID_SERVER_CONFIG", "The Scripture display policy is invalid.");
+    }
+    if (!Number.isInteger(maxDisplayedVerses) || maxDisplayedVerses < 1) {
+      throw domainError("INVALID_SERVER_CONFIG", "The Scripture total display limit is invalid.");
+    }
+    const totalsByBook = {};
+    passages.forEach(function (passage) {
+      const metrics = bookMetrics && bookMetrics[passage && passage.bookId];
+      if (!passage || !Number.isInteger(passage.verseCount) || passage.verseCount < 1 ||
+          !metrics || !Number.isInteger(metrics.verseCount) || metrics.verseCount < 1) {
+        throw domainError("PROVIDER_METRICS_MISSING", "Provider metrics are unavailable for this passage.");
+      }
+      totalsByBook[passage.bookId] = (totalsByBook[passage.bookId] || 0) + passage.verseCount;
+    });
+    const fullReadingExceedsDisplayLimit = Object.keys(totalsByBook).some(function (bookId) {
+      return totalsByBook[bookId] > Math.floor(bookMetrics[bookId].verseCount * maxBookFraction);
+    });
+    let passageIndex = null;
+    if (typeof request === "object" && request !== null && !Array.isArray(request)) {
+      if (Object.keys(request).some(function (key) { return !["readingId", "passageIndex"].includes(key); }) ||
+          !Number.isInteger(request.passageIndex) || request.passageIndex < 0 || request.passageIndex >= passages.length) {
+        throw domainError("INVALID_READING", "Scripture passage selection is invalid.");
+      }
+      passageIndex = request.passageIndex;
+    } else if (fullReadingExceedsDisplayLimit) {
+      passageIndex = 0;
+    }
+    const selectedPassages = passageIndex === null ? passages.slice() : [passages[passageIndex]];
+    if (selectedPassages.reduce(function (total, passage) { return total + passage.verseCount; }, 0) > maxDisplayedVerses) {
+      throw domainError("PROVIDER_DISPLAY_LIMIT", "This passage exceeds the ESV total display limit.");
+    }
+    selectedPassages.forEach(function (passage) {
+      const perBookLimit = Math.floor(bookMetrics[passage.bookId].verseCount * maxBookFraction);
+      if (passage.verseCount > perBookLimit) {
+        throw domainError("PROVIDER_DISPLAY_LIMIT", "This passage exceeds the ESV per-book display limit.");
+      }
+    });
+    return {
+      passages: selectedPassages,
+      passageIndex,
+      passageCount: passages.length,
+      partitioned: fullReadingExceedsDisplayLimit
+    };
+  }
+
   function validatePlanStructure(plan) {
     if (!plan || !plan.planVersion || !Array.isArray(plan.entries) || !plan.entries.length) {
       throw domainError("INVALID_PLAN", "Reading plan is unavailable.");
@@ -682,6 +750,8 @@
     participantCommentActivity,
     publicParticipants,
     resolveReadingFiles,
+    scriptureReadingId,
+    selectScripturePassages,
     validateCommentRequest,
     validateEsvPayload,
     validateHighlightRequest,

@@ -29,10 +29,10 @@ test("verified ESV provider policy is complete", () => {
   assert.equal(provider.validatePolicy(policy), policy);
   assert.equal(policy.maxTotalCachedVerses, 500);
   assert.equal(policy.maxBookFraction, 0.5);
-  assert.equal(policy.maxCacheAgeSeconds, 0);
-  assert.equal(policy.policyVersion, "esv-api-2026-08-08-v4-session-hot-window");
-  assert.equal(policy.offlinePersistenceAllowed, false);
-  assert.equal(policy.refreshBehavior, "session_hot_window");
+  assert.equal(policy.maxCacheAgeSeconds, 691200);
+  assert.equal(policy.policyVersion, "esv-api-2026-08-15-v5-bounded-offline");
+  assert.equal(policy.offlinePersistenceAllowed, true);
+  assert.equal(policy.refreshBehavior, "network_first");
   assert.equal(policy.requiredAttribution.label, "ESV");
   assert.equal(policy.apiKeyMayReachClient, false);
 });

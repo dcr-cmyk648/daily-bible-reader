@@ -19,7 +19,7 @@ The active app schedule is a bounded rolling excerpt from Celebration Church's 9
 | 11 | 2026-08-18 | 64 | `CC-Y3Q4-D064` | Zephaniah 2 |
 | 12 | 2026-08-19 | 65 | `CC-Y3Q4-D065` | Zephaniah 3 |
 
-Days with multiple chapters remain one scheduled reading, one Scripture page, and one discussion keyed to the daily reading ID. The server requests each chapter separately from ESV and combines the returned chapters only in memory for the page.
+Days with multiple chapters remain one scheduled reading, one Scripture page, and one discussion keyed to the daily reading ID. A combined response is used only when it stays within ESV display limits; a whole-short-book assignment instead uses chapter tabs and streams/displays one configured chapter at a time.
 
 The complete 92-day sequence is stored as factual reference metadata in `config/reference-plans/celebration-y3q4.json` and a private Drive reference file. It contains passage assignments and provenance, not Celebration's devotional prose, ESV text, commentary, or 92 generated reading payloads. The active plan grows by at most one contiguous source-plan day when that reading enters T+7. No later devotional content is generated in advance.
 
@@ -29,7 +29,7 @@ The bridge uses a fixed `sharedStartDate` of 2026-08-08 interpreted in `America/
 
 The bridge permits seven days of lookahead. Past readings remain available. The internal development override is restricted to active-plan IDs and is not exposed as a reader-facing control. The home calendar starts weeks on Sunday and shows one complete month. A date click selects it and updates the passage/progress card below; opening requires the separate date-specific action. Completion is per reader and derives from an active comment, including a queued offline create; two colored dots make Dustin’s and Shane’s independent progress visible without exposing either account email.
 
-The eight-reading local target is today plus seven future private commentary payloads and comment drafts. ESV and shared highlights are network-only; today's and tomorrow's Scripture are warmed only in volatile memory, so “offline week” does not mean persisted Scripture passages or offline highlight changes.
+The eight-reading local target is today plus seven future private commentary payloads and comment drafts. The app also attempts policy-bounded ESV passage retention across that horizon, but the 500-verse/half-book rules make short-book coverage partial; the UI reports the retained chapter count. Shared highlights remain network-only.
 
 ## Preserved Genesis calibration
 

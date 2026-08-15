@@ -8,7 +8,7 @@
 - The browser cannot choose display name, author ID, timestamp, server ID, Drive/Sheet/file ID, ESV reference, revision, callable backend function, or response origin.
 - Methods, argument counts, request sizes, reading IDs, verse ranges, and writes are validated server-side. Public errors omit private data and stacks.
 - Comments and Markdown render through text nodes/allowlisted elements, never arbitrary HTML.
-- ESV text is network-only. The service worker caches an exact public-code allowlist and never handles cross-origin/private traffic.
+- ESV text may enter only the policy-bounded IndexedDB Scripture store: at most 500 verses total, never more than half a book, maximum eight-day age, and automatic eviction before every write. The service worker caches an exact public-code allowlist and never handles ESV or other cross-origin/private traffic.
 - The stable `USER_ACCESSING` deployment remains unchanged as rollback; ordinary primary-PWA releases do not repoint it.
 
 ## Threat model
@@ -25,7 +25,7 @@
 | Comment/highlight collision or retry | Script lock; append-only revisions; base revision; idempotent client request IDs | A native Sheet editor can still alter rows outside the app |
 | Arbitrary Drive/Sheet access | IDs exist only in Script Properties/manifest; browser sends stable reading IDs; compiled RPC allowlist | Owner-executed code has Dustin's declared scope authority; a server bug has more consequence than under per-user Drive gating |
 | Accidental Git/Pages publication | ignore rules; staged hook; safety scanner; exact public-path exception; build inspection | Heuristic Scripture/secret detection is not a proof; human diff review remains required |
-| Browser-cache persistence | eight-record current-plus-seven target; fourteen-day maximum age; reader/plan/version-bound bootstrap; explicit-denial purge; clear/forget controls; no ESV persistence | Offline revocation is delayed; device/OS backups are outside app control |
+| Browser-cache persistence | eight-record current-plus-seven private target; bounded ESV passage records with total/book/age/version enforcement; reader/plan/version-bound bootstrap; explicit-denial purge; clear/forget controls | Offline revocation is delayed; device/OS backups are outside app control; provider limits make some short-book coverage partial |
 | Stale or substituted shell | immutable content-addressed assets; SHA-384; network-first navigation/manifest; complete service-worker install; explicit activation; prior cache retained | GitHub account/repository security is part of the trust boundary |
 | Drive/Sheet sharing mistake | app never relies on link sharing; audit exact accounts; private IDs never public | Token PWA reads as owner even if Shane's Drive share is removed; token rotation is the application revocation action |
 

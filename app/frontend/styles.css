@@ -825,6 +825,51 @@ h3 {
   max-width: var(--reading-width);
 }
 
+.scripture-passage-controls {
+  display: grid;
+  max-width: var(--reading-width);
+  gap: 0.55rem;
+  margin-top: 0.8rem;
+}
+
+.scripture-passage-controls[hidden] {
+  display: none;
+}
+
+.scripture-passage-controls p {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.scripture-passage-tabs {
+  display: flex;
+  max-width: 100%;
+  gap: 0.42rem;
+  overflow-x: auto;
+  padding: 0.08rem 0 0.3rem;
+  scrollbar-width: thin;
+}
+
+.scripture-passage-tab {
+  flex: 0 0 auto;
+  min-height: 2.55rem;
+  padding: 0.48rem 0.78rem;
+  border-color: #49665a;
+  border-radius: 999px;
+  color: var(--muted);
+  background: #101915;
+  font-size: 0.78rem;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.scripture-passage-tab[aria-selected="true"] {
+  border-color: var(--accent-bright);
+  color: #07100c;
+  background: var(--accent-bright);
+}
+
 .scripture-content {
   margin: 1.15rem 0;
   font-size: clamp(1.08rem, 4.5vw, 1.3rem);

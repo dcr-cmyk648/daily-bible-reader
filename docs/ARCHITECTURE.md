@@ -28,7 +28,7 @@ For this scope, the reduced setup and launch latency outweigh those residual ris
 - Google Drive as canonical private commentary/plan/source storage.
 - A Google Sheet as the append-only comment and highlight event store.
 - Official ESV API access from Apps Script only.
-- IndexedDB for the saved reader code, current-plus-seven private-content snapshot, calendar state, comment drafts, and comment outbox.
+- IndexedDB for the saved reader code, current-plus-seven private-content snapshot, bounded ESV passage cache, calendar state, comment drafts, and comment outbox.
 - A service worker for an exact public-asset allowlist only.
 - No runtime AI, analytics, third-party scripts, conventional backend, or paid hosting dependency.
 
@@ -47,8 +47,8 @@ Git source ──build──> GitHub Pages PWA (public code/icons only)
                          v
                  allowlisted Drive file IDs
 
-Browser memory   <── live ESV response (never persisted)
-Browser IndexedDB <── current-plus-seven private commentary/calendar snapshot
+Browser memory   <── active ESV chapter + extracted verse-of-day hot copy
+Browser IndexedDB <── private snapshot + policy-bounded ESV passage records
         │
         ├── raw reader code, after successful verification
         └── offline comment drafts + idempotent outbox
@@ -110,11 +110,11 @@ Direct native Sheet access is separate from the app. Google sharing—not reader
 - IndexedDB `calendarCompletion`: body-free two-reader completion state.
 - IndexedDB `commentDrafts`, `commentOutbox`, and `commentSnapshot`: offline composition and idempotent synchronization.
 - Shared highlights: network-only, memory-resident for the open Scripture page.
-- ESV: no persistent browser storage. After authorization, current and next daily responses are warmed into a two-reading JavaScript-memory window; any other day streams on open. IndexedDB and the service worker remain forbidden, and plan/build/access changes clear the volatile window.
+- IndexedDB `scriptureCache`: one record per configured ESV passage, at most 500 verses total and half of any book, with eight-day expiry, policy-version invalidation, and eviction before writes. Opened chapters are network-first; a valid retained record paints immediately and is the fallback on failure. A daily assignment that exceeds half a book uses chapter tabs and can have only partial offline coverage. ESV remains forbidden from Cache Storage/service-worker handling, private content, Git, Drive, logs, and exports.
 
 The PWA paints a valid cached shell/calendar/commentary snapshot immediately, then confirms the stored code in the background. After confirmation, it always requests fresh current-and-next private payloads even when their cached records are unexpired; validated responses replace IndexedDB and immediately recalculate study readiness. If an opened cached record is still a placeholder, the reader blocks on that fresh request before displaying the study. If a prepared cached record paints first and a different commentary version or hash arrives later, the open page is rerendered in place. This makes the cache a fast/offline display layer rather than version authority, so a revised current/next Drive record cannot remain hidden behind the retention window or be saved without becoming visible. Explicit code denial clears private local state. Transient network failure may retain the unexpired snapshot and queued comment drafts. Offline revocation cannot be instantaneous; a lost device must have its token rotated, and the user should clear site data or remotely protect the device.
 
-Calendar selection reads the verse-of-the-day reference from the already validated private reading payload. For the current and next reading, it resolves exact wording from the volatile ESV window and shows the ESV identity, link, and collapsible required notice in the selected-day card. Older days keep the reference-only state until opened. No wording enters IndexedDB, Cache Storage, plan/commentary metadata, or a public build. The eight-reading private-payload target drives the seven-day-ahead operational readiness check. A chapter is prepared only when its reviewed/hash-bearing metadata, orientation, configured ESV passage, coherent main synthesis, verse selection, practical takeaway, comprehensive synthesis, traceable source records, and either a complete reviewed Matthew Henry verse layer with every cited public-domain atom or the quota-only verified full-commentary link all pass. The notice reports the first gap: Dustin receives the exact missing components and date, while Shane sees only a generic delay state.
+Calendar selection reads the verse-of-the-day reference from the already validated private reading payload. For current and next, it resolves exact wording from a live or valid policy-bounded Scripture response and keeps only the isolated verse in volatile hot memory when its full chapter is replaced. The selected-day card shows ESV identity, an exact passage link, and the required notice. No wording enters plan/commentary metadata, Cache Storage, a public build, Git, or Drive. The eight-reading private-payload target drives the seven-day-ahead operational readiness check. A chapter is prepared only when its reviewed/hash-bearing metadata, orientation, configured ESV passage, coherent main synthesis, verse selection, practical takeaway, comprehensive synthesis, traceable source records, and either a complete reviewed Matthew Henry verse layer with every cited public-domain atom or the quota-only verified full-commentary link all pass. The notice reports the first gap: Dustin receives the exact missing components and date, while Shane sees only a generic delay state.
 
 The service worker caches only generated public HTML, JavaScript, CSS, icons, and immutable release metadata. It bypasses all non-GET, cross-origin, config, Apps Script, ESV, and private traffic. A complete new public cache installs before activation; the user receives an explicit restart control; the current and newest prior app cache remain for rollback.
 

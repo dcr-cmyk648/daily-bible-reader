@@ -384,6 +384,29 @@
       "sourceIds": [
         "youversion_celebration_y3q4_plan_3805"
       ]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 16,
+      "sourcePlanDay": 69,
+      "readingId": "CC-Y3Q4-D069",
+      "kind": "chapter",
+      "bookId": "ZEC",
+      "chapter": 1,
+      "passages": [
+        {
+          "bookId": "ZEC",
+          "chapter": 1,
+          "verseCount": 21
+        }
+      ],
+      "orderingRationale": "Temporary bridge preserves Day 69 of Celebration Church's published Year 3, Quarter 4 sequence.",
+      "chronologyBasis": "pragmatic",
+      "confidence": "high",
+      "notes": "One chapter appears on the Scripture page.",
+      "sourceIds": [
+        "youversion_celebration_y3q4_plan_3805"
+      ]
     }
   ],
   "bookMetrics": {
@@ -425,6 +448,11 @@
     "HAG": {
       "verseCount": 38,
       "chapterCount": 2,
+      "versification": "Factual Protestant chapter metrics for bridge policy calculations"
+    },
+    "ZEC": {
+      "verseCount": 211,
+      "chapterCount": 14,
       "versification": "Factual Protestant chapter metrics for bridge policy calculations"
     }
   }

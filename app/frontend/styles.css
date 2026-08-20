@@ -1549,6 +1549,16 @@ input[type="password"] {
   resize: vertical;
 }
 
+textarea {
+  touch-action: auto;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+#commentBody {
+  min-height: 7rem;
+}
+
 input[type="password"] {
   resize: none;
 }

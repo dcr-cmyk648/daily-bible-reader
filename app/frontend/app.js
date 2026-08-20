@@ -73,6 +73,7 @@
 
   const state = {
     adapter: null,
+    activeCalendarDate: null,
     authorizationPromise: null,
     serverAccessConfirmed: false,
     bootstrap: null,
@@ -223,6 +224,10 @@
 
   function dateOnlyFromParts(parts) {
     return `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
+  }
+
+  function calendarDateInTimeZone(dateInput, timeZone) {
+    return dateOnlyFromParts(datePartsInTimeZone(dateInput, timeZone));
   }
 
   function validatePlan(plan) {
@@ -3047,9 +3052,29 @@
         : nextPage === 1
           ? state.currentEntry && state.currentEntry.kind === "book_intro" ? "bookIntroductionHeading" : "scriptureHeading"
           : "commentarySummaryHeading");
-      heading.scrollIntoView({block: "start"});
+      const progress = element("readingProgress");
+      const stickyHeader = root.document.querySelector(".app-header");
+      const currentScroll = Number(root.scrollY || root.pageYOffset || 0);
+      const stickyBottom = stickyHeader ? Math.max(0, stickyHeader.getBoundingClientRect().bottom) : 0;
+      const targetTop = currentScroll + progress.getBoundingClientRect().top - stickyBottom - 8;
+      if (root.scrollTo) root.scrollTo({top: Math.max(0, targetTop), behavior: "auto"});
       heading.focus({preventScroll: true});
     }
+  }
+
+  function refreshCurrentCalendarDate() {
+    if (!state.plan || !state.config) return false;
+    const now = new Date();
+    const todayDate = calendarDateInTimeZone(now, state.config.timezone);
+    if (state.activeCalendarDate === todayDate) return false;
+    state.activeCalendarDate = todayDate;
+    state.schedule = calculateSchedule(state.plan, state.config, now);
+    const todayParts = parseDateOnly(todayDate);
+    state.calendarMonthDate = dateOnlyFromParts({...todayParts, day: 1});
+    state.selectedCalendarDate = todayDate;
+    state.selectedVerseRequestToken += 1;
+    syncScriptureMemoryWindow();
+    return true;
   }
 
   function showHome(options) {
@@ -3066,6 +3091,7 @@
     element("skipLink").href = "#selectedDayTitle";
     element("skipLink").textContent = "Skip to today’s reading";
     setBanner("");
+    refreshCurrentCalendarDate();
     renderCalendar();
     if ((!options || options.sync !== false) && (!root.navigator || root.navigator.onLine !== false)) {
       resumeOnlineWork();
@@ -3082,7 +3108,9 @@
     element("skipLink").textContent = "Skip to the reading";
     setReadingPage(0, {focus: false});
     if (root.scrollTo) root.scrollTo({top: 0, behavior: "auto"});
-    await loadReading(readingId, {testingOverride: Boolean(options && options.testingOverride)});
+    const loading = loadReading(readingId, {testingOverride: Boolean(options && options.testingOverride)});
+    element("readingTitle").focus({preventScroll: true});
+    await loading;
   }
 
   function renderReadingShell(schedule) {
@@ -3141,6 +3169,7 @@
     setSyncStatus("Loading reading…");
     const entry = schedule.selectedEntry;
     await loadCachedDiscussion(entry.readingId);
+    await loadDraft(entry.readingId);
     refreshComments({background: true, readingId: entry.readingId}).catch(() => {});
     const result = await readingPayloadWithCache(entry.readingId);
     const payload = result.payload;
@@ -3151,12 +3180,10 @@
     }
     renderCommentary(commentary, payload.sources || state.sources || []);
     if (entry.kind === "chapter") loadScripture(entry).catch(() => {});
-    await loadDraft(entry.readingId);
     await updateCacheInspector();
     setSyncStatus(result.source === "cache" || (root.navigator && root.navigator.onLine === false)
       ? "Offline · cached reading and drafts available"
       : "Ready");
-    element("readingTitle").focus({preventScroll: true});
   }
 
   async function warmPriorityWindow() {
@@ -3801,6 +3828,17 @@
     if (state.view === "home") syncCalendarCompletion().catch(() => {});
   }
 
+  function resumeApplication() {
+    const dateChanged = refreshCurrentCalendarDate();
+    if (dateChanged && state.view === "home") renderCalendar();
+    if (!root.navigator || root.navigator.onLine !== false) resumeOnlineWork();
+  }
+
+  function focusCommentComposer() {
+    const composer = element("commentBody");
+    if (composer && !composer.disabled && root.document.activeElement !== composer) composer.focus();
+  }
+
   function wireEvents() {
     if (state.uiWired) return;
     state.uiWired = true;
@@ -3834,21 +3872,17 @@
     }));
     element("refreshComments").addEventListener("click", refreshComments);
     element("commentForm").addEventListener("submit", submitNewComment);
-    element("commentBody").addEventListener("input", scheduleDraftSave);
+    const commentBody = element("commentBody");
+    commentBody.addEventListener("input", scheduleDraftSave);
+    commentBody.addEventListener("pointerup", focusCommentComposer);
+    commentBody.addEventListener("click", focusCommentComposer);
     element("syncOutbox").addEventListener("click", flushOutbox);
     element("clearDownloadedData").addEventListener("click", clearDownloadedData);
     element("forgetReaderAccess").addEventListener("click", forgetReaderAccess);
-    root.addEventListener("online", resumeOnlineWork);
-    root.addEventListener("pageshow", () => {
-      if (state.view === "home" && (!root.navigator || root.navigator.onLine !== false)) {
-        resumeOnlineWork();
-      }
-    });
+    root.addEventListener("online", resumeApplication);
+    root.addEventListener("pageshow", resumeApplication);
     root.document.addEventListener("visibilitychange", () => {
-      if (root.document.visibilityState === "visible" && state.view === "home" &&
-          (!root.navigator || root.navigator.onLine !== false)) {
-        resumeOnlineWork();
-      }
+      if (root.document.visibilityState === "visible") resumeApplication();
     });
     root.addEventListener("offline", () => setSyncStatus("Offline · drafts remain local"));
   }
@@ -3914,7 +3948,9 @@
     element("verseOfDayNotice").textContent = esvNotice;
     element("selectedDayVerseNotice").textContent = esvNotice;
     wireEvents();
-    state.schedule = calculateSchedule(state.plan, state.config, new Date());
+    const now = new Date();
+    state.schedule = calculateSchedule(state.plan, state.config, now);
+    state.activeCalendarDate = calendarDateInTimeZone(now, state.config.timezone);
     await hydrateCalendarCompletion();
     markStartupMilestone(options && options.cached ? "cachedCalendarVisible" : "calendarVisible");
     if (!hadApplication || previousPlanVersion !== state.plan.planVersion || state.view === "home") {
@@ -3944,6 +3980,7 @@
     await state.store.clearAll();
     state.readerCode = "";
     state.bootstrap = null;
+    state.activeCalendarDate = null;
     state.config = null;
     state.plan = null;
     state.policy = null;
@@ -4181,6 +4218,7 @@
   return {
     bootstrapRecordIsFresh,
     buildMonthCalendar,
+    calendarDateInTimeZone,
     calculateSchedule,
     civilDayNumber,
     compactOutbox,

@@ -147,7 +147,7 @@
             <p id="readingRationale" class="reading-rationale"></p>
           </header>
 
-          <nav class="reading-progress" aria-label="Pages in this reading">
+          <nav id="readingProgress" class="reading-progress" aria-label="Pages in this reading">
             <button id="pageStep0" class="reading-progress-step" type="button" data-reading-page="0" aria-current="step"><span>1</span><b>Orientation</b></button>
             <button id="pageStep1" class="reading-progress-step" type="button" data-reading-page="1"><span>2</span><b id="pageStep1Label">Scripture</b></button>
             <button id="pageStep2" class="reading-progress-step" type="button" data-reading-page="2"><span>3</span><b>Commentary</b></button>
@@ -257,7 +257,7 @@
           <div id="commentList" class="comment-list" aria-live="polite"></div>
           <form id="commentForm" class="comment-form">
             <label for="commentBody">Add a comment for this day</label>
-            <textarea id="commentBody" rows="5" maxlength="8000" required placeholder="Write a question, observation, or response…"></textarea>
+            <textarea id="commentBody" name="commentBody" rows="5" maxlength="8000" inputmode="text" autocapitalize="sentences" autocomplete="off" spellcheck="true" required aria-describedby="draftStatus" placeholder="Write a question, observation, or response…"></textarea>
             <div class="form-row">
               <span id="draftStatus" class="muted">Drafts and pending writes use IndexedDB.</span>
               <button id="submitComment" type="submit">Post comment</button>

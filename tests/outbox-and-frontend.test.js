@@ -882,9 +882,47 @@ test("confirmed access refreshes progress before a delayed batched offline prepa
   assert.match(source, /state\.adapter\.getReadingPayloads\(readingIds\)/);
   assert.match(source, /function scheduleOfflinePrefetch\(\)[\s\S]*?requestIdleCallback[\s\S]*?setTimeout/);
   assert.match(source, /function showHome\(options\)[\s\S]*?resumeOnlineWork\(\)/);
-  assert.match(source, /addEventListener\("pageshow"[\s\S]*?resumeOnlineWork\(\)/);
-  assert.match(source, /addEventListener\("visibilitychange"[\s\S]*?visibilityState === "visible"[\s\S]*?resumeOnlineWork\(\)/);
+  assert.match(source, /addEventListener\("pageshow", resumeApplication\)/);
+  assert.match(source, /addEventListener\("visibilitychange"[\s\S]*?visibilityState === "visible"[\s\S]*?resumeApplication\(\)/);
   assert.match(source, /if \(state\.calendarSyncPromise\) return state\.calendarSyncPromise/);
+});
+
+test("a suspended installed reader advances the selected day at Detroit midnight", () => {
+  assert.equal(app.calendarDateInTimeZone("2026-08-21T03:59:00.000Z", "America/Detroit"), "2026-08-20");
+  assert.equal(app.calendarDateInTimeZone("2026-08-21T04:01:00.000Z", "America/Detroit"), "2026-08-21");
+  const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
+  const refresh = source.slice(source.indexOf("function refreshCurrentCalendarDate()"), source.indexOf("function showHome(options)"));
+  assert.match(refresh, /state\.activeCalendarDate === todayDate/);
+  assert.match(refresh, /state\.schedule = calculateSchedule\(state\.plan, state\.config, now\)/);
+  assert.match(refresh, /state\.calendarMonthDate = dateOnlyFromParts/);
+  assert.match(refresh, /state\.selectedCalendarDate = todayDate/);
+  assert.match(source, /function resumeApplication\(\)[\s\S]*?refreshCurrentCalendarDate\(\)[\s\S]*?renderCalendar\(\)/);
+  assert.match(source, /root\.addEventListener\("online", resumeApplication\)/);
+  assert.match(source, /root\.addEventListener\("pageshow", resumeApplication\)/);
+});
+
+test("mobile comment composition keeps direct text focus and cannot be stolen by late reading setup", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
+  const html = fs.readFileSync(path.join(__dirname, "../app/frontend/index.html"), "utf8");
+  const css = fs.readFileSync(path.join(__dirname, "../app/frontend/styles.css"), "utf8");
+  const loadReading = source.slice(source.indexOf("async function loadReading"), source.indexOf("async function warmPriorityWindow"));
+  assert.match(html, /id="commentBody"[^>]*inputmode="text"[^>]*autocapitalize="sentences"/);
+  assert.match(css, /textarea\s*\{[\s\S]*?touch-action:\s*auto;[\s\S]*?user-select:\s*text;/);
+  assert.match(source, /function focusCommentComposer\(\)[\s\S]*?composer\.focus\(\)/);
+  assert.match(source, /commentBody\.addEventListener\("pointerup", focusCommentComposer\)/);
+  assert.ok(loadReading.indexOf("await loadDraft(entry.readingId)") < loadReading.indexOf("readingPayloadWithCache(entry.readingId)"));
+  assert.doesNotMatch(loadReading, /readingTitle"\)\.focus/);
+});
+
+test("page changes expose the active reading step below the measured sticky header", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
+  const html = fs.readFileSync(path.join(__dirname, "../app/frontend/index.html"), "utf8");
+  const navigation = source.slice(source.indexOf("function setReadingPage"), source.indexOf("function refreshCurrentCalendarDate"));
+  assert.match(html, /id="readingProgress" class="reading-progress"/);
+  assert.match(navigation, /progress\.getBoundingClientRect\(\)\.top/);
+  assert.match(navigation, /stickyHeader\.getBoundingClientRect\(\)\.bottom/);
+  assert.match(navigation, /root\.scrollTo\(\{top: Math\.max\(0, targetTop\), behavior: "auto"\}\)/);
+  assert.doesNotMatch(navigation, /heading\.scrollIntoView/);
 });
 
 test("cached calendar and commentary render before background authorization while writes stay gated", () => {

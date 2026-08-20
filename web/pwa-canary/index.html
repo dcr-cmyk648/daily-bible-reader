@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-pwa-release="a084197232a72a04">
+<html lang="en" data-pwa-release="42ee987fa545a4b6">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -12,7 +12,7 @@
     <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon-180.png">
     <link rel="icon" type="image/png" sizes="192x192" href="assets/bible-reader-icon-192.png">
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="../releases/cc67c986ddd67ac4/styles.css" integrity="sha384-bCfHZOB1qwt0gONZlzQtmAsfIj1kRhajJ081EnL3HVkJsxqG8i7nNj1zRQIGb4w+" crossorigin="anonymous">
+    <link rel="stylesheet" href="../releases/3a73486791c983c5/styles.css" integrity="sha384-oKjv+2cDXtD6ms5mkX3owd6KZ0geiNpMz+UJGvr8W9tsVMcJpH8n47LrwUIAc0v5" crossorigin="anonymous">
   </head>
   <body>
     <a id="skipLink" class="skip-link" href="#selectedDayTitle">Skip to today’s reading</a>
@@ -153,7 +153,7 @@
             <p id="readingRationale" class="reading-rationale"></p>
           </header>
 
-          <nav class="reading-progress" aria-label="Pages in this reading">
+          <nav id="readingProgress" class="reading-progress" aria-label="Pages in this reading">
             <button id="pageStep0" class="reading-progress-step" type="button" data-reading-page="0" aria-current="step"><span>1</span><b>Orientation</b></button>
             <button id="pageStep1" class="reading-progress-step" type="button" data-reading-page="1"><span>2</span><b id="pageStep1Label">Scripture</b></button>
             <button id="pageStep2" class="reading-progress-step" type="button" data-reading-page="2"><span>3</span><b>Commentary</b></button>
@@ -263,7 +263,7 @@
           <div id="commentList" class="comment-list" aria-live="polite"></div>
           <form id="commentForm" class="comment-form">
             <label for="commentBody">Add a comment for this day</label>
-            <textarea id="commentBody" rows="5" maxlength="8000" required placeholder="Write a question, observation, or response…"></textarea>
+            <textarea id="commentBody" name="commentBody" rows="5" maxlength="8000" inputmode="text" autocapitalize="sentences" autocomplete="off" spellcheck="true" required aria-describedby="draftStatus" placeholder="Write a question, observation, or response…"></textarea>
             <div class="form-row">
               <span id="draftStatus" class="muted">Drafts and pending writes use IndexedDB.</span>
               <button id="submitComment" type="submit">Post comment</button>
@@ -354,6 +354,6 @@
       <p>Private two-person bridge · Seven scheduled days · No runtime AI</p>
     </footer>
 
-    <script src="assets/pwa-client.a084197232a72a04.js"></script>
+    <script src="assets/pwa-client.42ee987fa545a4b6.js"></script>
   </body>
 </html>

@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const app = require("../app/frontend/app.js");
-const plan = JSON.parse(fs.readFileSync(path.join(__dirname, "../fixtures/pilot-content/plan.json"), "utf8"));
+const plan = JSON.parse(fs.readFileSync(path.join(__dirname, "../config/bridge-schedules/celebration-y3q4-bridge-full.json"), "utf8"));
 const config = JSON.parse(fs.readFileSync(path.join(__dirname, "../fixtures/pilot-content/app-config.json"), "utf8"));
 const bridgeIds = plan.entries.map((entry) => entry.readingId);
 
@@ -23,11 +23,20 @@ function syntheticPlan(count = 4) {
   };
 }
 
-test("bridge preserves a contiguous rolling source-day sequence with stable IDs and grouped chapters", () => {
+test("bridge preserves the full contiguous source-day sequence with stable IDs and grouped chapters", () => {
   assert.deepEqual(plan.entries.map((entry) => entry.readingId), bridgeIds);
   assert.deepEqual(plan.entries.map((entry) => entry.sourcePlanDay), Array.from({length: plan.entries.length}, (_, index) => index + 54));
   assert.deepEqual(plan.entries[0].passages.map((passage) => passage.chapter), [3, 4]);
   assert.deepEqual(plan.entries[1].passages.map((passage) => passage.chapter), [5, 6, 7]);
+  assert.equal(plan.entries.length, 39);
+  assert.equal(plan.entries.at(-1).readingId, "CC-Y3Q4-D092");
+});
+
+test("prepared-reading membership is a contiguous prefix independent of the full schedule", () => {
+  const prefix = plan.entries.slice(0, 3).map((entry) => entry.readingId);
+  assert.equal(app.preparedReadingIdSet({preparedReadingIds: prefix}, plan).size, 3);
+  assert.throws(() => app.preparedReadingIdSet({preparedReadingIds: [prefix[0], plan.entries[2].readingId]}, plan),
+    /contiguous prefix/);
 });
 
 test("shared Detroit date selects bridge day 1 and then day 2", () => {
@@ -120,9 +129,17 @@ test("calendar home renders the complete Sunday-based month grid", () => {
   assert.equal(calendar.days.filter((day) => day.isToday).length, 1);
 });
 
+test("the full schedule maps September 15 to Malachi 4 while keeping it locked", () => {
+  const calendar = app.buildMonthCalendar(plan, config, new Date("2026-08-21T16:00:00Z"), new Set(), "2026-09-01");
+  const last = calendar.days.find((day) => day.date === "2026-09-15");
+  assert.equal(last.entry.readingId, "CC-Y3Q4-D092");
+  assert.equal(last.shortTitle, "Malachi 4");
+  assert.equal(last.accessible, false);
+});
+
 test("bridge calendar maps every active August entry to its shared civil date", () => {
   const calendar = app.buildMonthCalendar(plan, config, new Date("2026-08-08T16:00:00Z"), new Set(), "2026-08-01");
-  const dated = calendar.days.filter((day) => day.entry);
+  const dated = calendar.days.filter((day) => day.entry && day.inCurrentMonth);
   const augustIds = bridgeIds.slice(0, 24);
   assert.deepEqual(dated.map((day) => day.entry.readingId), augustIds);
   assert.deepEqual(dated.map((day) => day.date), Array.from({length: augustIds.length}, (_, index) => `2026-08-${String(index + 8).padStart(2, "0")}`));

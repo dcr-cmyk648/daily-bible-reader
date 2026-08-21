@@ -176,6 +176,37 @@
     return {contentFileId: record.contentFileId, metadataFileId: record.metadataFileId};
   }
 
+  function manifestPreparedReadingIds(plan, manifest) {
+    validatePlanStructure(plan);
+    const parsed = parseManifest(manifest);
+    const manifestIds = Object.keys(parsed.readings || {});
+    if (!manifestIds.length) {
+      throw domainError("INVALID_MANIFEST", "The private manifest must include a prepared reading.");
+    }
+    const planIds = new Set(plan.entries.map((entry) => entry.readingId));
+    if (manifestIds.some((readingId) => !planIds.has(readingId))) {
+      throw domainError("INVALID_MANIFEST", "The private manifest contains a reading outside the active plan.");
+    }
+    const prepared = [];
+    let gapFound = false;
+    plan.entries.forEach((entry) => {
+      const configured = Object.prototype.hasOwnProperty.call(parsed.readings, entry.readingId);
+      if (!configured) {
+        gapFound = true;
+        return;
+      }
+      if (gapFound) {
+        throw domainError("INVALID_MANIFEST", "Prepared readings must be a contiguous prefix of the active plan.");
+      }
+      resolveReadingFiles(parsed, entry.readingId);
+      prepared.push(entry.readingId);
+    });
+    if (prepared.length !== manifestIds.length) {
+      throw domainError("INVALID_MANIFEST", "The private manifest has invalid prepared-reading membership.");
+    }
+    return prepared;
+  }
+
   function getPlanEntry(plan, readingId) {
     if (!plan || !Array.isArray(plan.entries)) {
       throw domainError("INVALID_PLAN", "Reading plan is unavailable.");
@@ -743,6 +774,7 @@
     getPlanEntry,
     materializeHighlightEvents,
     materializeCommentEvents,
+    manifestPreparedReadingIds,
     normalizeCommentBody,
     normalizeEmail,
     parseManifest,

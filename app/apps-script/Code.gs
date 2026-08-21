@@ -97,14 +97,21 @@ const DBR_BOOK_NAMES = {
   "2PE": "2 Peter",
   HAB: "Habakkuk",
   HAG: "Haggai",
+  JAS: "James",
+  MAL: "Malachi",
   MIC: "Micah",
   NAM: "Nahum",
+  PSA: "Psalms",
   PRO: "Proverbs",
+  ZEC: "Zechariah",
   ZEP: "Zephaniah"
 };
 const DBR_BRIDGE_SOURCE_DAY_MIN = 54;
 const DBR_BRIDGE_SOURCE_DAY_MAX = 92;
 const DBR_PRIVATE_BATCH_MAX = 8;
+// Replaced only in the new backend build with tracked factual schedule metadata.
+// The private Drive plan remains the bounded prepared prefix for rollback compatibility.
+const DBR_COMPLETE_BRIDGE_SCHEDULE = JSON.parse("{\"__dbr_complete_bridge_schedule__\":true}");
 
 function doGet() {
   const output = HtmlService.createHtmlOutputFromFile("Index")
@@ -136,6 +143,7 @@ function getBootstrapData(readerCode) {
       session: context.identity,
       participants: context.participants,
       readerEnrollmentRemembered: context.readerEnrollmentRemembered,
+      preparedReadingIds: DBRServerCore.manifestPreparedReadingIds(privateState.plan, privateState.manifest),
       sources: []
     };
   });
@@ -602,32 +610,40 @@ function dbrReadPrivateState_() {
     } catch (_) {
       cached = null;
     }
-    if (cached && cached.manifestFileId === manifestId && cached.manifest && cached.config && cached.plan) {
+    if (cached && cached.manifestFileId === manifestId && cached.manifest && cached.config && cached.privatePlan) {
       // Cache avoids reparsing three Drive blobs during a burst of related RPCs,
       // but file access is still checked under the accessing user's identity.
       [manifestId, cached.manifest.appConfigFileId, cached.manifest.planFileId].forEach(function (fileId) {
         DriveApp.getFileById(fileId).getId();
       });
-      dbrValidatePrivateConfig_(cached.config, cached.plan, cached.manifest);
-      return {manifest: cached.manifest, config: cached.config, plan: cached.plan};
+      dbrValidatePrivateConfig_(cached.config, cached.privatePlan, cached.manifest);
+      return {
+        manifest: cached.manifest,
+        config: cached.config,
+        plan: dbrResolveCompleteBridgeSchedule_(cached.privatePlan, cached.manifest)
+      };
     }
     const manifest = DBRServerCore.parseManifest(dbrReadJsonFile_(manifestId, 150000, "CONTENT_ACCESS_DENIED"));
     const config = dbrReadJsonFile_(manifest.appConfigFileId, 150000, "CONTENT_ACCESS_DENIED");
-    const plan = dbrReadJsonFile_(manifest.planFileId, 500000, "CONTENT_ACCESS_DENIED");
-    dbrValidatePrivateConfig_(config, plan, manifest);
+    const privatePlan = dbrReadJsonFile_(manifest.planFileId, 500000, "CONTENT_ACCESS_DENIED");
+    dbrValidatePrivateConfig_(config, privatePlan, manifest);
     if (userCache) {
       try {
         userCache.put(DBR_PRIVATE_STATE_CACHE.key, JSON.stringify({
           manifestFileId: manifestId,
           manifest: manifest,
           config: config,
-          plan: plan
+          privatePlan: privatePlan
         }), DBR_PRIVATE_STATE_CACHE.ttlSeconds);
       } catch (_) {
         // Cache is an optimization only; Drive remains canonical.
       }
     }
-    return {manifest: manifest, config: config, plan: plan};
+    return {
+      manifest: manifest,
+      config: config,
+      plan: dbrResolveCompleteBridgeSchedule_(privatePlan, manifest)
+    };
   } catch (error) {
     if (error && error.code) throw error;
     throw dbrError_("CONTENT_ACCESS_DENIED", "Private content is unavailable to this account.");
@@ -680,7 +696,7 @@ function dbrValidatePrivateConfig_(config, plan, manifest) {
     currentPlanDay + config.preparedAheadDays
   );
   if (plan.entries.length > maximumRollingEntries) {
-    throw dbrError_("CONTENT_INVALID", "The rolling plan extends beyond the authorized seven-day horizon.");
+    throw dbrError_("CONTENT_INVALID", "The rolling prepared plan extends beyond the authorized seven-day horizon.");
   }
   plan.entries.forEach(function (entry, index) {
     const sourcePlanDay = DBR_BRIDGE_SOURCE_DAY_MIN + index;
@@ -694,14 +710,37 @@ function dbrValidatePrivateConfig_(config, plan, manifest) {
     }
   });
   if (manifest) {
-    const planIds = new Set(plan.entries.map(function (entry) { return entry.readingId; }));
-    const manifestIds = Object.keys(manifest.readings || {});
-    if (manifestIds.length !== planIds.size ||
-        plan.entries.some(function (entry) { return !manifest.readings[entry.readingId]; }) ||
-        manifestIds.some(function (readingId) { return !planIds.has(readingId); })) {
-      throw dbrError_("CONTENT_INVALID", "The private manifest must exactly match the rolling plan.");
+    try {
+      const prepared = DBRServerCore.manifestPreparedReadingIds(plan, manifest);
+      if (prepared.length !== plan.entries.length) throw new Error("Manifest is incomplete.");
+    } catch (_) {
+      throw dbrError_("CONTENT_INVALID", "The private manifest must exactly match the rolling prepared plan.");
     }
   }
+}
+
+function dbrResolveCompleteBridgeSchedule_(privatePlan, manifest) {
+  const fullPlan = DBR_COMPLETE_BRIDGE_SCHEDULE;
+  if (!fullPlan || fullPlan.schemaVersion !== "plan/v1" ||
+      fullPlan.planVersion !== privatePlan.planVersion ||
+      !Array.isArray(fullPlan.entries) ||
+      fullPlan.entries.length !== DBR_BRIDGE_SOURCE_DAY_MAX - DBR_BRIDGE_SOURCE_DAY_MIN + 1) {
+    throw dbrError_("CONTENT_INVALID", "The compiled bridge schedule is invalid.");
+  }
+  try {
+    DBRServerCore.validatePlanStructure(fullPlan);
+    const preparedIds = DBRServerCore.manifestPreparedReadingIds(fullPlan, manifest);
+    if (preparedIds.length !== privatePlan.entries.length ||
+        privatePlan.entries.some(function (entry, index) {
+          return !entry || entry.readingId !== fullPlan.entries[index].readingId ||
+            entry.sourcePlanDay !== fullPlan.entries[index].sourcePlanDay;
+        })) {
+      throw new Error("Prepared prefix does not match compiled schedule.");
+    }
+  } catch (_) {
+    throw dbrError_("CONTENT_INVALID", "The prepared bridge prefix does not match the compiled schedule.");
+  }
+  return fullPlan;
 }
 
 function dbrReadTextFile_(fileId, maxBytes) {

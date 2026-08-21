@@ -10,7 +10,7 @@ import process from "node:process";
 const ROOT = process.cwd();
 const PORT = Number(process.env.DBR_PORT || 4173);
 const HOST = "127.0.0.1";
-const ACTIVE_PLAN = JSON.parse(await readFile(path.join(ROOT, "fixtures/pilot-content/plan.json"), "utf8"));
+const ACTIVE_PLAN = JSON.parse(await readFile(path.join(ROOT, "config/bridge-schedules/celebration-y3q4-bridge-full.json"), "utf8"));
 const BRIDGE_READING_IDS = ACTIVE_PLAN.entries.map((entry) => entry.readingId);
 const MHC_PILOT_READING_IDS = ["intro-GEN", "GEN-001"];
 const MHC_WINDOW_ROOT = path.join(ROOT, "private-commentary", "mhc", "stores", "current-window");

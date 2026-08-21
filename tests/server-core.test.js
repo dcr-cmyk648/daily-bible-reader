@@ -5,6 +5,7 @@ const path = require("node:path");
 
 const core = require("../app/shared/server-core.js");
 const plan = JSON.parse(fs.readFileSync(path.join(__dirname, "../fixtures/pilot-content/plan.json"), "utf8"));
+const fullBridgePlan = JSON.parse(fs.readFileSync(path.join(__dirname, "../config/bridge-schedules/celebration-y3q4-bridge-full.json"), "utf8"));
 const FIRST_READING = "CC-Y3Q4-D054";
 const SECOND_READING = "CC-Y3Q4-D055";
 const DUSTIN_CODE_HASH = "a".repeat(64);
@@ -163,6 +164,28 @@ test("Drive manifest resolves configured files and rejects arbitrary IDs", () =>
   });
   assert.throws(() => core.assertAllowedFileId(manifest, "ARBITRARY_FILE_123"), {code: "FILE_NOT_ALLOWED"});
   assert.throws(() => core.resolveReadingFiles(manifest, "GEN-002"), {code: "READING_NOT_FOUND"});
+});
+
+test("a private manifest may cover only a contiguous prepared prefix of the full schedule", () => {
+  const record = (id) => ({contentFileId: `CONTENT_${id}_12345`, metadataFileId: `METADATA_${id}_12345`});
+  const manifest = {
+    schemaVersion: "private-manifest/v1",
+    appConfigFileId: "CONFIG_FILE_12345",
+    planFileId: "PLAN_FILE_1234567",
+    sourceRegistryFileId: "SOURCE_FILE_12345",
+    readings: {
+      "CC-Y3Q4-D054": record("D054"),
+      "CC-Y3Q4-D055": record("D055")
+    }
+  };
+  assert.deepEqual(core.manifestPreparedReadingIds(fullBridgePlan, manifest), ["CC-Y3Q4-D054", "CC-Y3Q4-D055"]);
+  const gapped = structuredClone(manifest);
+  delete gapped.readings["CC-Y3Q4-D055"];
+  gapped.readings["CC-Y3Q4-D056"] = record("D056");
+  assert.throws(() => core.manifestPreparedReadingIds(fullBridgePlan, gapped), {code: "INVALID_MANIFEST"});
+  const unknown = structuredClone(manifest);
+  unknown.readings["CC-Y3Q4-D999"] = record("D999");
+  assert.throws(() => core.manifestPreparedReadingIds(fullBridgePlan, unknown), {code: "INVALID_MANIFEST"});
 });
 
 test("create ignores frontend identity and uses server timestamp/identity", () => {

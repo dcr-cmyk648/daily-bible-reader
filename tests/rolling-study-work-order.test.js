@@ -6,12 +6,25 @@ import {buildRollingStudyWorkOrder, privateReadingReady} from "../scripts/lib/ro
 
 const json = (file) => JSON.parse(readFileSync(new URL(`../${file}`, import.meta.url), "utf8"));
 const inputs = () => ({
-  plan: json("fixtures/pilot-content/plan.json"),
+  plan: json("config/bridge-schedules/celebration-y3q4-bridge-full.json"),
+  privatePlan: json("fixtures/pilot-content/plan.json"),
   appConfig: json("fixtures/pilot-content/app-config.json"),
   referencePlan: json("config/reference-plans/celebration-y3q4.json"),
   metrics: json("config/reference-plans/celebration-y3q4-chapter-metrics.json"),
   today: "2026-08-13",
   issuedAt: "2026-08-13T07:00:00.000Z"
+});
+
+test("the work order distinguishes the complete schedule from the private prepared prefix", () => {
+  const order = buildRollingStudyWorkOrder({...inputs(), today: "2026-08-21", issuedAt: "2026-08-21T07:00:00.000Z"});
+  assert.equal(order.reading.readingId, "CC-Y3Q4-D074");
+  assert.equal(order.planExtensionRequired, true);
+});
+
+test("the private prepared plan must align with the complete schedule", () => {
+  const privatePlan = structuredClone(inputs().privatePlan);
+  privatePlan.entries[1].readingId = "CC-Y3Q4-D999";
+  assert.throws(() => buildRollingStudyWorkOrder({...inputs(), privatePlan}), /contiguous prefix/);
 });
 
 test("the daily work order selects exactly the reading entering T+7", () => {

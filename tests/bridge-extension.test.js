@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {readFileSync} from "node:fs";
 
-import {authorizedBridgeSourceDay, buildBridgeExtension} from "../scripts/lib/bridge-extension.mjs";
+import {authorizedBridgeSourceDay, buildBridgeExtension, buildCompleteBridgeSchedule} from "../scripts/lib/bridge-extension.mjs";
 
 const json = (file) => JSON.parse(readFileSync(new URL(`../${file}`, import.meta.url), "utf8"));
 
@@ -47,7 +47,21 @@ test("the bridge cannot skip ahead or exceed the seven-day authorization", () =>
   const metrics = json("config/reference-plans/celebration-y3q4-chapter-metrics.json");
   const boundary = nextBoundary(plan, appConfig);
   assert.throws(() => buildBridgeExtension({plan, appConfig, referencePlan, metrics,
-    sourceDay: boundary.sourceDay + 1, today: boundary.today}), /append exactly/);
+    sourceDay: boundary.sourceDay - 1, today: boundary.today}), /append exactly/);
   assert.throws(() => buildBridgeExtension({plan, appConfig, referencePlan, metrics,
     sourceDay: boundary.sourceDay, today: addCivilDays(boundary.today, -1)}), /T\+7 horizon/);
+});
+
+test("the full factual schedule is deterministic and does not broaden the preparation window", () => {
+  const plan = json("fixtures/pilot-content/plan.json");
+  const appConfig = json("fixtures/pilot-content/app-config.json");
+  const referencePlan = json("config/reference-plans/celebration-y3q4.json");
+  const metrics = json("config/reference-plans/celebration-y3q4-chapter-metrics.json");
+  const full = buildCompleteBridgeSchedule({plan, appConfig, referencePlan, metrics});
+  const tracked = json("config/bridge-schedules/celebration-y3q4-bridge-full.json");
+  assert.equal(full.entries.length, 39);
+  assert.equal(full.entries.at(-1).readingId, "CC-Y3Q4-D092");
+  assert.deepEqual(full.entries.at(-1).passages, [{bookId: "MAL", chapter: 4, verseCount: 6}]);
+  assert.deepEqual(full, tracked);
+  assert.deepEqual(appConfig.testingReadingIds, plan.entries.map((entry) => entry.readingId));
 });

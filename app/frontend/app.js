@@ -64,9 +64,13 @@
     "2PE": "2 Peter",
     HAB: "Habakkuk",
     HAG: "Haggai",
+    JAS: "James",
+    MAL: "Malachi",
     MIC: "Micah",
     NAM: "Nahum",
+    PSA: "Psalms",
     PRO: "Proverbs",
+    ZEC: "Zechariah",
     ZEP: "Zephaniah"
   };
   const FALLBACK_ESV_NOTICE = "Scripture quotations are from the ESV® Bible (The Holy Bible, English Standard Version®), © 2001 by Crossway, a publishing ministry of Good News Publishers. Used by permission. All rights reserved. The ESV text may not be quoted in any publication made available to the public by a Creative Commons license. The ESV may not be translated into any other language.\n\nUsers may not copy or download more than 500 verses of the ESV Bible or more than one half of any book of the ESV Bible.";
@@ -89,6 +93,7 @@
     currentPage: 0,
     policy: null,
     plan: null,
+    preparedReadingIds: new Set(),
     prefetchScheduled: false,
     priorityPrefetchPromise: null,
     privatePayloadByReadingId: new Map(),
@@ -251,6 +256,29 @@
       }
     }
     return plan;
+  }
+
+  function preparedReadingIdSet(bootstrap, plan) {
+    const planIds = new Set(plan.entries.map((entry) => entry.readingId));
+    // Older immutable backends did not expose this field. Treat their matching
+    // plan as fully prepared for backward compatibility; the current backend
+    // always provides an audited contiguous prefix.
+    if (!Object.prototype.hasOwnProperty.call(bootstrap || {}, "preparedReadingIds")) {
+      return planIds;
+    }
+    const ids = bootstrap && bootstrap.preparedReadingIds;
+    if (!Array.isArray(ids) || !ids.length || ids.some((readingId) => typeof readingId !== "string" || !planIds.has(readingId))) {
+      throw appError("The server did not provide valid prepared-reading membership.", "CONTENT_MISMATCH");
+    }
+    const prefix = plan.entries.slice(0, ids.length).map((entry) => entry.readingId);
+    if (JSON.stringify(ids) !== JSON.stringify(prefix)) {
+      throw appError("Prepared readings must be a contiguous prefix of the active plan.", "CONTENT_MISMATCH");
+    }
+    return new Set(ids);
+  }
+
+  function hasPreparedReading(entry) {
+    return Boolean(entry && state.preparedReadingIds && state.preparedReadingIds.has(entry.readingId));
   }
 
   function calculateSchedule(planInput, config, nowInput, requestedReadingId, options) {
@@ -722,7 +750,9 @@
       cacheContext: mhcPilotMode() ? "mock-mhc-pilot" : privateDraftMode() ? "mock-private-draft" : "mock-fixture",
       async getBootstrapData() {
         const configPath = mhcPilotMode() ? "/__mhc/config.json" : "../../fixtures/pilot-content/app-config.json";
-        const planPath = mhcPilotMode() ? "/__mhc/plan.json" : "../../fixtures/pilot-content/plan.json";
+        const planPath = mhcPilotMode()
+          ? "/__mhc/plan.json"
+          : "../../config/bridge-schedules/celebration-y3q4-bridge-full.json";
         const registryPath = mhcPilotMode()
           ? "/__mhc/registry.json"
           : privateDraftMode()
@@ -746,6 +776,7 @@
             {authorId: "dustin", displayName: "Dustin"},
             {authorId: "shane", displayName: "Shane"}
           ],
+          preparedReadingIds: plan.entries.map((entry) => entry.readingId),
           sources: registry.sources
         };
       },
@@ -2289,6 +2320,7 @@
       appUrl: bootstrap.appUrl,
       config: bootstrap.config,
       plan: bootstrap.plan,
+      preparedReadingIds: bootstrap.preparedReadingIds,
       providerPolicy: bootstrap.providerPolicy,
       session: {authorId: session.authorId, displayName: session.displayName},
       participants: (bootstrap.participants || []).map((participant) => ({
@@ -2715,6 +2747,15 @@
       panel.hidden = true;
       return;
     }
+    if (!hasPreparedReading(day.entry)) {
+      panel.hidden = false;
+      element("selectedDayVerseLink").removeAttribute("href");
+      element("selectedDayVerseLink").textContent = "Selection pending";
+      element("selectedDayVerseText").hidden = true;
+      element("selectedDayVerseNoticeDisclosure").hidden = true;
+      element("selectedDayVerseStatus").textContent = "The verse selection will appear when this scheduled study has been prepared.";
+      return;
+    }
     panel.hidden = false;
     element("selectedDayVerseLink").removeAttribute("href");
     element("selectedDayVerseLink").textContent = "Loading selection…";
@@ -2805,14 +2846,21 @@
       row.append(identity, status);
       completion.appendChild(row);
     });
-    const canOpen = Boolean(day.entry && day.accessible);
+    const prepared = hasPreparedReading(day.entry);
+    const canOpen = Boolean(day.entry && day.accessible && prepared);
     button.disabled = !canOpen;
     button.dataset.readingId = canOpen ? day.entry.readingId : "";
     button.textContent = canOpen
       ? `Open ${shortOpenDate(day.date)} reading`
-      : day.entry ? `Reading unavailable on ${shortOpenDate(day.date)}` : `No reading on ${shortOpenDate(day.date)}`;
+      : day.entry && !day.accessible
+        ? `Reading unavailable on ${shortOpenDate(day.date)}`
+        : day.entry
+          ? `Study preparation pending for ${shortOpenDate(day.date)}`
+          : `No reading on ${shortOpenDate(day.date)}`;
     if (canOpen) button.setAttribute("aria-label", `Open ${fullCalendarDate(day.date)} reading: ${titleForEntry(day.entry)}`);
-    else button.removeAttribute("aria-label");
+    else if (day.entry && day.accessible && !prepared) {
+      button.setAttribute("aria-label", `${fullCalendarDate(day.date)} reading: ${titleForEntry(day.entry)}. Study preparation pending.`);
+    } else button.removeAttribute("aria-label");
     renderSelectedDayVerse(day);
   }
 
@@ -2851,6 +2899,7 @@
         button.dataset.today = day.isToday ? "true" : "false";
         button.dataset.currentMonth = day.inCurrentMonth ? "true" : "false";
         button.dataset.hasReading = day.entry ? "true" : "false";
+        button.dataset.prepared = hasPreparedReading(day.entry) ? "true" : "false";
         button.dataset.selected = day.date === state.selectedCalendarDate ? "true" : "false";
         button.disabled = !day.inCurrentMonth;
         button.setAttribute("aria-pressed", day.date === state.selectedCalendarDate ? "true" : "false");
@@ -2870,8 +2919,10 @@
         });
         button.append(number, dots);
 
+        const prepared = hasPreparedReading(day.entry);
         const descriptors = day.entry
-          ? [fullCalendarDate(day.date), day.shortTitle, day.accessible ? "Reading available" : "Reading locked"]
+          ? [fullCalendarDate(day.date), day.shortTitle,
+            !day.accessible ? "Reading locked" : prepared ? "Reading available" : "Study preparation pending"]
           : [fullCalendarDate(day.date), "No scheduled reading"];
         state.calendarParticipants.forEach((participant) => {
           descriptors.push(`${participant.displayName}: ${completedAuthors.has(participant.authorId) ? "completed" : "not completed"}`);
@@ -3168,6 +3219,20 @@
     }
     setSyncStatus("Loading reading…");
     const entry = schedule.selectedEntry;
+    if (!hasPreparedReading(entry)) {
+      state.verseOfTheDay = null;
+      prepareVerseOfTheDay();
+      setBanner("This scheduled reading has not yet been prepared. Its private study will become available once the seven-day preparation lane publishes it.", "info");
+      replaceWithText(element("overviewContent"), "This scheduled study is still being prepared.");
+      element("overviewSources").replaceChildren();
+      replaceWithText(element("commentarySummary"), "The commentary summary will become available with the prepared study.");
+      replaceWithText(element("practicalTakeaway"), "The practical takeaway will become available with the prepared study.");
+      element("mainSourceNotes").replaceChildren();
+      element("mainSourceDisclosure").hidden = true;
+      replaceWithText(element("comprehensiveSynthesis"), "The comprehensive synthesis will become available with the prepared study.");
+      setSyncStatus("Study preparation pending");
+      return;
+    }
     await loadCachedDiscussion(entry.readingId);
     await loadDraft(entry.readingId);
     refreshComments({background: true, readingId: entry.readingId}).catch(() => {});
@@ -3190,7 +3255,7 @@
     if (!serverCallsAllowed() || !state.plan || !state.schedule) return;
     if (state.priorityPrefetchPromise) return state.priorityPrefetchPromise;
     const run = async () => {
-      const entries = syncScriptureMemoryWindow();
+      const entries = syncScriptureMemoryWindow().filter(hasPreparedReading);
       if (!entries.length) return;
       for (const entry of entries) {
         await cachedPrivatePayload(entry.readingId);
@@ -3261,12 +3326,13 @@
     let endIndex = Math.min(entries.length, startIndex + target);
     if (endIndex - startIndex < target) startIndex = Math.max(0, endIndex - target);
     const windowEntries = entries.slice(startIndex, endIndex);
+    const preparedEntries = windowEntries.filter(hasPreparedReading);
     let contentCount = 0;
     let scriptureCount = 0;
     let scriptureEligible = 0;
     const payloadByReadingId = new Map();
 
-    for (const entry of windowEntries) {
+    for (const entry of preparedEntries) {
       const payload = await cachedPrivatePayload(entry.readingId);
       if (payload) {
         contentCount += 1;
@@ -3274,20 +3340,20 @@
       }
     }
 
-    if (windowEntries.length && serverCallsAllowed()) {
+    if (preparedEntries.length && serverCallsAllowed()) {
       try {
         // The retained pack is a fast offline fallback, not an authority for whether
         // a study is current. Revalidate the whole current-plus-seven window after
         // authorization so a newly reviewed synthesis or Henry runtime replaces an
         // older cached placeholder without waiting for its retention age to expire.
-        const readingIds = windowEntries.map((entry) => entry.readingId);
+        const readingIds = preparedEntries.map((entry) => entry.readingId);
         const batch = await state.adapter.getReadingPayloads(readingIds);
         if (!batch || batch.planVersion !== state.plan.planVersion ||
             !batch.payloads || typeof batch.payloads !== "object") {
           throw appError("Offline reading batch did not match the active plan.", "CONTENT_MISMATCH");
         }
         contentCount = 0;
-        for (const entry of windowEntries) {
+        for (const entry of preparedEntries) {
           const payload = batch.payloads[entry.readingId];
           const commentary = payload && (payload.commentary || payload.metadata);
           if (!commentary || commentary.readingId !== entry.readingId) {
@@ -3304,7 +3370,7 @@
     }
 
     let scriptureRestrictedReadings = 0;
-    const scriptureEntries = windowEntries.filter((entry) => entry.kind === "chapter");
+    const scriptureEntries = preparedEntries.filter((entry) => entry.kind === "chapter");
     scriptureEligible = scriptureEntries.reduce((total, entry) => total +
       scriptureRetentionTargetCount(entry, state.plan.bookMetrics, state.policy), 0);
     for (const entry of scriptureEntries.slice().reverse()) {
@@ -3911,6 +3977,7 @@
     state.bootstrap = bootstrap;
     state.config = bootstrap.config;
     state.plan = validatePlan(bootstrap.plan);
+    state.preparedReadingIds = preparedReadingIdSet(bootstrap, state.plan);
     state.policy = root.DBRProviderPolicy.validatePolicy(bootstrap.providerPolicy);
     state.session = bootstrap.session;
     state.sources = bootstrap.sources || [];
@@ -3983,6 +4050,7 @@
     state.activeCalendarDate = null;
     state.config = null;
     state.plan = null;
+    state.preparedReadingIds = new Set();
     state.policy = null;
     state.session = null;
     state.sources = [];
@@ -4234,6 +4302,7 @@
     handleFatalError,
     init,
     parseDateOnly,
+    preparedReadingIdSet,
     priorityReadingEntries,
     privatePayloadNeedsBlockingRefresh,
     privatePayloadRevision,

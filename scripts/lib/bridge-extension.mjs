@@ -32,15 +32,11 @@ function parseReference(reference, metrics) {
   return {bookId: book.bookId, chapter, verseCount, bookMetrics: book};
 }
 
-export function buildBridgeExtension({plan, appConfig, referencePlan, metrics, sourceDay, today}) {
+function buildBridgeEntry({plan, appConfig, referencePlan, metrics, sourceDay}) {
   if (!Number.isInteger(sourceDay) || sourceDay < 1 || sourceDay > 92) throw new Error("sourceDay must be 1–92.");
   const last = plan.entries.at(-1);
   if (sourceDay !== last.sourcePlanDay + 1) {
     throw new Error(`Bridge extension must append exactly source day ${last.sourcePlanDay + 1}.`);
-  }
-  const authorized = authorizedBridgeSourceDay({plan, appConfig, today});
-  if (sourceDay > authorized) {
-    throw new Error(`Source day ${sourceDay} exceeds the authorized T+7 horizon ending at source day ${authorized}.`);
   }
   const referenceDay = referencePlan.days.find((candidate) => candidate.day === sourceDay);
   if (!referenceDay || !Array.isArray(referenceDay.references) || !referenceDay.references.length) {
@@ -79,5 +75,31 @@ export function buildBridgeExtension({plan, appConfig, referencePlan, metrics, s
   });
   const nextConfig = structuredClone(appConfig);
   if (!nextConfig.testingReadingIds.includes(readingId)) nextConfig.testingReadingIds.push(readingId);
-  return {plan: nextPlan, appConfig: nextConfig, entry, authorizedSourceDay: authorized};
+  return {plan: nextPlan, appConfig: nextConfig, entry};
+}
+
+export function buildBridgeExtension({plan, appConfig, referencePlan, metrics, sourceDay, today}) {
+  const authorized = authorizedBridgeSourceDay({plan, appConfig, today});
+  if (sourceDay > authorized) {
+    throw new Error(`Source day ${sourceDay} exceeds the authorized T+7 horizon ending at source day ${authorized}.`);
+  }
+  return {...buildBridgeEntry({plan, appConfig, referencePlan, metrics, sourceDay}), authorizedSourceDay: authorized};
+}
+
+export function buildCompleteBridgeSchedule({plan, appConfig, referencePlan, metrics}) {
+  let nextPlan = structuredClone(plan);
+  // This build tool writes the known factual schedule, not future studies. Future
+  // entries remain locked and have no manifest-backed private payload until the
+  // daily T+7 preparation lane publishes them.
+  while (nextPlan.entries.at(-1).sourcePlanDay < referencePlan.dayCount) {
+    const sourceDay = nextPlan.entries.at(-1).sourcePlanDay + 1;
+    nextPlan = buildBridgeEntry({
+      plan: nextPlan,
+      appConfig: {...appConfig, testingReadingIds: []},
+      referencePlan,
+      metrics,
+      sourceDay
+    }).plan;
+  }
+  return nextPlan;
 }

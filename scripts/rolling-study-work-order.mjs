@@ -33,7 +33,8 @@ async function main() {
   const today = options.today || new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Detroit", year: "numeric", month: "2-digit", day: "2-digit"
   }).format(new Date());
-  const [plan, appConfig, referencePlan, metrics, schema, manifest] = await Promise.all([
+  const [plan, privatePlan, appConfig, referencePlan, metrics, schema, manifest] = await Promise.all([
+    readJson(path.join(ROOT, "config", "bridge-schedules", "celebration-y3q4-bridge-full.json")),
     readJson(path.join(ROOT, "fixtures", "pilot-content", "plan.json")),
     readJson(path.join(ROOT, "fixtures", "pilot-content", "app-config.json")),
     readJson(path.join(ROOT, "config", "reference-plans", "celebration-y3q4.json")),
@@ -50,7 +51,7 @@ async function main() {
     readJson(`${base}.metadata.json`, true), optionalBytes(`${base}.md`)
   ]);
   const workOrder = buildRollingStudyWorkOrder({
-    plan, appConfig, referencePlan, metrics, today, issuedAt: new Date().toISOString(), metadata, markdownBytes,
+    plan, privatePlan, appConfig, referencePlan, metrics, today, issuedAt: new Date().toISOString(), metadata, markdownBytes,
     manifestHasReading: Boolean(manifest && manifest.readings && manifest.readings[readingId])
   });
   assertSchemaValid(workOrder, schema, {label: "Rolling study work order"});

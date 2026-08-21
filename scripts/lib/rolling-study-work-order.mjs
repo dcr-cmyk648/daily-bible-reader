@@ -1,5 +1,5 @@
 import {createHash} from "node:crypto";
-import {authorizedBridgeSourceDay, buildBridgeExtension} from "./bridge-extension.mjs";
+import {authorizedBridgeSourceDay} from "./bridge-extension.mjs";
 
 const REQUIRED_COMPONENTS = Object.freeze([
   "planEntry", "orientation", "scriptureReference", "verseOfTheDayReference", "commentarySummary",
@@ -50,23 +50,33 @@ export function privateReadingReady({entry, metadata, markdownBytes, manifestHas
   return true;
 }
 
-export function buildRollingStudyWorkOrder({plan, appConfig, referencePlan, metrics, today, issuedAt,
+export function buildRollingStudyWorkOrder({plan, privatePlan = plan, appConfig, referencePlan, metrics, today, issuedAt,
   metadata = null, markdownBytes = null, manifestHasReading = false}) {
   const sourceDay = authorizedBridgeSourceDay({plan, appConfig, today});
   const targetDate = addCivilDays(today, 7);
-  let entry = plan.entries.find((candidate) => candidate.sourcePlanDay === sourceDay);
-  let planExtensionRequired = false;
-  if (!entry && sourceDay <= referencePlan.dayCount) {
-    entry = buildBridgeExtension({plan, appConfig, referencePlan, metrics, sourceDay, today}).entry;
-    planExtensionRequired = true;
+  const entry = plan.entries.find((candidate) => candidate.sourcePlanDay === sourceDay);
+  if (!privatePlan || privatePlan.planVersion !== plan.planVersion || !Array.isArray(privatePlan.entries) ||
+      privatePlan.entries.some((candidate, index) => !plan.entries[index] ||
+        candidate.readingId !== plan.entries[index].readingId ||
+        candidate.sourcePlanDay !== plan.entries[index].sourcePlanDay)) {
+    throw new Error("The private prepared plan must be a contiguous prefix of the complete schedule.");
   }
+  // The public/calendar schedule is already complete. This legacy field now
+  // records whether the rollback-compatible private prepared-prefix plan must
+  // advance before this reading can be promoted into the private manifest.
+  const planExtensionRequired = Boolean(entry && !privatePlan.entries.some((candidate) =>
+    candidate.readingId === entry.readingId));
   const ready = entry && privateReadingReady({entry, metadata, markdownBytes, manifestHasReading});
   const action = !entry ? "plan_complete" : ready ? "none" : "prepare_publish";
-  const reasonCode = !entry ? "reference_plan_complete" : ready ? "t_plus_7_ready" :
-    planExtensionRequired ? "t_plus_7_requires_plan_and_content" : "t_plus_7_content_missing_or_stale";
+  const reasonCode = !entry ? "reference_plan_complete" : ready ? "t_plus_7_ready" : "t_plus_7_content_missing_or_stale";
   return {
     schemaVersion: "rolling-study-work-order/v1",
-    workOrderId: `RSWO-${sha256(JSON.stringify({plan: plan.planVersion, reading: entry && entry.readingId, reasonCode})).slice(0, 24)}`,
+    workOrderId: `RSWO-${sha256(JSON.stringify({
+      plan: plan.planVersion,
+      reading: entry && entry.readingId,
+      reasonCode,
+      planExtensionRequired
+    })).slice(0, 24)}`,
     issuedAt,
     effectiveDate: today,
     targetDate,

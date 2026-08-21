@@ -61,8 +61,8 @@ async function synchronizeAttachedHenry(readingIds) {
 }
 
 async function main() {
-  const activePlan = JSON.parse(await readFile(path.join(ROOT, "fixtures/pilot-content/plan.json"), "utf8"));
-  const readingIds = activePlan.entries.map((entry) => entry.readingId);
+  const privatePlan = JSON.parse(await readFile(path.join(ROOT, "fixtures/pilot-content/plan.json"), "utf8"));
+  const readingIds = privatePlan.entries.map((entry) => entry.readingId);
   const inputs = bundleInputs(readingIds);
   await synchronizeAttachedHenry(readingIds);
   validatePrivateInputs();

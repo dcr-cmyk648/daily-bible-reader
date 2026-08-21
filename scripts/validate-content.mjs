@@ -6,6 +6,7 @@ import path from "node:path";
 import process from "node:process";
 import vm from "node:vm";
 import {assertSchemaValid} from "./lib/schema-validator.mjs";
+import {buildCompleteBridgeSchedule} from "./lib/bridge-extension.mjs";
 
 const require = createRequire(import.meta.url);
 const providerPolicy = require("../app/shared/provider-policy.js");
@@ -89,8 +90,9 @@ async function main() {
     schemas[filename] = schema;
   }
 
-  const [plan, config, deploymentConfig, registry, placeholder, referencePlan, policies, manifestExample, appsManifest] = await Promise.all([
+  const [plan, fullBridgeSchedule, config, deploymentConfig, registry, placeholder, referencePlan, policies, manifestExample, appsManifest] = await Promise.all([
     json("fixtures/pilot-content/plan.json"),
+    json("config/bridge-schedules/celebration-y3q4-bridge-full.json"),
     json("fixtures/pilot-content/app-config.json"),
     json("config/app-config.example.json"),
     json("fixtures/pilot-content/source-registry.json"),
@@ -102,6 +104,7 @@ async function main() {
   ]);
 
   assertSchemaValid(plan, schemas["plan.schema.json"], {label: "Pilot plan", externalSchemas: schemas});
+  assertSchemaValid(fullBridgeSchedule, schemas["plan.schema.json"], {label: "Complete bridge schedule", externalSchemas: schemas});
   assertSchemaValid(registry, schemas["source.schema.json"], {label: "Source registry", externalSchemas: schemas});
   assertSchemaValid(placeholder, schemas["commentary.schema.json"], {label: "Bridge commentary placeholder", externalSchemas: schemas});
   policies.policies.forEach((policy, index) => assertSchemaValid(policy, schemas["provider-policy.schema.json"], {
@@ -110,6 +113,16 @@ async function main() {
   }));
 
   assert(plan.schemaVersion === "plan/v1", "Plan schema version.");
+  assert(fullBridgeSchedule.entries.length === 39 && fullBridgeSchedule.entries.at(-1).readingId === "CC-Y3Q4-D092",
+    "Complete bridge schedule must end at D092.");
+  const regeneratedFullBridgeSchedule = buildCompleteBridgeSchedule({
+    plan,
+    appConfig: config,
+    referencePlan,
+    metrics: await json("config/reference-plans/celebration-y3q4-chapter-metrics.json")
+  });
+  assert(JSON.stringify(fullBridgeSchedule) === JSON.stringify(regeneratedFullBridgeSchedule),
+    "Compiled bridge schedule must exactly match the deterministic reference-plan build.");
   const firstSourcePlanDay = 54;
   const activeThroughSourcePlanDay = plan.entries.at(-1).sourcePlanDay;
   const detroitToday = new Intl.DateTimeFormat("en-CA", {
@@ -122,9 +135,13 @@ async function main() {
     "Tracked bridge may not exceed the current Detroit T+7 horizon.");
   const bridgeIds = Array.from({length: activeThroughSourcePlanDay - firstSourcePlanDay + 1}, (_, index) =>
     `CC-Y3Q4-D${String(index + firstSourcePlanDay).padStart(3, "0")}`);
+  const fullBridgeIds = Array.from({length: 39}, (_, index) =>
+    `CC-Y3Q4-D${String(index + firstSourcePlanDay).padStart(3, "0")}`);
   assert(plan.planVersion === "celebration-y3q4-bridge-2026-v1", "Bridge plan version.");
   assert(plan.entries.length === bridgeIds.length, "Tracked rolling bridge must end at its declared active horizon.");
   assert(JSON.stringify(plan.entries.map((entry) => entry.readingId)) === JSON.stringify(bridgeIds), "Bridge reading IDs and order.");
+  assert(JSON.stringify(fullBridgeSchedule.entries.map((entry) => entry.readingId)) === JSON.stringify(fullBridgeIds),
+    "Compiled bridge schedule must include every factual source day through D092.");
   assert(new Set(plan.entries.map((entry) => entry.readingId)).size === bridgeIds.length, "Reading IDs must be stable and unique.");
   plan.entries.forEach((entry, index) => {
     assert(entry.dayIndex === index + 1, "Plan day indexes must be contiguous.");
@@ -152,7 +169,7 @@ async function main() {
   referencePlan.days.forEach((day, index) => {
     assert(day.day === index + 1 && Array.isArray(day.references) && day.references.length >= 1, "Reference schedule day order.");
   });
-  plan.entries.forEach((entry) => {
+  fullBridgeSchedule.entries.forEach((entry) => {
     const factualReferences = referencePlan.days[entry.sourcePlanDay - 1].references;
     assert(factualReferences.length === entry.passages.length,
       `${entry.readingId}: active passage count must match the factual reference plan`);
@@ -206,13 +223,14 @@ async function main() {
   assert(/PropertiesService\.getUserProperties\(\)/.test(code) && /DBR_READER_ENROLLMENT/.test(code), "Apps Script must support per-user reader enrollment.");
   assert(/readerCodeHash:\s*presentedReaderCodeHash/.test(code), "Per-user enrollment may store only the verified reader-code hash.");
   assert(!/Logger\.log\s*\(/.test(code), "Apps Script must not log reader codes or private payloads.");
+  assert(/DBR_COMPLETE_BRIDGE_SCHEDULE/.test(code), "Apps Script must compile the full factual bridge schedule separately from private Drive content.");
 
   const ignore = await readFile(path.join(ROOT, ".gitignore"), "utf8");
   ["private-content/", "private-commentary/", "research/raw/", ".clasp.json", "config/*.local.json", "dist/"].forEach((entry) =>
     assert(ignore.includes(entry), `.gitignore missing ${entry}`)
   );
 
-  process.stdout.write(`Content validation passed (${schemaFiles.length} schemas, ${bridgeIds.length} rolling bridge readings, 92-day reference schedule, fabricated Scripture only).\n`);
+  process.stdout.write(`Content validation passed (${schemaFiles.length} schemas, ${bridgeIds.length} private-prefix readings, ${fullBridgeIds.length} scheduled bridge readings, 92-day reference schedule, fabricated Scripture only).\n`);
 }
 
 main().catch((error) => {

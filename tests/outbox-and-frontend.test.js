@@ -669,7 +669,7 @@ test("today and tomorrow are the only priority warm readings", () => {
     source.indexOf("function scheduleOfflinePrefetch()")
   );
   assert.match(offlineWarmSource, /getReadingPayloads\(readingIds\)/);
-  assert.match(offlineWarmSource, /windowEntries\.map\(\(entry\) => entry\.readingId\)/);
+  assert.match(offlineWarmSource, /preparedEntries\.map\(\(entry\) => entry\.readingId\)/);
   assert.match(offlineWarmSource, /Revalidate the whole current-plus-seven window/);
   assert.match(offlineWarmSource, /scriptureRetentionTargetCount/);
   assert.match(offlineWarmSource, /keep the first chapter ready and stream later chapters/);

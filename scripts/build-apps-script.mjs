@@ -75,7 +75,7 @@ function validateInlineScript(source, index) {
 }
 
 async function main() {
-  const [sourceHtml, css, providerPolicy, serverCore, boot, staticLoader, app, highlights, code, manifest] = await Promise.all([
+  const [sourceHtml, css, providerPolicy, serverCore, boot, staticLoader, app, highlights, code, manifest, completeBridgePlan] = await Promise.all([
     text("app/frontend/index.html"),
     text("app/frontend/styles.css"),
     text("app/shared/provider-policy.js"),
@@ -85,7 +85,8 @@ async function main() {
     text("app/frontend/app.js"),
     text("app/frontend/highlights.js"),
     text("app/apps-script/Code.gs"),
-    text("app/apps-script/appsscript.json")
+    text("app/apps-script/appsscript.json"),
+    text("config/bridge-schedules/celebration-y3q4-bridge-full.json").then(JSON.parse)
   ]);
 
   for (const [label, source] of [["provider policy", providerPolicy], ["server core", serverCore], ["boot", boot], ["static loader", staticLoader], ["frontend", app], ["highlights", highlights]]) {
@@ -176,6 +177,7 @@ async function main() {
     staticLoader,
     serverCore,
     code,
+    JSON.stringify(completeBridgePlan),
     manifest,
     PAGES_MANIFEST_URL,
     PAGES_FAVICON_URL
@@ -183,9 +185,11 @@ async function main() {
 
   const productionCode = code
     .replaceAll("__DBR_BUILD_ID__", serverBuildId)
-    .replaceAll("__DBR_FAVICON_DATA_URL__", PAGES_FAVICON_URL);
-  if (productionCode.includes("__DBR_BUILD_ID__") || productionCode.includes("__DBR_FAVICON_DATA_URL__")) {
-    throw new Error("Could not inject the server build ID and static favicon URL.");
+    .replaceAll("__DBR_FAVICON_DATA_URL__", PAGES_FAVICON_URL)
+    .replace('JSON.parse("{\\"__dbr_complete_bridge_schedule__\\":true}")', JSON.stringify(completeBridgePlan));
+  if (productionCode.includes("__DBR_BUILD_ID__") || productionCode.includes("__DBR_FAVICON_DATA_URL__") ||
+      productionCode.includes("__dbr_complete_bridge_schedule__")) {
+    throw new Error("Could not inject the Apps Script build configuration.");
   }
 
   const configuredLoader = staticLoader

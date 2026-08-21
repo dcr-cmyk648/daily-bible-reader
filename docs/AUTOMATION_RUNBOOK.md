@@ -14,13 +14,7 @@ Validate the result against `schemas/rolling-study-work-order.schema.json`.
 - `plan_complete`: report completion; do not invent a next plan.
 - `prepare_publish`: work only on `reading.readingId`.
 
-If `planExtensionRequired` is true, append only the named source day:
-
-```sh
-npm run bridge:extend -- --source-day <sourcePlanDay>
-```
-
-The command checks the fixed Detroit start date, the configured seven-day lookahead, contiguity, reference-plan identity, and factual chapter metrics. Re-run `npm run study:next`; the reading must now match the active plan exactly.
+The complete factual D054–D092 schedule is compiled into the current backend, so the daily lane never invents a calendar entry. `planExtensionRequired` now refers only to the separate rollback-compatible private prepared-prefix plan. If it is true and the named reading is the next contiguous private-prefix entry, run `npm run bridge:extend -- --source-day <sourcePlanDay>` immediately before manifest promotion. If an earlier prefix entry is missing, stop and report that first gap rather than skipping it. This preserves older deployments' exact private plan/manifest contract without changing the compiled calendar schedule.
 
 ## 2. Prepare the complete study
 

@@ -25,7 +25,7 @@ For this scope, the reduced setup and launch latency outweigh those residual ris
 - Plain semantic HTML, CSS, and JavaScript; no runtime framework.
 - GitHub Pages as the top-level installable PWA and immutable public-code host.
 - A narrowly compiled Apps Script owner-executed web-app backend.
-- Google Drive as canonical private commentary/plan/source storage.
+- Google Drive as canonical private commentary/source storage plus the rollback-compatible rolling prepared-prefix plan.
 - A Google Sheet as the append-only comment and highlight event store.
 - Official ESV API access from Apps Script only.
 - IndexedDB for the saved reader code, current-plus-seven private-content snapshot, bounded ESV passage cache, calendar state, comment drafts, and comment outbox.
@@ -54,7 +54,7 @@ Browser IndexedDB <── private snapshot + policy-bounded ESV passage records
         └── offline comment drafts + idempotent outbox
 ```
 
-Git never receives real ESV passages, private commentary, comments, source extracts, credentials, user emails, Drive IDs, Sheet IDs, or code hashes. Drive remains canonical after publication. Ignored local working folders may contain drafts during preparation and are inspected before upload. The offline Henry pipeline may also export a checksum-addressed, app-neutral current-window store in ignored local storage; it explicitly contains no Scripture, remains `not_published`, and reaches the reader or another local consumer only through localhost-only adapters removed from production builds.
+Git never receives real ESV passages, private commentary, comments, source extracts, credentials, user emails, Drive IDs, Sheet IDs, or code hashes. It does contain the non-sensitive factual D054–D092 passage schedule, which the backend compiles for calendar display. Drive remains canonical for private study content after publication. Ignored local working folders may contain drafts during preparation and are inspected before upload. The offline Henry pipeline may also export a checksum-addressed, app-neutral current-window store in ignored local storage; it explicitly contains no Scripture, remains `not_published`, and reaches the reader or another local consumer only through localhost-only adapters removed from production builds.
 
 ## Token identity
 
@@ -80,7 +80,9 @@ The transport allowlist covers only `getBootstrapData`, `confirmReaderAccess`, s
 
 ## Private Drive and configuration
 
-Script Property `PRIVATE_MANIFEST_FILE_ID` is the only content entry point. The private manifest maps stable reading IDs to exact commentary and metadata file IDs plus exact config, plan, and registry IDs. The browser sends only a stable reading ID. The server resolves it through the manifest and never accepts an arbitrary Drive ID or redirect.
+Script Property `PRIVATE_MANIFEST_FILE_ID` is the only private-content entry point. The private manifest maps stable reading IDs to exact commentary and metadata file IDs plus exact config, rolling prefix-plan, and registry IDs. The browser sends only a stable reading ID. The server resolves it through the manifest and never accepts an arbitrary Drive ID or redirect.
+
+The new backend separately embeds the deterministic code-only D054–D092 schedule generated from the reviewed reference plan and chapter metrics. Bootstrap returns that full schedule plus a server-validated `preparedReadingIds` prefix derived from the manifest. The calendar may therefore show every remaining assignment, but the client opens, preloads, or retains only an unlocked manifest-backed reading. The Drive plan and manifest continue to match exactly and advance one prepared entry at a time, so immutable backend 27 and hybrid 23 remain usable without changing their private inputs.
 
 Under the token deployment, Drive permission is exercised as the deployer. Shane may retain Viewer access for independent audit/backup, but his Drive permission is not the application's authorization gate. Files must still never be shared as “anyone with the link.” Portable commentary remains Markdown plus separate JSON metadata, and ESV text is absent from every content file.
 
@@ -98,7 +100,7 @@ The token bundle removes `userinfo.email`; it does not use Google account identi
 
 One Sheet row is one immutable event. Comments use `create`, `edit`, or `delete`; highlights use `create` or `delete`. The latest revision is materialized for display while prior rows remain history. Server identity, display name, IDs, revisions, and timestamps are authoritative. A client request ID makes retries idempotent. Script locks cover lookup, conflict validation, and append.
 
-The server validates each reading and verse against the private plan. Only the author derived from the current token may edit/retract that author's comment or remove that author's highlight. Dustin and Shane may independently highlight the same verse.
+The current server validates each reading and verse against the compiled full schedule; private payload resolution additionally requires manifest membership. Only the author derived from the current token may edit/retract that author's comment or remove that author's highlight. Dustin and Shane may independently highlight the same verse.
 
 Direct native Sheet access is separate from the app. Google sharing—not reader codes—controls who can open the Sheet UI. It may remain limited to Dustin's and Shane's exact accounts, but “valid codes” cannot secure link-shared Sheet access. The owner-executed app itself does not require Shane to be a Sheet editor.
 

@@ -2,7 +2,7 @@
 
 ## Temporary Celebration bridge
 
-The active app schedule is a bounded rolling excerpt from Celebration Church's 92-day *Reading the Bible in 3 Years — Year 3 Quarter 4* plan. As of 2026-08-12 it is prepared through T+7:
+The active app calendar is the complete remaining excerpt from Celebration Church's 92-day *Reading the Bible in 3 Years — Year 3 Quarter 4* plan: source Days 54–92, dated August 8–September 15, 2026. Private study content is prepared as a separate rolling prefix. The first portion is:
 
 | Bridge day | Date | Source-plan day | Reading ID | Scripture |
 |---:|---|---:|---|---|
@@ -21,7 +21,7 @@ The active app schedule is a bounded rolling excerpt from Celebration Church's 9
 
 Days with multiple chapters remain one scheduled reading, one Scripture page, and one discussion keyed to the daily reading ID. A combined response is used only when it stays within ESV display limits; a whole-short-book assignment instead uses chapter tabs and streams/displays one configured chapter at a time.
 
-The complete 92-day sequence is stored as factual reference metadata in `config/reference-plans/celebration-y3q4.json` and a private Drive reference file. It contains passage assignments and provenance, not Celebration's devotional prose, ESV text, commentary, or 92 generated reading payloads. The active plan grows by at most one contiguous source-plan day when that reading enters T+7. No later devotional content is generated in advance.
+The complete 92-day sequence is stored as factual reference metadata in `config/reference-plans/celebration-y3q4.json` and as a derived code-only schedule in `config/bridge-schedules/celebration-y3q4-bridge-full.json`. It contains passage assignments and provenance, not Celebration's devotional prose, ESV text, commentary, or 92 generated reading payloads. The current backend compiles this full schedule for calendar display; the private Drive plan and manifest remain only the contiguous prepared prefix entering T+7, preserving rollback compatibility. No later devotional content is generated in advance.
 
 ## Shared calendar model
 

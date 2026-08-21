@@ -74,7 +74,7 @@ const DBR_ESV_POLICY = {
   provider: "Crossway ESV API",
   translation: "ESV",
   policyVersion: "esv-api-2026-08-15-v5-bounded-offline",
-  verifiedAt: "2026-08-15",
+  verifiedAt: "2026-08-21",
   termsUrl: "https://api.esv.org/",
   maxVersesPerRequest: 500,
   maxTotalCachedVerses: 500,
@@ -342,7 +342,7 @@ function getScripture(readerCode, scriptureRequest) {
       partitioned: selection.partitioned,
       passageIndex: selection.passageIndex,
       passageCount: selection.passageCount,
-      passageOptions: selection.partitioned ? entry.passages.map(function (passage, index) {
+      passageOptions: selection.partitioned ? selection.passageOptions.map(function (passage, index) {
         return {
           index: index,
           bookId: passage.bookId,

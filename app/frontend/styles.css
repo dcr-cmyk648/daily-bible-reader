@@ -297,6 +297,19 @@ h3 {
   background: #30291a;
 }
 
+.scripture-state-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+
+.scripture-state-link[href] {
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-thickness: 0.08em;
+  text-underline-offset: 0.16em;
+}
+
 .state-banner {
   margin-bottom: 1rem;
 }

@@ -804,10 +804,11 @@
         const entry = state.plan.entries.find((candidate) => candidate.readingId === readingId);
         if (!entry || entry.kind !== "chapter") return {available: false, code: "NOT_A_CHAPTER"};
         const partitioned = readingRequiresPartitionedScripture(entry, state.plan.bookMetrics, state.policy);
+        const displaySegments = scriptureDisplaySegments(entry, state.plan.bookMetrics, state.policy);
         const passageIndex = partitioned
           ? normalizedScripturePassageIndex(entry, requestedPassageIndex)
           : null;
-        const requestedPassages = passageIndex === null ? entry.passages : [entry.passages[passageIndex]];
+        const requestedPassages = passageIndex === null ? entry.passages : [displaySegments[passageIndex]];
         return {
           available: true,
           isMock: true,
@@ -829,8 +830,8 @@
           readingEsvUrl: esvUrlForPassages(entry.passages),
           partitioned,
           passageIndex,
-          passageCount: entry.passages.length,
-          passageOptions: partitioned ? entry.passages.map((passage, index) => ({
+          passageCount: partitioned ? displaySegments.length : entry.passages.length,
+          passageOptions: partitioned ? displaySegments.map((passage, index) => ({
             index,
             bookId: passage.bookId,
             chapter: passage.chapter,
@@ -1484,22 +1485,79 @@
   function readingRequiresPartitionedScripture(entry, bookMetrics, policy) {
     if (!entry || entry.kind !== "chapter" || !Array.isArray(entry.passages) || !entry.passages.length) return false;
     const fraction = Number(policy && policy.maxBookFraction);
+    const configuredTotalLimit = Number(policy && policy.maxTotalCachedVerses);
+    const totalLimit = Number.isInteger(configuredTotalLimit) && configuredTotalLimit > 0 ? configuredTotalLimit : 500;
     if (!(fraction > 0 && fraction <= 1)) return false;
+    const segments = scriptureDisplaySegments(entry, bookMetrics, policy);
     const totals = new Map();
     for (const passage of entry.passages) {
       const metrics = bookMetrics && bookMetrics[passage.bookId];
       if (!metrics || !Number.isInteger(metrics.verseCount) || !Number.isInteger(passage.verseCount)) return false;
       totals.set(passage.bookId, (totals.get(passage.bookId) || 0) + passage.verseCount);
     }
-    return Array.from(totals.entries()).some(([bookId, verseCount]) =>
-      verseCount > Math.floor(bookMetrics[bookId].verseCount * fraction)
-    );
+    return segments.length !== entry.passages.length || entry.passages.reduce((total, passage) => total + passage.verseCount, 0) > totalLimit ||
+      Array.from(totals.entries()).some(([bookId, verseCount]) =>
+        verseCount > Math.floor(bookMetrics[bookId].verseCount * fraction)
+      );
+  }
+
+  function scriptureDisplaySegments(entry, bookMetrics, policy) {
+    const configuredMax = Number(policy && policy.maxTotalCachedVerses);
+    const effectivePolicy = Number.isInteger(configuredMax) && configuredMax > 0
+      ? policy
+      : {...(policy || {}), maxTotalCachedVerses: 500};
+    const core = root.DBRServerCore;
+    if (core && typeof core.scriptureDisplaySegments === "function") {
+      try {
+        return core.scriptureDisplaySegments(entry, bookMetrics, effectivePolicy);
+      } catch (_) {}
+    }
+    const maxBookFraction = Number(effectivePolicy.maxBookFraction);
+    const maxDisplayedVerses = Number(effectivePolicy.maxTotalCachedVerses);
+    if (!entry || !Array.isArray(entry.passages) || !(maxBookFraction > 0 && maxBookFraction <= 1) ||
+        !Number.isInteger(maxDisplayedVerses) || maxDisplayedVerses < 1) return [];
+    const segments = [];
+    for (const passage of entry.passages) {
+      const metrics = bookMetrics && bookMetrics[passage && passage.bookId];
+      const startVerse = Number.isInteger(passage && passage.verseStart) ? passage.verseStart : 1;
+      const endVerse = Number.isInteger(passage && passage.verseEnd) ? passage.verseEnd : Number(passage && passage.verseCount);
+      if (!passage || !Number.isInteger(passage.verseCount) || passage.verseCount < 1 ||
+          !metrics || !Number.isInteger(metrics.verseCount) || metrics.verseCount < 1 ||
+          !Number.isInteger(startVerse) || !Number.isInteger(endVerse) || endVerse < startVerse ||
+          endVerse - startVerse + 1 !== passage.verseCount) return [];
+      const segmentLimit = Math.min(maxDisplayedVerses, Math.floor(metrics.verseCount * maxBookFraction));
+      if (segmentLimit < 1) return [];
+      const segmentCount = Math.ceil(passage.verseCount / segmentLimit);
+      if (segmentCount === 1) {
+        segments.push({...passage});
+        continue;
+      }
+      const baseLength = Math.floor(passage.verseCount / segmentCount);
+      const remainder = passage.verseCount % segmentCount;
+      let cursor = startVerse;
+      for (let index = 0; index < segmentCount; index += 1) {
+        const verseCount = baseLength + (index < remainder ? 1 : 0);
+        const verseEnd = cursor + verseCount - 1;
+        segments.push({...passage, verseStart: cursor, verseEnd, verseCount});
+        cursor = verseEnd + 1;
+      }
+    }
+    return segments;
   }
 
   function scripturePassageIndexForSelection(entry, selection) {
-    if (!entry || !selection || !Array.isArray(entry.passages)) return null;
-    const index = entry.passages.findIndex((passage) => passage.bookId === selection.bookId &&
-      passage.chapter === selection.chapter && verseBelongsToPassage(passage, selection.verse));
+    if (!entry || !selection) return null;
+    const directIndex = Array.isArray(entry.passages) ? entry.passages.findIndex((passage) =>
+      passage.bookId === selection.bookId && passage.chapter === selection.chapter &&
+      verseBelongsToPassage(passage, selection.verse)
+    ) : -1;
+    if (directIndex < 0) return null;
+    const metrics = state.plan && state.plan.bookMetrics;
+    if (!metrics || !state.policy) return directIndex;
+    const index = scriptureDisplaySegments(entry, metrics, state.policy).findIndex((passage) =>
+      passage.bookId === selection.bookId && passage.chapter === selection.chapter &&
+      verseBelongsToPassage(passage, selection.verse)
+    );
     return index >= 0 ? index : null;
   }
 
@@ -1536,8 +1594,9 @@
   }
 
   function normalizedScripturePassageIndex(entry, requestedIndex) {
-    if (!entry || !Array.isArray(entry.passages)) return null;
-    if (Number.isInteger(requestedIndex) && requestedIndex >= 0 && requestedIndex < entry.passages.length) {
+    if (!entry) return null;
+    const segments = scriptureDisplaySegments(entry, state.plan && state.plan.bookMetrics, state.policy);
+    if (Number.isInteger(requestedIndex) && requestedIndex >= 0 && requestedIndex < segments.length) {
       return requestedIndex;
     }
     return readingRequiresPartitionedScripture(entry, state.plan && state.plan.bookMetrics, state.policy) ? 0 : null;
@@ -1768,8 +1827,9 @@
   }
 
   function setScriptureEsvLink(entry, passageIndex) {
+    const displaySegments = scriptureDisplaySegments(entry, state.plan && state.plan.bookMetrics, state.policy);
     const passages = entry && Array.isArray(entry.passages)
-      ? Number.isInteger(passageIndex) ? [entry.passages[passageIndex]] : entry.passages
+      ? Number.isInteger(passageIndex) ? [displaySegments[passageIndex]] : entry.passages
       : [];
     const url = safeExternalUrl(esvUrlForPassages(passages));
     element("openEsvLink").href = url && url.startsWith("https://www.esv.org/") ? url : "https://www.esv.org/";
@@ -1786,7 +1846,8 @@
     controls.hidden = !partitioned;
     tabs.replaceChildren();
     if (!partitioned) return;
-    entry.passages.forEach((passage, index) => {
+    const displaySegments = scriptureDisplaySegments(entry, state.plan && state.plan.bookMetrics, state.policy);
+    displaySegments.forEach((passage, index) => {
       const button = root.document.createElement("button");
       button.type = "button";
       button.className = "scripture-passage-tab";
@@ -1807,7 +1868,16 @@
     const scriptureState = element("scriptureState");
     scriptureState.hidden = false;
     scriptureState.dataset.state = "error";
-    scriptureState.textContent = message || "ESV Scripture is unavailable. Retry or open the passage on ESV.org.";
+    const exactUrl = safeExternalUrl(element("openEsvLink").href);
+    if (exactUrl && exactUrl.startsWith("https://www.esv.org/")) {
+      scriptureState.href = exactUrl;
+      scriptureState.target = "_blank";
+      scriptureState.rel = "noopener noreferrer";
+    } else {
+      scriptureState.removeAttribute("href");
+      scriptureState.removeAttribute("target");
+    }
+    scriptureState.textContent = message || "ESV Scripture is unavailable. Open the exact passage on ESV.org.";
     element("scriptureContent").replaceChildren();
     state.currentScripture = null;
     notifyHighlightEnhancer();
@@ -1861,6 +1931,8 @@
     const content = element("scriptureContent");
     const scriptureState = element("scriptureState");
     content.replaceChildren();
+    scriptureState.removeAttribute("href");
+    scriptureState.removeAttribute("target");
     scriptureState.hidden = false;
     scriptureState.dataset.state = "info";
     state.currentScripture = scripture;
@@ -1953,9 +2025,10 @@
     }
     const entry = state.plan && state.plan.entries.find((candidate) => candidate.readingId === scripture.readingId);
     if (!entry || !Array.isArray(scripture.passages)) return;
+    const displaySegments = scriptureDisplaySegments(entry, state.plan.bookMetrics, state.policy);
     let existing = existingEntries;
     for (const passage of scripture.passages) {
-      const passageIndex = entry.passages.findIndex((candidate) => candidate.bookId === passage.bookId &&
+      const passageIndex = displaySegments.findIndex((candidate) => candidate.bookId === passage.bookId &&
         candidate.chapter === passage.chapter &&
         (candidate.verseStart || 1) === (passage.verseStart || 1) &&
         (candidate.verseEnd || candidate.verseCount) === (passage.verseEnd || passage.verseCount));
@@ -2004,8 +2077,9 @@
       }
     }
     const partitioned = readingRequiresPartitionedScripture(entry, state.plan.bookMetrics, state.policy);
+    const displaySegments = scriptureDisplaySegments(entry, state.plan.bookMetrics, state.policy);
     const passageIndex = partitioned ? normalizedScripturePassageIndex(entry, requestedPassageIndex) : null;
-    const requiredIndices = passageIndex === null ? entry.passages.map((_, index) => index) : [passageIndex];
+    const requiredIndices = passageIndex === null ? displaySegments.map((_, index) => index) : [passageIndex];
     const selected = requiredIndices.map((index) => usable.find((record) => record.passageIndex === index));
     if (selected.some((record) => !record)) return null;
     const passages = selected.map((record) => ({
@@ -2027,12 +2101,12 @@
       passages,
       verseCount: passages.reduce((total, passage) => total + passage.verseCount, 0),
       fetchedAt: selected.reduce((latest, record) => latest > record.fetchedAt ? latest : record.fetchedAt, ""),
-      esvUrl: esvUrlForPassages(passageIndex === null ? entry.passages : [entry.passages[passageIndex]]),
+      esvUrl: esvUrlForPassages(passageIndex === null ? entry.passages : [displaySegments[passageIndex]]),
       readingEsvUrl: esvUrlForPassages(entry.passages),
       partitioned,
       passageIndex,
-      passageCount: entry.passages.length,
-      passageOptions: partitioned ? entry.passages.map((passage, index) => ({
+      passageCount: partitioned ? displaySegments.length : entry.passages.length,
+      passageOptions: partitioned ? displaySegments.map((passage, index) => ({
         index,
         bookId: passage.bookId,
         chapter: passage.chapter,
@@ -2519,6 +2593,8 @@
     renderScripturePassageControls(entry, passageIndex);
     const scriptureState = element("scriptureState");
     scriptureState.hidden = false;
+    scriptureState.removeAttribute("href");
+    scriptureState.removeAttribute("target");
     scriptureState.dataset.state = "info";
     scriptureState.textContent = state.adapter.kind === "mock"
       ? "Loading fabricated development text…"
@@ -2532,7 +2608,7 @@
     if (cached) renderScripture(cached, "cache");
     if (!serverCallsAllowed()) {
       if (!cached) {
-        renderScriptureUnavailable("This ESV chapter is not saved on this device. Connect to stream it or open the exact passage on ESV.org.");
+        renderScriptureUnavailable("This ESV passage is not saved on this device. Connect to stream it or open the exact passage on ESV.org.");
       }
       return;
     }
@@ -2549,10 +2625,14 @@
         : null);
       if (fallback) {
         renderScripture(fallback, "cache");
-        element("scriptureState").dataset.state = "warning";
-        element("scriptureState").textContent = "Saved ESV text is shown; the live refresh did not complete.";
+        const fallbackState = element("scriptureState");
+        fallbackState.dataset.state = "warning";
+        fallbackState.href = element("openEsvLink").href;
+        fallbackState.target = "_blank";
+        fallbackState.rel = "noopener noreferrer";
+        fallbackState.textContent = "Saved ESV text is shown; the live refresh did not complete. Open this exact passage on ESV.org.";
       } else if (error && error.code === "PROVIDER_DISPLAY_LIMIT") {
-        renderScriptureUnavailable("This chapter exceeds the ESV half-book display limit. Open the exact passage on ESV.org; it cannot be shown or saved here.");
+        renderScriptureUnavailable("This passage cannot be shown within the current ESV display limits. Open the exact passage on ESV.org.");
       } else {
         renderScriptureUnavailable("ESV Scripture is unavailable. Retry when connected or open the exact passage on ESV.org; no alternate translation will be substituted.");
       }
@@ -3396,13 +3476,13 @@
       scriptureCount = scriptureEntries.reduce((total, entry) => {
         const targetIndices = readingRequiresPartitionedScripture(entry, state.plan.bookMetrics, state.policy)
           ? [0]
-          : entry.passages.map((_, index) => index);
+          : scriptureDisplaySegments(entry, state.plan.bookMetrics, state.policy).map((_, index) => index);
         return total + targetIndices.filter((index) => retainedKeys.has(`ESV:${entry.readingId}:${index}`)).length;
       }, 0);
     }
 
     const scriptureStatus = state.policy.offlinePersistenceAllowed
-      ? `${scriptureCount}/${scriptureEligible} priority chapter${scriptureEligible === 1 ? "" : "s"} retained within ESV limits` +
+      ? `${scriptureCount}/${scriptureEligible} priority passage${scriptureEligible === 1 ? "" : "s"} retained within ESV limits` +
         (scriptureRestrictedReadings ? ` · ${scriptureRestrictedReadings} multi-chapter reading${scriptureRestrictedReadings === 1 ? "" : "s"} keep the first chapter ready and stream later chapters` : "")
       : "ESV text stays network-only by provider policy";
     const readiness = currentContentReadiness(payloadByReadingId);
@@ -4322,6 +4402,7 @@
     safeVersionedAppUrl,
     selectedDayVerseSelection,
     scriptureFailureMayRetry,
+    scriptureDisplaySegments,
     scripturePassageIndexForSelection,
     scripturePrefetchPassageIndex,
     scriptureRetentionTargetCount,

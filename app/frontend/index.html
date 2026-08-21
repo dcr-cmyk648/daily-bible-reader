@@ -115,7 +115,7 @@
           <div>
             <p class="eyebrow">Local privacy</p>
             <h2 id="storageHeading">Downloaded data</h2>
-            <p class="muted">The app keeps today plus seven future private studies on this device. It also retains eligible ESV chapters for up to eight days while enforcing the 500-verse and half-book limits; short-book assignments may remain partial and stream one chapter at a time.</p>
+            <p class="muted">The app keeps today plus seven future private studies on this device. It also retains eligible ESV passages for up to eight days while enforcing the 500-verse and half-book limits; short-book assignments may remain partial and stream one compliant chapter or verse range at a time.</p>
             <p id="offlinePackStatus" class="muted" aria-live="polite">Offline pack has not been prepared yet.</p>
           </div>
           <div class="storage-actions">
@@ -191,10 +191,10 @@
                   <a id="openEsvLink" href="https://www.esv.org/" target="_blank" rel="noopener noreferrer">Open on ESV.org</a>
                 </div>
               </div>
-              <div id="scriptureState" class="inline-state" role="status" aria-live="polite">Scripture loads when the chapter opens.</div>
+              <a id="scriptureState" class="inline-state scripture-state-link" aria-live="polite">Scripture loads when the chapter opens.</a>
               <div id="scripturePassageControls" class="scripture-passage-controls" hidden>
-                <p id="scripturePassagePolicyNote" class="muted">This assignment is shown one chapter at a time under the ESV display and cache limits.</p>
-                <div id="scripturePassageTabs" class="scripture-passage-tabs" role="tablist" aria-label="Chapters in this reading"></div>
+                <p id="scripturePassagePolicyNote" class="muted">This assignment is shown in compliant passage ranges under the ESV display and cache limits.</p>
+                <div id="scripturePassageTabs" class="scripture-passage-tabs" role="tablist" aria-label="Passages in this reading"></div>
               </div>
               <p id="highlightHelp" class="highlight-help" hidden>Tap a verse for its precomputed commentary and shared highlights.</p>
               <div id="scriptureContent" class="scripture-content"></div>

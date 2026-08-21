@@ -1005,6 +1005,38 @@ test("a multi-chapter bridge day stays one reading and one Scripture page", () =
   assert.equal(app.scripturePassageIndexForSelection(habakkuk, {bookId: "HAB", chapter: 3, verse: 17}), 2);
   assert.equal(app.esvUrlForPassages(habakkuk.passages),
     "https://www.esv.org/Habakkuk+1%3B+Habakkuk+2%3B+Habakkuk+3/");
+
+  const haggai = {
+    kind: "chapter",
+    bookId: "HAG",
+    passages: [{bookId: "HAG", chapter: 2, verseCount: 23}]
+  };
+  const haggaiSegments = app.scriptureDisplaySegments(haggai, {HAG: {verseCount: 38}}, {
+    maxBookFraction: 0.5,
+    maxTotalCachedVerses: 500
+  });
+  assert.deepEqual(haggaiSegments.map((passage) => [passage.verseStart, passage.verseEnd, passage.verseCount]), [
+    [1, 12, 12], [13, 23, 11]
+  ]);
+  assert.equal(app.readingRequiresPartitionedScripture(haggai, {HAG: {verseCount: 38}}, {
+    maxBookFraction: 0.5,
+    maxTotalCachedVerses: 500
+  }), true);
+  assert.equal(app.esvUrlForPassages([haggaiSegments[1]]), "https://www.esv.org/Haggai+2%3A13-23/");
+  assert.match(frontend, /const displaySegments = scriptureDisplaySegments\(entry, state\.plan && state\.plan\.bookMetrics, state\.policy\)/);
+  assert.match(frontend, /cacheKey: `ESV:\$\{scripture\.readingId\}:\$\{passageIndex\}`/);
+});
+
+test("unavailable Scripture state is a full exact-passage link", () => {
+  const html = fs.readFileSync(path.join(__dirname, "../app/frontend/index.html"), "utf8");
+  const frontend = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
+  const css = fs.readFileSync(path.join(__dirname, "../app/frontend/styles.css"), "utf8");
+  assert.match(html, /<a id="scriptureState" class="inline-state scripture-state-link" aria-live="polite">/);
+  const unavailable = frontend.slice(frontend.indexOf("function renderScriptureUnavailable"), frontend.indexOf("function highlightContext"));
+  assert.match(unavailable, /scriptureState\.href = exactUrl/);
+  assert.match(unavailable, /scriptureState\.target = "_blank"/);
+  assert.match(unavailable, /Open the exact passage on ESV\.org/);
+  assert.match(css, /\.scripture-state-link\[href\]/);
 });
 
 test("transient Scripture failures retry once without retrying policy failures", async () => {

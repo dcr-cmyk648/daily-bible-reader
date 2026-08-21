@@ -228,11 +228,8 @@
     return String(readingId);
   }
 
-  function selectScripturePassages(request, entry, bookMetrics, providerPolicy) {
-    if (!entry || entry.kind !== "chapter" || scriptureReadingId(request) !== entry.readingId) {
-      throw domainError("INVALID_READING", "Scripture request does not match the selected reading.");
-    }
-    const passages = Array.isArray(entry.passages) ? entry.passages : [];
+  function scriptureDisplaySegments(entry, bookMetrics, providerPolicy) {
+    const passages = Array.isArray(entry && entry.passages) ? entry.passages : [];
     if (!passages.length) {
       throw domainError("CONTENT_INVALID", "The daily Scripture references are invalid.");
     }
@@ -244,6 +241,56 @@
     if (!Number.isInteger(maxDisplayedVerses) || maxDisplayedVerses < 1) {
       throw domainError("INVALID_SERVER_CONFIG", "The Scripture total display limit is invalid.");
     }
+
+    const segments = [];
+    passages.forEach(function (passage) {
+      const metrics = bookMetrics && bookMetrics[passage && passage.bookId];
+      const startVerse = Number.isInteger(passage && passage.verseStart) ? passage.verseStart : 1;
+      const endVerse = Number.isInteger(passage && passage.verseEnd)
+        ? passage.verseEnd
+        : Number(passage && passage.verseCount);
+      if (!passage || !Number.isInteger(passage.verseCount) || passage.verseCount < 1 ||
+          !metrics || !Number.isInteger(metrics.verseCount) || metrics.verseCount < 1 ||
+          !Number.isInteger(startVerse) || !Number.isInteger(endVerse) || endVerse < startVerse ||
+          endVerse - startVerse + 1 !== passage.verseCount) {
+        throw domainError("PROVIDER_METRICS_MISSING", "Provider metrics are unavailable for this passage.");
+      }
+      const perBookLimit = Math.floor(metrics.verseCount * maxBookFraction);
+      const segmentLimit = Math.min(maxDisplayedVerses, perBookLimit);
+      if (segmentLimit < 1) {
+        throw domainError("PROVIDER_DISPLAY_LIMIT", "This passage cannot be displayed within the provider policy.");
+      }
+      const segmentCount = Math.ceil(passage.verseCount / segmentLimit);
+      if (segmentCount === 1) {
+        segments.push({...passage});
+        return;
+      }
+      const baseLength = Math.floor(passage.verseCount / segmentCount);
+      const remainder = passage.verseCount % segmentCount;
+      let cursor = startVerse;
+      for (let index = 0; index < segmentCount; index += 1) {
+        const verseCount = baseLength + (index < remainder ? 1 : 0);
+        const verseEnd = cursor + verseCount - 1;
+        segments.push({
+          ...passage,
+          verseStart: cursor,
+          verseEnd,
+          verseCount
+        });
+        cursor = verseEnd + 1;
+      }
+    });
+    return segments;
+  }
+
+  function selectScripturePassages(request, entry, bookMetrics, providerPolicy) {
+    if (!entry || entry.kind !== "chapter" || scriptureReadingId(request) !== entry.readingId) {
+      throw domainError("INVALID_READING", "Scripture request does not match the selected reading.");
+    }
+    const passages = Array.isArray(entry.passages) ? entry.passages : [];
+    const displaySegments = scriptureDisplaySegments(entry, bookMetrics, providerPolicy);
+    const maxBookFraction = Number(providerPolicy && providerPolicy.maxBookFraction);
+    const maxDisplayedVerses = Number(providerPolicy && providerPolicy.maxTotalCachedVerses);
     const totalsByBook = {};
     passages.forEach(function (passage) {
       const metrics = bookMetrics && bookMetrics[passage && passage.bookId];
@@ -253,20 +300,22 @@
       }
       totalsByBook[passage.bookId] = (totalsByBook[passage.bookId] || 0) + passage.verseCount;
     });
-    const fullReadingExceedsDisplayLimit = Object.keys(totalsByBook).some(function (bookId) {
+    const fullReadingExceedsDisplayLimit = passages.reduce(function (total, passage) {
+      return total + passage.verseCount;
+    }, 0) > maxDisplayedVerses || Object.keys(totalsByBook).some(function (bookId) {
       return totalsByBook[bookId] > Math.floor(bookMetrics[bookId].verseCount * maxBookFraction);
-    });
+    }) || displaySegments.length !== passages.length;
     let passageIndex = null;
     if (typeof request === "object" && request !== null && !Array.isArray(request)) {
       if (Object.keys(request).some(function (key) { return !["readingId", "passageIndex"].includes(key); }) ||
-          !Number.isInteger(request.passageIndex) || request.passageIndex < 0 || request.passageIndex >= passages.length) {
+          !Number.isInteger(request.passageIndex) || request.passageIndex < 0 || request.passageIndex >= displaySegments.length) {
         throw domainError("INVALID_READING", "Scripture passage selection is invalid.");
       }
       passageIndex = request.passageIndex;
     } else if (fullReadingExceedsDisplayLimit) {
       passageIndex = 0;
     }
-    const selectedPassages = passageIndex === null ? passages.slice() : [passages[passageIndex]];
+    const selectedPassages = passageIndex === null ? passages.slice() : [displaySegments[passageIndex]];
     if (selectedPassages.reduce(function (total, passage) { return total + passage.verseCount; }, 0) > maxDisplayedVerses) {
       throw domainError("PROVIDER_DISPLAY_LIMIT", "This passage exceeds the ESV total display limit.");
     }
@@ -279,7 +328,8 @@
     return {
       passages: selectedPassages,
       passageIndex,
-      passageCount: passages.length,
+      passageCount: fullReadingExceedsDisplayLimit ? displaySegments.length : passages.length,
+      passageOptions: fullReadingExceedsDisplayLimit ? displaySegments : [],
       partitioned: fullReadingExceedsDisplayLimit
     };
   }
@@ -783,6 +833,7 @@
     publicParticipants,
     resolveReadingFiles,
     scriptureReadingId,
+    scriptureDisplaySegments,
     selectScripturePassages,
     validateCommentRequest,
     validateEsvPayload,

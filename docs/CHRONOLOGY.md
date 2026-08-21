@@ -19,7 +19,7 @@ The active app calendar is the complete remaining excerpt from Celebration Churc
 | 11 | 2026-08-18 | 64 | `CC-Y3Q4-D064` | Zephaniah 2 |
 | 12 | 2026-08-19 | 65 | `CC-Y3Q4-D065` | Zephaniah 3 |
 
-Days with multiple chapters remain one scheduled reading, one Scripture page, and one discussion keyed to the daily reading ID. A combined response is used only when it stays within ESV display limits; a whole-short-book assignment instead uses chapter tabs and streams/displays one configured chapter at a time.
+Days with multiple chapters remain one scheduled reading, one Scripture page, and one discussion keyed to the daily reading ID. A combined response is used only when it stays within ESV display limits; an over-limit assignment instead uses chapter or verse-range tabs and streams/displays one compliant option at a time.
 
 The complete 92-day sequence is stored as factual reference metadata in `config/reference-plans/celebration-y3q4.json` and as a derived code-only schedule in `config/bridge-schedules/celebration-y3q4-bridge-full.json`. It contains passage assignments and provenance, not Celebration's devotional prose, ESV text, commentary, or 92 generated reading payloads. The current backend compiles this full schedule for calendar display; the private Drive plan and manifest remain only the contiguous prepared prefix entering T+7, preserving rollback compatibility. No later devotional content is generated in advance.
 

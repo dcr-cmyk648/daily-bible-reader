@@ -491,20 +491,35 @@ test("an over-half-book daily reading is partitioned into validated chapter requ
     {code: "INVALID_READING"});
 });
 
-test("a single chapter that itself exceeds half a short book fails with a specific provider limit", () => {
+test("an over-half short-book chapter is divided into balanced compliant display ranges", () => {
   const entry = {
     readingId: "TEST-HAG-002",
     kind: "chapter",
     passages: [{bookId: "HAG", chapter: 2, verseCount: 23}]
   };
-  assert.throws(() => core.selectScripturePassages(entry.readingId, entry, {HAG: {verseCount: 38}}, {
+  const policy = {
     maxBookFraction: 0.5,
     maxTotalCachedVerses: 500
-  }),
-    {code: "PROVIDER_DISPLAY_LIMIT"});
+  };
+  const segments = core.scriptureDisplaySegments(entry, {HAG: {verseCount: 38}}, policy);
+  assert.deepEqual(segments, [
+    {bookId: "HAG", chapter: 2, verseCount: 12, verseStart: 1, verseEnd: 12},
+    {bookId: "HAG", chapter: 2, verseCount: 11, verseStart: 13, verseEnd: 23}
+  ]);
+  assert.equal(segments.reduce((total, segment) => total + segment.verseCount, 0), 23);
+  assert.ok(segments.every((segment) => segment.verseCount <= 19));
+  const initial = core.selectScripturePassages(entry.readingId, entry, {HAG: {verseCount: 38}}, policy);
+  assert.equal(initial.partitioned, true);
+  assert.equal(initial.passageIndex, 0);
+  assert.equal(initial.passageCount, 2);
+  assert.deepEqual(initial.passages, [segments[0]]);
+  const second = core.selectScripturePassages({readingId: entry.readingId, passageIndex: 1}, entry, {HAG: {verseCount: 38}}, policy);
+  assert.deepEqual(second.passages, [segments[1]]);
+  assert.throws(() => core.selectScripturePassages({readingId: entry.readingId, passageIndex: 2}, entry, {HAG: {verseCount: 38}}, policy),
+    {code: "INVALID_READING"});
 });
 
-test("a combined page above the 500-verse display ceiling is refused", () => {
+test("a combined page above the 500-verse display ceiling is partitioned before display", () => {
   const entry = {
     readingId: "TEST-LONG-001",
     kind: "chapter",
@@ -514,10 +529,13 @@ test("a combined page above the 500-verse display ceiling is refused", () => {
     ]
   };
   const metrics = {AAA: {verseCount: 1000}, BBB: {verseCount: 1000}};
-  assert.throws(() => core.selectScripturePassages(entry.readingId, entry, metrics, {
+  const selection = core.selectScripturePassages(entry.readingId, entry, metrics, {
     maxBookFraction: 0.5,
     maxTotalCachedVerses: 500
-  }), {code: "PROVIDER_DISPLAY_LIMIT"});
+  });
+  assert.equal(selection.partitioned, true);
+  assert.equal(selection.passageIndex, 0);
+  assert.deepEqual(selection.passages, [entry.passages[0]]);
 });
 
 test("long-term plan validation enforces four streams, intro adjacency, continuity, and partial ranges", () => {

@@ -73,8 +73,8 @@ Make Celebration Church Year 3 Quarter 4 source Days 54–92 visible as the app'
 - [x] Schedule-versus-preparation boundary selected and refined for rollback compatibility.
 - [x] Implementation and focused tests.
 - [x] Repository-wide validation and generated release.
-- [ ] Code deployment; no private Drive mutation is required.
-- [ ] Commit, push, and live verification.
+- [x] Code deployment; no private Drive mutation was required.
+- [x] Commit, push, and live verification.
 
 ## Discoveries
 
@@ -86,4 +86,4 @@ Make Celebration Church Year 3 Quarter 4 source Days 54–92 visible as the app'
 
 ## Exact next action
 
-Commit and publish the validated Pages release, deploy only the existing token backend to the new immutable server build, restore Apps Script project HEAD to the hybrid rollback source, and perform live readback checks.
+Complete the installed-iPhone gate: accept/restart the PWA, confirm September reaches D092/Malachi 4, confirm an unprepared date is labeled pending, and open one currently prepared reading. The first subsequent private-content action is D070/Zechariah 2.

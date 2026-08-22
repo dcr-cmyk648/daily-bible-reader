@@ -407,6 +407,156 @@
       "sourceIds": [
         "youversion_celebration_y3q4_plan_3805"
       ]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 17,
+      "sourcePlanDay": 70,
+      "readingId": "CC-Y3Q4-D070",
+      "kind": "chapter",
+      "bookId": "ZEC",
+      "chapter": 2,
+      "passages": [
+        {
+          "bookId": "ZEC",
+          "chapter": 2,
+          "verseCount": 13
+        }
+      ],
+      "contextReadingIds": [
+        "CC-Y3Q4-D069"
+      ],
+      "orderingRationale": "Temporary bridge preserves Day 70 of Celebration Church's published Year 3, Quarter 4 sequence.",
+      "chronologyBasis": "pragmatic",
+      "confidence": "high",
+      "notes": "One chapter appears on the Scripture page.",
+      "sourceIds": [
+        "youversion_celebration_y3q4_plan_3805"
+      ]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 18,
+      "sourcePlanDay": 71,
+      "readingId": "CC-Y3Q4-D071",
+      "kind": "chapter",
+      "bookId": "ZEC",
+      "chapter": 3,
+      "passages": [
+        {
+          "bookId": "ZEC",
+          "chapter": 3,
+          "verseCount": 10
+        }
+      ],
+      "contextReadingIds": [
+        "CC-Y3Q4-D070"
+      ],
+      "orderingRationale": "Temporary bridge preserves Day 71 of Celebration Church's published Year 3, Quarter 4 sequence.",
+      "chronologyBasis": "pragmatic",
+      "confidence": "high",
+      "notes": "One chapter appears on the Scripture page.",
+      "sourceIds": [
+        "youversion_celebration_y3q4_plan_3805"
+      ]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 19,
+      "sourcePlanDay": 72,
+      "readingId": "CC-Y3Q4-D072",
+      "kind": "chapter",
+      "bookId": "JAS",
+      "chapter": 1,
+      "passages": [
+        {
+          "bookId": "JAS",
+          "chapter": 1,
+          "verseCount": 27
+        }
+      ],
+      "orderingRationale": "Temporary bridge preserves Day 72 of Celebration Church's published Year 3, Quarter 4 sequence.",
+      "chronologyBasis": "pragmatic",
+      "confidence": "high",
+      "notes": "One chapter appears on the Scripture page.",
+      "sourceIds": [
+        "youversion_celebration_y3q4_plan_3805"
+      ]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 20,
+      "sourcePlanDay": 73,
+      "readingId": "CC-Y3Q4-D073",
+      "kind": "chapter",
+      "bookId": "ZEC",
+      "chapter": 4,
+      "passages": [
+        {
+          "bookId": "ZEC",
+          "chapter": 4,
+          "verseCount": 14
+        }
+      ],
+      "orderingRationale": "Temporary bridge preserves Day 73 of Celebration Church's published Year 3, Quarter 4 sequence.",
+      "chronologyBasis": "pragmatic",
+      "confidence": "high",
+      "notes": "One chapter appears on the Scripture page.",
+      "sourceIds": [
+        "youversion_celebration_y3q4_plan_3805"
+      ]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 21,
+      "sourcePlanDay": 74,
+      "readingId": "CC-Y3Q4-D074",
+      "kind": "chapter",
+      "bookId": "ZEC",
+      "chapter": 5,
+      "passages": [
+        {
+          "bookId": "ZEC",
+          "chapter": 5,
+          "verseCount": 11
+        }
+      ],
+      "contextReadingIds": [
+        "CC-Y3Q4-D073"
+      ],
+      "orderingRationale": "Temporary bridge preserves Day 74 of Celebration Church's published Year 3, Quarter 4 sequence.",
+      "chronologyBasis": "pragmatic",
+      "confidence": "high",
+      "notes": "One chapter appears on the Scripture page.",
+      "sourceIds": [
+        "youversion_celebration_y3q4_plan_3805"
+      ]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 22,
+      "sourcePlanDay": 75,
+      "readingId": "CC-Y3Q4-D075",
+      "kind": "chapter",
+      "bookId": "ZEC",
+      "chapter": 6,
+      "passages": [
+        {
+          "bookId": "ZEC",
+          "chapter": 6,
+          "verseCount": 15
+        }
+      ],
+      "contextReadingIds": [
+        "CC-Y3Q4-D074"
+      ],
+      "orderingRationale": "Temporary bridge preserves Day 75 of Celebration Church's published Year 3, Quarter 4 sequence.",
+      "chronologyBasis": "pragmatic",
+      "confidence": "high",
+      "notes": "One chapter appears on the Scripture page.",
+      "sourceIds": [
+        "youversion_celebration_y3q4_plan_3805"
+      ]
     }
   ],
   "bookMetrics": {
@@ -453,6 +603,11 @@
     "ZEC": {
       "verseCount": 211,
       "chapterCount": 14,
+      "versification": "Factual Protestant chapter metrics for bridge policy calculations"
+    },
+    "JAS": {
+      "verseCount": 108,
+      "chapterCount": 5,
       "versification": "Factual Protestant chapter metrics for bridge policy calculations"
     }
   }

@@ -43,16 +43,24 @@ async function main() {
     readJson(path.join(PRIVATE_CONTENT, "private-manifest.json"), true)
   ]);
   const firstSourceDay = plan.entries[0].sourcePlanDay;
-  const sourceDay = Math.min(referencePlan.dayCount, firstSourceDay + Math.max(0,
-    Math.floor((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${appConfig.sharedStartDate}T00:00:00Z`)) / 86400000)) + 7);
-  const readingId = `CC-Y3Q4-D${String(sourceDay).padStart(3, "0")}`;
-  const base = path.join(PRIVATE_CONTENT, "bridge", "celebration-y3q4", readingId);
-  const [metadata, markdownBytes] = await Promise.all([
-    readJson(`${base}.metadata.json`, true), optionalBytes(`${base}.md`)
-  ]);
+  const finalSourceDay = plan.entries.at(-1).sourcePlanDay;
+  const lookaheadDays = appConfig.futureLookaheadDays;
+  const rawCurrentSourceDay = firstSourceDay + Math.max(0,
+    Math.floor((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${appConfig.sharedStartDate}T00:00:00Z`)) / 86400000));
+  const currentSourceDay = Math.min(Math.max(firstSourceDay, rawCurrentSourceDay), finalSourceDay);
+  const sourceDay = Math.min(rawCurrentSourceDay + lookaheadDays, finalSourceDay);
+  const horizonEntries = rawCurrentSourceDay > finalSourceDay ? [] : plan.entries.filter((entry) =>
+    entry.sourcePlanDay >= currentSourceDay && entry.sourcePlanDay <= sourceDay);
+  const readingArtifacts = Object.fromEntries(await Promise.all(horizonEntries.map(async (entry) => {
+    const readingId = entry.readingId;
+    const base = path.join(PRIVATE_CONTENT, "bridge", "celebration-y3q4", readingId);
+    const [metadata, markdownBytes] = await Promise.all([
+      readJson(`${base}.metadata.json`, true), optionalBytes(`${base}.md`)
+    ]);
+    return [readingId, {metadata, markdownBytes, manifestHasReading: Boolean(manifest && manifest.readings && manifest.readings[readingId])}];
+  })));
   const workOrder = buildRollingStudyWorkOrder({
-    plan, privatePlan, appConfig, referencePlan, metrics, today, issuedAt: new Date().toISOString(), metadata, markdownBytes,
-    manifestHasReading: Boolean(manifest && manifest.readings && manifest.readings[readingId])
+    plan, privatePlan, appConfig, referencePlan, metrics, today, issuedAt: new Date().toISOString(), readingArtifacts
   });
   assertSchemaValid(workOrder, schema, {label: "Rolling study work order"});
   process.stdout.write(`${JSON.stringify(workOrder, null, 2)}\n`);

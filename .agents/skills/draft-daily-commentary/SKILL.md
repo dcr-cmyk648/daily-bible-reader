@@ -1,6 +1,6 @@
 ---
 name: draft-daily-commentary
-description: Prepare or repair exactly one Daily Bible Reader study from a schema-validated work order. Use for private source inventory, cited synthesis, custom deep study, coverage audit, and staging validation. Only a rolling-study-work-order/v1 may authorize hash-validated publication of its one T+7 reading.
+description: Prepare or repair exactly one Daily Bible Reader study from a schema-validated work order. Use for private source inventory, cited synthesis, custom deep study, coverage audit, and staging validation. Only a rolling-study-work-order/v1 may authorize hash-validated publication of its one current-through-T+7 reading.
 ---
 
 # Draft Daily Commentary
@@ -60,4 +60,4 @@ Update only this reading's private staging record. Re-run the applicable status/
 
 For a legacy order, never publish, upload, deploy, commit private output, alter the live manifest, call the ESV API, read comments, or generate another reading.
 
-For a rolling `prepare_publish` order, the primary task must directly review and mark only the named study `in_review`, attach the newest hash-bound reviewed Henry artifact or the quota-only verified full-commentary link described above, run all private and repository gates, upload versioned private content first, update the single private manifest pointer last, and verify exact-byte Drive readback. It may commit and push the code-only plan extension and publish the existing approved Pages/Apps Script path when required. It must never store ESV wording, read comments, weaken a gate, generate a second reading, or publish partial content. Failure leaves the previous manifest current and reports the same T+7 gap for retry.
+For a rolling `prepare_publish` order, the primary task must directly review and mark only the named study `in_review`, attach the newest hash-bound reviewed Henry artifact or the quota-only verified full-commentary link described above, run all private and repository gates, upload versioned private content first, update the single private manifest pointer last, and verify exact-byte Drive readback. It may commit and push the code-only plan extension and publish the existing approved Pages/Apps Script path when required. It must never store ESV wording, read comments, weaken a gate, generate a second reading under the same work order, or publish partial content. Failure leaves the previous manifest current and reports the same gap for retry. After a successful exact readback, an explicitly authorized recovery run may request a fresh work order and repeat only until the current-through-T+7 horizon is complete.

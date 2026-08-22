@@ -15,9 +15,43 @@ const inputs = () => ({
   issuedAt: "2026-08-13T07:00:00.000Z"
 });
 
+function privatePrefix(plan, lastSourceDayInclusive) {
+  const privatePlan = structuredClone(plan);
+  privatePlan.entries = privatePlan.entries.filter((entry) => entry.sourcePlanDay <= lastSourceDayInclusive);
+  return privatePlan;
+}
+
+function reviewedArtifact(entry) {
+  const markdownBytes = Buffer.from(`FABRICATED PRIVATE COMMENTARY FOR ${entry.readingId}`);
+  return {
+    metadata: {
+      readingId: entry.readingId,
+      publicationStatus: "draft",
+      generation: {humanReviewStatus: "in_review", contentHash: createHash("sha256").update(markdownBytes).digest("hex")},
+      verseCommentaries: entry.passages.map(() => ({review_status: "in_review"}))
+    },
+    markdownBytes,
+    manifestHasReading: true
+  };
+}
+
+function horizonArtifacts({plan, today}) {
+  const firstSourceDay = plan.entries[0].sourcePlanDay;
+  const currentSourceDay = firstSourceDay + Math.max(0,
+    Math.floor((Date.parse(`${today}T00:00:00Z`) - Date.parse("2026-08-08T00:00:00Z")) / 86400000));
+  return Object.fromEntries(plan.entries
+    .filter((entry) => entry.sourcePlanDay >= currentSourceDay && entry.sourcePlanDay <= currentSourceDay + 7)
+    .map((entry) => [entry.readingId, reviewedArtifact(entry)]));
+}
+
 test("the work order distinguishes the complete schedule from the private prepared prefix", () => {
-  const order = buildRollingStudyWorkOrder({...inputs(), today: "2026-08-21", issuedAt: "2026-08-21T07:00:00.000Z"});
-  assert.equal(order.reading.readingId, "CC-Y3Q4-D074");
+  const base = inputs();
+  const privatePlan = privatePrefix(base.privatePlan, 69);
+  const artifacts = horizonArtifacts({plan: base.plan, today: "2026-08-22"});
+  delete artifacts["CC-Y3Q4-D070"];
+  const order = buildRollingStudyWorkOrder({...base, privatePlan, today: "2026-08-22", issuedAt: "2026-08-22T07:00:00.000Z",
+    readingArtifacts: artifacts});
+  assert.equal(order.reading.readingId, "CC-Y3Q4-D070");
   assert.equal(order.planExtensionRequired, true);
 });
 
@@ -27,14 +61,97 @@ test("the private prepared plan must align with the complete schedule", () => {
   assert.throws(() => buildRollingStudyWorkOrder({...inputs(), privatePlan}), /contiguous prefix/);
 });
 
-test("the daily work order selects exactly the reading entering T+7", () => {
-  const order = buildRollingStudyWorkOrder(inputs());
+test("the daily work order selects the newly entering T+7 reading when the earlier horizon is ready", () => {
+  const base = inputs();
+  const readingArtifacts = horizonArtifacts({plan: base.plan, today: base.today});
+  delete readingArtifacts["CC-Y3Q4-D066"];
+  const order = buildRollingStudyWorkOrder({...base,
+    readingArtifacts});
   assert.equal(order.action, "prepare_publish");
   assert.equal(order.targetDate, "2026-08-20");
   assert.equal(order.reading.readingId, "CC-Y3Q4-D066");
   assert.equal(order.planExtensionRequired, false);
   assert.equal(order.guards.maxReadings, 1);
   assert.equal(order.guards.sparkScope, "matthew_henry_verse_layer_only");
+});
+
+test("the work order drains horizon gaps in order and treats missing readiness evidence as stale", () => {
+  const base = inputs();
+  const today = "2026-08-22";
+  const artifacts = horizonArtifacts({plan: base.plan, today});
+  delete artifacts["CC-Y3Q4-D070"];
+  delete artifacts["CC-Y3Q4-D071"];
+  const initialPrivatePlan = privatePrefix(base.plan, 69);
+  let order = buildRollingStudyWorkOrder({...base, today, privatePlan: initialPrivatePlan, readingArtifacts: artifacts});
+  assert.equal(order.reading.readingId, "CC-Y3Q4-D070");
+  assert.equal(order.planExtensionRequired, true);
+
+  artifacts["CC-Y3Q4-D070"] = reviewedArtifact(base.plan.entries.find((entry) => entry.readingId === "CC-Y3Q4-D070"));
+  const privatePlan = privatePrefix(base.plan, 70);
+  order = buildRollingStudyWorkOrder({...base, today, privatePlan, readingArtifacts: artifacts});
+  assert.equal(order.reading.readingId, "CC-Y3Q4-D071");
+  assert.equal(order.planExtensionRequired, true);
+});
+
+test("the work order returns no work only when the whole current-through-T+7 horizon is ready", () => {
+  const base = inputs();
+  const today = "2026-08-22";
+  const privatePlan = structuredClone(base.plan);
+  const order = buildRollingStudyWorkOrder({...base, today, privatePlan,
+    readingArtifacts: horizonArtifacts({plan: base.plan, today})});
+  assert.equal(order.action, "none");
+  assert.equal(order.reasonCode, "horizon_ready");
+  assert.equal(order.reading.readingId, "CC-Y3Q4-D075");
+});
+
+test("the final in-plan horizon is audited before the evaluator reports plan completion", () => {
+  const base = inputs();
+  const finalDay = "2026-09-15";
+  const finalEntry = base.plan.entries.find((entry) => entry.readingId === "CC-Y3Q4-D092");
+  const finalArtifacts = {[finalEntry.readingId]: reviewedArtifact(finalEntry)};
+  let order = buildRollingStudyWorkOrder({...base, today: finalDay, readingArtifacts: finalArtifacts});
+  assert.equal(order.action, "none");
+  delete finalArtifacts["CC-Y3Q4-D092"];
+  order = buildRollingStudyWorkOrder({...base, today: finalDay, readingArtifacts: finalArtifacts});
+  assert.equal(order.action, "prepare_publish");
+  assert.equal(order.reading.readingId, "CC-Y3Q4-D092");
+
+  order = buildRollingStudyWorkOrder({...base, today: "2026-09-16", readingArtifacts: finalArtifacts});
+  assert.equal(order.action, "plan_complete");
+  assert.equal(order.reading, null);
+});
+
+test("a near-end horizon starts at the actual current scheduled day", () => {
+  const base = inputs();
+  const today = "2026-09-10";
+  const artifacts = Object.fromEntries(base.plan.entries
+    .filter((entry) => entry.sourcePlanDay >= 87 && entry.sourcePlanDay <= 92)
+    .map((entry) => [entry.readingId, reviewedArtifact(entry)]));
+  delete artifacts["CC-Y3Q4-D087"];
+  const order = buildRollingStudyWorkOrder({...base, today, readingArtifacts: artifacts});
+  assert.equal(order.reading.readingId, "CC-Y3Q4-D087");
+});
+
+test("before the bridge starts, the horizon begins at its first scheduled reading", () => {
+  const base = inputs();
+  const today = "2026-08-01";
+  const readingArtifacts = horizonArtifacts({plan: base.plan, today});
+  delete readingArtifacts["CC-Y3Q4-D054"];
+  const order = buildRollingStudyWorkOrder({...base, today,
+    readingArtifacts});
+  assert.equal(order.action, "prepare_publish");
+  assert.equal(order.reading.readingId, "CC-Y3Q4-D054");
+});
+
+test("a stale private-prefix record is selected before a later missing T+7 record", () => {
+  const base = inputs();
+  const today = "2026-08-22";
+  const artifacts = horizonArtifacts({plan: base.plan, today});
+  artifacts["CC-Y3Q4-D069"].markdownBytes = Buffer.from("STALE FABRICATED BYTES");
+  delete artifacts["CC-Y3Q4-D075"];
+  const order = buildRollingStudyWorkOrder({...base, today, readingArtifacts: artifacts});
+  assert.equal(order.reading.readingId, "CC-Y3Q4-D069");
+  assert.equal(order.planExtensionRequired, false);
 });
 
 test("readiness requires exact private bytes, reviewed Henry, and manifest presence", () => {

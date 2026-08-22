@@ -1,6 +1,6 @@
 # Daily content automation runbook
 
-This runbook operates the authorized one-reading T+7 lane. It never runs inside the reader and never uses an OpenAI API key. Work in an isolated task worktree. A scheduled run may begin in a dirty shared checkout; leave it untouched, fetch and verify `origin/main`, and create a temporary worktree from that ref. Resolve the canonical checkout from the absolute Git common directory, then link the ignored private directories to its existing stores. Verify those targets before creating the ignored links; never create empty substitute stores. Do not generate or publish from the dirty shared checkout.
+This runbook operates the authorized current-through-T+7 lane. Every work order still authorizes exactly one reading and one atomic publication. A caught-up run prepares only the newly entering T+7 reading; a recovery run reevaluates after each successful exact readback and may drain earlier missing or stale readings sequentially until the eight-reading horizon is complete. It never runs inside the reader and never uses an OpenAI API key. Work in an isolated task worktree. A scheduled run may begin in a dirty shared checkout; leave it untouched, fetch and verify `origin/main`, and create a temporary worktree from that ref. Resolve the canonical checkout from the absolute Git common directory, then link the ignored private directories to its existing stores. Verify those targets before creating the ignored links; never create empty substitute stores. Do not generate or publish from the dirty shared checkout.
 
 ## 1. Resolve the exact work order
 
@@ -10,9 +10,9 @@ npm run study:next
 
 Validate the result against `schemas/rolling-study-work-order.schema.json`.
 
-- `none`: run the lightweight validation/readback audit and report no change.
+- `none`: the whole current-through-T+7 horizon is ready; run the lightweight validation/readback audit and report no change.
 - `plan_complete`: report completion; do not invent a next plan.
-- `prepare_publish`: work only on `reading.readingId`.
+- `prepare_publish`: work only on `reading.readingId`, which is the earliest missing or stale record in the current-through-T+7 horizon.
 
 The complete factual D054–D092 schedule is compiled into the current backend, so the daily lane never invents a calendar entry. `planExtensionRequired` now refers only to the separate rollback-compatible private prepared-prefix plan. If it is true and the named reading is the next contiguous private-prefix entry, run `npm run bridge:extend -- --source-day <sourcePlanDay>` immediately before manifest promotion. If an earlier prefix entry is missing, stop and report that first gap rather than skipping it. This preserves older deployments' exact private plan/manifest contract without changing the compiled calendar schedule.
 
@@ -59,11 +59,15 @@ npm run check
 
 Build the private content bundle. Upload versioned content/config/plan/registry files first. Update the single private manifest only after every target exists. Re-read the files from Drive, compare exact hashes/bytes, verify the manifest refers to the new files, and confirm sharing did not broaden. The previous manifest remains the rollback pointer until the final update.
 
+When using the connected Google Drive file-upload tool, treat its MIME choice as transport metadata and trust only exact byte readback. On 2026-08-22, raw JSON uploaded with `application/json` arrived as an empty file; the same bytes uploaded as `text/plain` read back exactly and remained parseable by the Apps Script byte/JSON loader. Never promote the manifest after an empty, transformed, or otherwise mismatched upload, regardless of the reported upload success.
+
 If tracked code/plan metadata changed, commit intentionally, push `main`, publish the code-only Pages artifact, and update the existing token Apps Script backend if required. Never move the immutable USER_ACCESSING production deployment pointer. Never commit private content, ESV wording, source atoms, identifiers, codes, or secrets.
 
-## 4. Report
+## 4. Reevaluate and report
 
-Report the reading/date, source categories and limitations, Henry generation/review status, tests/gates, Drive readback, resulting ready-through date, commit, Pages release, and any failure. Do not include private IDs, reader codes, comments, ESV wording, or copyrighted source text.
+After—and only after—exact Drive readback proves the named reading is live, rerun `npm run study:next`. If it returns another `prepare_publish`, repeat Sections 1–3 for only that new work order. The loop is bounded by the eight-reading horizon and stops immediately on the first generation, review, validation, upload, sharing, or readback failure. It must never skip a gap or move beyond T+7. When the result is `none` or `plan_complete`, the primary preparation lane is finished.
+
+Report every reading/date repaired in order, source categories and limitations, Henry generation/review status, tests/gates, Drive readback, resulting ready-through date, commit, Pages release, and any failure. Do not include private IDs, reader codes, comments, ESV wording, or copyrighted source text.
 
 ## 5. Opportunistic Henry backfill
 
@@ -88,5 +92,5 @@ If the T+7 lane already observed a Spark quota/availability failure, do not prob
 - Backfill is lower priority than the end-to-end T+7 lane, processes at most one separate reading per run, and retains its working fallback on every failure.
 - A Drive upload failure leaves the old manifest current.
 - Missing local private storage or a dirty checkout stops publication.
-- The workflow never skips to a later reading, generates a second reading, reads comments, calls the ESV API, or weakens a gate.
+- A single work order never generates a second reading. A recovery run may obtain the next work order only after successful exact readback; it never skips a gap, reads comments, calls the ESV API, or weakens a gate.
 - If the Mac misses the run, the app's first-gap warning remains the independent alert.

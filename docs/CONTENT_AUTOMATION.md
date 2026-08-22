@@ -1,12 +1,12 @@
 # Rolling seven-day study preparation
 
-Status: authorized for the private Celebration bridge. The live device window is the current Detroit reading plus seven future readings. On each daily run, the content workflow checks the reading exactly seven civil days ahead and prepares/publishes only that one reading if it is absent or stale. The first fill is D059–D065; subsequent runs append one reference-plan day at a time through D092. The new long-term plan remains out of scope.
+Status: authorized for the private Celebration bridge. The live device window is the current Detroit reading plus seven future readings. On each daily run, the content workflow checks every scheduled reading in that bounded window. It prepares/publishes the earliest missing or stale reading under one work order, verifies exact Drive readback, and reevaluates until the horizon is complete. In ordinary caught-up operation this is still only the one newly entering T+7 reading. The new long-term plan remains out of scope.
 
 This is offline prepublication automation, not runtime AI. The installed reader never calls a model. A local Codex scheduled task performs research and generation in an isolated checkout, Spark performs only the Matthew Henry verse layer, and Google Drive remains canonical for private studies. The device keeps the validated private current-plus-seven batch in IndexedDB. ESV wording remains server-fetched and may persist only in the separate bounded provider-policy store; provider limits, not convenience, determine which chapters fit.
 
 ## Daily invariant
 
-At `America/Detroit` day D, exactly D+7 must be end-to-end ready:
+At `America/Detroit` day D, every scheduled reading from D through D+7 must be end-to-end ready:
 
 - a stable active-plan entry and Scripture reference(s), but no stored ESV wording;
 - one- or two-paragraph orientation;
@@ -17,7 +17,7 @@ At `America/Detroit` day D, exactly D+7 must be end-to-end ready:
 - commentary/v3 metadata whose hash matches the Markdown bytes;
 - presence in the private Drive manifest, with exact-byte readback verified.
 
-The deterministic `npm run study:next` command emits a `rolling-study-work-order/v1` for only that T+7 reading. It returns `none` when the local canonical copy, reviewed Henry layer or valid quota fallback, exact content hash, and manifest entry already agree. It returns `prepare_publish` when any component is absent or stale. The factual D054–D092 schedule is already compiled into the current backend; the daily lane never invents calendar entries. For rollback compatibility, the separate private Drive prefix-plan file still grows contiguously with each newly published manifest reading, using `npm run bridge:extend -- --source-day N` immediately before manifest promotion. A missing earlier prefix entry is a blocking content gap, not permission to skip ahead.
+The deterministic `npm run study:next` command emits a `rolling-study-work-order/v1` for only the earliest missing or stale reading from today through T+7. It returns `none` only when every record in that horizon has a matching local copy, reviewed Henry layer or valid quota fallback, exact content hash, and manifest entry. It returns `prepare_publish` when any component is absent or stale. The factual D054–D092 schedule is already compiled into the current backend; the daily lane never invents calendar entries. For rollback compatibility, the separate private Drive prefix-plan file still grows contiguously with each newly published manifest reading, using `npm run bridge:extend -- --source-day N` immediately before manifest promotion. A missing earlier prefix entry is selected first, never skipped.
 
 Once that primary work order is verified complete, `npm run mhc:backfill:next` may emit one lower-priority `mhc-backfill-work-order/v1`. It selects the earliest live chapter still using the full-commentary fallback and either requests one exact Spark artifact, routes an existing artifact through primary review, or attaches an already approved artifact. This queue never substitutes a model, never rewrites the multi-source study, and never blocks the next day's preparation. A quota result leaves the fallback and manifest unchanged for another daily attempt.
 
@@ -34,7 +34,7 @@ The user has authorized this narrow recurring publication lane. It does not auth
 7. Upload new/versioned private plan, config, registry, Markdown, and metadata first. Update the single private manifest pointer last. Verify exact bytes and sharing after write.
 8. Commit and push only code, schemas, factual plan metadata, tests, and documentation. Publish the existing code-only Pages/Apps Script path only when code or plan delivery requires it.
 
-A failed run never advances the private manifest. The next run returns the same T+7 reading. No ESV text, private commentary, source extract, reader code/hash, comment body, Google resource ID, or secret enters Git or Pages.
+A failed reading never advances the private manifest. The same gap is returned on the next evaluation. A successful recovery reevaluates only after exact readback and stops when the bounded horizon is complete. No ESV text, private commentary, source extract, reader code/hash, comment body, Google resource ID, or secret enters Git or Pages.
 
 ## Health signal and device retention
 
@@ -44,6 +44,6 @@ The calendar warning is computed from complete end-to-end records, not merely fi
 
 ## Scheduling
 
-The active desktop Codex task **Prepare Daily Bible Reader T+7** runs daily at 3:00 a.m. Detroit time as a new chat bound to the BibleApp project. The current desktop build could not bind a new task to an app-managed worktree or starting branch, so isolation is enforced by the checked prompt itself: each run leaves the shared checkout untouched, fetches `origin/main`, and creates and verifies a temporary worktree from that ref before editing. The Mac must remain powered on and the app must be running for local-project work. The prompt is `prompts/daily-study-scheduled-task.md`; it deliberately re-reads repository policy, completes or verifies exactly one T+7 reading first, then may process at most one separate Henry-only fallback backfill. Scheduled-task behavior was checked against the official OpenAI documentation on 2026-08-12: <https://learn.chatgpt.com/docs/automations>.
+The desktop Codex task **Prepare Daily Bible Reader T+7** is documented to run daily at 3:00 a.m. Detroit time as a new chat bound to the BibleApp project. The current desktop build could not bind a new task to an app-managed worktree or starting branch, so isolation is enforced by the checked prompt itself: each run leaves the shared checkout untouched, fetches `origin/main`, and creates and verifies a temporary worktree from that ref before editing. The Mac must remain powered on and the app must be running for local-project work. The canonical prompt is `prompts/daily-study-scheduled-task.md`; it deliberately re-reads repository policy, drains the bounded current-through-T+7 gap queue one atomic reading at a time, then may process at most one separate Henry-only fallback backfill. The repository prompt was updated on 2026-08-22, but the saved task UI still needs synchronization from a signed-in ChatGPT session. Scheduled-task behavior was checked against the official OpenAI documentation on 2026-08-22: <https://learn.chatgpt.com/docs/automations>.
 
-Review the first several run reports. The scope remains one T+7 reading even after the workflow proves reliable.
+Review recovery reports carefully. Each work order remains one reading; the run-level recovery loop is capped by the current-plus-seven horizon and cannot authorize later content.

@@ -1132,6 +1132,35 @@ test("main-thread ensure requests reuse sound readings and select only missing t
   assert.deepEqual(result.reused_reading_ids, ["CC-Y3Q4-D056"]);
 });
 
+test("confirmed exact-Spark quota and availability failures never enter the retry path", async () => {
+  const controller = await import("../scripts/mhc-pipeline.mjs");
+  const quotaText = "ERROR: You've hit your usage limit for GPT-5.3-Codex-Spark. Switch to another model now, or try again later.";
+  const quota = controller.classifySparkAvailabilityFailure({
+    model: "gpt-5.3-codex-spark",
+    text: quotaText
+  });
+  assert.deepEqual(quota, {
+    code: "SPARK_QUOTA_UNAVAILABLE",
+    message: "The exact gpt-5.3-codex-spark worker is unavailable because its usage quota is exhausted."
+  });
+  assert.equal(controller.shouldRetryCodexFailure({model: "gpt-5.3-codex-spark", text: quotaText}), false);
+
+  const unavailable = controller.classifySparkAvailabilityFailure({
+    model: "gpt-5.3-codex-spark",
+    text: "Requested model gpt-5.3-codex-spark is unavailable."
+  });
+  assert.equal(unavailable.code, "SPARK_MODEL_UNAVAILABLE");
+  assert.equal(controller.shouldRetryCodexFailure({
+    model: "gpt-5.3-codex-spark",
+    text: "Requested model gpt-5.3-codex-spark is unavailable."
+  }), false);
+
+  assert.equal(controller.shouldRetryCodexFailure({
+    model: "gpt-5.3-codex-spark",
+    text: "temporary network timeout; try again"
+  }), true);
+});
+
 test("durable store pointers are replaced atomically only after immutable readings", () => {
   const source = fs.readFileSync(path.join(__dirname, "../scripts/mhc-pipeline.mjs"), "utf8");
   assert.match(source, /await rename\(temporaryPath, filePath\)/);

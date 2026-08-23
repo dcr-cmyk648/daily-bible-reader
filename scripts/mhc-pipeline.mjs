@@ -371,6 +371,34 @@ function transientFailure(text) {
   return /(?:timed? out|timeout|temporar|connection|network|rate.?limit|429|502|503|504|service unavailable|try again)/i.test(String(text || ""));
 }
 
+function classifySparkAvailabilityFailure({model, text}) {
+  if (model !== SPARK_MODEL) return null;
+  const failureText = String(text || "");
+  if (/(?:you(?:'|’)ve hit your usage limit|\busage limit\b|\bquota(?:\s+\w+){0,3}\s+(?:exceeded|exhausted|unavailable)\b)/i.test(failureText)) {
+    return {
+      code: "SPARK_QUOTA_UNAVAILABLE",
+      message: `The exact ${SPARK_MODEL} worker is unavailable because its usage quota is exhausted.`
+    };
+  }
+  if (/\b(?:requested\s+)?model\b[^\n]{0,160}\b(?:unavailable|not available|unsupported|not found)\b/i.test(failureText)) {
+    return {
+      code: "SPARK_MODEL_UNAVAILABLE",
+      message: `The exact ${SPARK_MODEL} worker is unavailable.`
+    };
+  }
+  return null;
+}
+
+function sparkAvailabilityError(classification) {
+  const error = new Error(`${classification.code}: ${classification.message}`);
+  error.code = classification.code;
+  return error;
+}
+
+function shouldRetryCodexFailure({model, text}) {
+  return !classifySparkAvailabilityFailure({model, text}) && transientFailure(text);
+}
+
 function codexExecArgs({model, schemaPath, outputPath, cwd}) {
   return [
     "--ask-for-approval", "never", "exec", "--ephemeral", "--ignore-user-config", "--disable", "fast_mode",
@@ -580,6 +608,7 @@ async function generateLegacyOne(options) {
 
   if (!checked) {
     let processResult = null;
+    let availabilityFailure = null;
     for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
       processResult = await runCodex({model, schemaPath, outputPath, prompt, cwd: jobDir});
       await writeFile(path.join(jobDir, `process-attempt-${attempt + 1}.log`),
@@ -587,7 +616,8 @@ async function generateLegacyOne(options) {
         {encoding: "utf8", mode: 0o600});
       if (!processResult.error && processResult.status === 0 && await exists(outputPath)) break;
       const failureText = `${processResult.error && processResult.error.message || ""}\n${processResult.stderr}\n${processResult.stdout}`;
-      if (attempt >= maxRetries || !transientFailure(failureText)) break;
+      availabilityFailure = classifySparkAvailabilityFailure({model, text: failureText});
+      if (availabilityFailure || attempt >= maxRetries || !shouldRetryCodexFailure({model, text: failureText})) break;
       await new Promise((resolve) => setTimeout(resolve, Math.min(8000, 2000 * (2 ** attempt))));
     }
 
@@ -596,12 +626,14 @@ async function generateLegacyOne(options) {
         job_id: jobSpec.metadata.job_id,
         worker_model: model,
         fingerprint,
-        status: "failed",
+        status: availabilityFailure ? "unavailable" : "failed",
         output_path: path.relative(PRIVATE_ROOT, outputPath),
-        error: (processResult.error && processResult.error.message || processResult.stderr || "Codex exited without a result").slice(0, 2000)
+        error: (availabilityFailure ? `${availabilityFailure.code}: ${availabilityFailure.message}` :
+          processResult.error && processResult.error.message || processResult.stderr || "Codex exited without a result").slice(0, 2000)
       };
       await savePipelineJob(failure);
-      await queueReview({...failure, reason: "worker_failure"});
+      await queueReview({...failure, reason: availabilityFailure ? "worker_availability" : "worker_failure"});
+      if (availabilityFailure) throw sparkAvailabilityError(availabilityFailure);
       throw new Error(`${model} generation failed. See ${path.relative(ROOT, jobDir)}.`);
     }
 
@@ -690,6 +722,7 @@ async function validateAutonomousOutputFile({
 
 async function invokeCodexStage({model, schemaPath, outputPath, prompt, cwd, logPrefix, maxRetries}) {
   let processResult = null;
+  let availabilityFailure = null;
   for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
     processResult = await runCodex({model, schemaPath, outputPath, prompt, cwd});
     await writeFile(path.join(cwd, `${logPrefix}-attempt-${attempt + 1}.log`),
@@ -697,9 +730,11 @@ async function invokeCodexStage({model, schemaPath, outputPath, prompt, cwd, log
       {encoding: "utf8", mode: 0o600});
     if (!processResult.error && processResult.status === 0 && await exists(outputPath)) break;
     const failureText = `${processResult.error && processResult.error.message || ""}\n${processResult.stderr}\n${processResult.stdout}`;
-    if (attempt >= maxRetries || !transientFailure(failureText)) break;
+    availabilityFailure = classifySparkAvailabilityFailure({model, text: failureText});
+    if (availabilityFailure || attempt >= maxRetries || !shouldRetryCodexFailure({model, text: failureText})) break;
     await new Promise((resolve) => setTimeout(resolve, Math.min(8000, 2000 * (2 ** attempt))));
   }
+  if (availabilityFailure) throw sparkAvailabilityError(availabilityFailure);
   return processResult;
 }
 
@@ -2455,6 +2490,7 @@ export {
   buildWriterChunks,
   buildLibraryCatalog,
   buildLibraryPointer,
+  classifySparkAvailabilityFailure,
   codexExecArgs,
   codexPreflight,
   compare,
@@ -2473,6 +2509,7 @@ export {
   resultMetrics,
   scheduleNext,
   scheduleWindow,
+  shouldRetryCodexFailure,
   writePortableStores,
   writeScheduleAuditReport,
   validateSaved

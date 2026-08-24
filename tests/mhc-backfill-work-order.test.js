@@ -93,3 +93,11 @@ test("an empty queue is a stable no-op", () => {
   assert.equal(first.action, "none");
   assert.equal(first.workOrderId, later.workOrderId);
 });
+
+test("the canonical scheduled backfill instruction uses the strict Spark-to-Luna policy", () => {
+  const prompt = readFileSync(new URL("../prompts/daily-study-scheduled-task.md", import.meta.url), "utf8");
+  assert.match(prompt, /For `generate_review_publish`[\s\S]*exact `gpt-5\.3-codex-spark` first[\s\S]*coded quota\/model-unavailable failure may use exact `gpt-5\.6-luna` with low reasoning/);
+  assert.match(prompt, /same-run Luna latch/);
+  assert.doesNotMatch(prompt, /skip this probe entirely/);
+  assert.doesNotMatch(prompt, /do not retry, switch models/);
+});

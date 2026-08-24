@@ -11,6 +11,7 @@
       "type": "string",
       "enum": ["required", "in_review", "approved", "changes_requested"]
     },
+    "workerModels": {"type": "array", "uniqueItems": true, "items": {"type": "string", "enum": ["gpt-5.3-codex-spark", "gpt-5.6-luna"]}},
     "manifestReading": {
       "type": "object",
       "required": [
@@ -67,7 +68,8 @@
         "days_ahead": {"type": "integer", "minimum": 0, "maximum": 13},
         "window_start_date": {"type": "string", "format": "date"},
         "window_end_date": {"type": "string", "format": "date"},
-        "worker_model": {"type": "string", "const": "gpt-5.3-codex-spark"},
+        "worker_model": {"type": "string", "enum": ["gpt-5.3-codex-spark", "gpt-5.6-luna"]},
+        "worker_models": {"$ref": "#/$defs/workerModels"},
         "prompt_version": {"type": "string", "minLength": 1, "maxLength": 100},
         "publication_status": {"type": "string", "const": "not_published"},
         "contains_scripture": {"type": "boolean", "const": false},
@@ -117,7 +119,8 @@
         "day_index": {"type": "integer", "minimum": 1, "maximum": 100000},
         "source_plan_day": {"type": "integer", "minimum": 1, "maximum": 100000},
         "timezone": {"type": "string", "minLength": 1, "maxLength": 100},
-        "worker_model": {"type": "string", "const": "gpt-5.3-codex-spark"},
+        "worker_model": {"type": "string", "enum": ["gpt-5.3-codex-spark", "gpt-5.6-luna"]},
+        "worker_models": {"$ref": "#/$defs/workerModels"},
         "prompt_version": {"type": "string", "minLength": 1, "maxLength": 100},
         "review_status": {"$ref": "#/$defs/reviewStatus"},
         "human_review_status": {"$ref": "#/$defs/humanReviewStatus"},

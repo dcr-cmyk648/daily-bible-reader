@@ -24,7 +24,7 @@
         "source_version": {"type": "string", "minLength": 1, "maxLength": 80},
         "source_archive_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
         "source_manifest_ref": {"type": "string", "minLength": 1, "maxLength": 500},
-        "worker_model": {"type": "string", "minLength": 1, "maxLength": 100},
+        "worker_model": {"type": "string", "enum": ["gpt-5.3-codex-spark", "gpt-5.6-luna"]},
         "prompt_version": {"type": "string", "minLength": 1, "maxLength": 100},
         "generation_timestamp": {"type": "string", "format": "date-time"},
         "validation_status": {"const": "valid"},

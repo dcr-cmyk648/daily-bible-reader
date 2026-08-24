@@ -42,13 +42,14 @@
     },
     "guards": {
       "type": "object",
-      "required": ["maxReadings", "tPlus7PreparationFirst", "publishedFallbackOnly", "sparkModel", "substituteModelAllowed", "primaryReviewRequired", "contentFirstManifestLast", "scriptureTextStored", "runtimeAiAllowed", "commentsReadable"],
+      "required": ["maxReadings", "tPlus7PreparationFirst", "publishedFallbackOnly", "sparkModel", "sparkAvailabilityFallback", "solOrOtherModelAllowed", "primaryReviewRequired", "contentFirstManifestLast", "scriptureTextStored", "runtimeAiAllowed", "commentsReadable"],
       "properties": {
         "maxReadings": {"const": 1},
         "tPlus7PreparationFirst": {"const": true},
         "publishedFallbackOnly": {"const": true},
         "sparkModel": {"const": "gpt-5.3-codex-spark"},
-        "substituteModelAllowed": {"const": false},
+        "sparkAvailabilityFallback": {"const": "gpt-5.6-luna-low-only"},
+        "solOrOtherModelAllowed": {"const": false},
         "primaryReviewRequired": {"const": true},
         "contentFirstManifestLast": {"const": true},
         "scriptureTextStored": {"const": false},

@@ -64,7 +64,8 @@ test("a missing artifact creates one bounded Spark ensure request", () => {
   assert.equal(order.sparkRequest.reading_count, 1);
   assert.equal(order.sparkRequest.worker_model, "gpt-5.3-codex-spark");
   assert.equal(order.guards.tPlus7PreparationFirst, true);
-  assert.equal(order.guards.substituteModelAllowed, false);
+  assert.equal(order.guards.sparkAvailabilityFallback, "gpt-5.6-luna-low-only");
+  assert.equal(order.guards.solOrOtherModelAllowed, false);
 });
 
 test("stored artifacts skip generation and retain review gates", () => {

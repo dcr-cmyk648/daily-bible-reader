@@ -1,6 +1,6 @@
 interface:
   display_name: "Draft Daily Commentary"
   short_description: "Prepare one validated private daily study"
-  default_prompt: "Use $draft-daily-commentary for the one reading named by the validated work order, respecting whether it is draft-only or the authorized T+7 publication lane. Spark is exclusive to the Henry condensation; on Spark quota or availability failure, use only the verified full public-domain Henry link fallback."
+  default_prompt: "Use $draft-daily-commentary for the one reading named by the validated work order, respecting whether it is draft-only or the authorized T+7 publication lane. Henry generation is Spark-first; only coded Spark availability failures may use Luna at low reasoning. Sol, Terra, and all other models are forbidden."
 policy:
   allow_implicit_invocation: false

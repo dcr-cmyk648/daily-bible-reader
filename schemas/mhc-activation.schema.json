@@ -11,6 +11,7 @@
       "type": "string",
       "enum": ["required", "in_review", "approved", "changes_requested"]
     },
+    "workerModels": {"type": "array", "uniqueItems": true, "items": {"type": "string", "enum": ["gpt-5.3-codex-spark", "gpt-5.6-luna"]}},
     "request": {
       "type": "object",
       "required": [
@@ -59,7 +60,8 @@
         "file": {"type": "string", "pattern": "^plans/[A-Za-z0-9][A-Za-z0-9._-]{2,119}/readings/[A-Za-z0-9][A-Za-z0-9._:-]{2,159}\\.[a-f0-9]{16}\\.json$"},
         "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
         "passage_count": {"type": "integer", "minimum": 1, "maximum": 5},
-        "worker_model": {"type": "string", "const": "gpt-5.3-codex-spark"},
+        "worker_model": {"type": "string", "enum": ["gpt-5.3-codex-spark", "gpt-5.6-luna"]},
+        "worker_models": {"$ref": "#/$defs/workerModels"},
         "prompt_version": {"type": "string", "minLength": 1, "maxLength": 100},
         "review_status": {"$ref": "#/$defs/reviewStatus"},
         "human_review_status": {"$ref": "#/$defs/humanReviewStatus"},
@@ -86,7 +88,8 @@
         "catalog_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,199}$"},
         "plan_version": {"type": "string", "minLength": 1, "maxLength": 200},
         "updated_at": {"type": "string", "format": "date-time"},
-        "worker_model": {"type": "string", "const": "gpt-5.3-codex-spark"},
+        "worker_model": {"type": "string", "enum": ["gpt-5.3-codex-spark", "gpt-5.6-luna"]},
+        "worker_models": {"$ref": "#/$defs/workerModels"},
         "prompt_version": {"type": "string", "minLength": 1, "maxLength": 100},
         "publication_status": {"type": "string", "const": "not_published"},
         "contains_scripture": {"type": "boolean", "const": false},
@@ -149,6 +152,7 @@
         "completed_at": {"type": "string", "format": "date-time"},
         "status": {"type": "string", "const": "completed"},
         "worker_model": {"type": "string", "const": "gpt-5.3-codex-spark"},
+        "worker_models": {"$ref": "#/$defs/workerModels"},
         "prompt_version": {"type": "string", "minLength": 1, "maxLength": 100},
         "publication_status": {"type": "string", "const": "not_published"},
         "contains_scripture": {"type": "boolean", "const": false},

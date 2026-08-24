@@ -54,6 +54,9 @@ export const OSIS_BOOKS = Object.freeze([
 
 const BOOK_BY_OSIS = new Map(OSIS_BOOKS.map((book) => [book.osisId, book]));
 const BOOK_BY_ID = new Map(OSIS_BOOKS.map((book) => [book.bookId, book]));
+const OSIS_CITATION_ABBREVIATIONS = new Set(OSIS_BOOKS
+  .filter(({osisId, name}) => osisId.toLowerCase() !== name.replace(/\s+/g, "").toLowerCase())
+  .map(({osisId}) => osisId));
 
 export function parseOsisReferenceRange(value) {
   const match = /^([A-Za-z0-9]+)\.([1-9][0-9]{0,2})\.([1-9][0-9]{0,2})(?:-([A-Za-z0-9]+)\.([1-9][0-9]{0,2})\.([1-9][0-9]{0,2}))?$/.exec(String(value || ""));
@@ -638,7 +641,15 @@ function explicitIdentityTermsForAtom(atom) {
   const ignored = new Set(["And", "But", "For", "He", "Her", "His", "It", "Its", "She", "That", "The", "Their", "There", "These", "They", "This", "Those", "We", "What", "When", "Where", "Who"]);
   patterns.forEach((pattern) => {
     for (const match of text.matchAll(pattern)) {
-      if (!ignored.has(match[1]) && !terms.includes(match[1])) terms.push(match[1]);
+      const term = match[1];
+      const afterTerm = text.slice((match.index || 0) + match[0].length);
+      // A shortened OSIS book name is often introduced by prose such as
+      // “called Isa.” before a separately atomized citation. Require the
+      // period plus citation/end punctuation, so real people (including book
+      // names used without an abbreviation) remain protected identities.
+      const citationAbbreviation = OSIS_CITATION_ABBREVIATIONS.has(term) &&
+        /^\.(?:\s*(?:[ivxlcdm]+\b|\d+\b|v(?:erse)?\.|ch(?:apter)?\.|[,;:)\]])|\s*$)/iu.test(afterTerm);
+      if (!ignored.has(term) && !citationAbbreviation && !terms.includes(term)) terms.push(term);
     }
   });
   return terms;
@@ -1194,15 +1205,30 @@ export function hydrateFactBriefEvidence(factBrief, {chapterJobSpec}) {
       return leftWords >= 2 && leftWords <= 8 && rightWords >= 3;
     };
     const hasDirectTargetFact = facts.some((fact) => fact.verse_relevance === "target_marker" && !isTranslatedMaxim(fact));
+    const targetMarkedAtomIds = new Set(request && request.target_marked_source_atom_ids || []);
+    const isRequiredTargetMarkedFact = (fact) => fact.importance === "required" && targetMarkedAtomIds.has(fact.source_atom_id) &&
+      !facts.some((candidate) => candidate.source_atom_id === fact.source_atom_id && candidate.verse_relevance === "target_marker");
     brief.facts = facts
       .filter((fact) => !isTranslatedMaxim(fact))
-      .filter((fact) => !hasDirectTargetFact || fact.verse_relevance !== "shared_range_context")
+      // A required fact for an atom explicitly selected for this verse remains material
+      // even if the atom's individual snippet has shared-range relevance. A later shared
+      // snippet from an atom that already supplied direct-target evidence remains prunable.
+      .filter((fact) => !hasDirectTargetFact || fact.verse_relevance !== "shared_range_context" || isRequiredTargetMarkedFact(fact))
       .slice(0, 3)
       .map((fact, index) => ({...fact, fact_id: `${brief.verse_id}:f${String(index + 1).padStart(2, "0")}`}));
     for (const fact of brief.facts || []) {
       const snippet = snippets.get(fact.source_snippet_id);
       if (snippet && snippet.source_atom_id === fact.source_atom_id) {
         fact.evidence_quote = snippet.text;
+        // A worker can attach qualification metadata without making an uncertain claim.
+        // Clear only that pure metadata mismatch; a cue in the statement or writer anchors
+        // remains a substantive unsupported hedge for validation to reject.
+        if (fact.qualification !== "none" &&
+            !textContainsQualificationCue(snippet.text, fact.qualification) &&
+            !textContainsQualificationCue(fact.statement, fact.qualification) &&
+            !textContainsQualificationCue((fact.must_include_terms || []).join(" "), fact.qualification)) {
+          fact.qualification = "none";
+        }
         const qualifier = qualificationAnchor(snippet.text, fact.qualification);
         const anchors = (fact.must_include_terms || [])
           .map((term) => chooseShortAnchor(term, fact.statement, snippet.text))

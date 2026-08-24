@@ -69,6 +69,10 @@ const ACTIVATION_STORE_ROOT = path.join(PRIVATE_ROOT, "stores", "activations");
 const ENSURE_STORE_ROOT = path.join(PRIVATE_ROOT, "stores", "ensure-requests");
 const PILOT_MODELS = ["gpt-5.3-codex-spark", "gpt-5.6-luna"];
 const SPARK_MODEL = "gpt-5.3-codex-spark";
+const LUNA_MODEL = "gpt-5.6-luna";
+const HENRY_WORKER_MODELS = Object.freeze([SPARK_MODEL, LUNA_MODEL]);
+const DEFAULT_CODEX_INVOCATION_TIMEOUT_MS = 120_000;
+const CODEX_TERMINATION_GRACE_MS = 5_000;
 // Keep validated fact-ledger caches independent of downstream writer-admission revisions.
 const FACT_GENERATION_MODE = "spark-autonomous-chunked-two-stage/v2";
 
@@ -328,6 +332,9 @@ function codexPreflight() {
 }
 
 function assertRequestedModelAvailable(auth, model) {
+  if (!HENRY_WORKER_MODELS.includes(model)) {
+    throw new Error(`Matthew Henry generation permits only ${SPARK_MODEL} or ${LUNA_MODEL}; ${model} is forbidden.`);
+  }
   if (auth.catalog.has(model) || model === SPARK_MODEL) return;
   throw new Error(`Requested model ${model} is unavailable in the installed Codex CLI catalog.`);
 }
@@ -400,38 +407,137 @@ function shouldRetryCodexFailure({model, text}) {
 }
 
 function codexExecArgs({model, schemaPath, outputPath, cwd}) {
-  return [
+  if (!HENRY_WORKER_MODELS.includes(model)) {
+    throw new Error(`Matthew Henry generation forbids ${model}; only the exact Spark and Luna worker slugs are allowed.`);
+  }
+  const args = [
     "--ask-for-approval", "never", "exec", "--ephemeral", "--ignore-user-config", "--disable", "fast_mode",
     "--disable", "multi_agent", "--disable", "multi_agent_v2",
-    "--skip-git-repo-check", "--sandbox", "read-only",
-    "--cd", cwd, "--model", model, "--output-schema", schemaPath,
-    "--output-last-message", outputPath, "-"
+    "--skip-git-repo-check", "--sandbox", "read-only", "--cd", cwd, "--model", model
   ];
+  if (model === LUNA_MODEL) args.push("--config", "model_reasoning_effort=low");
+  return [...args, "--output-schema", schemaPath, "--output-last-message", outputPath, "-"];
 }
 
-function runCodex({model, schemaPath, outputPath, prompt, cwd}) {
-  const args = codexExecArgs({model, schemaPath, outputPath, cwd});
+function actualWorkerModels(values) {
+  return [...new Set((values || []).filter((model) => HENRY_WORKER_MODELS.includes(model)))];
+}
+
+function routingState() {
+  return {sparkAvailabilityFailure: null, lunaLatched: false};
+}
+
+async function routeHenryGeneration({routing = routingState(), invoke}) {
+  const initialModel = routing.lunaLatched ? LUNA_MODEL : SPARK_MODEL;
+  try {
+    return {model: initialModel, result: await invoke(initialModel), routing};
+  } catch (error) {
+    if (initialModel !== SPARK_MODEL || !["SPARK_QUOTA_UNAVAILABLE", "SPARK_MODEL_UNAVAILABLE"].includes(error && error.code)) throw error;
+    routing.sparkAvailabilityFailure = error.code;
+    routing.lunaLatched = true;
+    return {model: LUNA_MODEL, result: await invoke(LUNA_MODEL), routing};
+  }
+}
+
+function codexInvocationTimeoutMs() {
+  const configured = Number(process.env.MHC_CODEX_TIMEOUT_MS);
+  return Number.isInteger(configured) && configured >= 15_000 && configured <= 600_000
+    ? configured
+    : DEFAULT_CODEX_INVOCATION_TIMEOUT_MS;
+}
+
+function collectCodexChild({child, prompt, timeoutMs, setTimer = setTimeout, clearTimer = clearTimeout}) {
   return new Promise((resolve) => {
-    const child = spawn("codex", args, {cwd, stdio: ["pipe", "pipe", "pipe"]});
     let stdout = "";
     let stderr = "";
+    let settled = false;
+    let closed = false;
+    let timeoutId = null;
+    let forceKillId = null;
+    const clearPrimaryTimeout = () => {
+      if (timeoutId !== null) clearTimer(timeoutId);
+      timeoutId = null;
+    };
+    const clearAllTimers = () => {
+      clearPrimaryTimeout();
+      if (forceKillId !== null) clearTimer(forceKillId);
+      forceKillId = null;
+    };
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      clearPrimaryTimeout();
+      resolve(result);
+    };
+    const terminate = (signal) => {
+      try {
+        if (typeof child.kill === "function") child.kill(signal);
+      } catch {
+        // The process may have exited between timeout and termination.
+      }
+    };
     child.stdout.on("data", (chunk) => { stdout += chunk; });
     child.stderr.on("data", (chunk) => { stderr += chunk; });
     child.stdin.on("error", (error) => {
       if (error.code !== "EPIPE") stderr += `\nstdin error: ${error.message}`;
     });
-    child.on("error", (error) => resolve({status: null, stdout, stderr, error}));
-    child.on("close", (status) => resolve({status, stdout, stderr, error: null}));
-    child.stdin.end(prompt);
+    child.on("error", (error) => {
+      clearAllTimers();
+      finish({status: null, stdout, stderr, error});
+    });
+    child.on("close", (status) => {
+      closed = true;
+      clearAllTimers();
+      finish({status, stdout, stderr, error: null});
+    });
+    timeoutId = setTimer(() => {
+      const error = new Error(`Codex worker invocation timed out after ${timeoutMs}ms.`);
+      error.code = "CODEX_INVOCATION_TIMEOUT";
+      stderr += `\n${error.code}: ${error.message}`;
+      terminate("SIGTERM");
+      forceKillId = setTimer(() => {
+        if (!closed) terminate("SIGKILL");
+      }, CODEX_TERMINATION_GRACE_MS);
+      if (forceKillId && typeof forceKillId.unref === "function") forceKillId.unref();
+      finish({status: null, stdout, stderr, error});
+    }, timeoutMs);
+    try {
+      child.stdin.end(prompt);
+    } catch (error) {
+      clearAllTimers();
+      finish({status: null, stdout, stderr, error});
+    }
   });
+}
+
+function runCodex({model, schemaPath, outputPath, prompt, cwd}) {
+  const args = codexExecArgs({model, schemaPath, outputPath, cwd});
+  const child = spawn("codex", args, {cwd, stdio: ["pipe", "pipe", "pipe"]});
+  return collectCodexChild({child, prompt, timeoutMs: codexInvocationTimeoutMs()});
+}
+
+const GENERATED_PROSE_ARCHAIC_INFLECTIONS = /\b(?:upbraideth|bridleth|knowest|whosoever)\b/iu;
+
+function validateGeneratedProseLexicon(output) {
+  return (output && output.records || []).flatMap((record, index) => {
+    const match = GENERATED_PROSE_ARCHAIC_INFLECTIONS.exec(String(record && record.blurb || ""));
+    return match ? [`$.records[${index}].blurb: archaic term ${JSON.stringify(match[0])} must be paraphrased into contemporary English`] : [];
+  });
+}
+
+function appendGeneratedProseLexiconErrors(validation, output) {
+  const errors = validateGeneratedProseLexicon(output);
+  if (!errors.length) return validation;
+  return {...validation, valid: false, errors: [...(validation.errors || []), ...errors]};
 }
 
 async function validateOutputFile({kind, outputPath, schema, units, bookId, chapter, verseCount, metadata}) {
   try {
     const output = await readJson(outputPath);
-    const validation = kind === "book_intro"
+    const baseValidation = kind === "book_intro"
       ? validateBookIntroOutput(output, {schema, units, bookId, expectedMetadata: metadata})
       : validateChapterOutput(output, {schema, units, bookId, chapter, verseCount, expectedMetadata: metadata});
+    const validation = kind === "book_intro" ? baseValidation : appendGeneratedProseLexiconErrors(baseValidation, output);
     return {output, validation};
   } catch (error) {
     return {output: null, validation: {valid: false, errors: [error.message], warnings: []}};
@@ -702,7 +808,7 @@ async function validateAutonomousOutputFile({
 }) {
   try {
     const output = await readJson(outputPath);
-    const baseValidation = validateChapterOutput(output, {
+    const baseValidation = appendGeneratedProseLexiconErrors(validateChapterOutput(output, {
       schema,
       units: normalized.units,
       bookId: chapterJobSpec.metadata.book_id,
@@ -710,7 +816,7 @@ async function validateAutonomousOutputFile({
       verseCount: normalized.manifest.indexed_verse_count,
       expectedMetadata: chapterJobSpec.metadata,
       expectedVerseIdsOverride
-    });
+    }), output);
     const factBoundValidation = validateFactBoundChapterOutput(output, {factBrief, baseValidation});
     const validation = requireAutonomousAdmission(factBoundValidation);
     return {output, validation, baseValidation, factBoundValidation};
@@ -743,7 +849,7 @@ function codexStageFailed(result, outputPathExists) {
 }
 
 function renderFactRepairPrompt({prompt, output, validation}) {
-  return `${prompt}\n\n## Deterministic fact-brief repair\n\nThe prior fact brief failed the controller checks below. Return the entire corrected fact-brief JSON object, not a patch or explanation. Preserve every exact metadata value and requested verse. Correct the evidence, fact importance, identities, relations, qualifications, and required terms implicated by the errors, then re-check every verse against the supplied atoms.\n\nValidation errors:\n${JSON.stringify(validation.errors || [], null, 2)}\n\nPrior JSON:\n${JSON.stringify(output, null, 2)}\n`;
+  return `${prompt}\n\n## Deterministic fact-brief repair\n\nThe prior fact brief failed the controller checks below. Return the entire corrected fact-brief JSON object, not a patch or explanation. Preserve every exact metadata value and requested verse.\n\nMechanical recovery rules:\n- Every named target_marked_source_atom_id needs at least one fact with importance "required"; add or promote a fact that cites that atom.\n- For a qualification-cue failure, choose an allowed evidence snippet and short must_include_terms cue that actually contains the required cue. If the cited evidence has no cue, set qualification to "none" and remove unsupported hedging from the fact.\n\nCorrect the evidence, fact importance, identities, relations, qualifications, and required terms implicated by the errors, then re-check every verse against the supplied atoms.\n\nValidation errors:\n${JSON.stringify(validation.errors || [], null, 2)}\n\nPrior JSON:\n${JSON.stringify(output, null, 2)}\n`;
 }
 
 function buildFactChunkChapterSpec(chapterJobSpec, requestedRecords) {
@@ -753,6 +859,270 @@ function buildFactChunkChapterSpec(chapterJobSpec, requestedRecords) {
     requestedRecords,
     sourceUnits: chapterJobSpec.sourceUnits.filter((unit) => permittedUnitIds.has(unit.source_unit_id))
   };
+}
+
+function missingRequiredTargetAtomIds({factBrief, chapterJobSpec}) {
+  const briefs = new Map((factBrief && factBrief.verse_briefs || []).map((brief) => [brief.verse_id, brief]));
+  return chapterJobSpec.requestedRecords.flatMap((request) => {
+    const facts = briefs.get(request.verse_id) && briefs.get(request.verse_id).facts || [];
+    return (request.target_marked_source_atom_ids || []).filter((atomId) =>
+      !facts.some((fact) => fact.importance === "required" && fact.source_atom_id === atomId));
+  });
+}
+
+function onlyMissingTargetAtomErrors({validation, missingAtomIds}) {
+  if (!missingAtomIds.length || !validation || !Array.isArray(validation.errors) || !validation.errors.length) return false;
+  const expected = new Set(missingAtomIds.map((atomId) => `target-marked atom ${atomId} needs a required fact`));
+  return validation.errors.every((error) => [...expected].some((message) => String(error).includes(message)));
+}
+
+function buildAtomRestrictedFactChapterSpec({
+  chapterJobSpec,
+  verseId,
+  atomId,
+  requireExistingTarget = true,
+  requiredIdentityTerms = null,
+  requiredRelations = null
+}) {
+  const request = chapterJobSpec.requestedRecords.find((record) => record.verse_id === verseId);
+  const sourceUnit = chapterJobSpec.sourceUnits.find((unit) => (unit.source_atoms || [])
+    .some((atom) => atom.source_atom_id === atomId));
+  const sourceAtom = sourceUnit && sourceUnit.source_atoms.find((atom) => atom.source_atom_id === atomId);
+  const permitted = request && request.allowed_source_atom_ids && request.allowed_source_atom_ids.includes(atomId);
+  const targetMarked = request && request.target_marked_source_atom_ids && request.target_marked_source_atom_ids.includes(atomId);
+  if (!request || !sourceUnit || !sourceAtom || !permitted || (requireExistingTarget && !targetMarked)) {
+    throw new Error(`Atom fallback cannot restrict ${verseId} to permitted ${requireExistingTarget ? "target-marked " : ""}atom ${atomId}.`);
+  }
+  return {
+    metadata: chapterJobSpec.metadata,
+    requestedRecords: [{
+      ...request,
+      allowed_source_unit_ids: [sourceUnit.source_unit_id],
+      allowed_source_atom_ids: [atomId],
+      target_marked_source_atom_ids: [atomId],
+      source_reference_labels: [sourceUnit.reference_label],
+      ...(requiredIdentityTerms ? {required_explicit_identity_terms: requiredIdentityTerms} : {}),
+      ...(requiredRelations ? {required_explicit_relations: requiredRelations} : {})
+    }],
+    sourceUnits: [{...sourceUnit, source_atoms: [sourceAtom]}]
+  };
+}
+
+function factBriefMaxFacts(factSchema) {
+  return factSchema && factSchema.properties && factSchema.properties.verse_briefs &&
+    factSchema.properties.verse_briefs.items && factSchema.properties.verse_briefs.items.properties &&
+    factSchema.properties.verse_briefs.items.properties.facts &&
+    Number.isInteger(factSchema.properties.verse_briefs.items.properties.facts.maxItems)
+    ? factSchema.properties.verse_briefs.items.properties.facts.maxItems
+    : 3;
+}
+
+function mergeAtomFallbackFacts({factBrief, atomFactBrief, verseId, maxFacts = 3}) {
+  const merged = structuredClone(factBrief);
+  const target = (merged.verse_briefs || []).find((brief) => brief.verse_id === verseId);
+  const child = (atomFactBrief && atomFactBrief.verse_briefs || []).find((brief) => brief.verse_id === verseId);
+  if (!target || !child) throw new Error(`Atom fallback merge requires exactly one ${verseId} fact brief.`);
+  const seen = new Set();
+  const facts = [...(target.facts || []), ...(child.facts || [])].filter((fact) => {
+    const key = [fact.source_atom_id, fact.source_snippet_id, String(fact.statement || "").trim().toLowerCase()].join("\u0000");
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  if (facts.length > maxFacts) throw new Error(`${verseId} atom fallback would exceed the ${maxFacts}-fact schema limit.`);
+  target.facts = facts.map((fact, index) => ({...fact, fact_id: `${verseId}:f${String(index + 1).padStart(2, "0")}`}));
+  return merged;
+}
+
+function qualificationCueOffendingFacts({validation, factBrief}) {
+  if (!validation || !Array.isArray(validation.errors) || !validation.errors.length) return null;
+  const qualificationPattern = /^\$\.verse_briefs\[(\d+)\]\.facts\[(\d+)\]\.qualification: (some_understand|alternative|uncertain) lacks its corresponding cue in the evidence quote$/;
+  const termsPattern = /^\$\.verse_briefs\[(\d+)\]\.facts\[(\d+)\]\.must_include_terms: must carry the (some_understand|alternative|uncertain) cue into the writer contract$/;
+  const indices = new Map();
+  for (const error of validation.errors) {
+    const match = qualificationPattern.exec(String(error)) || termsPattern.exec(String(error));
+    if (!match) return null;
+    const briefIndex = Number(match[1]);
+    const factIndex = Number(match[2]);
+    const brief = factBrief && factBrief.verse_briefs && factBrief.verse_briefs[briefIndex];
+    const fact = brief && brief.facts && brief.facts[factIndex];
+    if (!brief || !fact || !fact.source_atom_id) return null;
+    indices.set(`${briefIndex}:${factIndex}`, {briefIndex, factIndex, sourceAtomId: fact.source_atom_id});
+  }
+  return [...indices.values()].sort((left, right) => left.briefIndex - right.briefIndex || left.factIndex - right.factIndex);
+}
+
+function replaceQualificationCueFacts({factBrief, replacements, verseId, maxFacts = 3}) {
+  const merged = structuredClone(factBrief);
+  const target = (merged.verse_briefs || []).find((brief) => brief.verse_id === verseId);
+  if (!target || !Array.isArray(target.facts) || target.facts.length > maxFacts) {
+    throw new Error(`${verseId} qualification atom fallback has an invalid fact count.`);
+  }
+  for (const replacement of replacements) {
+    if (!Number.isInteger(replacement.factIndex) || !target.facts[replacement.factIndex] || !replacement.fact) {
+      throw new Error(`${verseId} qualification atom fallback has an ambiguous replacement index.`);
+    }
+    target.facts[replacement.factIndex] = replacement.fact;
+  }
+  if (target.facts.length > maxFacts) throw new Error(`${verseId} qualification atom fallback would exceed the ${maxFacts}-fact schema limit.`);
+  target.facts = target.facts.map((fact, index) => ({...fact, fact_id: `${verseId}:f${String(index + 1).padStart(2, "0")}`}));
+  return merged;
+}
+
+function containsExplicitRequirement(value, term) {
+  const escaped = String(term || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
+  return Boolean(escaped) && new RegExp(`(?:^|[^A-Za-z0-9])${escaped}(?=$|[^A-Za-z0-9])`, "iu").test(String(value || ""));
+}
+
+function explicitOmissionRequirements({validation, factBrief, chapterJobSpec}) {
+  if (!validation || !Array.isArray(validation.errors) || !validation.errors.length) return null;
+  const requests = chapterJobSpec && chapterJobSpec.requestedRecords || [];
+  const requirements = [];
+  for (const error of validation.errors) {
+    const text = String(error);
+    let matched = null;
+    for (let briefIndex = 0; briefIndex < (factBrief && factBrief.verse_briefs || []).length; briefIndex += 1) {
+      const brief = factBrief.verse_briefs[briefIndex];
+      const request = requests.find((candidate) => candidate.verse_id === brief.verse_id);
+      if (!request) continue;
+      for (const term of request.required_explicit_identity_terms || []) {
+        if (text === `$.verse_briefs[${briefIndex}].facts: omitted explicit identity ${JSON.stringify(term)}`) {
+          matched = {briefIndex, verseId: brief.verse_id, kind: "identity", terms: [term], identityTerms: [term], relations: []};
+        }
+      }
+      for (const relation of request.required_explicit_relations || []) {
+        const label = `${relation.relation} ${relation.term}`;
+        if (text === `$.verse_briefs[${briefIndex}].facts: omitted explicit relation ${JSON.stringify(label)}`) {
+          matched = {
+            briefIndex,
+            verseId: brief.verse_id,
+            kind: "relation",
+            terms: [relation.term, relation.relation],
+            identityTerms: [relation.term],
+            relations: [relation]
+          };
+        }
+      }
+    }
+    if (!matched) return null;
+    requirements.push(matched);
+  }
+  return requirements;
+}
+
+function uniqueTargetMarkedAtomForRequirement({chapterJobSpec, verseId, terms}) {
+  const request = chapterJobSpec.requestedRecords.find((record) => record.verse_id === verseId);
+  if (!request) return null;
+  const targetAtoms = new Set(request.target_marked_source_atom_ids || []);
+  const matches = chapterJobSpec.sourceUnits.flatMap((unit) => unit.source_atoms || [])
+    .filter((atom) => targetAtoms.has(atom.source_atom_id) && terms.every((term) => containsExplicitRequirement(atom.text, term)));
+  return matches.length === 1 ? matches[0].source_atom_id : null;
+}
+
+function factCarriesExplicitRequirements(fact, terms) {
+  const factsText = `${fact && fact.statement || ""} ${(fact && fact.must_include_terms || []).join(" ")}`;
+  const anchors = (fact && fact.must_include_terms || []).join(" ");
+  return terms.every((term) => containsExplicitRequirement(factsText, term) && containsExplicitRequirement(anchors, term));
+}
+
+function replaceExplicitOmissionFacts({factBrief, replacements, verseId, maxFacts = 3}) {
+  return replaceQualificationCueFacts({factBrief, replacements, verseId, maxFacts});
+}
+
+async function generateValidatedAtomFactFallback({
+  chunk,
+  chunkDir,
+  factDir,
+  factTemplate,
+  factSchema,
+  generatedAt,
+  model,
+  maxRetries,
+  atomId,
+  fallbackKind = "missing_target_atom",
+  requireExistingTarget = true,
+  requiredIdentityTerms = null,
+  requiredRelations = null
+}) {
+  const verseId = chunk.chapterJobSpec.requestedRecords[0].verse_id;
+  const restrictedChapterJobSpec = buildAtomRestrictedFactChapterSpec({
+    chapterJobSpec: chunk.chapterJobSpec,
+    verseId,
+    atomId,
+    requireExistingTarget,
+    requiredIdentityTerms,
+    requiredRelations
+  });
+  const restrictedFactJobSpec = buildFactBriefJobSpec({chapterJobSpec: restrictedChapterJobSpec, generatedAt});
+  const fingerprint = jobFingerprint({
+    ...restrictedFactJobSpec.metadata,
+    generation_mode: FACT_GENERATION_MODE,
+    parent_chunk_id: chunk.chunkId,
+    target_atom_id: atomId,
+    fallback_kind: fallbackKind,
+    required_identity_terms: requiredIdentityTerms,
+    required_relations: requiredRelations
+  });
+  const atomPath = `${atomId.replace(/[^A-Za-z0-9._-]+/g, "-")}-${sha256(atomId).slice(0, 12)}`;
+  const childRoot = fallbackKind === "missing_target_atom" ? "atom-fallback" :
+    fallbackKind === "qualification_cue" ? "qualification-atom-fallback" : "explicit-omission-atom-fallback";
+  const childDir = path.join(chunkDir, childRoot, atomPath, fingerprint.slice(0, 16));
+  const outputPath = path.join(childDir, "fact-brief.json");
+  const validationPath = path.join(childDir, "validation.json");
+  const prompt = renderFactExtractionPrompt(factTemplate, restrictedFactJobSpec);
+  const validate = () => validateFactBriefFile({
+    outputPath,
+    schema: factSchema,
+    chapterJobSpec: restrictedChapterJobSpec
+  });
+  await mkdir(childDir, {recursive: true});
+  await writeFile(path.join(childDir, "prompt.txt"), prompt, {encoding: "utf8", mode: 0o600});
+  await writeJson(path.join(childDir, "request.json"), {
+    kind: "fact_brief_atom_fallback",
+    generation_mode: FACT_GENERATION_MODE,
+    fingerprint,
+    parent_chunk_id: chunk.chunkId,
+    target_atom_id: atomId,
+    fallback_kind: fallbackKind,
+    worker_model: model,
+    metadata: restrictedFactJobSpec.metadata,
+    source_fact_dir: path.relative(PRIVATE_ROOT, factDir)
+  });
+  let checked = await exists(outputPath) ? await validate() : null;
+  if (!checked || !checked.validation.valid) {
+    const processResult = await invokeCodexStage({
+      model,
+      schemaPath: FACT_BRIEF_SCHEMA_PATH,
+      outputPath,
+      prompt,
+      cwd: childDir,
+      logPrefix: "fact-atom-fallback-process",
+      maxRetries: Math.min(maxRetries, 1)
+    });
+    if (codexStageFailed(processResult, await exists(outputPath))) {
+      throw new Error(`${model} atom fact fallback for ${verseId} ${atomId} failed to produce output.`);
+    }
+    checked = await validate();
+  }
+  if (!checked.validation.valid) {
+    await writeJson(path.join(childDir, "invalid-fact-brief.json"), checked.output);
+    await writeJson(path.join(childDir, "invalid-fact-validation.json"), checked.validation);
+    const repairResult = await invokeCodexStage({
+      model,
+      schemaPath: FACT_BRIEF_SCHEMA_PATH,
+      outputPath,
+      prompt: renderFactRepairPrompt({prompt, output: checked.output, validation: checked.validation}),
+      cwd: childDir,
+      logPrefix: "fact-atom-fallback-repair",
+      maxRetries: 0
+    });
+    if (!codexStageFailed(repairResult, await exists(outputPath))) checked = await validate();
+  }
+  await writeJson(validationPath, checked.validation);
+  if (!checked.validation.valid) {
+    throw new Error(`${model} atom fact fallback for ${verseId} ${atomId} failed deterministic validation.`);
+  }
+  return {...checked, childDir, fingerprint};
 }
 
 function buildFactChunks(chapterJobSpec, size = 4) {
@@ -846,6 +1216,232 @@ async function generateValidatedFactChunk({
     return {...mergedChecked, outputPath, chunkDir, skipped: false, fallbackApplied: true};
   };
 
+  const tryAtomFallback = async () => {
+    // This is deliberately one level deep: a child is constrained to one already-targeted
+    // atom and never re-enters either chunk or atom fallback.
+    if (chunk.chapterJobSpec.requestedRecords.length !== 1) return null;
+    const missingAtomIds = missingRequiredTargetAtomIds({factBrief: checked.output, chapterJobSpec: chunk.chapterJobSpec});
+    if (!onlyMissingTargetAtomErrors({validation: checked.validation, missingAtomIds})) return null;
+    let merged = checked.output;
+    const childResults = [];
+    for (const atomId of missingAtomIds) {
+      const child = await generateValidatedAtomFactFallback({
+        chunk,
+        chunkDir,
+        factDir,
+        factTemplate,
+        factSchema,
+        generatedAt,
+        model,
+        maxRetries,
+        atomId
+      });
+      merged = mergeAtomFallbackFacts({
+        factBrief: merged,
+        atomFactBrief: child.output,
+        verseId: chunk.chapterJobSpec.requestedRecords[0].verse_id,
+        maxFacts: factBriefMaxFacts(factSchema)
+      });
+      childResults.push({
+        atom_id: atomId,
+        fingerprint: child.fingerprint,
+        path: path.relative(chunkDir, child.childDir)
+      });
+    }
+    const mergedPath = path.join(chunkDir, "atom-fallback-merged.json");
+    await writeJson(mergedPath, merged);
+    const mergedChecked = await validateFactBriefFile({
+      outputPath: mergedPath,
+      schema: factSchema,
+      chapterJobSpec: chunk.chapterJobSpec
+    });
+    await writeJson(path.join(chunkDir, "atom-fallback-validation.json"), mergedChecked.validation);
+    if (!mergedChecked.validation.valid) return null;
+    await writeJson(outputPath, mergedChecked.output);
+    await writeJson(path.join(chunkDir, "validation.json"), mergedChecked.validation);
+    await writeJson(path.join(chunkDir, "atom-fallback.json"), {
+      schema_version: "mhc-fact-atom-fallback/v1",
+      chunk_id: chunk.chunkId,
+      strategy: "one_level_missing_target_atom",
+      worker_model: model,
+      children: childResults,
+      final_output_sha256: await fileHash(outputPath),
+      completed_at: new Date().toISOString()
+    });
+    return {...mergedChecked, outputPath, chunkDir, skipped: false, atomFallbackApplied: true};
+  };
+
+  const tryQualificationAtomFallback = async () => {
+    // One level only: each child is an atom-restricted extraction and cannot enter a fallback.
+    if (chunk.chapterJobSpec.requestedRecords.length !== 1) return null;
+    const offending = qualificationCueOffendingFacts({validation: checked.validation, factBrief: checked.output});
+    if (!offending || !offending.length || offending.some((entry) => entry.briefIndex !== 0)) return null;
+    const verseId = chunk.chapterJobSpec.requestedRecords[0].verse_id;
+    const originalBrief = checked.output.verse_briefs[0];
+    if (!originalBrief || originalBrief.verse_id !== verseId) return null;
+    const replacements = [];
+    const childResults = [];
+    const usedReplacementKeys = new Set();
+    for (const entry of offending) {
+      const originalFact = originalBrief.facts && originalBrief.facts[entry.factIndex];
+      if (!originalFact || originalFact.source_atom_id !== entry.sourceAtomId) return null;
+      const child = await generateValidatedAtomFactFallback({
+        chunk,
+        chunkDir,
+        factDir,
+        factTemplate,
+        factSchema,
+        generatedAt,
+        model,
+        maxRetries,
+        atomId: entry.sourceAtomId,
+        fallbackKind: "qualification_cue",
+        requireExistingTarget: false
+      });
+      const childBrief = (child.output.verse_briefs || []).find((brief) => brief.verse_id === verseId);
+      const replacement = childBrief && (childBrief.facts || [])
+        .filter((fact) => fact.source_atom_id === entry.sourceAtomId && fact.importance === originalFact.importance)
+        .sort((left, right) => left.fact_id.localeCompare(right.fact_id))
+        .find((fact) => !usedReplacementKeys.has([fact.source_atom_id, fact.source_snippet_id, fact.statement].join("\u0000")));
+      if (!replacement) return null;
+      usedReplacementKeys.add([replacement.source_atom_id, replacement.source_snippet_id, replacement.statement].join("\u0000"));
+      replacements.push({factIndex: entry.factIndex, fact: replacement});
+      childResults.push({
+        fact_index: entry.factIndex,
+        atom_id: entry.sourceAtomId,
+        fingerprint: child.fingerprint,
+        path: path.relative(chunkDir, child.childDir)
+      });
+    }
+    const merged = replaceQualificationCueFacts({
+      factBrief: checked.output,
+      replacements,
+      verseId,
+      maxFacts: factBriefMaxFacts(factSchema)
+    });
+    const mergedPath = path.join(chunkDir, "qualification-atom-fallback-merged.json");
+    await writeJson(mergedPath, merged);
+    const mergedChecked = await validateFactBriefFile({
+      outputPath: mergedPath,
+      schema: factSchema,
+      chapterJobSpec: chunk.chapterJobSpec
+    });
+    await writeJson(path.join(chunkDir, "qualification-atom-fallback-validation.json"), mergedChecked.validation);
+    if (!mergedChecked.validation.valid) return null;
+    await writeJson(outputPath, mergedChecked.output);
+    await writeJson(path.join(chunkDir, "validation.json"), mergedChecked.validation);
+    await writeJson(path.join(chunkDir, "qualification-atom-fallback.json"), {
+      schema_version: "mhc-fact-qualification-atom-fallback/v1",
+      chunk_id: chunk.chunkId,
+      strategy: "one_level_qualification_cue_fact_replacement",
+      worker_model: model,
+      replacements: childResults,
+      final_output_sha256: await fileHash(outputPath),
+      completed_at: new Date().toISOString()
+    });
+    return {...mergedChecked, outputPath, chunkDir, skipped: false, qualificationAtomFallbackApplied: true};
+  };
+
+  const tryExplicitOmissionAtomFallback = async () => {
+    // One level only: each selected child atom is already target-marked for this verse.
+    if (chunk.chapterJobSpec.requestedRecords.length !== 1) return null;
+    const requirements = explicitOmissionRequirements({
+      validation: checked.validation,
+      factBrief: checked.output,
+      chapterJobSpec: chunk.chapterJobSpec
+    });
+    if (!requirements || !requirements.length || requirements.some((entry) => entry.briefIndex !== 0)) return null;
+    const verseId = chunk.chapterJobSpec.requestedRecords[0].verse_id;
+    if (requirements.some((entry) => entry.verseId !== verseId)) return null;
+    const byAtom = new Map();
+    for (const requirement of requirements) {
+      const atomId = uniqueTargetMarkedAtomForRequirement({
+        chapterJobSpec: chunk.chapterJobSpec,
+        verseId,
+        terms: requirement.terms
+      });
+      if (!atomId) return null;
+      const group = byAtom.get(atomId) || {atomId, identityTerms: new Set(), relations: []};
+      requirement.identityTerms.forEach((term) => group.identityTerms.add(term));
+      requirement.relations.forEach((relation) => {
+        if (!group.relations.some((candidate) => candidate.term === relation.term && candidate.relation === relation.relation)) {
+          group.relations.push(relation);
+        }
+      });
+      byAtom.set(atomId, group);
+    }
+    const originalBrief = checked.output.verse_briefs[0];
+    if (!originalBrief || originalBrief.verse_id !== verseId) return null;
+    const replacements = [];
+    const childResults = [];
+    for (const group of [...byAtom.values()].sort((left, right) => left.atomId.localeCompare(right.atomId))) {
+      const identityTerms = [...group.identityTerms].sort((left, right) => left.localeCompare(right));
+      const relations = [...group.relations].sort((left, right) =>
+        `${left.relation}\u0000${left.term}`.localeCompare(`${right.relation}\u0000${right.term}`));
+      const requiredTerms = [...identityTerms, ...relations.flatMap((relation) => [relation.term, relation.relation])]
+        .filter((term, index, values) => values.indexOf(term) === index);
+      const originalIndex = (originalBrief.facts || []).findIndex((fact) =>
+        fact.importance === "required" && fact.source_atom_id === group.atomId);
+      if (originalIndex < 0) return null;
+      const child = await generateValidatedAtomFactFallback({
+        chunk,
+        chunkDir,
+        factDir,
+        factTemplate,
+        factSchema,
+        generatedAt,
+        model,
+        maxRetries,
+        atomId: group.atomId,
+        fallbackKind: "explicit_identity_relation",
+        requireExistingTarget: true,
+        requiredIdentityTerms: identityTerms,
+        requiredRelations: relations
+      });
+      const childBrief = (child.output.verse_briefs || []).find((brief) => brief.verse_id === verseId);
+      const replacement = childBrief && (childBrief.facts || [])
+        .filter((fact) => fact.importance === "required" && fact.source_atom_id === group.atomId &&
+          factCarriesExplicitRequirements(fact, requiredTerms))
+        .sort((left, right) => left.fact_id.localeCompare(right.fact_id))[0];
+      if (!replacement) return null;
+      replacements.push({factIndex: originalIndex, fact: replacement});
+      childResults.push({
+        atom_id: group.atomId,
+        identity_terms: identityTerms,
+        relations,
+        fingerprint: child.fingerprint,
+        path: path.relative(chunkDir, child.childDir)
+      });
+    }
+    const merged = replaceExplicitOmissionFacts({
+      factBrief: checked.output,
+      replacements,
+      verseId,
+      maxFacts: factBriefMaxFacts(factSchema)
+    });
+    const mergedPath = path.join(chunkDir, "explicit-omission-atom-fallback-merged.json");
+    await writeJson(mergedPath, merged);
+    const mergedChecked = await validateFactBriefFile({
+      outputPath: mergedPath,
+      schema: factSchema,
+      chapterJobSpec: chunk.chapterJobSpec
+    });
+    await writeJson(path.join(chunkDir, "explicit-omission-atom-fallback-validation.json"), mergedChecked.validation);
+    if (!mergedChecked.validation.valid) return null;
+    await writeJson(outputPath, mergedChecked.output);
+    await writeJson(path.join(chunkDir, "validation.json"), mergedChecked.validation);
+    await writeJson(path.join(chunkDir, "explicit-omission-atom-fallback.json"), {
+      schema_version: "mhc-fact-explicit-omission-atom-fallback/v1",
+      chunk_id: chunk.chunkId,
+      strategy: "one_level_explicit_identity_relation_fact_replacement",
+      worker_model: model,
+      replacements: childResults,
+      final_output_sha256: await fileHash(outputPath),
+      completed_at: new Date().toISOString()
+    });
+    return {...mergedChecked, outputPath, chunkDir, skipped: false, explicitOmissionAtomFallbackApplied: true};
+  };
+
   if (checked && await exists(path.join(chunkDir, "validation.json")) && allowFallback) {
     const fallback = await tryVerseFallback();
     if (fallback) return fallback;
@@ -865,7 +1461,7 @@ async function generateValidatedFactChunk({
     maxRetries
   });
   if (codexStageFailed(processResult, await exists(outputPath))) {
-    throw new Error(`Spark fact chunk ${chunk.chunkId} failed to produce output.`);
+    throw new Error(`${model} fact chunk ${chunk.chunkId} failed to produce output.`);
   }
   checked = await validateFactBriefFile({outputPath, schema: factSchema, chapterJobSpec: chunk.chapterJobSpec});
   const repairRunId = new Date().toISOString().replace(/[^0-9]/g, "").slice(0, 17);
@@ -887,9 +1483,15 @@ async function generateValidatedFactChunk({
   }
   await writeJson(path.join(chunkDir, "validation.json"), checked.validation);
   if (!checked.validation.valid) {
+    const qualificationAtomFallback = await tryQualificationAtomFallback();
+    if (qualificationAtomFallback) return qualificationAtomFallback;
+    const explicitOmissionAtomFallback = await tryExplicitOmissionAtomFallback();
+    if (explicitOmissionAtomFallback) return explicitOmissionAtomFallback;
+    const atomFallback = await tryAtomFallback();
+    if (atomFallback) return atomFallback;
     const fallback = await tryVerseFallback();
     if (fallback) return fallback;
-    throw new Error(`Spark fact chunk ${chunk.chunkId} failed deterministic validation after bounded self-repair.`);
+    throw new Error(`${model} fact chunk ${chunk.chunkId} failed deterministic validation after bounded self-repair.`);
   }
   return {...checked, outputPath, chunkDir, skipped: false};
 }
@@ -1037,7 +1639,7 @@ async function generateValidatedWriterChunk({
       maxRetries
     });
     if (codexStageFailed(draftProcess, await exists(draftOutputPath))) {
-      throw new Error(`Spark writer chunk ${chunk.chunkId} failed to produce a draft.`);
+      throw new Error(`${model} writer chunk ${chunk.chunkId} failed to produce a draft.`);
     }
     draftChecked = await validatePath(draftOutputPath);
   }
@@ -1062,7 +1664,7 @@ async function generateValidatedWriterChunk({
   if (!draftChecked.validation.valid) {
     const fallback = await tryVerseFallback();
     if (fallback) return fallback;
-    throw new Error(`Spark writer chunk ${chunk.chunkId} failed draft validation after bounded self-repair.`);
+    throw new Error(`${model} writer chunk ${chunk.chunkId} failed draft validation after bounded self-repair.`);
   }
 
   await writeJson(outputPath, draftChecked.output);
@@ -1071,9 +1673,10 @@ async function generateValidatedWriterChunk({
   if (!checked.validation.valid) {
     const fallback = await tryVerseFallback();
     if (fallback) return fallback;
-    throw new Error(`Spark writer chunk ${chunk.chunkId} failed deterministic admission after bounded repair.`);
+    throw new Error(`${model} writer chunk ${chunk.chunkId} failed deterministic admission after bounded repair.`);
   }
   await writeJson(admissionPath, {
+    // This legacy identifier remains stable for existing private audit readers; worker_model records the actual worker.
     schema_version: "mhc-spark-deterministic-admission/v1",
     generation_mode: AUTONOMOUS_GENERATION_MODE,
     worker_model: model,
@@ -1089,7 +1692,7 @@ async function generateAutonomousChapter(options) {
   const bookId = options.book || "GEN";
   const chapter = options.chapter || 1;
   const model = options.model;
-  if (model !== SPARK_MODEL) throw new Error(`Autonomous chapter generation requires ${SPARK_MODEL}.`);
+  if (!HENRY_WORKER_MODELS.includes(model)) throw new Error(`Autonomous chapter generation permits only ${SPARK_MODEL} or ${LUNA_MODEL}.`);
   if (options.reviewOverridePath) {
     throw new Error("Spark-autonomous generation does not accept human review overrides; recalibrate its prompts and rerun instead.");
   }
@@ -1162,7 +1765,7 @@ async function generateAutonomousChapter(options) {
           dryRun: true
         });
       }
-      process.stdout.write(`Dry run prepared ${factChunks.length} autonomous fact chunks at ${path.relative(ROOT, factDir)}; Spark was not invoked.\n`);
+      process.stdout.write(`Dry run prepared ${factChunks.length} autonomous fact chunks at ${path.relative(ROOT, factDir)}; ${model} was not invoked.\n`);
       return {
         jobSpec: chapterJobSpec,
         fingerprint: factFingerprint,
@@ -1201,6 +1804,7 @@ async function generateAutonomousChapter(options) {
       };
       await savePipelineJob(failure);
       await queueReview({...failure, reason: "autonomous_fact_chunk_failure"});
+      if (["SPARK_QUOTA_UNAVAILABLE", "SPARK_MODEL_UNAVAILABLE"].includes(error && error.code)) throw error;
       throw new Error(`${model} chunked fact extraction failed. See ${path.relative(ROOT, factDir)}.`);
     }
     const mergedFactBrief = {
@@ -1335,7 +1939,7 @@ async function generateAutonomousChapter(options) {
         dryRun: true
       });
     }
-    process.stdout.write(`Dry run prepared ${writerChunks.length} autonomous writer chunks at ${path.relative(ROOT, jobDir)}; Spark was not invoked.\n`);
+    process.stdout.write(`Dry run prepared ${writerChunks.length} autonomous writer chunks at ${path.relative(ROOT, jobDir)}; ${model} was not invoked.\n`);
     return {
       jobSpec: chapterJobSpec,
       fingerprint,
@@ -1381,6 +1985,7 @@ async function generateAutonomousChapter(options) {
     };
     await savePipelineJob(failure);
     await queueReview({...failure, reason: "autonomous_writer_chunk_failure"});
+    if (["SPARK_QUOTA_UNAVAILABLE", "SPARK_MODEL_UNAVAILABLE"].includes(error && error.code)) throw error;
     throw new Error(`${model} chunked autonomous writer failed. See ${path.relative(ROOT, jobDir)}.`);
   }
 
@@ -1458,7 +2063,7 @@ async function generateAutonomousChapter(options) {
     await queueReview({...record, reason: "autonomous_admission_failure"});
     throw new Error(`${model} autonomous output failed admission. See ${path.relative(ROOT, jobDir)}.`);
   }
-  process.stdout.write(`Completed ${chapterJobSpec.metadata.job_id} with autonomous Spark fact extraction and writing; zero admission warnings.\n`);
+  process.stdout.write(`Completed ${chapterJobSpec.metadata.job_id} with autonomous ${model} fact extraction and writing; zero admission warnings.\n`);
   return {
     ...checked,
     jobSpec: chapterJobSpec,
@@ -1471,8 +2076,12 @@ async function generateAutonomousChapter(options) {
   };
 }
 
+function usesAutonomousChapterPath({model, bookIntro = false}) {
+  return !bookIntro && HENRY_WORKER_MODELS.includes(model);
+}
+
 async function generateOne(options) {
-  if (!options.bookIntro && options.model === SPARK_MODEL) return generateAutonomousChapter(options);
+  if (usesAutonomousChapterPath(options)) return generateAutonomousChapter(options);
   return generateLegacyOne(options);
 }
 
@@ -1779,7 +2388,7 @@ function assertScheduleLaneOptions(options, command) {
   }
   if (options.request) throw new Error(`${command} does not accept an activation request file; use the activate command.`);
   if (options.model && options.model !== SPARK_MODEL) {
-    throw new Error(`${command} is a Spark audit lane and requires ${SPARK_MODEL}.`);
+    throw new Error(`${command} is Spark-first; model selection is fixed by the routing policy.`);
   }
   if (command === "schedule-next" && options.readingCount !== undefined) {
     throw new Error("schedule-next accepts one reading only; use schedule-window or activate for a caller-selected count.");
@@ -1789,7 +2398,7 @@ function assertScheduleLaneOptions(options, command) {
   }
 }
 
-async function scheduleReading(options, {plan, target}) {
+async function scheduleReading(options, {plan, target, routing = routingState()}) {
   const entry = target.entry;
   if (entry.kind !== "chapter" || !Array.isArray(entry.passages) || !entry.passages.length) {
     throw new Error(`${entry.readingId} is not a chapter reading and cannot enter the verse-commentary lane.`);
@@ -1812,6 +2421,7 @@ async function scheduleReading(options, {plan, target}) {
     days_ahead: target.daysAhead,
     timezone: target.timezone,
     worker_model: SPARK_MODEL,
+    worker_models: [],
     prompt_version: PROMPT_VERSION,
     generation_mode: AUTONOMOUS_GENERATION_MODE,
     audit_status: options.dryRun ? "preparing" : "generating",
@@ -1841,14 +2451,12 @@ async function scheduleReading(options, {plan, target}) {
       if (normalized.manifest.indexed_verse_count !== passage.verseCount) {
         throw new Error(`${passage.bookId} ${passage.chapter} has ${normalized.manifest.indexed_verse_count} indexed Henry verses but the active plan requires ${passage.verseCount}.`);
       }
-      const generated = await generateOne({
-        book: passage.bookId,
-        chapter: passage.chapter,
-        model: SPARK_MODEL,
-        dryRun: options.dryRun,
-        maxRetries: options.maxRetries,
-        expectedReadingId: entry.readingId
-      });
+      const routed = await routeHenryGeneration({routing, invoke: (model) => generateOne({
+        book: passage.bookId, chapter: passage.chapter, model, dryRun: options.dryRun,
+        maxRetries: options.maxRetries, expectedReadingId: entry.readingId
+      })});
+      const workerModel = routed.model;
+      const generated = routed.result;
       if (generated.reviewApplied) {
         audit.review_status = generated.humanReview.status;
         audit.human_review = {
@@ -1863,7 +2471,7 @@ async function scheduleReading(options, {plan, target}) {
       const exported = options.dryRun ? null : await exportResult({
         book: passage.bookId,
         chapter: passage.chapter,
-        model: SPARK_MODEL,
+        model: workerModel,
         runtimeReviewStatus: generated.reviewApplied ? generated.humanReview.status : null
       });
       const passageResult = {
@@ -1879,6 +2487,7 @@ async function scheduleReading(options, {plan, target}) {
         fingerprint: generated.fingerprint,
         job_path: path.relative(PRIVATE_ROOT, generated.jobDir),
         generation_mode: generated.autonomy && generated.autonomy.generation_mode || AUTONOMOUS_GENERATION_MODE,
+        worker_model: workerModel,
         fact_brief_path: generated.autonomy && generated.autonomy.fact_brief_path || null,
         fact_brief_sha256: generated.autonomy && generated.autonomy.fact_brief_sha256 || null,
         human_override_applied: false,
@@ -1894,6 +2503,8 @@ async function scheduleReading(options, {plan, target}) {
       passageResults.push(passageResult);
       audit.passages.push(Object.fromEntries(Object.entries(passageResult).filter(([key]) => key !== "runtime")));
     }
+    audit.worker_models = actualWorkerModels(passageResults.map((result) => result.worker_model));
+    if (audit.worker_models.length === 1) audit.worker_model = audit.worker_models[0];
     if (!options.dryRun) {
       const canonicalReviewPath = path.join(auditPaths.root, "review.json");
       if (await exists(canonicalReviewPath)) {
@@ -1926,7 +2537,7 @@ async function scheduleReading(options, {plan, target}) {
     await writeJson(auditPaths.manifest, audit);
     throw error;
   }
-  process.stdout.write(`${options.dryRun ? "Prepared" : "Generated"} private ${SPARK_MODEL} audit for ${entry.readingId} (${target.scheduleDate}); nothing was published.\n`);
+  process.stdout.write(`${options.dryRun ? "Prepared" : "Generated"} private Spark-first audit for ${entry.readingId} (${target.scheduleDate}); actual worker(s): ${audit.worker_models.join(", ") || SPARK_MODEL}; nothing was published.\n`);
   process.stdout.write(`Audit report: ${path.relative(ROOT, auditPaths.report)}\n`);
   return {target, audit, auditPaths, passageResults};
 }
@@ -1950,6 +2561,7 @@ function buildPortableWindowReading({plan, scheduledResult}) {
       runtime: result.runtime
     };
   });
+  const workerModels = actualWorkerModels(passageResults.map((result) => result.worker_model));
   return {
     schema_version: "mhc-portable-reading/v1",
     plan_version: plan.planVersion,
@@ -1959,6 +2571,7 @@ function buildPortableWindowReading({plan, scheduledResult}) {
     source_plan_day: audit.source_plan_day,
     timezone: target.timezone,
     worker_model: audit.worker_model,
+    worker_models: workerModels,
     prompt_version: audit.prompt_version,
     review_status: audit.review_status,
     human_review_status: audit.human_review.status,
@@ -1982,6 +2595,7 @@ function buildWindowStoreManifest({plan, window, generatedAt, readings}) {
     window_start_date: window.windowStartDate,
     window_end_date: window.windowEndDate,
     worker_model: SPARK_MODEL,
+    worker_models: actualWorkerModels(readings.flatMap((reading) => reading.worker_models || [reading.worker_model])),
     prompt_version: PROMPT_VERSION,
     publication_status: "not_published",
     contains_scripture: false,
@@ -2008,6 +2622,7 @@ function buildLibraryCatalog({plan, priorCatalog, storedAt, readings}) {
     plan_version: plan.planVersion,
     updated_at: storedAt,
     worker_model: SPARK_MODEL,
+    worker_models: actualWorkerModels([...priorById.values()].flatMap((reading) => reading.worker_models || [reading.worker_model])),
     prompt_version: PROMPT_VERSION,
     publication_status: "not_published",
     contains_scripture: false,
@@ -2036,6 +2651,7 @@ function buildActivationResult({request, completedAt, scheduledResults, store}) 
     completed_at: completedAt,
     status: "completed",
     worker_model: SPARK_MODEL,
+    worker_models: actualWorkerModels(scheduledResults.flatMap((result) => result.audit.worker_models || [result.audit.worker_model])),
     prompt_version: PROMPT_VERSION,
     publication_status: "not_published",
     contains_scripture: false,
@@ -2097,6 +2713,7 @@ async function writePortableStores({plan, window, scheduledResults, writeWindow 
       ...descriptor,
       file: libraryRelativePath.split(path.sep).join("/"),
       worker_model: reading.worker_model,
+      worker_models: reading.worker_models,
       prompt_version: reading.prompt_version
     });
     if (writeWindow) readingPaths.push(outputPath);
@@ -2184,8 +2801,9 @@ async function scheduleWindow(options) {
     return {window, scheduledResults: [], store: null};
   }
   const scheduledResults = [];
+  const routing = routingState();
   for (const target of window.targets) {
-    scheduledResults.push(await scheduleReading(options, {plan, target}));
+    scheduledResults.push(await scheduleReading(options, {plan, target, routing}));
   }
   const store = await writePortableStores({plan, window, scheduledResults});
   process.stdout.write(`Portable private window store: ${path.relative(ROOT, store.manifestPath)}\n`);
@@ -2235,8 +2853,9 @@ async function activateSchedule(options) {
     return {request, window, scheduledResults: [], store: null, result: null};
   }
   const scheduledResults = [];
+  const routing = routingState();
   for (const target of window.targets) {
-    scheduledResults.push(await scheduleReading(options, {plan, target}));
+    scheduledResults.push(await scheduleReading(options, {plan, target, routing}));
   }
   const store = await writePortableStores({plan, window, scheduledResults});
   const completedAt = new Date().toISOString();
@@ -2335,7 +2954,20 @@ async function verifiedCatalogReadingIds({plan, targets, catalog, storeSchema, r
   return available;
 }
 
-function buildEnsureResult({request, completedAt, window, generatedReadingIds, reusedReadingIds, catalogPath, catalogSha256}) {
+function ensureWorkerModels({window, catalog, scheduledResults}) {
+  const generatedByReadingId = new Map((scheduledResults || []).map((result) => [
+    result.audit.reading_id,
+    result.audit.worker_models || [result.audit.worker_model]
+  ]));
+  const storedByReadingId = new Map((catalog && catalog.readings || []).map((reading) => [
+    reading.reading_id,
+    reading.worker_models || [reading.worker_model]
+  ]));
+  return actualWorkerModels((window.targets || []).flatMap((target) =>
+    generatedByReadingId.get(target.entry.readingId) || storedByReadingId.get(target.entry.readingId) || []));
+}
+
+function buildEnsureResult({request, completedAt, window, generatedReadingIds, reusedReadingIds, catalogPath, catalogSha256, workerModels = []}) {
   return {
     schema_version: "mhc-ensure-result/v1",
     request_id: request.request_id,
@@ -2346,6 +2978,7 @@ function buildEnsureResult({request, completedAt, window, generatedReadingIds, r
     completed_at: completedAt,
     status: "ready",
     worker_model: SPARK_MODEL,
+    worker_models: actualWorkerModels(workerModels),
     prompt_version: PROMPT_VERSION,
     generation_mode: AUTONOMOUS_GENERATION_MODE,
     publication_status: "not_published",
@@ -2397,8 +3030,9 @@ async function ensureSchedule(options) {
   }
 
   const scheduledResults = [];
+  const routing = routingState();
   for (const target of partition.missing) {
-    scheduledResults.push(await scheduleReading(options, {plan, target}));
+    scheduledResults.push(await scheduleReading(options, {plan, target, routing}));
   }
   const store = scheduledResults.length
     ? await writePortableStores({plan, window, scheduledResults, writeWindow: false})
@@ -2436,7 +3070,8 @@ async function ensureSchedule(options) {
     generatedReadingIds: partition.missing.map((target) => target.entry.readingId),
     reusedReadingIds: partition.reused.map((target) => target.entry.readingId),
     catalogPath: store.catalogPath,
-    catalogSha256: store.catalogSha256
+    catalogSha256: store.catalogSha256,
+    workerModels: ensureWorkerModels({window, catalog: store.catalog, scheduledResults})
   });
   const resultErrors = validateAgainstSchema(result, {...schema, $ref: "#/$defs/result"});
   if (resultErrors.length) throw new Error(`Matthew Henry ensure result is invalid:\n- ${resultErrors.join("\n- ")}`);
@@ -2485,12 +3120,15 @@ export {
   activateSchedule,
   applyReviewCorrections,
   buildActivationResult,
+  buildAtomRestrictedFactChapterSpec,
   buildEnsureResult,
   buildFactChunks,
   buildWriterChunks,
   buildLibraryCatalog,
   buildLibraryPointer,
   classifySparkAvailabilityFailure,
+  collectCodexChild,
+  codexInvocationTimeoutMs,
   codexExecArgs,
   codexPreflight,
   compare,
@@ -2499,18 +3137,32 @@ export {
   exportResult,
   generate,
   generateOne,
+  ensureWorkerModels,
   ensureSchedule,
+  explicitOmissionRequirements,
+  factCarriesExplicitRequirements,
   loadPipelineManifest,
+  mergeAtomFallbackFacts,
+  missingRequiredTargetAtomIds,
   normalize,
+  onlyMissingTargetAtomErrors,
   parseArgs,
   partitionTargetsByAvailability,
+  qualificationCueOffendingFacts,
+  renderFactRepairPrompt,
   renderValidationRepairPrompt,
   preflight,
   resultMetrics,
+  routeHenryGeneration,
+  replaceQualificationCueFacts,
+  replaceExplicitOmissionFacts,
   scheduleNext,
   scheduleWindow,
   shouldRetryCodexFailure,
+  uniqueTargetMarkedAtomForRequirement,
+  usesAutonomousChapterPath,
   writePortableStores,
   writeScheduleAuditReport,
+  validateGeneratedProseLexicon,
   validateSaved
 };

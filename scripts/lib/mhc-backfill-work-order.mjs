@@ -19,7 +19,8 @@ const GUARDS = Object.freeze({
   tPlus7PreparationFirst: true,
   publishedFallbackOnly: true,
   sparkModel: "gpt-5.3-codex-spark",
-  substituteModelAllowed: false,
+  sparkAvailabilityFallback: "gpt-5.6-luna-low-only",
+  solOrOtherModelAllowed: false,
   primaryReviewRequired: true,
   contentFirstManifestLast: true,
   scriptureTextStored: false,
@@ -88,7 +89,7 @@ function buildEnsureRequest(planVersion, readingId) {
     worker_model: "gpt-5.3-codex-spark",
     generation_mode: "spark-autonomous-chunked-two-stage/v4",
     only_if_missing: true,
-    reason: "Replace the published full-commentary fallback with one reviewed verse-by-verse Matthew Henry layer when Spark capacity is available."
+    reason: "Replace the published full-commentary fallback with one reviewed verse-by-verse Matthew Henry layer. The controller tries Spark first and may use only Luna at low reasoning after a coded Spark availability failure."
   };
 }
 

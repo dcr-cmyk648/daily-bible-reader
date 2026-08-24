@@ -17,7 +17,7 @@ function runtime(promptVersion, generatedAt, reviewStatus = "in_review") {
     source_version: "test-v1",
     source_archive_sha256: "a".repeat(64),
     source_manifest_ref: "FABRICATED TEST MANIFEST",
-    worker_model: "fabricated-model",
+    worker_model: "gpt-5.3-codex-spark",
     prompt_version: promptVersion,
     generation_timestamp: generatedAt,
     validation_status: "valid",
@@ -64,7 +64,7 @@ async function fixture(reviewStatus = "in_review") {
     day_index: 5,
     source_plan_day: 58,
     timezone: "America/Detroit",
-    worker_model: "fabricated-model",
+    worker_model: "gpt-5.3-codex-spark",
     prompt_version: latest.prompt_version,
     review_status: reviewStatus,
     human_review_status: reviewStatus,
@@ -146,4 +146,23 @@ test("Henry handoff rejects a catalog whose checksum no longer matches the point
     readingId: "CC-Y3Q4-D058",
     runtimeSchemaPath: path.join(__dirname, "../schemas/mhc-runtime.schema.json")
   }), /catalog checksum mismatch/);
+});
+
+test("mixed Spark/Luna catalog descriptors retain older immutable readings", async () => {
+  const {buildLibraryCatalog} = await import("../scripts/mhc-pipeline.mjs");
+  const plan = {planVersion: "fabricated-plan-v1"};
+  const prior = buildLibraryCatalog({plan, priorCatalog: null, storedAt: "2026-08-12T00:00:00.000Z", readings: [{
+    reading_id: "FAB-001", schedule_date: "2026-08-12", day_index: 1, source_plan_day: 1,
+    file: "plans/fabricated-plan/readings/FAB-001.aaaaaaaaaaaaaaaa.json", sha256: "a".repeat(64), passage_count: 1,
+    worker_model: "gpt-5.3-codex-spark", worker_models: ["gpt-5.3-codex-spark"], prompt_version: "test",
+    review_status: "unreviewed", human_review_status: "required"
+  }]});
+  const merged = buildLibraryCatalog({plan, priorCatalog: prior, storedAt: "2026-08-13T00:00:00.000Z", readings: [{
+    reading_id: "FAB-002", schedule_date: "2026-08-13", day_index: 2, source_plan_day: 2,
+    file: "plans/fabricated-plan/readings/FAB-002.bbbbbbbbbbbbbbbb.json", sha256: "b".repeat(64), passage_count: 1,
+    worker_model: "gpt-5.6-luna", worker_models: ["gpt-5.6-luna"], prompt_version: "test",
+    review_status: "unreviewed", human_review_status: "required"
+  }]});
+  assert.deepEqual(merged.readings.map((item) => item.reading_id), ["FAB-001", "FAB-002"]);
+  assert.deepEqual(merged.worker_models, ["gpt-5.3-codex-spark", "gpt-5.6-luna"]);
 });

@@ -603,6 +603,32 @@
       "sourceIds": [
         "youversion_celebration_y3q4_plan_3805"
       ]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 25,
+      "sourcePlanDay": 78,
+      "readingId": "CC-Y3Q4-D078",
+      "kind": "chapter",
+      "bookId": "ZEC",
+      "chapter": 8,
+      "passages": [
+        {
+          "bookId": "ZEC",
+          "chapter": 8,
+          "verseCount": 23
+        }
+      ],
+      "contextReadingIds": [
+        "CC-Y3Q4-D077"
+      ],
+      "orderingRationale": "Temporary bridge preserves Day 78 of Celebration Church's published Year 3, Quarter 4 sequence.",
+      "chronologyBasis": "pragmatic",
+      "confidence": "high",
+      "notes": "One chapter appears on the Scripture page.",
+      "sourceIds": [
+        "youversion_celebration_y3q4_plan_3805"
+      ]
     }
   ],
   "bookMetrics": {

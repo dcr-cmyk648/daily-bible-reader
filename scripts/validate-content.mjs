@@ -7,6 +7,7 @@ import process from "node:process";
 import vm from "node:vm";
 import {assertSchemaValid} from "./lib/schema-validator.mjs";
 import {buildCompleteBridgeSchedule} from "./lib/bridge-extension.mjs";
+import {buildLongTermCandidate, validateLongTermCandidate} from "./lib/long-term-schedule.mjs";
 
 const require = createRequire(import.meta.url);
 const providerPolicy = require("../app/shared/provider-policy.js");
@@ -90,7 +91,7 @@ async function main() {
     schemas[filename] = schema;
   }
 
-  const [plan, fullBridgeSchedule, config, deploymentConfig, registry, placeholder, referencePlan, policies, manifestExample, appsManifest] = await Promise.all([
+  const [plan, fullBridgeSchedule, config, deploymentConfig, registry, placeholder, referencePlan, policies, manifestExample, appsManifest, longTermInput, longTermCandidate] = await Promise.all([
     json("fixtures/pilot-content/plan.json"),
     json("config/bridge-schedules/celebration-y3q4-bridge-full.json"),
     json("fixtures/pilot-content/app-config.json"),
@@ -100,11 +101,14 @@ async function main() {
     json("config/reference-plans/celebration-y3q4.json"),
     json("config/provider-policies.example.json"),
     json("config/private-manifest.example.json"),
-    json("app/apps-script/appsscript.json")
+    json("app/apps-script/appsscript.json"),
+    json("config/long-term-plan/four-stream-candidate-input.json"),
+    json("config/long-term-plan/four-stream-candidate.json")
   ]);
 
   assertSchemaValid(plan, schemas["plan.schema.json"], {label: "Pilot plan", externalSchemas: schemas});
   assertSchemaValid(fullBridgeSchedule, schemas["plan.schema.json"], {label: "Complete bridge schedule", externalSchemas: schemas});
+  assertSchemaValid(longTermCandidate, schemas["plan.schema.json"], {label: "Long-term review candidate", externalSchemas: schemas});
   assertSchemaValid(registry, schemas["source.schema.json"], {label: "Source registry", externalSchemas: schemas});
   assertSchemaValid(placeholder, schemas["commentary.schema.json"], {label: "Bridge commentary placeholder", externalSchemas: schemas});
   policies.policies.forEach((policy, index) => assertSchemaValid(policy, schemas["provider-policy.schema.json"], {
@@ -123,6 +127,12 @@ async function main() {
   });
   assert(JSON.stringify(fullBridgeSchedule) === JSON.stringify(regeneratedFullBridgeSchedule),
     "Compiled bridge schedule must exactly match the deterministic reference-plan build.");
+  const regeneratedLongTermCandidate = buildLongTermCandidate(longTermInput).plan;
+  validateLongTermCandidate(longTermCandidate, longTermInput);
+  assert(JSON.stringify(longTermCandidate) === JSON.stringify(regeneratedLongTermCandidate),
+    "Long-term review candidate must exactly match deterministic generation.");
+  assert(longTermCandidate.candidateMetadata.reviewOnly === true && longTermCandidate.entries.length === 1255,
+    "Long-term schedule must remain a complete review-only candidate.");
   const firstSourcePlanDay = 54;
   const activeThroughSourcePlanDay = plan.entries.at(-1).sourcePlanDay;
   const detroitToday = new Intl.DateTimeFormat("en-CA", {

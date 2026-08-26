@@ -35,6 +35,33 @@
       },
       "additionalProperties": false
     },
+    "candidateMetadata": {
+      "type": "object",
+      "required": ["reviewOnly", "timezone", "startDate", "sundayPolicy", "inputSha256", "scheduleSha256", "nonSundayMinorExceptions"],
+      "properties": {
+        "reviewOnly": {"const": true},
+        "timezone": {"type": "string", "minLength": 1, "maxLength": 100},
+        "startDate": {"type": "string", "format": "date"},
+        "sundayPolicy": {"const": "one_psalm_or_proverbs_unit"},
+        "inputSha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "scheduleSha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "nonSundayMinorExceptions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["dayIndex", "civilDate", "streamId", "reason"],
+            "properties": {
+              "dayIndex": {"type": "integer", "minimum": 1},
+              "civilDate": {"type": "string", "format": "date"},
+              "streamId": {"enum": ["psalms", "proverbs"]},
+              "reason": {"type": "string", "minLength": 1, "maxLength": 300}
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
     "entries": {
       "type": "array",
       "minItems": 1,

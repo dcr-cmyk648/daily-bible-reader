@@ -1,0 +1,58 @@
+{
+  "schemaVersion": "long-term-plan-candidate-input/v1",
+  "planVersion": "four-stream-protestant-66-candidate-2026-09-16-v1",
+  "title": "Four-stream chronological Bible plan — review candidate",
+  "canonId": "protestant-66",
+  "startDate": "2026-09-16",
+  "timezone": "America/Detroit",
+  "sundayPolicy": "one_psalm_or_proverbs_unit",
+  "sourceMetadata": [
+    {
+      "sourceId": "thiagobodruk_kjv_structure_2026_08_26",
+      "title": "thiagobodruk/bible KJV structural dataset",
+      "url": "https://raw.githubusercontent.com/thiagobodruk/bible/master/json/en_kjv.json",
+      "accessDate": "2026-08-26",
+      "use": "Chapter and verse-count cross-check only; the candidate stores numeric metrics, never Bible wording. This public dataset is corroborative rather than a chronology authority."
+    },
+    {
+      "sourceId": "bible_api_web_structure_2026_08_26",
+      "title": "Bible API World English Bible structural endpoint",
+      "url": "https://bible-api.com/data/web",
+      "accessDate": "2026-08-26",
+      "use": "Public-domain structural cross-check for 66-book identifiers and chapter boundaries; no wording is stored."
+    },
+    {
+      "sourceId": "tgc_old_testament_order_2026_08_26",
+      "title": "The Gospel Coalition, Introduction to the Old Testament",
+      "url": "https://www.thegospelcoalition.org/essay/introduction-old-testament/",
+      "accessDate": "2026-08-26",
+      "use": "Confessional overview of the Protestant Old Testament's canon, genre, and ordering; the candidate labels its own chronological judgments as approximate."
+    },
+    {
+      "sourceId": "tgc_historical_books_2026_08_26",
+      "title": "The Gospel Coalition, Introduction to the Old Testament Historical Books",
+      "url": "https://www.thegospelcoalition.org/essay/historical-books/",
+      "accessDate": "2026-08-26",
+      "use": "Confessional overview describing the rough chronological progression of Israel's historical books."
+    },
+    {
+      "sourceId": "tgc_new_testament_order_2026_08_26",
+      "title": "The Gospel Coalition, Introduction to the New Testament",
+      "url": "https://www.thegospelcoalition.org/essay/introduction-to-the-new-testament/",
+      "accessDate": "2026-08-26",
+      "use": "Confessional overview noting that canonical New Testament order is not primarily chronological; this candidate therefore marks composition-based placements as approximate."
+    }
+  ],
+  "streams": {
+    "old_testament": ["GEN", "JOB", "EXO", "LEV", "NUM", "DEU", "JOS", "JDG", "RUT", "1SA", "2SA", "SNG", "ECC", "1KI", "2KI", "1CH", "2CH", "JON", "AMO", "HOS", "ISA", "MIC", "NAM", "ZEP", "HAB", "JER", "LAM", "EZK", "DAN", "OBA", "JOL", "HAG", "ZEC", "EZR", "EST", "NEH", "MAL"],
+    "new_testament": ["MAT", "MRK", "LUK", "JHN", "ACT", "JAS", "GAL", "1TH", "2TH", "1CO", "2CO", "ROM", "COL", "PHM", "EPH", "PHP", "1TI", "TIT", "2TI", "HEB", "1PE", "2PE", "JUD", "1JN", "2JN", "3JN", "REV"],
+    "psalms": ["PSA"],
+    "proverbs": ["PRO"]
+  },
+  "reviewNotes": {
+    "old_testament": "The event-order stream begins with the Pentateuch, proceeds through Israel's narrated history, positions prophets near their principal historical settings where practical, and labels uncertain placements as provisional rather than treating whole-book chronology as settled.",
+    "new_testament": "The stream preserves the Gospel-to-Acts narrative before a pragmatic, broadly composition-aware ordering of letters; several dates and relative orders remain disputed and are explicitly medium confidence.",
+    "psalms": "Psalms remain canonically ordered in this first candidate. No individual historical superscription is treated as decisive enough to move a Psalm before review.",
+    "proverbs": "Each canonical chapter is one coherent bounded range in this first candidate. Later review may merge or subdivide ranges only with a new candidate fingerprint."
+  }
+}

@@ -33,6 +33,8 @@
     "mhc:ensure": "node scripts/mhc-pipeline.mjs ensure",
     "mhc:backfill:next": "node scripts/mhc-backfill-work-order.mjs",
     "bridge:extend": "node scripts/extend-celebration-bridge.mjs",
+    "plan:long-term:generate": "node scripts/generate-long-term-schedule.mjs",
+    "plan:long-term:check": "node scripts/generate-long-term-schedule.mjs --check",
     "study:next": "node scripts/rolling-study-work-order.mjs",
     "mhc:autonomy:nahum": "node scripts/mhc-pipeline.mjs generate --book NAM --chapter 1 --model gpt-5.3-codex-spark",
     "mhc:autonomy:1peter5": "node scripts/mhc-pipeline.mjs generate --book 1PE --chapter 5 --model gpt-5.3-codex-spark",

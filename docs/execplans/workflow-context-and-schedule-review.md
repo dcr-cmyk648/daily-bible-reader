@@ -60,8 +60,8 @@ Make the distinct two-level archaeological/historical context product part of ev
 - [x] Existing recurring prompt/skill gap and deterministic candidate artifacts inspected.
 - [x] Implement workflow and schedule-review artifacts. The scheduled prompt, drafting skill, and runbook carry the paired-layer contract; focused regressions pass. The deterministic generator emits a 1,255-row monthly daily schedule without changing the candidate hash.
 - [x] Validate the integrated milestone. Focused tests passed 10/10, deterministic schedule check passed, repository safety inspected 273 files, all 24 schemas/private gates passed, all 238 tests passed, and the unchanged frontend/PWA release verified exactly.
-- [ ] Commit/push and verify the public schedule-review URL; then hand off review without activating the candidate.
+- [x] Commit/push and verify the public schedule-review URL; then hand off review without activating the candidate. Commit `915b927` reached `main`; Pages run `32992370470` succeeded. The rendered HTML returned 200 with all 1,255 dated rows, from Genesis overview on 2026-09-16 through Malachi 4 on 2030-02-21. The Markdown response matched the committed 65,294-byte artifact exactly.
 
 ## Exact next action
 
-Commit and push the factual schedule/workflow files, wait for Pages publication, verify the public schedule-review bytes and content type, then hand the inactive candidate to Dustin for ordering review.
+Dustin reviews the complete daily schedule and shorter design report, requests any ordering changes, or explicitly approves the candidate for a separate activation milestone. Until then, the candidate remains inactive and the current bridge schedule remains authoritative.

@@ -2,11 +2,12 @@ import assert from "node:assert/strict";
 import {readFile} from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
-import {candidateMetrics, buildLongTermCandidate, validateLongTermCandidate} from "../scripts/lib/long-term-schedule.mjs";
+import {candidateMetrics, buildLongTermCandidate, renderLongTermDailySchedule, validateLongTermCandidate} from "../scripts/lib/long-term-schedule.mjs";
 
 const ROOT = process.cwd();
 const INPUT_PATH = path.join(ROOT, "config", "long-term-plan", "four-stream-candidate-input.json");
 const CANDIDATE_PATH = path.join(ROOT, "config", "long-term-plan", "four-stream-candidate.json");
+const DAILY_SCHEDULE_PATH = path.join(ROOT, "docs", "reports", "long-term-four-stream-daily-schedule.md");
 
 async function load(filePath) {
   return JSON.parse(await readFile(filePath, "utf8"));
@@ -23,6 +24,17 @@ test("long-term candidate is deterministic and exactly matches the checked-in re
   assert.equal(first.plan.entries[0].civilDate, "2026-09-16");
   assert.equal(first.plan.entries.at(-1).civilDate, "2030-02-21");
   assert.equal(first.plan.candidateMetadata.scheduleSha256, "d209d9067b677ffb161ae62c8f3d31b7c00c6d3b0772fe115eaf45abe289d057");
+});
+
+test("long-term daily review schedule is deterministic, inactive, and complete", async () => {
+  const [input, tracked] = await Promise.all([load(INPUT_PATH), readFile(DAILY_SCHEDULE_PATH, "utf8")]);
+  const {plan} = buildLongTermCandidate(input);
+  assert.equal(tracked, renderLongTermDailySchedule({plan}));
+  assert.match(tracked, /\*\*Status:\*\* review only; inactive candidate\./);
+  const rows = tracked.match(/^\| 20\d{2}-\d{2}-\d{2} \| \d+ \| [^|]+ \| [^|]+ \|$/gm) || [];
+  assert.equal(rows.length, 1255);
+  assert.equal(rows[0], "| 2026-09-16 | 1 | Old Testament | Genesis overview |");
+  assert.equal(rows.at(-1), "| 2030-02-21 | 1255 | Old Testament | Malachi 4 |");
 });
 
 test("long-term candidate preserves full canon coverage, Sunday policy, and book-introduction adjacency", async () => {

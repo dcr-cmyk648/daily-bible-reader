@@ -101,3 +101,19 @@ test("the canonical scheduled backfill instruction uses the strict Spark-to-Luna
   assert.doesNotMatch(prompt, /skip this probe entirely/);
   assert.doesNotMatch(prompt, /do not retry, switch models/);
 });
+
+test("scheduled commentary instructions preserve the paired historical-context contract", () => {
+  const prompt = readFileSync(new URL("../prompts/daily-study-scheduled-task.md", import.meta.url), "utf8");
+  const skill = readFileSync(new URL("../.agents/skills/draft-daily-commentary/SKILL.md", import.meta.url), "utf8");
+  for (const document of [prompt, skill]) {
+    assert.match(document, /### Archaeological and historical context/);
+    assert.match(document, /### Archaeological and historical context — expanded study/);
+    assert.match(document, /Omit both when they would be filler/);
+    assert.match(document, /at least two (?:passage-specific |custom )?H4/);
+    assert.match(document, /evidence-versus-inference boundaries/);
+    assert.match(document, /inline (?:claim )?citations/);
+    assert.match(document, /nearby bibliography/);
+    assert.match(document, /never repeat or mechanically stretch the preview/);
+  }
+  assert.match(skill, /Spark remains limited to the Matthew Henry verse layer/);
+});

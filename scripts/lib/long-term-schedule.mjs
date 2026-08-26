@@ -421,3 +421,34 @@ export function renderCandidateReport({input, plan, metrics}) {
   plan.entries.forEach((entry) => { const month = entry.civilDate.slice(0, 7); monthly.set(month, (monthly.get(month) || 0) + 1); });
   return `# Four-stream long-term plan — review candidate\n\n**Status:** review only; not active, published, or available to the app.\n\n- Plan version: \`${plan.planVersion}\`\n- Civil start: ${metrics.startDate} (${input.timezone})\n- Civil end: ${metrics.endDate}\n- Total daily units: ${metrics.totalDays}\n- Schedule SHA-256: \`${plan.candidateMetadata.scheduleSha256}\`\n- Input SHA-256: \`${plan.candidateMetadata.inputSha256}\`\n\n## Review metrics\n\n| Metric | Value |\n|---|---:|\n| OT units | ${metrics.readingsByStream.old_testament} |\n| NT units | ${metrics.readingsByStream.new_testament} |\n| Psalm units | ${metrics.readingsByStream.psalms} |\n| Proverbs units | ${metrics.readingsByStream.proverbs} |\n| Sundays | ${metrics.sundayCount} |\n| Sunday Psalms / Proverbs | ${metrics.sundayAllocation.psalms} / ${metrics.sundayAllocation.proverbs} |\n| Stream finish spread | ${metrics.finishSpreadDays} days |\n| Max OT / NT run | ${metrics.maximumRuns.old_testament} / ${metrics.maximumRuns.new_testament} |\n\nFinish dates: OT ${metrics.finishDates.old_testament}; NT ${metrics.finishDates.new_testament}; Psalms ${metrics.finishDates.psalms}; Proverbs ${metrics.finishDates.proverbs}.\n\n## Cadence exceptions\n\n${metrics.nonSundayMinorExceptions.length ? metrics.nonSundayMinorExceptions.map((item) => `- Day ${item.dayIndex} (${item.civilDate}): ${item.streamId.replaceAll("_", " ")} — ${item.reason}.`).join("\n") : "None."}\n\n${metrics.consecutiveNtExceptions.length ? `### Consecutive NT runs\n\n${metrics.consecutiveNtExceptions.map((item) => `- Days ${item.startDayIndex}–${item.endDayIndex} (${item.length} units): ${item.reason}.`).join("\n")}` : "No consecutive NT runs."}\n\n## Stream order and confidence\n\n${bookOrder}\n\n## Psalm policy\n\nPsalms remain in canonical order in this candidate. Historically associated placement is deferred unless a later review determines that a specific association is sufficiently supported; no disputed superscription has been treated as decisive.\n\n## Every Proverbs range\n\n${proverbs}\n\n## Calendar summary\n\n### Monthly\n\n${[...monthly.entries()].map(([month, count]) => `- ${month}: ${count} scheduled days.`).join("\n")}\n\n### Yearly\n\n${[...yearly.entries()].map(([year, count]) => `- ${year}: ${count} scheduled days.`).join("\n")}\n\n## Sources and limits\n\n${input.sourceMetadata.map((source) => `- **${source.title}** (${source.accessDate}) — ${source.url}. ${source.use}`).join("\n")}\n\nWhole-book chronology is approximate and disputed. The source IDs in the candidate identify the public structural and orientation sources used to construct this review artifact; they do not claim that any one source resolves every date or authorship question.\n`;
 }
+
+const STREAM_DISPLAY_NAMES = {
+  old_testament: "Old Testament",
+  new_testament: "New Testament",
+  psalms: "Psalms",
+  proverbs: "Proverbs"
+};
+
+function markdownTableCell(value) {
+  return String(value).replaceAll("|", "\\|").replaceAll("\n", " ");
+}
+
+/**
+ * Render the inactive candidate as a compact, month-grouped review artifact.
+ * This consumes the already-built candidate and deliberately does not affect
+ * its serialized JSON, ordering, hash, or activation state.
+ */
+export function renderLongTermDailySchedule({plan}) {
+  const monthlyEntries = new Map();
+  plan.entries.forEach((entry) => {
+    const month = entry.civilDate.slice(0, 7);
+    const entries = monthlyEntries.get(month) || [];
+    entries.push(entry);
+    monthlyEntries.set(month, entries);
+  });
+  const months = [...monthlyEntries.entries()].map(([month, entries]) => {
+    const rows = entries.map((entry) => `| ${entry.civilDate} | ${entry.dayIndex} | ${STREAM_DISPLAY_NAMES[entry.streamId]} | ${markdownTableCell(entry.unitLabel)} |`).join("\n");
+    return `## ${month}\n\n| Date | Day | Stream | Reading |\n|---|---:|---|---|\n${rows}`;
+  }).join("\n\n");
+  return `# Four-stream long-term daily schedule\n\n**Status:** review only; inactive candidate. This is not published or available to the app.\n\n- Plan version: \`${plan.planVersion}\`\n- Civil range: ${plan.candidateMetadata.startDate} through ${plan.entries.at(-1).civilDate} (${plan.candidateMetadata.timezone})\n- Daily units: ${plan.entries.length}\n- Schedule SHA-256: \`${plan.candidateMetadata.scheduleSha256}\`\n\nThis phone-readable artifact is generated from the inactive candidate. Reviewing it does not activate, publish, or prepare any reading.\n\n${months}\n`;
+}

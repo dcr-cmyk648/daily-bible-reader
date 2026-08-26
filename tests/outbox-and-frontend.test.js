@@ -731,7 +731,7 @@ test("clear-data flow resets the visible offline-pack status", () => {
 test("daily page puts one uninterrupted executive synthesis first and exposes cited deep-study sections after discussion", () => {
   const html = fs.readFileSync(path.join(__dirname, "../app/frontend/index.html"), "utf8");
   const appSource = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
-  const orderedIds = ["overviewContent", "scriptureSection", "commentarySummary", "verseOfDaySection", "practicalTakeaway", "mainSourceDisclosure", "discussionCard", "finishReading", "historicalContextPanel", "historicalContextDisclosure", "historicalContextSourceDisclosure", "extendedStudy", "comprehensiveSynthesis", "deepSourceDisclosure", "sourceAuditDisclosure", "sourceList"];
+  const orderedIds = ["overviewContent", "historicalContextPreviewDisclosure", "scriptureSection", "commentarySummary", "verseOfDaySection", "practicalTakeaway", "mainSourceDisclosure", "discussionCard", "finishReading", "historicalContextPanel", "historicalContextDisclosure", "historicalContextSourceDisclosure", "extendedStudy", "comprehensiveSynthesis", "deepSourceDisclosure", "sourceAuditDisclosure", "sourceList"];
   const positions = orderedIds.map((id) => html.indexOf(`id="${id}"`));
   positions.forEach((position) => assert.ok(position >= 0));
   for (let index = 1; index < positions.length; index += 1) assert.ok(positions[index] > positions[index - 1]);
@@ -789,7 +789,7 @@ test("comprehensive Markdown becomes individually selectable passage-specific se
   ]);
 });
 
-test("historical context moves to a Page 1-only optional panel with independent numbered citations", () => {
+test("historical context renders as both a compact Page 1 preview and an independent cited depth panel", () => {
   const markdown = "### Literary movement\n\nA reading-focused observation.{{cite:literary_source,shared_source}}\n\n### Historical / Archaeological context\n\nA bounded historical observation.{{cite:shared_source,second_context_source}}\n\n### Canonical connections\n\nA canonical observation.{{cite:canonical_source}}";
   const partition = app.partitionComprehensiveSynthesis({
     markdown,
@@ -807,16 +807,25 @@ test("historical context moves to a Page 1-only optional panel with independent 
 
   const html = fs.readFileSync(path.join(__dirname, "../app/frontend/index.html"), "utf8");
   const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
+  const previewPosition = html.indexOf('id="historicalContextPreviewDisclosure"');
   const contextPosition = html.indexOf('id="historicalContextPanel"');
+  assert.ok(previewPosition > html.indexOf('id="overviewSources"'));
+  assert.ok(previewPosition < html.indexOf('id="discussionCard"'));
   assert.ok(contextPosition > html.indexOf('id="discussionCard"'));
   assert.ok(contextPosition > html.indexOf('id="finishReading"'));
   assert.ok(contextPosition < html.indexOf('id="extendedStudy"'));
+  assert.match(html, /<details id="historicalContextPreviewDisclosure"[^>]*hidden>/);
   assert.match(html, /<section id="historicalContextPanel"[^>]*hidden>/);
   assert.match(html, /<details id="historicalContextDisclosure" class="deep-dive-disclosure">/);
   assert.match(html, /<details id="historicalContextSourceDisclosure" class="deep-source-disclosure">/);
   assert.match(source, /renderSafeMarkdown\(context\.markdown, element\("historicalContextContent"\), contextCitationIndex\)/);
+  assert.match(source, /renderSafeMarkdown\(withoutInlineCitations\(context\.markdown\), element\("historicalContextPreviewContent"\)\)/);
+  assert.match(source, /renderSourceCitations\(context\.sourceIds, sources \|\| \[\], element\("historicalContextPreviewSources"\)\)/);
   assert.match(source, /"historicalContextSourceDisclosure",\n\s+"historical-context-source-note"/);
   assert.match(source, /historicalContextPanel\.hidden = nextPage !== 0 \|\| historicalContextPanel\.dataset\.available !== "true"/);
+  assert.match(source, /historicalContextPreview\.hidden = nextPage !== 0 \|\| historicalContextPanel\.dataset\.available !== "true"/);
+  assert.match(source, /preview\.hidden = true;\n\s*preview\.open = false;/);
+  assert.match(source, /element\("historicalContextPreviewDisclosure"\)\.open = false;/);
   assert.match(source, /clearHistoricalContextPanel\(\);/);
 });
 

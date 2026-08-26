@@ -1338,8 +1338,13 @@
     const panel = element("historicalContextPanel");
     panel.hidden = true;
     delete panel.dataset.available;
+    const preview = element("historicalContextPreviewDisclosure");
+    preview.hidden = true;
+    preview.open = false;
     element("historicalContextDisclosure").open = false;
     element("historicalContextSourceDisclosure").open = false;
+    element("historicalContextPreviewContent").replaceChildren();
+    element("historicalContextPreviewSources").replaceChildren();
     element("historicalContextContent").replaceChildren();
     element("historicalContextSourceNotes").replaceChildren();
   }
@@ -1357,6 +1362,10 @@
     const panel = element("historicalContextPanel");
     panel.dataset.available = "true";
     panel.hidden = state.currentPage !== 0;
+    const preview = element("historicalContextPreviewDisclosure");
+    renderSafeMarkdown(withoutInlineCitations(context.markdown), element("historicalContextPreviewContent"));
+    renderSourceCitations(context.sourceIds, sources || [], element("historicalContextPreviewSources"));
+    preview.hidden = state.currentPage !== 0;
   }
 
   function renderComprehensiveSections(comprehensive, citationIndex) {
@@ -3255,6 +3264,8 @@
     element("extendedStudy").hidden = nextPage !== 2;
     const historicalContextPanel = element("historicalContextPanel");
     historicalContextPanel.hidden = nextPage !== 0 || historicalContextPanel.dataset.available !== "true";
+    const historicalContextPreview = element("historicalContextPreviewDisclosure");
+    historicalContextPreview.hidden = nextPage !== 0 || historicalContextPanel.dataset.available !== "true";
     if (nextPage !== 2) {
       element("extendedStudy").querySelectorAll("details").forEach((disclosure) => {
         disclosure.open = false;
@@ -3263,6 +3274,7 @@
     if (nextPage !== 0) {
       element("historicalContextDisclosure").open = false;
       element("historicalContextSourceDisclosure").open = false;
+      element("historicalContextPreviewDisclosure").open = false;
     }
     element("discussionPageContext").textContent = `${pageLabel(nextPage)} · comments for this day`;
     if (!options || options.focus !== false) {

@@ -747,7 +747,7 @@ test("daily page puts one uninterrupted executive synthesis first and exposes ci
   assert.match(appSource, /const deepPageCitationIndex = buildPageCitationIndex/);
   assert.doesNotMatch(appSource, /appendNumberedCitations\(element\("practicalTakeaway"\)/);
   assert.match(appSource, /renderComprehensiveSections\(comprehensive, deepCitationIndex\)/);
-  assert.match(appSource, /renderHistoricalContextPanel\(comprehensivePartition\.context, sources \|\| \[\]\)/);
+  assert.match(appSource, /renderHistoricalContextPanels\(comprehensivePartition\.context, sources \|\| \[\]\)/);
   assert.match(appSource, /renderSafeMarkdown\(section\.markdown, body, citationIndex\)/);
   assert.match(appSource, /renderDeepSourceNotes\(deepCitationIndex\)/);
   assert.match(html, /<ul id="mainSourceNotes"/);
@@ -789,21 +789,30 @@ test("comprehensive Markdown becomes individually selectable passage-specific se
   ]);
 });
 
-test("historical context renders as both a compact Page 1 preview and an independent cited depth panel", () => {
-  const markdown = "### Literary movement\n\nA reading-focused observation.{{cite:literary_source,shared_source}}\n\n### Historical / Archaeological context\n\nA bounded historical observation.{{cite:shared_source,second_context_source}}\n\n### Canonical connections\n\nA canonical observation.{{cite:canonical_source}}";
+test("historical context keeps concise and expanded layers independent while removing both from Page 3", () => {
+  const markdown = "### Literary movement\n\nA reading-focused observation.{{cite:literary_source,shared_source}}\n\n### Archaeological and historical context\n\nA concise historical orientation.{{cite:preview_source}}\n\n### Archaeological and historical context — expanded study\n\n#### Material setting\n\nA fuller historical discussion.{{cite:expanded_source,shared_source}}\n\n#### Evidence and inference\n\nA distinct evidence boundary.{{cite:expanded_source}}\n\n### Canonical connections\n\nA canonical observation.{{cite:canonical_source}}";
   const partition = app.partitionComprehensiveSynthesis({
     markdown,
-    sourceIds: ["literary_source", "shared_source", "second_context_source", "canonical_source"]
+    sourceIds: ["literary_source", "preview_source", "expanded_source", "shared_source", "canonical_source"]
   });
-  assert.ok(partition.context);
-  assert.match(partition.context.markdown, /bounded historical observation/);
-  assert.deepEqual(partition.context.sourceIds, ["shared_source", "second_context_source"]);
-  assert.equal(partition.comprehensive.markdown.includes("Historical / Archaeological context"), false);
-  assert.equal(partition.comprehensive.markdown.includes("second_context_source"), false);
+  assert.match(partition.context.preview.markdown, /concise historical orientation/);
+  assert.deepEqual(partition.context.preview.sourceIds, ["preview_source"]);
+  assert.match(partition.context.expanded.markdown, /fuller historical discussion/);
+  assert.deepEqual(partition.context.expanded.sourceIds, ["expanded_source", "shared_source"]);
+  assert.equal(partition.comprehensive.markdown.includes("Archaeological and historical context"), false);
+  assert.equal(partition.comprehensive.markdown.includes("preview_source"), false);
+  assert.equal(partition.comprehensive.markdown.includes("expanded_source"), false);
   assert.deepEqual(partition.comprehensive.sourceIds, ["literary_source", "shared_source", "canonical_source"]);
   const noContext = app.partitionComprehensiveSynthesis({markdown: "### Literary movement\n\nOnly this section.", sourceIds: ["literary_source"]});
-  assert.equal(noContext.context, null);
+  assert.equal(noContext.context.preview, null);
+  assert.equal(noContext.context.expanded, null);
   assert.equal(noContext.comprehensive.markdown, "### Literary movement\n\nOnly this section.");
+  const legacyPreview = app.partitionComprehensiveSynthesis({
+    markdown: "### Archaeological and historical context\n\nA legacy concise context.{{cite:preview_source}}",
+    sourceIds: ["preview_source"]
+  });
+  assert.match(legacyPreview.context.preview.markdown, /legacy concise context/);
+  assert.equal(legacyPreview.context.expanded, null);
 
   const html = fs.readFileSync(path.join(__dirname, "../app/frontend/index.html"), "utf8");
   const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
@@ -818,13 +827,14 @@ test("historical context renders as both a compact Page 1 preview and an indepen
   assert.match(html, /<section id="historicalContextPanel"[^>]*hidden>/);
   assert.match(html, /<details id="historicalContextDisclosure" class="deep-dive-disclosure">/);
   assert.match(html, /<details id="historicalContextSourceDisclosure" class="deep-source-disclosure">/);
-  assert.match(source, /renderSafeMarkdown\(context\.markdown, element\("historicalContextContent"\), contextCitationIndex\)/);
-  assert.match(source, /renderSafeMarkdown\(withoutInlineCitations\(context\.markdown\), element\("historicalContextPreviewContent"\)\)/);
-  assert.match(source, /renderSourceCitations\(context\.sourceIds, sources \|\| \[\], element\("historicalContextPreviewSources"\)\)/);
+  assert.match(source, /renderSafeMarkdown\(context\.expanded\.markdown, element\("historicalContextContent"\), contextCitationIndex\)/);
+  assert.match(source, /renderSafeMarkdown\(withoutInlineCitations\(context\.preview\.markdown\), element\("historicalContextPreviewContent"\)\)/);
+  assert.match(source, /renderSourceCitations\(context\.preview\.sourceIds, sources \|\| \[\], element\("historicalContextPreviewSources"\)\)/);
   assert.match(source, /"historicalContextSourceDisclosure",\n\s+"historical-context-source-note"/);
   assert.match(source, /historicalContextPanel\.hidden = nextPage !== 0 \|\| historicalContextPanel\.dataset\.available !== "true"/);
-  assert.match(source, /historicalContextPreview\.hidden = nextPage !== 0 \|\| historicalContextPanel\.dataset\.available !== "true"/);
+  assert.match(source, /historicalContextPreview\.hidden = nextPage !== 0 \|\| historicalContextPreview\.dataset\.available !== "true"/);
   assert.match(source, /preview\.hidden = true;\n\s*preview\.open = false;/);
+  assert.match(source, /preview\.open = false;\n\s*delete preview\.dataset\.available;/);
   assert.match(source, /element\("historicalContextPreviewDisclosure"\)\.open = false;/);
   assert.match(source, /clearHistoricalContextPanel\(\);/);
 });
@@ -865,6 +875,14 @@ test("editorial contract requires practical prose and confessional evidentiary w
   assert.match(validator, /externalSchemas: \{"mhc-runtime\.schema\.json": mhcRuntimeSchema\}/);
   assert.match(validator, /attached verse commentary must cover every configured verse exactly once/);
   assert.match(validator, /reviewed Matthew Henry shards or a verified full-commentary link/);
+  assert.match(validator, /HISTORICAL_CONTEXT_PREVIEW_HEADING/);
+  assert.match(validator, /HISTORICAL_CONTEXT_EXPANDED_HEADING/);
+  assert.match(validator, /function validateHistoricalContextDepth/);
+  assert.match(validator, /prepared historical-context preview requires an expanded study/);
+  assert.match(validator, /historical-context preview and expanded study must use distinct prose/);
+  assert.match(validator, /expanded historical context must add materially more depth/);
+  assert.match(validator, /at least two distinct H4 topical subheadings/);
+  assert.match(validator, /expanded historical context needs inline citation markers/);
   assert.doesNotMatch(validator, /main all-sources synthesis must cite every included source/);
 });
 

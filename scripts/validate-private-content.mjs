@@ -35,6 +35,8 @@ const STORED_SCRIPTURE_SIGNATURES = [
 ];
 const DEPENDENT_CROSS_REFERENCE = /\b(?:as (?:noted|discussed|explained|shown) (?:above|below|earlier)|see (?:above|below|the (?:previous|next|following) (?:section|page|paragraph))|(?:the|this) (?:previous|next|following) (?:section|page|paragraph)|(?:yesterday|tomorrow)(?:'s)? (?:reading|commentary))\b/i;
 const INLINE_CITATION = /\{\{cite:([A-Za-z0-9_.:-]+(?:\s*,\s*[A-Za-z0-9_.:-]+)*)\}\}/g;
+const HISTORICAL_CONTEXT_PREVIEW_HEADING = "Archaeological and historical context";
+const HISTORICAL_CONTEXT_EXPANDED_HEADING = "Archaeological and historical context — expanded study";
 
 function fail(message) {
   throw new Error(message);
@@ -91,6 +93,42 @@ function levelThreeSections(markdown) {
     title: match[1].trim(),
     body: text.slice(match.index + match[0].length, headings[index + 1]?.index ?? text.length).trim()
   }));
+}
+
+function levelFourHeadings(markdown) {
+  return [...String(markdown || "").matchAll(/^####\s+(.+)$/gm)].map((match) => match[1].trim());
+}
+
+function normalizedComparableProse(markdown) {
+  return withoutInlineCitations(markdown)
+    .replace(/^#{1,6}\s+/gm, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function validateHistoricalContextDepth(sections, reading) {
+  const previewSections = sections.filter((section) => section.title === HISTORICAL_CONTEXT_PREVIEW_HEADING);
+  const expandedSections = sections.filter((section) => section.title === HISTORICAL_CONTEXT_EXPANDED_HEADING);
+  assert(previewSections.length <= 1, `${reading.readingId}: historical-context preview heading must be unique`);
+  assert(expandedSections.length <= 1, `${reading.readingId}: historical-context expanded heading must be unique`);
+  const preview = previewSections[0];
+  const expanded = expandedSections[0];
+  if (expanded) assert(preview, `${reading.readingId}: expanded historical context requires the concise context section`);
+  if (!reading.prepared || !preview) return;
+  assert(expanded, `${reading.readingId}: prepared historical-context preview requires an expanded study`);
+  const previewWords = wordCount(preview.body);
+  const expandedWords = wordCount(expanded.body);
+  assert(normalizedComparableProse(preview.body) !== normalizedComparableProse(expanded.body),
+    `${reading.readingId}: historical-context preview and expanded study must use distinct prose`);
+  assert(expandedWords >= Math.max(previewWords * 2, previewWords + 120),
+    `${reading.readingId}: expanded historical context must add materially more depth`);
+  const topicalHeadings = levelFourHeadings(expanded.body);
+  assert(topicalHeadings.length >= 2 && new Set(topicalHeadings).size === topicalHeadings.length,
+    `${reading.readingId}: expanded historical context needs at least two distinct H4 topical subheadings`);
+  assert(inlineCitationIds(expanded.body).length > 0,
+    `${reading.readingId}: expanded historical context needs inline citation markers`);
 }
 
 function wordCount(text) {
@@ -271,6 +309,7 @@ async function main() {
           `${reading.readingId}: comprehensive section ${index + 1} must have content`);
         assertStandalone(section.body, `${reading.readingId}/comprehensive-section-${index + 1}`);
       });
+      validateHistoricalContextDepth(deepDiveSections, reading);
     } else {
       assert(headings.length === EXPECTED_HEADINGS.length, `${reading.readingId}: placeholder must retain ${EXPECTED_HEADINGS.length} level-two sections`);
       EXPECTED_HEADINGS.forEach((heading, index) => assert(headings[index] === heading,

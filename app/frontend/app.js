@@ -1293,13 +1293,11 @@
   }
 
   function isHistoricalContextHeading(title) {
-    const normalized = String(title || "")
-      .toLowerCase()
-      .replace(/[&/]/g, " and ")
-      .replace(/[^a-z\s]/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-    return /\barchaeolog(?:y|ical)\b/.test(normalized) && /\bhistorical\b/.test(normalized);
+    return String(title || "").trim() === "Archaeological and historical context";
+  }
+
+  function isExpandedHistoricalContextHeading(title) {
+    return String(title || "").trim() === "Archaeological and historical context — expanded study";
   }
 
   function markdownFromComprehensiveSections(sections) {
@@ -1312,14 +1310,24 @@
     const safeComprehensive = comprehensive || {markdown: "", sourceIds: []};
     const sections = splitComprehensiveSections(safeComprehensive.markdown);
     const contextSections = sections.filter((section) => isHistoricalContextHeading(section.title));
-    const contextSourceIds = Array.from(new Set(contextSections.flatMap((section) => inlineCitationIds(section.markdown))));
-    const context = contextSections.length
+    const expandedContextSections = sections.filter((section) => isExpandedHistoricalContextHeading(section.title));
+    const contextUnit = (matchedSections) => matchedSections.length
       ? {
-        markdown: contextSections.map((section) => section.markdown).join("\n\n"),
-        sourceIds: contextSourceIds
+        markdown: matchedSections.map((section) => section.markdown).join("\n\n"),
+        sourceIds: Array.from(new Set(matchedSections.flatMap((section) => inlineCitationIds(section.markdown))))
       }
       : null;
-    const deepSections = sections.filter((section) => !isHistoricalContextHeading(section.title));
+    const context = {
+      preview: contextUnit(contextSections),
+      expanded: contextUnit(expandedContextSections)
+    };
+    const contextSourceIds = Array.from(new Set([
+      ...(context.preview ? context.preview.sourceIds : []),
+      ...(context.expanded ? context.expanded.sourceIds : [])
+    ]));
+    const deepSections = sections.filter((section) =>
+      !isHistoricalContextHeading(section.title) && !isExpandedHistoricalContextHeading(section.title)
+    );
     const deepMarkdown = markdownFromComprehensiveSections(deepSections);
     const deepInlineSourceIds = new Set(inlineCitationIds(deepMarkdown));
     return {
@@ -1341,6 +1349,7 @@
     const preview = element("historicalContextPreviewDisclosure");
     preview.hidden = true;
     preview.open = false;
+    delete preview.dataset.available;
     element("historicalContextDisclosure").open = false;
     element("historicalContextSourceDisclosure").open = false;
     element("historicalContextPreviewContent").replaceChildren();
@@ -1349,23 +1358,27 @@
     element("historicalContextSourceNotes").replaceChildren();
   }
 
-  function renderHistoricalContextPanel(context, sources) {
+  function renderHistoricalContextPanels(context, sources) {
     clearHistoricalContextPanel();
-    if (!context || !context.markdown) return;
+    if (!context) return;
+    const preview = element("historicalContextPreviewDisclosure");
+    if (context.preview && context.preview.markdown) {
+      renderSafeMarkdown(withoutInlineCitations(context.preview.markdown), element("historicalContextPreviewContent"));
+      renderSourceCitations(context.preview.sourceIds, sources || [], element("historicalContextPreviewSources"));
+      preview.dataset.available = "true";
+      preview.hidden = state.currentPage !== 0;
+    }
+    if (!context.expanded || !context.expanded.markdown) return;
     const contextCitationIndex = citationTargetIndex(
-      buildPageCitationIndex({paragraphs: []}, {sourceIds: []}, context, sources || []),
+      buildPageCitationIndex({paragraphs: []}, {sourceIds: []}, context.expanded, sources || []),
       "historicalContextSourceDisclosure",
       "historical-context-source-note"
     );
-    renderSafeMarkdown(context.markdown, element("historicalContextContent"), contextCitationIndex);
+    renderSafeMarkdown(context.expanded.markdown, element("historicalContextContent"), contextCitationIndex);
     renderHistoricalContextSourceNotes(contextCitationIndex);
     const panel = element("historicalContextPanel");
     panel.dataset.available = "true";
     panel.hidden = state.currentPage !== 0;
-    const preview = element("historicalContextPreviewDisclosure");
-    renderSafeMarkdown(withoutInlineCitations(context.markdown), element("historicalContextPreviewContent"));
-    renderSourceCitations(context.sourceIds, sources || [], element("historicalContextPreviewSources"));
-    preview.hidden = state.currentPage !== 0;
   }
 
   function renderComprehensiveSections(comprehensive, citationIndex) {
@@ -1819,7 +1832,7 @@
       normalizedComprehensiveSynthesis(commentary, isBookIntroduction)
     );
     const comprehensive = comprehensivePartition.comprehensive;
-    renderHistoricalContextPanel(comprehensivePartition.context, sources || []);
+    renderHistoricalContextPanels(comprehensivePartition.context, sources || []);
     const mainPageCitationIndex = buildPageCitationIndex(
       commentarySummary,
       practicalTakeaway,
@@ -3265,7 +3278,7 @@
     const historicalContextPanel = element("historicalContextPanel");
     historicalContextPanel.hidden = nextPage !== 0 || historicalContextPanel.dataset.available !== "true";
     const historicalContextPreview = element("historicalContextPreviewDisclosure");
-    historicalContextPreview.hidden = nextPage !== 0 || historicalContextPanel.dataset.available !== "true";
+    historicalContextPreview.hidden = nextPage !== 0 || historicalContextPreview.dataset.available !== "true";
     if (nextPage !== 2) {
       element("extendedStudy").querySelectorAll("details").forEach((disclosure) => {
         disclosure.open = false;

@@ -1231,6 +1231,17 @@
     });
   }
 
+  function renderHistoricalContextSourceNotes(citationIndex) {
+    renderNumberedSourceNotes(citationIndex, {
+      disclosureId: "historicalContextSourceDisclosure",
+      listId: "historicalContextSourceNotes",
+      summaryId: "historicalContextSourceSummary",
+      noteIdPrefix: "historical-context-source-note",
+      populatedLabel: "numbered sources used in this context",
+      emptyLabel: "Sources used in this context"
+    });
+  }
+
   function renderCommentarySummary(summary) {
     const container = element("commentarySummary");
     container.replaceChildren();
@@ -1323,21 +1334,29 @@
     };
   }
 
-  function clearHistoricalContextDisclosure() {
-    const disclosure = element("historicalContextDisclosure");
-    disclosure.hidden = true;
-    disclosure.open = false;
+  function clearHistoricalContextPanel() {
+    const panel = element("historicalContextPanel");
+    panel.hidden = true;
+    delete panel.dataset.available;
+    element("historicalContextDisclosure").open = false;
+    element("historicalContextSourceDisclosure").open = false;
     element("historicalContextContent").replaceChildren();
-    element("historicalContextSources").replaceChildren();
+    element("historicalContextSourceNotes").replaceChildren();
   }
 
-  function renderHistoricalContextDisclosure(context, sources) {
-    clearHistoricalContextDisclosure();
+  function renderHistoricalContextPanel(context, sources) {
+    clearHistoricalContextPanel();
     if (!context || !context.markdown) return;
-    const disclosure = element("historicalContextDisclosure");
-    renderSafeMarkdown(withoutInlineCitations(context.markdown), element("historicalContextContent"));
-    renderSourceCitations(context.sourceIds, sources || [], element("historicalContextSources"));
-    disclosure.hidden = false;
+    const contextCitationIndex = citationTargetIndex(
+      buildPageCitationIndex({paragraphs: []}, {sourceIds: []}, context, sources || []),
+      "historicalContextSourceDisclosure",
+      "historical-context-source-note"
+    );
+    renderSafeMarkdown(context.markdown, element("historicalContextContent"), contextCitationIndex);
+    renderHistoricalContextSourceNotes(contextCitationIndex);
+    const panel = element("historicalContextPanel");
+    panel.dataset.available = "true";
+    panel.hidden = state.currentPage !== 0;
   }
 
   function renderComprehensiveSections(comprehensive, citationIndex) {
@@ -1791,7 +1810,7 @@
       normalizedComprehensiveSynthesis(commentary, isBookIntroduction)
     );
     const comprehensive = comprehensivePartition.comprehensive;
-    renderHistoricalContextDisclosure(comprehensivePartition.context, sources || []);
+    renderHistoricalContextPanel(comprehensivePartition.context, sources || []);
     const mainPageCitationIndex = buildPageCitationIndex(
       commentarySummary,
       practicalTakeaway,
@@ -3234,12 +3253,17 @@
     element("nextPage").hidden = nextPage === 2;
     element("finishReading").hidden = nextPage !== 2;
     element("extendedStudy").hidden = nextPage !== 2;
+    const historicalContextPanel = element("historicalContextPanel");
+    historicalContextPanel.hidden = nextPage !== 0 || historicalContextPanel.dataset.available !== "true";
     if (nextPage !== 2) {
       element("extendedStudy").querySelectorAll("details").forEach((disclosure) => {
         disclosure.open = false;
       });
     }
-    if (nextPage !== 0) element("historicalContextDisclosure").open = false;
+    if (nextPage !== 0) {
+      element("historicalContextDisclosure").open = false;
+      element("historicalContextSourceDisclosure").open = false;
+    }
     element("discussionPageContext").textContent = `${pageLabel(nextPage)} · comments for this day`;
     if (!options || options.focus !== false) {
       const heading = element(nextPage === 0
@@ -3349,7 +3373,7 @@
     const schedule = calculateSchedule(state.plan, state.config, new Date(), requestedReadingId, options);
     state.schedule = schedule;
     renderReadingShell(schedule);
-    clearHistoricalContextDisclosure();
+    clearHistoricalContextPanel();
     if (schedule.locked) {
       state.verseOfTheDay = null;
       prepareVerseOfTheDay();

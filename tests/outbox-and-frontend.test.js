@@ -731,7 +731,7 @@ test("clear-data flow resets the visible offline-pack status", () => {
 test("daily page puts one uninterrupted executive synthesis first and exposes cited deep-study sections after discussion", () => {
   const html = fs.readFileSync(path.join(__dirname, "../app/frontend/index.html"), "utf8");
   const appSource = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
-  const orderedIds = ["overviewContent", "scriptureSection", "commentarySummary", "verseOfDaySection", "practicalTakeaway", "mainSourceDisclosure", "discussionCard", "finishReading", "extendedStudy", "comprehensiveSynthesis", "deepSourceDisclosure", "sourceAuditDisclosure", "sourceList"];
+  const orderedIds = ["overviewContent", "scriptureSection", "commentarySummary", "verseOfDaySection", "practicalTakeaway", "mainSourceDisclosure", "discussionCard", "finishReading", "historicalContextPanel", "historicalContextDisclosure", "historicalContextSourceDisclosure", "extendedStudy", "comprehensiveSynthesis", "deepSourceDisclosure", "sourceAuditDisclosure", "sourceList"];
   const positions = orderedIds.map((id) => html.indexOf(`id="${id}"`));
   positions.forEach((position) => assert.ok(position >= 0));
   for (let index = 1; index < positions.length; index += 1) assert.ok(positions[index] > positions[index - 1]);
@@ -747,6 +747,7 @@ test("daily page puts one uninterrupted executive synthesis first and exposes ci
   assert.match(appSource, /const deepPageCitationIndex = buildPageCitationIndex/);
   assert.doesNotMatch(appSource, /appendNumberedCitations\(element\("practicalTakeaway"\)/);
   assert.match(appSource, /renderComprehensiveSections\(comprehensive, deepCitationIndex\)/);
+  assert.match(appSource, /renderHistoricalContextPanel\(comprehensivePartition\.context, sources \|\| \[\]\)/);
   assert.match(appSource, /renderSafeMarkdown\(section\.markdown, body, citationIndex\)/);
   assert.match(appSource, /renderDeepSourceNotes\(deepCitationIndex\)/);
   assert.match(html, /<ul id="mainSourceNotes"/);
@@ -788,7 +789,7 @@ test("comprehensive Markdown becomes individually selectable passage-specific se
   ]);
 });
 
-test("historical context moves from comprehensive Markdown to a closed Page 1 disclosure without duplicate deep citations", () => {
+test("historical context moves to a Page 1-only optional panel with independent numbered citations", () => {
   const markdown = "### Literary movement\n\nA reading-focused observation.{{cite:literary_source,shared_source}}\n\n### Historical / Archaeological context\n\nA bounded historical observation.{{cite:shared_source,second_context_source}}\n\n### Canonical connections\n\nA canonical observation.{{cite:canonical_source}}";
   const partition = app.partitionComprehensiveSynthesis({
     markdown,
@@ -806,13 +807,17 @@ test("historical context moves from comprehensive Markdown to a closed Page 1 di
 
   const html = fs.readFileSync(path.join(__dirname, "../app/frontend/index.html"), "utf8");
   const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
-  const contextPosition = html.indexOf('id="historicalContextDisclosure"');
-  assert.ok(contextPosition > html.indexOf('id="overviewSources"'));
-  assert.ok(contextPosition < html.indexOf('id="discussionCard"'));
-  assert.match(html, /<details id="historicalContextDisclosure"[^>]*hidden>/);
-  assert.match(source, /renderSafeMarkdown\(withoutInlineCitations\(context\.markdown\), element\("historicalContextContent"\)\)/);
-  assert.match(source, /renderSourceCitations\(context\.sourceIds, sources \|\| \[\], element\("historicalContextSources"\)\)/);
-  assert.match(source, /clearHistoricalContextDisclosure\(\);/);
+  const contextPosition = html.indexOf('id="historicalContextPanel"');
+  assert.ok(contextPosition > html.indexOf('id="discussionCard"'));
+  assert.ok(contextPosition > html.indexOf('id="finishReading"'));
+  assert.ok(contextPosition < html.indexOf('id="extendedStudy"'));
+  assert.match(html, /<section id="historicalContextPanel"[^>]*hidden>/);
+  assert.match(html, /<details id="historicalContextDisclosure" class="deep-dive-disclosure">/);
+  assert.match(html, /<details id="historicalContextSourceDisclosure" class="deep-source-disclosure">/);
+  assert.match(source, /renderSafeMarkdown\(context\.markdown, element\("historicalContextContent"\), contextCitationIndex\)/);
+  assert.match(source, /"historicalContextSourceDisclosure",\n\s+"historical-context-source-note"/);
+  assert.match(source, /historicalContextPanel\.hidden = nextPage !== 0 \|\| historicalContextPanel\.dataset\.available !== "true"/);
+  assert.match(source, /clearHistoricalContextPanel\(\);/);
 });
 
 test("editorial contract requires practical prose and confessional evidentiary weighting", () => {

@@ -159,11 +159,6 @@
               <h2 id="overviewHeading" tabindex="-1">Today’s orientation</h2>
               <div id="overviewContent" class="prose-block skeleton-text">Loading orientation…</div>
               <div id="overviewSources" class="main-citations"></div>
-              <details id="historicalContextDisclosure" class="historical-context-disclosure" hidden>
-                <summary>Archaeological and historical context</summary>
-                <div id="historicalContextContent" class="commentary-body historical-context-body"></div>
-                <div id="historicalContextSources" class="main-citations"></div>
-              </details>
             </div>
           </section>
 
@@ -276,6 +271,26 @@
           <button id="nextPage" class="primary-button" type="button">Next page →</button>
           <button id="finishReading" class="primary-button" type="button" hidden>Finished · Calendar</button>
         </nav>
+
+        <section id="historicalContextPanel" class="extended-study historical-context-panel" aria-labelledby="historicalContextHeading" hidden>
+          <div class="extended-study-panel">
+            <div class="extended-study-heading">
+              <div>
+                <p class="eyebrow">Optional historical context</p>
+                <h2 id="historicalContextHeading">Archaeological and historical context</h2>
+              </div>
+            </div>
+            <p class="muted deep-study-help">Open for the reading’s relevant historical and material setting.</p>
+            <details id="historicalContextDisclosure" class="deep-dive-disclosure">
+              <summary>Read historical context</summary>
+              <div id="historicalContextContent" class="commentary-body deep-dive-body"></div>
+            </details>
+            <details id="historicalContextSourceDisclosure" class="deep-source-disclosure">
+              <summary id="historicalContextSourceSummary">Sources used in this context</summary>
+              <ol id="historicalContextSourceNotes" class="main-source-notes deep-source-notes"></ol>
+            </details>
+          </div>
+        </section>
 
         <section id="extendedStudy" class="extended-study" aria-labelledby="synthesisHeading" hidden>
           <div class="extended-study-panel">

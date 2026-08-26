@@ -75,8 +75,8 @@ Replace the duplicated Page 1 historical-context presentation with a genuine two
 - [x] Research and revise D072/D073 private content locally. James 1 now has a 755-word four-part expanded dossier behind its 204-word preview. Zechariah 4 now has a 945-word five-part dossier behind its 216-word preview, adding direct Israel Antiquities Authority and British Museum evidence with explicit limits. Metadata, provenance, versions, hashes, and the 182-record registry pass integrated validation.
 - [x] Publish private content content-first and the manifest last. Exact Drive readback matched all six local files byte for byte, preserved each parent, preserved owner-only reading/metadata/registry access, retained the manifest's single reader grant, and found no broad permission.
 - [x] Build and validate the code-only release. Repository safety inspected 271 files; 24 schemas, 23 prepared studies, 26 syntheses, 182 sources, 236 tests, and exact Pages artifact verification passed. Prepared releases are frontend `0ddb985f7d7adef0` and PWA `2cdc4cede6ed8fde`; Apps Script is unchanged.
-- [ ] Commit, push, and verify GitHub workflows plus live HTTPS bytes/MIME.
+- [x] Commit and push code release `d497f2f`. Pages deployment `32989978197` passed, and all eight live shell/immutable files matched committed bytes with their expected MIME types. The repository CI-equivalent `npm run check` passed locally before publication; the documentation-only closeout commit remains to be pushed.
 
 ## Exact next action
 
-Commit and push the validated code-only release, wait for GitHub safety/Pages publication, verify the live immutable assets byte-for-byte with their expected MIME types, and hand the installed-phone review back to Dustin.
+Hand the installed-phone review back to Dustin. The expected result is a concise upper context preview and a materially fuller, topically divided lower dossier for James 1 and Zechariah 4 without clearing downloaded data.

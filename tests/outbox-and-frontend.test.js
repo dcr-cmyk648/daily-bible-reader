@@ -788,6 +788,33 @@ test("comprehensive Markdown becomes individually selectable passage-specific se
   ]);
 });
 
+test("historical context moves from comprehensive Markdown to a closed Page 1 disclosure without duplicate deep citations", () => {
+  const markdown = "### Literary movement\n\nA reading-focused observation.{{cite:literary_source,shared_source}}\n\n### Historical / Archaeological context\n\nA bounded historical observation.{{cite:shared_source,second_context_source}}\n\n### Canonical connections\n\nA canonical observation.{{cite:canonical_source}}";
+  const partition = app.partitionComprehensiveSynthesis({
+    markdown,
+    sourceIds: ["literary_source", "shared_source", "second_context_source", "canonical_source"]
+  });
+  assert.ok(partition.context);
+  assert.match(partition.context.markdown, /bounded historical observation/);
+  assert.deepEqual(partition.context.sourceIds, ["shared_source", "second_context_source"]);
+  assert.equal(partition.comprehensive.markdown.includes("Historical / Archaeological context"), false);
+  assert.equal(partition.comprehensive.markdown.includes("second_context_source"), false);
+  assert.deepEqual(partition.comprehensive.sourceIds, ["literary_source", "shared_source", "canonical_source"]);
+  const noContext = app.partitionComprehensiveSynthesis({markdown: "### Literary movement\n\nOnly this section.", sourceIds: ["literary_source"]});
+  assert.equal(noContext.context, null);
+  assert.equal(noContext.comprehensive.markdown, "### Literary movement\n\nOnly this section.");
+
+  const html = fs.readFileSync(path.join(__dirname, "../app/frontend/index.html"), "utf8");
+  const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
+  const contextPosition = html.indexOf('id="historicalContextDisclosure"');
+  assert.ok(contextPosition > html.indexOf('id="overviewSources"'));
+  assert.ok(contextPosition < html.indexOf('id="discussionCard"'));
+  assert.match(html, /<details id="historicalContextDisclosure"[^>]*hidden>/);
+  assert.match(source, /renderSafeMarkdown\(withoutInlineCitations\(context\.markdown\), element\("historicalContextContent"\)\)/);
+  assert.match(source, /renderSourceCitations\(context\.sourceIds, sources \|\| \[\], element\("historicalContextSources"\)\)/);
+  assert.match(source, /clearHistoricalContextDisclosure\(\);/);
+});
+
 test("editorial contract requires practical prose and confessional evidentiary weighting", () => {
   const stance = fs.readFileSync(path.join(__dirname, "../docs/EDITORIAL_STANCE.md"), "utf8");
   const workflow = fs.readFileSync(path.join(__dirname, "../docs/COMMENTARY_WORKFLOW.md"), "utf8");

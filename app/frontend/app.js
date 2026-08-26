@@ -1281,6 +1281,65 @@
     return sections;
   }
 
+  function isHistoricalContextHeading(title) {
+    const normalized = String(title || "")
+      .toLowerCase()
+      .replace(/[&/]/g, " and ")
+      .replace(/[^a-z\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    return /\barchaeolog(?:y|ical)\b/.test(normalized) && /\bhistorical\b/.test(normalized);
+  }
+
+  function markdownFromComprehensiveSections(sections) {
+    return (sections || []).map((section) => section.title === "Overview"
+      ? section.markdown
+      : `### ${section.title}\n\n${section.markdown}`).join("\n\n");
+  }
+
+  function partitionComprehensiveSynthesis(comprehensive) {
+    const safeComprehensive = comprehensive || {markdown: "", sourceIds: []};
+    const sections = splitComprehensiveSections(safeComprehensive.markdown);
+    const contextSections = sections.filter((section) => isHistoricalContextHeading(section.title));
+    const contextSourceIds = Array.from(new Set(contextSections.flatMap((section) => inlineCitationIds(section.markdown))));
+    const context = contextSections.length
+      ? {
+        markdown: contextSections.map((section) => section.markdown).join("\n\n"),
+        sourceIds: contextSourceIds
+      }
+      : null;
+    const deepSections = sections.filter((section) => !isHistoricalContextHeading(section.title));
+    const deepMarkdown = markdownFromComprehensiveSections(deepSections);
+    const deepInlineSourceIds = new Set(inlineCitationIds(deepMarkdown));
+    return {
+      context,
+      comprehensive: {
+        ...safeComprehensive,
+        markdown: deepMarkdown,
+        sourceIds: (safeComprehensive.sourceIds || []).filter((sourceId) =>
+          !contextSourceIds.includes(sourceId) || deepInlineSourceIds.has(sourceId)
+        )
+      }
+    };
+  }
+
+  function clearHistoricalContextDisclosure() {
+    const disclosure = element("historicalContextDisclosure");
+    disclosure.hidden = true;
+    disclosure.open = false;
+    element("historicalContextContent").replaceChildren();
+    element("historicalContextSources").replaceChildren();
+  }
+
+  function renderHistoricalContextDisclosure(context, sources) {
+    clearHistoricalContextDisclosure();
+    if (!context || !context.markdown) return;
+    const disclosure = element("historicalContextDisclosure");
+    renderSafeMarkdown(withoutInlineCitations(context.markdown), element("historicalContextContent"));
+    renderSourceCitations(context.sourceIds, sources || [], element("historicalContextSources"));
+    disclosure.hidden = false;
+  }
+
   function renderComprehensiveSections(comprehensive, citationIndex) {
     const container = element("comprehensiveSynthesis");
     container.replaceChildren();
@@ -1728,7 +1787,11 @@
     const practicalTakeaway = commentary.practicalTakeaway || {markdown: "Practical takeaway unavailable.", sourceIds: []};
     state.verseOfTheDay = normalizedVerseOfTheDay(commentary.verseOfTheDay, state.currentEntry);
     prepareVerseOfTheDay();
-    const comprehensive = normalizedComprehensiveSynthesis(commentary, isBookIntroduction);
+    const comprehensivePartition = partitionComprehensiveSynthesis(
+      normalizedComprehensiveSynthesis(commentary, isBookIntroduction)
+    );
+    const comprehensive = comprehensivePartition.comprehensive;
+    renderHistoricalContextDisclosure(comprehensivePartition.context, sources || []);
     const mainPageCitationIndex = buildPageCitationIndex(
       commentarySummary,
       practicalTakeaway,
@@ -3176,6 +3239,7 @@
         disclosure.open = false;
       });
     }
+    if (nextPage !== 0) element("historicalContextDisclosure").open = false;
     element("discussionPageContext").textContent = `${pageLabel(nextPage)} · comments for this day`;
     if (!options || options.focus !== false) {
       const heading = element(nextPage === 0
@@ -3285,6 +3349,7 @@
     const schedule = calculateSchedule(state.plan, state.config, new Date(), requestedReadingId, options);
     state.schedule = schedule;
     renderReadingShell(schedule);
+    clearHistoricalContextDisclosure();
     if (schedule.locked) {
       state.verseOfTheDay = null;
       prepareVerseOfTheDay();
@@ -4409,6 +4474,7 @@
     requestScriptureWithRetry,
     splitNumberedVerses,
     splitComprehensiveSections,
+    partitionComprehensiveSynthesis,
     submitCurrentHighlightEvent,
     startupTimingSnapshot,
     titleForEntry,

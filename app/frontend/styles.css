@@ -1340,6 +1340,26 @@ h3 {
   font-weight: 650;
 }
 
+.historical-context-disclosure {
+  max-width: var(--reading-width);
+  margin-top: 1rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.historical-context-disclosure > summary {
+  color: var(--action);
+  font-size: clamp(0.94rem, 3.8vw, 1.06rem);
+}
+
+.historical-context-body {
+  padding-bottom: 0.35rem;
+}
+
+.historical-context-disclosure .main-citations {
+  margin-top: 0;
+  padding-bottom: 1rem;
+}
+
 .major-disclosure {
   margin-top: 0.75rem;
   border-bottom: 1px solid var(--line);

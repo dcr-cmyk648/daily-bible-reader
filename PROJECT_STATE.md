@@ -209,4 +209,4 @@ The full source-day mapping remains factual metadata only; the active bridge use
 
 ## Next concrete action
 
-Commit and push the verified tracked artifacts. Dustin then reviews `docs/reports/long-term-four-stream-candidate.md`, the full candidate JSON, and the live James 1/Zechariah 4 context sections. The candidate must not be activated or locked without explicit approval. The normal daily task continues to select the earliest missing or stale bridge reading and advances only after complete review, atomic private publication, and exact Drive readback.
+Dustin reviews `docs/reports/long-term-four-stream-candidate.md`, the full candidate JSON, and the live James 1/Zechariah 4 context sections. The candidate must not be activated or locked without explicit approval. The normal daily task continues to select the earliest missing or stale bridge reading and advances only after complete review, atomic private publication, and exact Drive readback.

@@ -82,8 +82,9 @@ Milestone 2:
 - [x] Generate and validate the deterministic review-only schedule (`four-stream-protestant-66-candidate-2026-09-16-v1`; 1,255 units; 2026-09-16 through 2030-02-21; SHA-256 `d209d9067b677ffb161ae62c8f3d31b7c00c6d3b0772fe115eaf45abe289d057`). It starts with `intro-GEN` then Genesis 1; has 66 book introductions immediately before chapter 1; allocates OT/NT/Psalms/Proverbs as 785/287/151/32; has maximum OT/NT runs of 6/2; and permits every NT pair only as the exact introduction/chapter-1 pair. Sundays allocate 149 Psalms and 30 Proverbs, with four explicit non-Sunday minor exceptions; the maximum stream finish spread is 11 days. Psalms remain canonical rather than speculatively relocated. The candidate remains inactive pending user review; see `docs/reports/long-term-four-stream-candidate.md`.
 - [x] Research, validate, and privately publish the James 1 and Zechariah 4 context pilot. D072 and D073 advanced to `draft-v2` under `commentary-workflow-v13-historical-context-pilot`; registry `celebration-bridge-2026-08-26-v15` has 180 sources. Existing devotional/Henry layers remained unchanged; direct Yale, *Encyclopaedia Iranica*, and Metropolitan Museum material was used only for bounded context.
 - [x] Primary integrated check passed: repository safety inspected 254 files; content validation covered 24 schemas; private validation found 23 end-to-end studies, 26 syntheses, 180 registered sources, and no stored Scripture; all 235 tests and code-only builds/Pages verification passed.
+- [x] Verified tracked schedule artifacts committed and pushed to `main`; private reading content and the private source registry remained outside Git.
 - [ ] Dustin reviews the inactive candidate report and the live context sections.
 
 ## Exact next action
 
-Commit and push the verified tracked artifacts, then Dustin reviews the inactive candidate JSON/report and the live James 1 and Zechariah 4 context sections. Do not activate or lock the candidate without explicit approval.
+Dustin reviews the inactive candidate JSON/report and the live James 1 and Zechariah 4 context sections. Do not activate or lock the candidate without explicit approval.

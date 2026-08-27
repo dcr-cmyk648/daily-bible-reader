@@ -655,6 +655,29 @@
       "sourceIds": [
         "youversion_celebration_y3q4_plan_3805"
       ]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 27,
+      "sourcePlanDay": 80,
+      "readingId": "CC-Y3Q4-D080",
+      "kind": "chapter",
+      "bookId": "JAS",
+      "chapter": 3,
+      "passages": [
+        {
+          "bookId": "JAS",
+          "chapter": 3,
+          "verseCount": 18
+        }
+      ],
+      "orderingRationale": "Temporary bridge preserves Day 80 of Celebration Church's published Year 3, Quarter 4 sequence.",
+      "chronologyBasis": "pragmatic",
+      "confidence": "high",
+      "notes": "One chapter appears on the Scripture page.",
+      "sourceIds": [
+        "youversion_celebration_y3q4_plan_3805"
+      ]
     }
   ],
   "bookMetrics": {

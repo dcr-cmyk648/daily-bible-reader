@@ -226,7 +226,177 @@ function entryFromUnit({input, unit, streamId, streamSequence, dayIndex, date}) 
   };
 }
 
+function contributionFromUnit(unit, streamId, streamSequence) {
+  return {
+    streamId,
+    streamSequence,
+    kind: unit.kind,
+    bookId: unit.bookId,
+    ...(unit.kind === "book_intro" ? {representativeVerse: unit.representativeVerse} : {chapter: unit.chapter, passages: unit.passages})
+  };
+}
+
+function v2EntryFromUnit({input, unit, streamId, streamSequence, dayIndex, date, contributions = null, unitLabel = unit.unitLabel, passages = null, contextReadingIds = null}) {
+  const entry = entryFromUnit({input, unit, streamId, streamSequence, dayIndex, date});
+  entry.unitLabel = unitLabel;
+  entry.streamContributions = contributions || [contributionFromUnit(unit, streamId, streamSequence)];
+  if (passages) entry.passages = passages;
+  if (contextReadingIds) entry.contextReadingIds = contextReadingIds;
+  return entry;
+}
+
+function psalmSundayDays(input, totalDays) {
+  const sundays = Array.from({length: totalDays}, (_, index) => index + 1)
+    .filter((dayIndex) => dayOfWeek(addDays(input.startDate, dayIndex - 1)) === 0);
+  if (sundays.length < 150) throw new Error("The v2 window does not contain enough Sundays for the Psalm stream.");
+  const selected = [sundays[0], sundays[1]];
+  const remaining = sundays.slice(2);
+  for (let ordinal = 1; ordinal <= 148; ordinal += 1) selected.push(remaining[Math.ceil((ordinal * remaining.length) / 148) - 1]);
+  return {sundays, psalmDays: selected};
+}
+
+function buildProverbsRanges(psalmChapterUnits, ordinaryTarget) {
+  const eligible = psalmChapterUnits.map((unit, index) => ({unit, index})).filter(({unit, index}) => index > 0 && unit.passages[0].verseCount < ordinaryTarget);
+  const totalProverbsVerses = BOOKS.get("PRO").verseCount;
+  const remainingCapacity = eligible.map(({unit}) => ordinaryTarget - unit.passages[0].verseCount);
+  const ranges = new Map();
+  let chapter = 1;
+  let verseStart = 1;
+  let assigned = 0;
+  eligible.forEach(({unit, index}, eligibleIndex) => {
+    if (chapter > BOOKS.get("PRO").chapterVerseCounts.length) return;
+    const futureCapacity = remainingCapacity.slice(eligibleIndex + 1).reduce((sum, value) => sum + value, 0);
+    const remaining = totalProverbsVerses - assigned;
+    const shouldAssign = assigned / totalProverbsVerses < (eligibleIndex + 1) / eligible.length || remaining > futureCapacity;
+    if (!shouldAssign) return;
+    const capacity = ordinaryTarget - unit.passages[0].verseCount;
+    const chapterEnd = BOOKS.get("PRO").chapterVerseCounts[chapter - 1];
+    const verseEnd = Math.min(chapterEnd, verseStart + capacity - 1);
+    const verseCount = verseEnd - verseStart + 1;
+    ranges.set(index, {bookId: "PRO", chapter, verseStart, verseEnd, verseCount});
+    assigned += verseCount;
+    if (verseEnd === chapterEnd) {
+      chapter += 1;
+      verseStart = 1;
+    } else verseStart = verseEnd + 1;
+  });
+  if (assigned !== totalProverbsVerses || chapter !== BOOKS.get("PRO").chapterVerseCounts.length + 1 || verseStart !== 1) {
+    throw new Error("The v2 Proverbs pairing allocation did not cover Proverbs exactly.");
+  }
+  return ranges;
+}
+
+function buildLongTermCandidateV2(input) {
+  const units = Object.fromEntries(["old_testament", "new_testament", "psalms", "proverbs"].map((streamId) => [streamId, buildUnits(input, streamId)]));
+  const totalDays = units.old_testament.length + units.new_testament.length + units.psalms.length + 1;
+  const {sundays, psalmDays} = psalmSundayDays(input, totalDays);
+  const saturdayDays = Array.from({length: totalDays}, (_, index) => index + 1).filter((dayIndex) => dayOfWeek(addDays(input.startDate, dayIndex - 1)) === 6);
+  const psalmIntroDay = saturdayDays[0];
+  const proverbsIntroDay = saturdayDays[1];
+  const psalmDaySet = new Set(psalmDays);
+  if (psalmIntroDay + 1 !== psalmDays[0] || proverbsIntroDay + 1 !== psalmDays[1]) throw new Error("The v2 wisdom introductions must be immediately followed by their opening reading.");
+  const proverbRanges = buildProverbsRanges(units.psalms.slice(1), input.ordinaryWisdomVerseTarget);
+  const cursors = {old_testament: 0, new_testament: 0};
+  const streamSequences = {old_testament: 0, new_testament: 0, psalms: 0, proverbs: 0};
+  const entries = [];
+  const nonSundayMinorExceptions = [];
+  const sundayOtherStreamExceptions = [];
+  let forcedStream = "old_testament";
+  let previousStream = null;
+  let psalmCursor = 0;
+  for (let dayIndex = 1; dayIndex <= totalDays; dayIndex += 1) {
+    const civilDate = addDays(input.startDate, dayIndex - 1);
+    const sunday = dayOfWeek(civilDate) === 0;
+    const nextDayHasPsalm = psalmDaySet.has(dayIndex + 1);
+    if (!forcedStream && nextDayHasPsalm) {
+      const available = availableMajorStreams(cursors, units, previousStream);
+      if (available.length && available.every((streamId) => units[streamId][cursors[streamId]]?.kind === "book_intro")) {
+        const deferredPsalmDay = dayIndex + 2;
+        if (dayOfWeek(addDays(input.startDate, deferredPsalmDay - 1)) !== 1 || psalmDaySet.has(deferredPsalmDay) || deferredPsalmDay === psalmIntroDay || deferredPsalmDay === proverbsIntroDay) {
+          throw new Error(`No safe Psalm-cadence adjustment is available after ${civilDate}.`);
+        }
+        psalmDaySet.delete(dayIndex + 1);
+        psalmDaySet.add(deferredPsalmDay);
+      }
+    }
+    if (dayIndex === psalmIntroDay) {
+      const unit = units.psalms[0];
+      streamSequences.psalms += 1;
+      entries.push(v2EntryFromUnit({input, unit, streamId: "psalms", streamSequence: streamSequences.psalms, dayIndex, date: civilDate}));
+      nonSundayMinorExceptions.push({dayIndex, civilDate, streamId: "psalms", reason: "scheduled Psalms introduction immediately before Psalms 1"});
+      previousStream = "psalms";
+      continue;
+    }
+    if (dayIndex === proverbsIntroDay) {
+      const unit = units.proverbs[0];
+      streamSequences.proverbs += 1;
+      entries.push(v2EntryFromUnit({input, unit, streamId: "proverbs", streamSequence: streamSequences.proverbs, dayIndex, date: civilDate}));
+      nonSundayMinorExceptions.push({dayIndex, civilDate, streamId: "proverbs", reason: "scheduled Proverbs introduction immediately before the first combined Proverbs range"});
+      previousStream = "proverbs";
+      continue;
+    }
+    if (psalmDaySet.has(dayIndex)) {
+      const unit = units.psalms[psalmCursor + 1];
+      if (!unit) throw new Error("Psalm slot allocation exceeded canonical Psalm chapters.");
+      streamSequences.psalms += 1;
+      const psalmContribution = contributionFromUnit(unit, "psalms", streamSequences.psalms);
+      const range = proverbRanges.get(psalmCursor);
+      const contributions = [psalmContribution];
+      const passages = [...unit.passages];
+      let unitLabel = unit.unitLabel;
+      let contextReadingIds = unit.chapter === 1 ? [`LTP-${String(dayIndex - 1).padStart(4, "0")}-PSA-INTRO`] : null;
+      if (range) {
+        streamSequences.proverbs += 1;
+        contributions.push({streamId: "proverbs", streamSequence: streamSequences.proverbs, kind: "chapter", bookId: "PRO", chapter: range.chapter, passages: [range]});
+        passages.push(range);
+        unitLabel = `${unit.unitLabel} + Proverbs ${range.chapter}:${range.verseStart}–${range.verseEnd}`;
+        if (range.chapter === 1 && range.verseStart === 1) contextReadingIds = [...(contextReadingIds || []), `LTP-${String(dayIndex - 1).padStart(4, "0")}-PRO-INTRO`];
+      }
+      entries.push(v2EntryFromUnit({input, unit, streamId: "psalms", streamSequence: streamSequences.psalms, dayIndex, date: civilDate,
+        contributions, passages, unitLabel, contextReadingIds}));
+      if (!sunday) nonSundayMinorExceptions.push({dayIndex, civilDate, streamId: "psalms", reason: "mandatory book-introduction/chapter-1 adjacency displaced this Psalm from Sunday"});
+      psalmCursor += 1;
+      previousStream = "psalms";
+      continue;
+    }
+    let streamId;
+    if (forcedStream) streamId = forcedStream;
+    else streamId = chooseMajor(cursors, units, previousStream, psalmDaySet.has(dayIndex + 1) || dayIndex + 1 === psalmIntroDay || dayIndex + 1 === proverbsIntroDay, false);
+    if (!streamId) throw new Error(`No major stream is available on ${civilDate}.`);
+    const unit = units[streamId][cursors[streamId]];
+    if (!unit) throw new Error(`No ${streamId} unit is available on ${civilDate}.`);
+    if (unit.kind === "book_intro" && (psalmDaySet.has(dayIndex + 1) || dayIndex + 1 === psalmIntroDay || dayIndex + 1 === proverbsIntroDay)) {
+      throw new Error(`A ${streamId} introduction would be split from chapter 1 by a fixed wisdom day.`);
+    }
+    if (sunday) sundayOtherStreamExceptions.push({dayIndex, civilDate, streamId, reason: "Psalm cadence balancing; a major-stream unit occupies this Sunday."});
+    cursors[streamId] += 1;
+    streamSequences[streamId] += 1;
+    entries.push(v2EntryFromUnit({input, unit, streamId, streamSequence: streamSequences[streamId], dayIndex, date: civilDate}));
+    forcedStream = unit.kind === "book_intro" ? streamId : null;
+    previousStream = streamId;
+  }
+  if (psalmCursor !== 150 || cursors.old_testament !== units.old_testament.length || cursors.new_testament !== units.new_testament.length) throw new Error("The v2 stream allocator did not complete every required unit.");
+  const streamContributionCounts = Object.fromEntries(["old_testament", "new_testament", "psalms", "proverbs"].map((streamId) => [streamId, entries.flatMap((entry) => entry.streamContributions).filter((contribution) => contribution.streamId === streamId).length]));
+  const bookMetrics = Object.fromEntries([...BOOKS.values()].map((book) => [book.bookId, {verseCount: book.verseCount, chapterCount: book.chapterVerseCounts.length, versification: "Protestant chapter and verse numbering; factual structural metadata only"}]));
+  const scheduleSha256 = sha256(JSON.stringify(entries));
+  const plan = {
+    schemaVersion: "plan/v1", planVersion: input.planVersion, title: input.title, canonId: input.canonId,
+    structure: {oneReadingUnitPerDay: true, bookIntroductionPolicy: "immediately_before_chapter_1", interweavingStrategy: "proportional_four_stream", targetFinishTogether: true,
+      streams: [
+        {streamId: "old_testament", unitCount: units.old_testament.length, orderingRule: input.reviewNotes.old_testament},
+        {streamId: "new_testament", unitCount: units.new_testament.length, orderingRule: input.reviewNotes.new_testament},
+        {streamId: "psalms", unitCount: units.psalms.length, orderingRule: input.reviewNotes.psalms},
+        {streamId: "proverbs", unitCount: streamContributionCounts.proverbs, orderingRule: input.reviewNotes.proverbs}
+      ]},
+    candidateMetadata: {reviewOnly: true, scheduleModel: input.scheduleModel, ordinaryWisdomVerseTarget: input.ordinaryWisdomVerseTarget, dailySlotCount: totalDays,
+      streamContributionCounts, timezone: input.timezone, startDate: input.startDate, sundayPolicy: input.sundayPolicy, inputSha256: sha256(JSON.stringify(input)), scheduleSha256,
+      nonSundayMinorExceptions, sundayOtherStreamExceptions}, entries, bookMetrics
+  };
+  return {plan, units, nonSundayMinorExceptions};
+}
+
 export function buildLongTermCandidate(input) {
+  if (input.scheduleModel === "psalm_proverbs_combined_v2") return buildLongTermCandidateV2(input);
   const units = Object.fromEntries(["old_testament", "new_testament", "psalms", "proverbs"].map((streamId) => [streamId, buildUnits(input, streamId)]));
   const cursors = Object.fromEntries(Object.keys(units).map((streamId) => [streamId, 0]));
   const streamSequences = Object.fromEntries(Object.keys(units).map((streamId) => [streamId, 0]));
@@ -326,6 +496,7 @@ export function buildLongTermCandidate(input) {
 }
 
 export function candidateMetrics(plan, nonSundayMinorExceptions = []) {
+  if (plan.candidateMetadata?.scheduleModel === "psalm_proverbs_combined_v2") return candidateMetricsV2(plan, nonSundayMinorExceptions);
   const streamIds = ["old_testament", "new_testament", "psalms", "proverbs"];
   const byStream = Object.fromEntries(streamIds.map((streamId) => [streamId, plan.entries.filter((entry) => entry.streamId === streamId)]));
   const finish = Object.fromEntries(streamIds.map((streamId) => [streamId, byStream[streamId].at(-1).civilDate]));
@@ -354,6 +525,7 @@ export function candidateMetrics(plan, nonSundayMinorExceptions = []) {
 }
 
 export function validateLongTermCandidate(plan, input) {
+  if (plan.candidateMetadata?.scheduleModel === "psalm_proverbs_combined_v2") return validateLongTermCandidateV2(plan, input);
   const expectedBooks = new Set(Object.values(input.streams).flat());
   if (expectedBooks.size !== 66) throw new Error("Candidate input must contain each Protestant-canon book exactly once.");
   if (expectedBooks.size !== BOOKS.size || [...expectedBooks].some((bookId) => !BOOKS.has(bookId))) throw new Error("Candidate input must equal the 66-book Protestant canon.");
@@ -410,6 +582,7 @@ export function validateLongTermCandidate(plan, input) {
 }
 
 export function renderCandidateReport({input, plan, metrics}) {
+  if (plan.candidateMetadata?.scheduleModel === "psalm_proverbs_combined_v2") return renderCandidateReportV2({input, plan, metrics});
   const bookOrder = Object.entries(input.streams).map(([streamId, books]) => `### ${streamId.replaceAll("_", " ")}\n\n${books.map((bookId, index) => `${index + 1}. ${BOOKS.get(bookId).title} — ${rationale(streamId, bookId, index)} (${bookChronology(streamId, bookId).confidence} confidence)`).join("\n")}`).join("\n\n");
   const proverbs = plan.entries.filter((entry) => entry.bookId === "PRO" && entry.kind === "chapter").map((entry) => {
     const p = entry.passages[0];
@@ -439,6 +612,7 @@ function markdownTableCell(value) {
  * its serialized JSON, ordering, hash, or activation state.
  */
 export function renderLongTermDailySchedule({plan}) {
+  if (plan.candidateMetadata?.scheduleModel === "psalm_proverbs_combined_v2") return renderLongTermDailyScheduleV2({plan});
   const monthlyEntries = new Map();
   plan.entries.forEach((entry) => {
     const month = entry.civilDate.slice(0, 7);
@@ -450,5 +624,123 @@ export function renderLongTermDailySchedule({plan}) {
     const rows = entries.map((entry) => `| ${entry.civilDate} | ${entry.dayIndex} | ${STREAM_DISPLAY_NAMES[entry.streamId]} | ${markdownTableCell(entry.unitLabel)} |`).join("\n");
     return `## ${month}\n\n| Date | Day | Stream | Reading |\n|---|---:|---|---|\n${rows}`;
   }).join("\n\n");
-  return `# Four-stream long-term daily schedule\n\n**Status:** review only; inactive candidate. This is not published or available to the app.\n\n- Plan version: \`${plan.planVersion}\`\n- Civil range: ${plan.candidateMetadata.startDate} through ${plan.entries.at(-1).civilDate} (${plan.candidateMetadata.timezone})\n- Daily units: ${plan.entries.length}\n- Schedule SHA-256: \`${plan.candidateMetadata.scheduleSha256}\`\n\nThis phone-readable artifact is generated from the inactive candidate. Reviewing it does not activate, publish, or prepare any reading.\n\n${months}\n`;
+  return `# Four-stream long-term daily schedule\n\n**Status:** review only; inactive candidate. It is not activated or available to the app.\n\n- Plan version: \`${plan.planVersion}\`\n- Civil range: ${plan.candidateMetadata.startDate} through ${plan.entries.at(-1).civilDate} (${plan.candidateMetadata.timezone})\n- Daily units: ${plan.entries.length}\n- Schedule SHA-256: \`${plan.candidateMetadata.scheduleSha256}\`\n\nThis phone-readable artifact is generated from the inactive candidate. Reviewing it does not activate or prepare any reading.\n\n${months}\n`;
+}
+
+function contributions(entry) {
+  return entry.streamContributions || [{streamId: entry.streamId, streamSequence: entry.streamSequence, kind: entry.kind, bookId: entry.bookId,
+    ...(entry.kind === "book_intro" ? {representativeVerse: entry.representativeVerse} : {chapter: entry.chapter, passages: entry.passages})}];
+}
+
+function candidateMetricsV2(plan, nonSundayMinorExceptions = []) {
+  const streamIds = ["old_testament", "new_testament", "psalms", "proverbs"];
+  const byStream = Object.fromEntries(streamIds.map((streamId) => [streamId, plan.entries.flatMap((entry) => contributions(entry).map((contribution) => ({entry, contribution}))).filter((item) => item.contribution.streamId === streamId)]));
+  const finishDates = Object.fromEntries(streamIds.map((streamId) => [streamId, byStream[streamId].at(-1).entry.civilDate]));
+  const finishNumbers = Object.values(finishDates).map((date) => Date.parse(`${date}T00:00:00Z`) / 86400000);
+  const runs = [];
+  let start = 0;
+  while (start < plan.entries.length) {
+    let end = start;
+    while (end + 1 < plan.entries.length && plan.entries[end + 1].streamId === plan.entries[start].streamId) end += 1;
+    runs.push({streamId: plan.entries[start].streamId, startDayIndex: start + 1, endDayIndex: end + 1, length: end - start + 1});
+    start = end + 1;
+  }
+  const ntRuns = runs.filter((run) => run.streamId === "new_testament" && run.length > 1);
+  const consecutiveNtExceptions = ntRuns.map((run) => {
+    const [first, second] = plan.entries.slice(run.startDayIndex - 1, run.endDayIndex);
+    const validPair = run.length === 2 && first.kind === "book_intro" && second.kind === "chapter" && first.bookId === second.bookId && second.chapter === 1;
+    return {...run, reason: validPair ? "mandatory introduction-to-chapter-1 adjacency" : "invalid: exceeds the permitted NT introduction/chapter-1 pair"};
+  });
+  const sundayContributions = plan.entries.filter((entry) => dayOfWeek(entry.civilDate) === 0).flatMap((entry) => contributions(entry));
+  return {totalDays: plan.entries.length, startDate: plan.entries[0].civilDate, endDate: plan.entries.at(-1).civilDate,
+    readingsByStream: Object.fromEntries(streamIds.map((streamId) => [streamId, byStream[streamId].length])), finishDates,
+    finishSpreadDays: Math.max(...finishNumbers) - Math.min(...finishNumbers),
+    sundayAllocation: Object.fromEntries(["psalms", "proverbs"].map((streamId) => [streamId, sundayContributions.filter((contribution) => contribution.streamId === streamId).length])),
+    sundayCount: plan.entries.filter((entry) => dayOfWeek(entry.civilDate) === 0).length, nonSundayMinorExceptions, consecutiveNtExceptions,
+    maximumRuns: Object.fromEntries(streamIds.map((streamId) => [streamId, Math.max(...runs.filter((run) => run.streamId === streamId).map((run) => run.length))]))};
+}
+
+function validateLongTermCandidateV2(plan, input) {
+  if (plan.entries.length !== 1224 || plan.candidateMetadata.dailySlotCount !== 1224) throw new Error("The v2 candidate must contain exactly 1,224 daily slots.");
+  if (!plan.candidateMetadata.reviewOnly || plan.planVersion !== input.planVersion || plan.candidateMetadata.scheduleModel !== "psalm_proverbs_combined_v2") throw new Error("The v2 candidate must remain an inactive review-only Psalm/Proverbs model.");
+  if (plan.candidateMetadata.sundayPolicy !== "proportional_psalm_days_with_proverbs_pairing") throw new Error("The v2 candidate must declare its Psalm-day/Proverbs-pairing Sunday policy.");
+  const expectedBooks = new Set(Object.values(input.streams).flat());
+  const contributionItems = plan.entries.flatMap((entry) => contributions(entry).map((contribution) => ({entry, contribution})));
+  const byStream = Object.fromEntries(["old_testament", "new_testament", "psalms", "proverbs"].map((streamId) => [streamId, contributionItems.filter((item) => item.contribution.streamId === streamId)]));
+  if (expectedBooks.size !== 66 || byStream.old_testament.length !== 785 || byStream.new_testament.length !== 287 || byStream.psalms.length !== 151) throw new Error("The v2 canonical contribution counts drifted.");
+  if (JSON.stringify(plan.candidateMetadata.streamContributionCounts) !== JSON.stringify(Object.fromEntries(Object.entries(byStream).map(([streamId, list]) => [streamId, list.length])))) throw new Error("The v2 stream contribution count metadata drifted.");
+  plan.entries.forEach((entry, index) => {
+    if (entry.dayIndex !== index + 1 || entry.civilDate !== addDays(input.startDate, index)) throw new Error("Candidate has a date or day-index gap.");
+    if (!entry.streamContributions?.length) throw new Error("Every v2 entry must expose machine-readable stream contributions.");
+    const primary = entry.streamContributions[0];
+    if (entry.streamId !== primary.streamId || entry.streamSequence !== primary.streamSequence || entry.kind !== primary.kind || entry.bookId !== primary.bookId || entry.chapter !== primary.chapter) throw new Error("The v2 top-level primary identity drifted from its first stream contribution.");
+    const expectedPassages = entry.streamContributions.flatMap((contribution) => contribution.passages || []);
+    if (JSON.stringify(entry.passages || []) !== JSON.stringify(expectedPassages)) throw new Error("The v2 top-level passages drifted from its ordered stream contributions.");
+    if (dayOfWeek(entry.civilDate) === 0 && !contributions(entry).some((contribution) => contribution.streamId === "psalms") &&
+      !(plan.candidateMetadata.sundayOtherStreamExceptions || []).some((item) => item.dayIndex === entry.dayIndex && item.civilDate === entry.civilDate && item.streamId === entry.streamId)) throw new Error(`Sunday ${entry.civilDate} lacks a disclosed Psalm-cadence exception.`);
+  });
+  const ids = plan.entries.map((entry) => entry.readingId);
+  if (new Set(ids).size !== ids.length) throw new Error("Candidate has duplicate reading IDs.");
+  for (const [streamId, expectedOrder] of Object.entries(input.streams)) {
+    const observedOrder = [...new Set(byStream[streamId].map((item) => item.contribution.bookId))];
+    if (JSON.stringify(observedOrder) !== JSON.stringify(expectedOrder)) throw new Error(`${streamId} book order drift.`);
+    if (byStream[streamId].some((item, index) => item.contribution.streamSequence !== index + 1)) throw new Error(`${streamId} sequence drift.`);
+  }
+  for (const bookId of expectedBooks) {
+    const bookContributions = contributionItems.filter((item) => item.contribution.bookId === bookId);
+    const intros = bookContributions.filter((item) => item.contribution.kind === "book_intro");
+    if (intros.length !== 1) throw new Error(`${bookId} must have exactly one introduction contribution.`);
+    const next = plan.entries[plan.entries.indexOf(intros[0].entry) + 1];
+    if (!next || !contributions(next).some((contribution) => contribution.bookId === bookId && contribution.kind === "chapter" && contribution.chapter === 1)) throw new Error(`${bookId} introduction is not immediately followed by chapter 1.`);
+    if (bookId === "PRO") continue;
+    const book = BOOKS.get(bookId);
+    const chapters = bookContributions.filter((item) => item.contribution.kind === "chapter");
+    if (chapters.length !== book.chapterVerseCounts.length || chapters.some((item, index) => item.contribution.chapter !== index + 1)) throw new Error(`${bookId} chapter coverage is not exact.`);
+  }
+  const proverbRanges = byStream.proverbs.filter((item) => item.contribution.kind === "chapter").map((item) => ({entry: item.entry, range: item.contribution.passages[0]}));
+  let expectedChapter = 1;
+  let expectedVerse = 1;
+  proverbRanges.forEach(({entry, range}) => {
+    const psalm = contributions(entry).find((contribution) => contribution.streamId === "psalms");
+    const chapterEnd = BOOKS.get("PRO").chapterVerseCounts[expectedChapter - 1];
+    if (!psalm || range.bookId !== "PRO" || range.chapter !== expectedChapter || range.verseStart !== expectedVerse || range.verseEnd > chapterEnd || range.verseCount !== range.verseEnd - range.verseStart + 1) throw new Error("Proverbs range coverage drifted.");
+    if (psalm.passages[0].verseCount >= input.ordinaryWisdomVerseTarget || psalm.passages[0].verseCount + range.verseCount > input.ordinaryWisdomVerseTarget) throw new Error("A combined Psalm/Proverbs day violates its ordinary-load target.");
+    if (range.verseEnd === chapterEnd) { expectedChapter += 1; expectedVerse = 1; } else expectedVerse = range.verseEnd + 1;
+  });
+  if (expectedChapter !== 32 || expectedVerse !== 1) throw new Error("Proverbs 1:1 through 31:31 are not covered exactly once.");
+  const actualExceptions = plan.entries.filter((entry) => dayOfWeek(entry.civilDate) !== 0 && contributions(entry).some((contribution) => ["psalms", "proverbs"].includes(contribution.streamId))).map((entry) => `${entry.dayIndex}:${entry.civilDate}:${entry.streamId}`);
+  const declaredExceptions = (plan.candidateMetadata.nonSundayMinorExceptions || []).map((entry) => `${entry.dayIndex}:${entry.civilDate}:${entry.streamId}`);
+  if (JSON.stringify(actualExceptions) !== JSON.stringify(declaredExceptions)) throw new Error("Non-Sunday wisdom exceptions are not fully disclosed.");
+  const actualSundayMajor = plan.entries.filter((entry) => dayOfWeek(entry.civilDate) === 0 && !contributions(entry).some((contribution) => contribution.streamId === "psalms")).map((entry) => `${entry.dayIndex}:${entry.civilDate}:${entry.streamId}`);
+  const declaredSundayMajor = (plan.candidateMetadata.sundayOtherStreamExceptions || []).map((entry) => `${entry.dayIndex}:${entry.civilDate}:${entry.streamId}`);
+  if (JSON.stringify(actualSundayMajor) !== JSON.stringify(declaredSundayMajor)) throw new Error("Sunday Psalm-cadence exceptions are not fully disclosed.");
+  const metrics = candidateMetricsV2(plan, plan.candidateMetadata.nonSundayMinorExceptions);
+  if (metrics.maximumRuns.new_testament > 2 || metrics.consecutiveNtExceptions.some((run) => run.reason.startsWith("invalid:"))) throw new Error("Candidate permits an invalid consecutive New Testament run.");
+  if (plan.entries[0].kind !== "book_intro" || plan.entries[0].bookId !== "GEN" || plan.entries[1]?.bookId !== "GEN" || plan.entries[1]?.chapter !== 1) throw new Error("Candidate must begin with Genesis introduction then Genesis 1.");
+  return true;
+}
+
+function renderCandidateReportV2({input, plan, metrics}) {
+  const combinedRanges = plan.entries.flatMap((entry) => contributions(entry)
+    .filter((contribution) => contribution.streamId === "proverbs" && contribution.kind === "chapter")
+    .map((contribution) => ({entry, range: contribution.passages[0]})));
+  const rangeLines = combinedRanges.map(({entry, range}) => `${entry.civilDate}: Psalms ${entry.chapter} + Proverbs ${range.chapter}:${range.verseStart}–${range.verseEnd} (${entry.passages.reduce((sum, passage) => sum + passage.verseCount, 0)} raw verses)`).join("\n");
+  const nonSunday = metrics.nonSundayMinorExceptions.map((item) => `- Day ${item.dayIndex} (${item.civilDate}): ${item.streamId} — ${item.reason}.`).join("\n");
+  const majorSundays = plan.candidateMetadata.sundayOtherStreamExceptions.map((item) => `- Day ${item.dayIndex} (${item.civilDate}): ${item.streamId.replaceAll("_", " ")} — ${item.reason}`).join("\n");
+  const sources = input.sourceMetadata.map((source) => `- **${source.title}** (${source.accessDate}) — ${source.url}. ${source.use}`).join("\n");
+  return `# Four-stream long-term plan — v2 review candidate\n\n**Status:** review only; inactive and not available to the app. This v2 candidate supersedes v1 for review; v1 was never active.\n\n- Plan version: \`${plan.planVersion}\`\n- Civil start/end: ${metrics.startDate} through ${metrics.endDate} (${input.timezone})\n- Daily slots: ${metrics.totalDays}\n- Schedule SHA-256: \`${plan.candidateMetadata.scheduleSha256}\`\n- Input SHA-256: \`${plan.candidateMetadata.inputSha256}\`\n\n## Logical stream contributions\n\n| Stream | Contributions | Finish date |\n|---|---:|---|\n| Old Testament | ${metrics.readingsByStream.old_testament} | ${metrics.finishDates.old_testament} |\n| New Testament | ${metrics.readingsByStream.new_testament} | ${metrics.finishDates.new_testament} |\n| Psalms | ${metrics.readingsByStream.psalms} | ${metrics.finishDates.psalms} |\n| Proverbs | ${metrics.readingsByStream.proverbs} | ${metrics.finishDates.proverbs} |\n\nThe logical streams finish within ${metrics.finishSpreadDays} days. Proverbs contributes to selected Psalm days rather than adding a second daily slot.\n\n## Wisdom pacing and review limits\n\n- Ordinary combined raw-verse target: ${plan.candidateMetadata.ordinaryWisdomVerseTarget}. A Psalm at or above that target stands alone.\n- Proverbs ranges remain inside one chapter and proceed canonically. Their arithmetic boundaries are pragmatic and require editorial range-boundary review before activation; they are not claims that every boundary is a literary pericope.\n- Psalm chapters retain canonical order and are paced primarily on Sundays; exceptions are disclosed below.\n\n### Non-Sunday wisdom exceptions\n\n${nonSunday}\n\n### Sundays used by another stream\n\n${majorSundays}\n\n## Every combined Proverbs range\n\n${rangeLines}\n\n## Sources and limits\n\n${sources}\n\nWhole-book chronology and mechanical Proverbs range boundaries remain revisable editorial judgments. This artifact does not activate a plan or prepare any study content.\n`;
+}
+
+function renderLongTermDailyScheduleV2({plan}) {
+  const monthly = new Map();
+  plan.entries.forEach((entry) => { const key = entry.civilDate.slice(0, 7); const list = monthly.get(key) || []; list.push(entry); monthly.set(key, list); });
+  const monthTables = [...monthly.entries()].map(([month, entries]) => {
+    const rows = entries.map((entry) => {
+      const streamNames = contributions(entry).map((contribution) => STREAM_DISPLAY_NAMES[contribution.streamId]).join(" + ");
+      const load = entry.passages ? entry.passages.reduce((sum, passage) => sum + passage.verseCount, 0) : "—";
+      return `| ${entry.civilDate} | ${entry.dayIndex} | ${streamNames} | ${markdownTableCell(entry.unitLabel)} | ${load} |`;
+    }).join("\n");
+    return `## ${month}\n\n| Date | Day | Stream contribution(s) | Reading | Raw load |\n|---|---:|---|---|---:|\n${rows}`;
+  }).join("\n\n");
+  return `# Four-stream long-term daily schedule — v2\n\n**Status:** review only; inactive candidate. It is not activated or available to the app. It supersedes v1 for review; v1 was never active.\n\n- Plan version: \`${plan.planVersion}\`\n- Civil range: ${plan.candidateMetadata.startDate} through ${plan.entries.at(-1).civilDate} (${plan.candidateMetadata.timezone})\n- Daily slots: ${plan.entries.length}\n- Ordinary combined Psalm/Proverbs target: ${plan.candidateMetadata.ordinaryWisdomVerseTarget} raw verses\n- Schedule SHA-256: \`${plan.candidateMetadata.scheduleSha256}\`\n\nCombined Psalm/Proverbs rows are one daily article with two labeled exegetical movements. Load is raw verse count; Proverbs boundaries remain review-only pragmatic ranges rather than asserted literary pericopes.\n\n${monthTables}\n`;
 }

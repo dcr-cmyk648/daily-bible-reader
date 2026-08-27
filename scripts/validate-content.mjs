@@ -131,8 +131,17 @@ async function main() {
   validateLongTermCandidate(longTermCandidate, longTermInput);
   assert(JSON.stringify(longTermCandidate) === JSON.stringify(regeneratedLongTermCandidate),
     "Long-term review candidate must exactly match deterministic generation.");
-  assert(longTermCandidate.candidateMetadata.reviewOnly === true && longTermCandidate.entries.length === 1255,
-    "Long-term schedule must remain a complete review-only candidate.");
+  const longTermMetadata = longTermCandidate.candidateMetadata || {};
+  assert(longTermMetadata.reviewOnly === true,
+    "Long-term schedule must remain a review-only candidate.");
+  assert(longTermInput.schemaVersion === "long-term-plan-candidate-input/v2" &&
+    longTermInput.scheduleModel === "psalm_proverbs_combined_v2" &&
+    longTermCandidate.planVersion === longTermInput.planVersion &&
+    longTermMetadata.scheduleModel === longTermInput.scheduleModel,
+  "Long-term schedule must match the inactive v2 Psalm/Proverbs candidate contract.");
+  assert(longTermMetadata.dailySlotCount === 1224 &&
+    longTermCandidate.entries.length === longTermMetadata.dailySlotCount,
+  "Long-term v2 candidate must declare and contain exactly 1,224 daily slots.");
   const firstSourcePlanDay = 54;
   const activeThroughSourcePlanDay = plan.entries.at(-1).sourcePlanDay;
   const detroitToday = new Intl.DateTimeFormat("en-CA", {

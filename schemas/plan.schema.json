@@ -42,9 +42,30 @@
         "reviewOnly": {"const": true},
         "timezone": {"type": "string", "minLength": 1, "maxLength": 100},
         "startDate": {"type": "string", "format": "date"},
-        "sundayPolicy": {"const": "one_psalm_or_proverbs_unit"},
+        "sundayPolicy": {"enum": ["one_psalm_or_proverbs_unit", "proportional_psalm_days_with_proverbs_pairing"]},
         "inputSha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
         "scheduleSha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "scheduleModel": {"enum": ["psalm_proverbs_combined_v2"]},
+        "ordinaryWisdomVerseTarget": {"type": "integer", "minimum": 1, "maximum": 500},
+        "dailySlotCount": {"type": "integer", "minimum": 1},
+        "streamContributionCounts": {
+          "type": "object",
+          "additionalProperties": {"type": "integer", "minimum": 1}
+        },
+        "sundayOtherStreamExceptions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["dayIndex", "civilDate", "streamId", "reason"],
+            "properties": {
+              "dayIndex": {"type": "integer", "minimum": 1},
+              "civilDate": {"type": "string", "format": "date"},
+              "streamId": {"enum": ["old_testament", "new_testament"]},
+              "reason": {"type": "string", "minLength": 1, "maxLength": 300}
+            },
+            "additionalProperties": false
+          }
+        },
         "nonSundayMinorExceptions": {
           "type": "array",
           "items": {

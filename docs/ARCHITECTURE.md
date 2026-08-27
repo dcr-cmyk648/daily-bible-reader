@@ -120,6 +120,14 @@ Calendar selection reads the verse-of-the-day reference from the already validat
 
 The service worker caches only generated public HTML, JavaScript, CSS, icons, and immutable release metadata. It bypasses all non-GET, cross-origin, config, Apps Script, ESV, and private traffic. A complete new public cache installs before activation; the user receives an explicit restart control; the current and newest prior app cache remain for rollback.
 
+## Permanent study library (approved design; not yet implemented)
+
+Google Drive will be the canonical permanent library for every reviewed, lawfully storable study layer: orientation, book overview, executive and comprehensive syntheses, takeaway/verse-reference metadata, archaeological/historical preview and dossier, source/coverage metadata, hashes, review history, and reviewed Matthew Henry derivatives. ESV wording remains exclusively in its independent provider path and never enters the library.
+
+A canonical resource identity (for example `GEN-001` or `intro-GEN`) is distinct from a dated plan occurrence/`readingId`. The occurrence retains daily discussion and completion history; the resource retains reusable study material and chapter history across schedule changes and rereads. Highlights carry both canonical book/chapter/verse coordinates and their originating occurrence, with append-only revision-aware attribution. The Sheet remains canonical for append-only comment, permanent-note, and highlight events; restricted Drive exports are backups, not a competing live store.
+
+Future library mode will add accessible Book and Chapter/Overview selectors. Unprepared resources are disabled; partially prepared Proverbs chapters remain selectable only with explicit coverage; library browsing never marks a scheduled day complete. The phone will retain the current-through-T+7 private pack plus a bounded recent-resource cache, not the whole library automatically. Permanent chapter notes will offer an explicit `private` or `shared` visibility choice rather than inferring a default. These are review-approved contracts only and do not alter the deployed reader or sharing model.
+
 ## Versioning and release stability
 
 The Pages document owns the manifest, correct open-Bible icon, standalone display mode, and service-worker scope. This removes Apps Script HTML Service from cold shell startup and should materially improve repeat-launch latency and version determinism. It does not eliminate network time for fresh ESV, Drive, or Sheet operations; cached private content and background synchronization keep those operations off the initial paint where possible.

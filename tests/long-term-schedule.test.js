@@ -8,71 +8,77 @@ const ROOT = process.cwd();
 const INPUT_PATH = path.join(ROOT, "config", "long-term-plan", "four-stream-candidate-input.json");
 const CANDIDATE_PATH = path.join(ROOT, "config", "long-term-plan", "four-stream-candidate.json");
 const DAILY_SCHEDULE_PATH = path.join(ROOT, "docs", "reports", "long-term-four-stream-daily-schedule.md");
+const PROVERB_CHAPTER_LENGTHS = [33,22,35,27,23,35,27,36,18,32,31,28,25,35,33,33,28,24,29,30,31,29,35,34,28,28,27,28,27,33,31];
 
 async function load(filePath) {
   return JSON.parse(await readFile(filePath, "utf8"));
 }
 
-test("long-term candidate is deterministic and exactly matches the checked-in review artifact", async () => {
+function contributions(entry) {
+  return entry.streamContributions;
+}
+
+test("v2 long-term candidate is deterministic, inactive, and exactly matches its checked-in artifact", async () => {
   const [input, tracked] = await Promise.all([load(INPUT_PATH), load(CANDIDATE_PATH)]);
   const first = buildLongTermCandidate(input);
   const second = buildLongTermCandidate(input);
   assert.deepEqual(first.plan, second.plan);
   assert.deepEqual(first.plan, tracked);
   assert.equal(validateLongTermCandidate(first.plan, input), true);
-  assert.equal(first.plan.entries.length, 1255);
+  assert.equal(first.plan.entries.length, 1224);
   assert.equal(first.plan.entries[0].civilDate, "2026-09-16");
-  assert.equal(first.plan.entries.at(-1).civilDate, "2030-02-21");
-  assert.equal(first.plan.candidateMetadata.scheduleSha256, "d209d9067b677ffb161ae62c8f3d31b7c00c6d3b0772fe115eaf45abe289d057");
+  assert.equal(first.plan.entries.at(-1).civilDate, "2030-01-21");
+  assert.equal(first.plan.candidateMetadata.scheduleSha256, "79b9dfd88851fdf4e852490cae8ff9e9605af7c3a081309d96a94077a44d0be8");
+  assert.equal(first.plan.candidateMetadata.reviewOnly, true);
+  assert.equal(first.plan.candidateMetadata.sundayPolicy, "proportional_psalm_days_with_proverbs_pairing");
 });
 
-test("long-term daily review schedule is deterministic, inactive, and complete", async () => {
+test("v2 daily review schedule is deterministic, inactive, and lists every daily slot", async () => {
   const [input, tracked] = await Promise.all([load(INPUT_PATH), readFile(DAILY_SCHEDULE_PATH, "utf8")]);
   const {plan} = buildLongTermCandidate(input);
   assert.equal(tracked, renderLongTermDailySchedule({plan}));
   assert.match(tracked, /\*\*Status:\*\* review only; inactive candidate\./);
-  const rows = tracked.match(/^\| 20\d{2}-\d{2}-\d{2} \| \d+ \| [^|]+ \| [^|]+ \|$/gm) || [];
-  assert.equal(rows.length, 1255);
-  assert.equal(rows[0], "| 2026-09-16 | 1 | Old Testament | Genesis overview |");
-  assert.equal(rows.at(-1), "| 2030-02-21 | 1255 | Old Testament | Malachi 4 |");
+  const rows = tracked.match(/^\| 20\d{2}-\d{2}-\d{2} \| \d+ \| [^|]+ \| [^|]+ \| (?:\d+|—) \|$/gm) || [];
+  assert.equal(rows.length, 1224);
+  assert.equal(rows[0], "| 2026-09-16 | 1 | Old Testament | Genesis overview | — |");
+  assert.equal(rows.at(-1), "| 2030-01-21 | 1224 | Old Testament | Malachi 4 | 6 |");
+  assert.match(tracked, /Psalms \+ Proverbs \| Psalms 2 \+ Proverbs 1:1–8 \| 20/);
 });
 
-test("long-term candidate preserves full canon coverage, Sunday policy, and book-introduction adjacency", async () => {
+test("v2 exposes complete logical streams and exact Psalm/Proverbs pairing constraints", async () => {
   const input = await load(INPUT_PATH);
   const {plan} = buildLongTermCandidate(input);
-  const expectedBooks = Object.values(input.streams).flat();
-  assert.equal(new Set(expectedBooks).size, 66);
-  assert.equal(new Set(plan.entries.map((entry) => entry.readingId)).size, plan.entries.length);
-  assert.deepEqual(plan.entries.slice(0, 2).map((entry) => [entry.kind, entry.bookId, entry.chapter || null]), [
-    ["book_intro", "GEN", null], ["chapter", "GEN", 1]
-  ]);
-  plan.entries.forEach((entry, index) => {
-    assert.equal(entry.dayIndex, index + 1);
-    if (new Date(`${entry.civilDate}T00:00:00Z`).getUTCDay() === 0) assert.match(entry.streamId, /^(psalms|proverbs)$/);
+  const all = plan.entries.flatMap((entry) => contributions(entry).map((contribution) => ({entry, contribution})));
+  const byStream = Object.fromEntries(["old_testament", "new_testament", "psalms", "proverbs"].map((streamId) => [streamId, all.filter((item) => item.contribution.streamId === streamId)]));
+  assert.deepEqual(Object.fromEntries(Object.entries(byStream).map(([streamId, items]) => [streamId, items.length])), {old_testament: 785, new_testament: 287, psalms: 151, proverbs: 110});
+  assert.ok(plan.entries.every((entry) => Array.isArray(entry.streamContributions) && entry.streamContributions.length >= 1));
+  plan.entries.forEach((entry) => {
+    const [primary, ...secondary] = contributions(entry);
+    assert.deepEqual([entry.streamId, entry.streamSequence, entry.kind, entry.bookId, entry.chapter], [primary.streamId, primary.streamSequence, primary.kind, primary.bookId, primary.chapter]);
+    assert.deepEqual(entry.passages || [], [primary, ...secondary].flatMap((contribution) => contribution.passages || []));
   });
-  expectedBooks.forEach((bookId) => {
-    const entries = plan.entries.filter((entry) => entry.bookId === bookId);
-    assert.equal(entries.filter((entry) => entry.kind === "book_intro").length, 1);
-    const introIndex = plan.entries.findIndex((entry) => entry.bookId === bookId && entry.kind === "book_intro");
-    assert.equal(plan.entries[introIndex + 1].bookId, bookId);
-    assert.equal(plan.entries[introIndex + 1].chapter, 1);
+  const psalmIntro = byStream.psalms.find((item) => item.contribution.kind === "book_intro");
+  const proverbsIntro = byStream.proverbs.find((item) => item.contribution.kind === "book_intro");
+  assert.equal(plan.entries[plan.entries.indexOf(psalmIntro.entry) + 1].chapter, 1);
+  assert.ok(contributions(plan.entries[plan.entries.indexOf(proverbsIntro.entry) + 1]).some((item) => item.streamId === "proverbs" && item.chapter === 1 && item.passages[0].verseStart === 1));
+  let expectedChapter = 1;
+  let expectedVerse = 1;
+  byStream.proverbs.filter((item) => item.contribution.kind === "chapter").forEach(({entry, contribution}) => {
+    const range = contribution.passages[0];
+    const psalm = contributions(entry).find((item) => item.streamId === "psalms");
+    assert.ok(psalm.passages[0].verseCount < 20);
+    assert.ok(psalm.passages[0].verseCount + range.verseCount <= 20);
+    assert.equal(range.chapter, expectedChapter);
+    assert.equal(range.verseStart, expectedVerse);
+    if (range.verseEnd === PROVERB_CHAPTER_LENGTHS[expectedChapter - 1]) { expectedChapter += 1; expectedVerse = 1; } else expectedVerse = range.verseEnd + 1;
   });
+  assert.deepEqual([expectedChapter, expectedVerse], [32, 1]);
   const metrics = candidateMetrics(plan, plan.candidateMetadata.nonSundayMinorExceptions);
-  assert.ok(metrics.finishSpreadDays <= 14, `finish spread ${metrics.finishSpreadDays} should remain within the review tolerance`);
+  assert.equal(metrics.finishSpreadDays, 3);
   assert.equal(metrics.maximumRuns.new_testament, 2);
-  metrics.consecutiveNtExceptions.forEach((run) => {
-    assert.equal(run.length, 2);
-    assert.equal(run.reason, "mandatory introduction-to-chapter-1 adjacency");
-    const [intro, chapter] = plan.entries.slice(run.startDayIndex - 1, run.endDayIndex);
-    assert.equal(intro.kind, "book_intro");
-    assert.equal(chapter.kind, "chapter");
-    assert.equal(intro.bookId, chapter.bookId);
-    assert.equal(chapter.chapter, 1);
-  });
-  assert.deepEqual(plan.entries.filter((entry) => entry.bookId === "PRO" && entry.kind === "chapter").map((entry) => entry.passages[0].verseStart), Array(31).fill(1));
 });
 
-test("long-term validator rejects repetition, omission, date drift, broken adjacency, and undisclosed minor placement", async () => {
+test("v2 validator rejects duplicate/gapped contributions, broken introduction adjacency, and overloaded pairings", async () => {
   const input = await load(INPUT_PATH);
   const {plan} = buildLongTermCandidate(input);
   const mutate = (change) => {
@@ -82,19 +88,14 @@ test("long-term validator rejects repetition, omission, date drift, broken adjac
   };
   mutate((copy) => { copy.entries[2].readingId = copy.entries[1].readingId; });
   mutate((copy) => { copy.entries.splice(100, 1); });
-  mutate((copy) => { copy.entries[20].civilDate = "2026-10-99"; });
+  mutate((copy) => { copy.entries[1].chapter = 2; copy.entries[1].streamContributions[0].chapter = 2; });
   mutate((copy) => {
-    const intro = copy.entries.find((entry) => entry.kind === "book_intro" && entry.bookId === "GEN");
-    const index = copy.entries.indexOf(intro);
-    copy.entries[index + 1].chapter = 2;
+    const paired = copy.entries.find((entry) => entry.streamContributions.length === 2);
+    paired.streamContributions[1].passages[0].verseCount += 1;
   });
-  mutate((copy) => {
-    const sunday = copy.entries.find((entry) => new Date(`${entry.civilDate}T00:00:00Z`).getUTCDay() === 0);
-    sunday.streamId = "old_testament";
-  });
-  mutate((copy) => { copy.candidateMetadata.nonSundayMinorExceptions = []; });
-  mutate((copy) => {
-    const ntPair = copy.entries.findIndex((entry, index) => entry.streamId === "new_testament" && copy.entries[index + 1]?.streamId === "new_testament");
-    copy.entries[ntPair + 2].streamId = "new_testament";
-  });
+  mutate((copy) => { copy.entries.find((entry) => entry.streamContributions.length === 2).streamContributions.pop(); });
+  mutate((copy) => { copy.candidateMetadata.sundayOtherStreamExceptions.pop(); });
+  mutate((copy) => { copy.candidateMetadata.sundayPolicy = "one_psalm_or_proverbs_unit"; });
+  mutate((copy) => { copy.entries[2].streamId = "new_testament"; });
+  mutate((copy) => { copy.entries.find((entry) => entry.streamContributions.length === 2).passages.reverse(); });
 });

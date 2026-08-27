@@ -9,6 +9,8 @@ This project makes source use traceable and conservative; it does not declare th
 - Private Drive publication: original synthesis, source metadata, coverage report, and short justified quotations only. A reviewed Matthew Henry verse shard may additionally contain only the exact cited atoms from the selected public-domain edition for its **Read Henry** disclosure. The ignored portable audit store follows the same rule and declares `contains_scripture: false` plus `publication_status: not_published`; another app must keep it private and must not treat it as approved content. No ESV passages, embedded source-module Scripture transcription, or raw commentary library.
 - Browser: the published synthesis, comments, reviewed citation-driven Henry disclosure, and ESV passage records only within the verified provider cache policy (500 verses total, half of a book, eight-day expiry, automatic eviction). ESV never enters a public artifact, export, Drive commentary file, log, or service-worker cache.
 
+The approved permanent-library model does not broaden these boundaries: Drive may retain reviewed original study layers and restricted backups, but it may not retain ESV wording or raw copyrighted commentary/source libraries. A future reusable library record must preserve the same source metadata, rights review, hash, and revision history as its dated publication.
+
 Private two-person use can reduce practical exposure but does not itself grant permission.
 
 ## Source status is evidence, not aspiration

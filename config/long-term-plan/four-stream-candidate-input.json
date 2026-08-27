@@ -1,11 +1,13 @@
 {
-  "schemaVersion": "long-term-plan-candidate-input/v1",
-  "planVersion": "four-stream-protestant-66-candidate-2026-09-16-v1",
-  "title": "Four-stream chronological Bible plan — review candidate",
+  "schemaVersion": "long-term-plan-candidate-input/v2",
+  "planVersion": "four-stream-protestant-66-candidate-2026-09-16-v2",
+  "title": "Four-stream chronological Bible plan — Psalm/Proverbs pairing review candidate",
   "canonId": "protestant-66",
   "startDate": "2026-09-16",
   "timezone": "America/Detroit",
-  "sundayPolicy": "one_psalm_or_proverbs_unit",
+  "sundayPolicy": "proportional_psalm_days_with_proverbs_pairing",
+  "scheduleModel": "psalm_proverbs_combined_v2",
+  "ordinaryWisdomVerseTarget": 20,
   "sourceMetadata": [
     {
       "sourceId": "thiagobodruk_kjv_structure_2026_08_26",
@@ -52,7 +54,7 @@
   "reviewNotes": {
     "old_testament": "The event-order stream begins with the Pentateuch, proceeds through Israel's narrated history, positions prophets near their principal historical settings where practical, and labels uncertain placements as provisional rather than treating whole-book chronology as settled.",
     "new_testament": "The stream preserves the Gospel-to-Acts narrative before a pragmatic, broadly composition-aware ordering of letters; several dates and relative orders remain disputed and are explicitly medium confidence.",
-    "psalms": "Psalms remain canonically ordered in this first candidate. No individual historical superscription is treated as decisive enough to move a Psalm before review.",
-    "proverbs": "Each canonical chapter is one coherent bounded range in this first candidate. Later review may merge or subdivide ranges only with a new candidate fingerprint."
+    "psalms": "Psalms remain canonically ordered. Psalm chapters are paced primarily on Sundays; no individual historical superscription is treated as decisive enough to move a Psalm before review.",
+    "proverbs": "Proverbs ranges proceed canonically within one chapter at a time and are paired only with short Psalms. Their mechanical range boundaries require editorial review before activation."
   }
 }

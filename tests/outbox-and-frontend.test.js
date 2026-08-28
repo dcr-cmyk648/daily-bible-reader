@@ -26,6 +26,110 @@ test("offline create followed by delete disappears before sync", () => {
   assert.deepEqual(app.compactOutbox(items), []);
 });
 
+test("prepared-library catalog preserves plan order, grouped occurrences, exact partial coverage, and normal future locks", () => {
+  const plan = {
+    planVersion: "library-test/v1",
+    bookMetrics: {
+      GEN: {chapterCount: 2, verseCount: 56},
+      PRO: {chapterCount: 2, verseCount: 55},
+      HAG: {chapterCount: 2, verseCount: 38}
+    },
+    entries: [
+      {planVersion: "library-test/v1", dayIndex: 1, readingId: "intro-GEN", kind: "book_intro", bookId: "GEN"},
+      {planVersion: "library-test/v1", dayIndex: 2, readingId: "GEN-001-002", kind: "chapter", bookId: "GEN", chapter: 1,
+        passages: [{bookId: "GEN", chapter: 1, verseCount: 31}, {bookId: "GEN", chapter: 2, verseCount: 25}]},
+      {planVersion: "library-test/v1", dayIndex: 3, readingId: "PRO-001-A", kind: "chapter", bookId: "PRO", chapter: 1,
+        passages: [{bookId: "PRO", chapter: 1, verseStart: 1, verseEnd: 8, verseCount: 8}]},
+      {planVersion: "library-test/v1", dayIndex: 4, readingId: "PRO-001-B", kind: "chapter", bookId: "PRO", chapter: 1,
+        passages: [{bookId: "PRO", chapter: 1, verseStart: 9, verseEnd: 16, verseCount: 8}]},
+      {planVersion: "library-test/v1", dayIndex: 5, readingId: "PRO-002", kind: "chapter", bookId: "PRO", chapter: 2,
+        passages: [{bookId: "PRO", chapter: 2, verseCount: 32}]},
+      {planVersion: "library-test/v1", dayIndex: 6, readingId: "HAG-001", kind: "chapter", bookId: "HAG", chapter: 1,
+        passages: [{bookId: "HAG", chapter: 1, verseCount: 15}]}
+    ]
+  };
+  const catalog = app.buildPreparedLibraryCatalog(plan, new Set(["intro-GEN", "GEN-001-002", "PRO-001-A", "PRO-001-B"]));
+  assert.deepEqual(["GEN", "2SA", "ECC", "HAB", "MAT", "1CO", "3JN", "REV"].map(app.bookNameForId), [
+    "Genesis", "2 Samuel", "Ecclesiastes", "Habakkuk", "Matthew", "1 Corinthians", "3 John", "Revelation"
+  ]);
+  assert.deepEqual(catalog.books.map((book) => book.bookId), ["GEN", "PRO", "HAG"]);
+  const genesis = catalog.books[0];
+  assert.equal(genesis.prepared, true);
+  assert.deepEqual(genesis.resources.filter((resource) => resource.prepared).map((resource) => [resource.label, resource.readingId]), [
+    ["Overview", "intro-GEN"], ["Chapter 1", "GEN-001-002"], ["Chapter 2", "GEN-001-002"]
+  ]);
+  const proverbs = catalog.books[1];
+  assert.deepEqual(proverbs.resources.map((resource) => [resource.label, resource.prepared]), [
+    ["Overview", false], ["Chapter 1:1–8", true], ["Chapter 1:9–16", true], ["Chapter 2", false]
+  ]);
+  assert.equal(catalog.books[2].prepared, false);
+  assert.equal(app.catalogResourceByKey(catalog, "GEN-001-002:passage:1").readingId, "GEN-001-002");
+  assert.throws(() => app.buildPreparedLibraryCatalog(plan, ["not-in-plan"]), /Prepared library membership/);
+
+  const config = {timezone: "America/Detroit", sharedStartDateMode: "fixed", sharedStartDate: "2026-09-16", futureReadingsLocked: true, futureLookaheadDays: 0, pastReadingsAvailable: true};
+  const normal = app.calculateSchedule(plan, config, new Date("2026-09-16T12:00:00Z"), "PRO-001-A");
+  assert.equal(normal.selectedEntry.readingId, "intro-GEN");
+  assert.equal(normal.locked, false);
+  const preparedIds = new Set(["intro-GEN", "GEN-001-002", "PRO-001-A", "PRO-001-B"]);
+  const library = app.calculateLibrarySchedule(plan, config, new Date("2026-09-16T12:00:00Z"), "PRO-001-A", preparedIds);
+  assert.equal(library.selectedEntry.readingId, "PRO-001-A");
+  assert.equal(library.locked, false);
+  assert.equal(library.libraryMode, true);
+  assert.throws(() => app.calculateLibrarySchedule(plan, config, new Date("2026-09-16T12:00:00Z"), "PRO-002", preparedIds), /not prepared/);
+  assert.equal(app.libraryPositionLabel(plan.entries[1], app.catalogResourceByKey(catalog, "GEN-001-002:passage:1"), plan.entries.length),
+    "Library · Genesis · Chapter 2 · day 2 of 6");
+
+  const html = fs.readFileSync(path.join(__dirname, "../app/frontend/index.html"), "utf8");
+  const css = fs.readFileSync(path.join(__dirname, "../app/frontend/styles.css"), "utf8");
+  const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
+  assert.match(html, /id="libraryPicker"[^>]*aria-label="Prepared study library"/);
+  assert.match(html, /id="libraryBookSelect" aria-label="Book"/);
+  assert.match(html, /id="libraryResourceSelect" aria-label="Chapter or overview"/);
+  assert.match(html, /id="libraryOpenButton"[^>]*>Open</);
+  assert.match(css, /\.library-picker\s*\{[\s\S]*?grid-template-columns/);
+  assert.match(css, /\.library-picker select,[\s\S]*?min-height:\s*2\.75rem/);
+  assert.match(source, /function buildPreparedLibraryCatalog\(/);
+  assert.match(source, /function calculateLibrarySchedule\(/);
+  assert.match(source, /openReading\(resource\.readingId, \{libraryMode: true, libraryResource: resource\}\)/);
+  assert.match(source, /libraryMode\s*\?\s*calculateLibrarySchedule/);
+  assert.match(source, /function libraryPositionLabel\(/);
+  assert.match(source, /Library · \$\{resourceLabel\}/);
+});
+
+test("an explicit prepared grouped chapter selection stays isolated without changing ordinary grouped reading", () => {
+  const entry = {
+    kind: "chapter",
+    readingId: "MIC-003-004",
+    bookId: "MIC",
+    passages: [
+      {bookId: "MIC", chapter: 3, verseCount: 12},
+      {bookId: "MIC", chapter: 4, verseCount: 13}
+    ]
+  };
+  const bookMetrics = {MIC: {chapterCount: 7, verseCount: 105}};
+  const policy = {maxBookFraction: 0.5, maxTotalCachedVerses: 500};
+
+  const ordinary = app.scriptureRequestSelection(entry, bookMetrics, policy);
+  assert.equal(ordinary.partitioned, false);
+  assert.equal(ordinary.passageIndex, null);
+  assert.deepEqual(ordinary.requestedPassages.map((passage) => passage.chapter), [3, 4]);
+
+  const libraryChapterFour = app.scriptureRequestSelection(entry, bookMetrics, policy, 1);
+  assert.equal(libraryChapterFour.partitioned, false);
+  assert.equal(libraryChapterFour.passageIndex, 1);
+  assert.deepEqual(libraryChapterFour.requestedPassages.map((passage) => passage.chapter), [4]);
+  assert.equal(app.esvUrlForPassages(libraryChapterFour.requestedPassages), "https://www.esv.org/Micah+4/");
+  assert.equal(app.scriptureResponseMatchesRequest({partitioned: false, passageIndex: 1}, 1), true);
+  assert.equal(app.scriptureResponseMatchesRequest({partitioned: false, passageIndex: 0}, 1), false);
+  assert.equal(app.scriptureResponseMatchesRequest({partitioned: false, passageIndex: 0}, null), true);
+
+  const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
+  assert.match(source, /const \{partitioned, displaySegments, passageIndex, requestedPassages\} = selection;/);
+  assert.match(source, /remembered && remembered\.passageIndex === passageIndex/);
+  assert.match(source, /function scriptureResponseMatchesRequest\(/);
+  assert.match(source, /Number\.isInteger\(scripture\.passageIndex\)\s*\? scripture\.passageIndex/);
+});
+
 test("numbered Scripture rendering supports isolated shared highlights and partial verse units", () => {
   assert.deepEqual(app.splitNumberedVerses("[7] First line.\n\n[8] Second line.\nContinued."), [
     {verse: 7, text: "First line."},

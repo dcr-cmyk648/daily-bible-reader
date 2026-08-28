@@ -59,19 +59,19 @@
     deviceCredentials: "credentialId"
   };
   const BOOK_NAMES = {
-    GEN: "Genesis",
-    "1PE": "1 Peter",
-    "2PE": "2 Peter",
-    HAB: "Habakkuk",
-    HAG: "Haggai",
-    JAS: "James",
-    MAL: "Malachi",
-    MIC: "Micah",
-    NAM: "Nahum",
-    PSA: "Psalms",
-    PRO: "Proverbs",
-    ZEC: "Zechariah",
-    ZEP: "Zephaniah"
+    GEN: "Genesis", EXO: "Exodus", LEV: "Leviticus", NUM: "Numbers", DEU: "Deuteronomy",
+    JOS: "Joshua", JDG: "Judges", RUT: "Ruth", "1SA": "1 Samuel", "2SA": "2 Samuel",
+    "1KI": "1 Kings", "2KI": "2 Kings", "1CH": "1 Chronicles", "2CH": "2 Chronicles",
+    EZR: "Ezra", NEH: "Nehemiah", EST: "Esther", JOB: "Job", PSA: "Psalms", PRO: "Proverbs",
+    ECC: "Ecclesiastes", SNG: "Song of Solomon", ISA: "Isaiah", JER: "Jeremiah", LAM: "Lamentations",
+    EZK: "Ezekiel", DAN: "Daniel", HOS: "Hosea", JOL: "Joel", AMO: "Amos", OBA: "Obadiah",
+    JON: "Jonah", MIC: "Micah", NAM: "Nahum", HAB: "Habakkuk", ZEP: "Zephaniah", HAG: "Haggai",
+    ZEC: "Zechariah", MAL: "Malachi", MAT: "Matthew", MRK: "Mark", LUK: "Luke", JHN: "John",
+    ACT: "Acts", ROM: "Romans", "1CO": "1 Corinthians", "2CO": "2 Corinthians", GAL: "Galatians",
+    EPH: "Ephesians", PHP: "Philippians", COL: "Colossians", "1TH": "1 Thessalonians",
+    "2TH": "2 Thessalonians", "1TI": "1 Timothy", "2TI": "2 Timothy", TIT: "Titus", PHM: "Philemon",
+    HEB: "Hebrews", JAS: "James", "1PE": "1 Peter", "2PE": "2 Peter", "1JN": "1 John",
+    "2JN": "2 John", "3JN": "3 John", JUD: "Jude", REV: "Revelation"
   };
   const FALLBACK_ESV_NOTICE = "Scripture quotations are from the ESV® Bible (The Holy Bible, English Standard Version®), © 2001 by Crossway, a publishing ministry of Good News Publishers. Used by permission. All rights reserved. The ESV text may not be quoted in any publication made available to the public by a Creative Commons license. The ESV may not be translated into any other language.\n\nUsers may not copy or download more than 500 verses of the ESV Bible or more than one half of any book of the ESV Bible.";
 
@@ -90,9 +90,11 @@
     completedReadingIds: new Set(),
     config: null,
     currentEntry: null,
+    currentLibraryResource: null,
     currentPage: 0,
     policy: null,
     plan: null,
+    libraryCatalog: null,
     preparedReadingIds: new Set(),
     prefetchScheduled: false,
     priorityPrefetchPromise: null,
@@ -279,6 +281,152 @@
 
   function hasPreparedReading(entry) {
     return Boolean(entry && state.preparedReadingIds && state.preparedReadingIds.has(entry.readingId));
+  }
+
+  function entryPassages(entry) {
+    if (Array.isArray(entry && entry.passages) && entry.passages.length) return entry.passages;
+    return entry && entry.kind === "chapter" && entry.bookId && Number.isInteger(entry.chapter)
+      ? [{bookId: entry.bookId, chapter: entry.chapter}]
+      : [];
+  }
+
+  function bookNameForId(bookId) {
+    return BOOK_NAMES[bookId] || String(bookId || "Book");
+  }
+
+  function libraryRangeLabel(passage) {
+    const chapter = Number(passage && passage.chapter);
+    if (!Number.isInteger(chapter) || chapter < 1) return "Unavailable chapter";
+    if (Number.isInteger(passage.verseStart) && Number.isInteger(passage.verseEnd)) {
+      return `Chapter ${chapter}:${passage.verseStart}–${passage.verseEnd}`;
+    }
+    return `Chapter ${chapter}`;
+  }
+
+  function preparedSetForCatalog(plan, preparedReadingIdsInput) {
+    const planIds = new Set(plan.entries.map((entry) => entry.readingId));
+    const ids = preparedReadingIdsInput instanceof Set
+      ? [...preparedReadingIdsInput]
+      : Array.isArray(preparedReadingIdsInput) ? preparedReadingIdsInput : [];
+    if (ids.some((readingId) => typeof readingId !== "string" || !planIds.has(readingId))) {
+      throw appError("Prepared library membership must name only active-plan readings.", "CONTENT_MISMATCH");
+    }
+    return new Set(ids);
+  }
+
+  // This catalog deliberately describes only resources already named by the authorized
+  // active-plan bootstrap. It is not a permanent Drive index and it never invents a
+  // canonical resource identifier beyond the occurrence that owns comments/highlights.
+  function buildPreparedLibraryCatalog(planInput, preparedReadingIdsInput) {
+    const plan = validatePlan(planInput);
+    const prepared = preparedSetForCatalog(plan, preparedReadingIdsInput);
+    const metrics = plan.bookMetrics && typeof plan.bookMetrics === "object" ? plan.bookMetrics : {};
+    const booksById = new Map();
+    const orderedBookIds = [];
+    const ensureBook = (bookId) => {
+      if (!bookId || booksById.has(bookId)) return booksById.get(bookId) || null;
+      const metric = metrics[bookId];
+      if (!metric || !Number.isInteger(metric.chapterCount) || metric.chapterCount < 1) return null;
+      const book = {bookId, label: bookNameForId(bookId), chapterCount: metric.chapterCount, candidates: []};
+      booksById.set(bookId, book);
+      orderedBookIds.push(bookId);
+      return book;
+    };
+
+    plan.entries.forEach((entry) => {
+      ensureBook(entry.bookId);
+      entryPassages(entry).forEach((passage) => ensureBook(passage.bookId));
+    });
+
+    plan.entries.forEach((entry) => {
+      if (entry.kind === "book_intro") {
+        const book = booksById.get(entry.bookId);
+        if (book) book.candidates.push({
+          key: `${entry.readingId}:overview`,
+          readingId: entry.readingId,
+          bookId: entry.bookId,
+          kind: "overview",
+          label: "Overview",
+          prepared: prepared.has(entry.readingId),
+          dayIndex: entry.dayIndex,
+          passageIndex: null
+        });
+      }
+      entryPassages(entry).forEach((passage, passageIndex) => {
+        const book = booksById.get(passage.bookId);
+        if (!book || passage.chapter > book.chapterCount) return;
+        book.candidates.push({
+          key: `${entry.readingId}:passage:${passageIndex}`,
+          readingId: entry.readingId,
+          bookId: passage.bookId,
+          kind: "chapter",
+          chapter: passage.chapter,
+          passage: {...passage},
+          passageIndex,
+          label: libraryRangeLabel(passage),
+          prepared: prepared.has(entry.readingId),
+          dayIndex: entry.dayIndex
+        });
+      });
+    });
+
+    const books = orderedBookIds.map((bookId) => {
+      const book = booksById.get(bookId);
+      const resources = [];
+      const overview = book.candidates.filter((candidate) => candidate.kind === "overview");
+      if (overview.length) resources.push(...overview);
+      else resources.push({
+        key: `${bookId}:overview:unavailable`, bookId, kind: "overview", label: "Overview", prepared: false, unavailable: true
+      });
+      for (let chapter = 1; chapter <= book.chapterCount; chapter += 1) {
+        const candidates = book.candidates.filter((candidate) => candidate.kind === "chapter" && candidate.chapter === chapter);
+        if (candidates.length) resources.push(...candidates);
+        else resources.push({
+          key: `${bookId}:chapter:${chapter}:unavailable`, bookId, kind: "chapter", chapter,
+          label: `Chapter ${chapter}`, prepared: false, unavailable: true
+        });
+      }
+      const duplicateCounts = new Map();
+      resources.forEach((resource) => duplicateCounts.set(resource.label, (duplicateCounts.get(resource.label) || 0) + 1));
+      resources.forEach((resource) => {
+        if (duplicateCounts.get(resource.label) > 1 && Number.isInteger(resource.dayIndex)) {
+          resource.displayLabel = `${resource.label} · Day ${resource.dayIndex}`;
+        } else resource.displayLabel = resource.label;
+      });
+      return {...book, resources, prepared: resources.some((resource) => resource.prepared)};
+    });
+    return {books, preparedReadingIds: [...prepared]};
+  }
+
+  function catalogResourceByKey(catalog, resourceKey) {
+    if (!catalog || !resourceKey) return null;
+    for (const book of catalog.books || []) {
+      const resource = (book.resources || []).find((candidate) => candidate.key === resourceKey);
+      if (resource) return resource;
+    }
+    return null;
+  }
+
+  function calculateLibrarySchedule(planInput, config, nowInput, requestedReadingId, preparedReadingIdsInput) {
+    const plan = validatePlan(planInput);
+    const requested = plan.entries.find((entry) => entry.readingId === requestedReadingId);
+    if (!requested) throw appError("The selected library resource is not in the active plan.", "INVALID_PLAN");
+    const prepared = preparedSetForCatalog(plan, preparedReadingIdsInput);
+    if (!prepared.has(requested.readingId)) {
+      throw appError("That library study is not prepared.", "CONTENT_MISMATCH");
+    }
+    const schedule = calculateSchedule(plan, {...config, futureReadingsLocked: false, pastReadingsAvailable: true}, nowInput, requestedReadingId);
+    return {...schedule, libraryMode: true};
+  }
+
+  function libraryPositionLabel(entry, resource, planLength) {
+    const resourceLabel = resource
+      ? `${bookNameForId(resource.bookId)} · ${resource.displayLabel || resource.label}`
+      : titleForEntry(entry);
+    const occurrenceLabel = entry.sourcePlanDay
+      ? `bridge day ${entry.dayIndex} of ${planLength}`
+      : `day ${entry.dayIndex} of ${planLength}`;
+    return `Library · ${resourceLabel} · ${occurrenceLabel}`;
   }
 
   function calculateSchedule(planInput, config, nowInput, requestedReadingId, options) {
@@ -803,12 +951,16 @@
       async getScripture(readingId, requestedPassageIndex) {
         const entry = state.plan.entries.find((candidate) => candidate.readingId === readingId);
         if (!entry || entry.kind !== "chapter") return {available: false, code: "NOT_A_CHAPTER"};
-        const partitioned = readingRequiresPartitionedScripture(entry, state.plan.bookMetrics, state.policy);
-        const displaySegments = scriptureDisplaySegments(entry, state.plan.bookMetrics, state.policy);
-        const passageIndex = partitioned
-          ? normalizedScripturePassageIndex(entry, requestedPassageIndex)
-          : null;
-        const requestedPassages = passageIndex === null ? entry.passages : [displaySegments[passageIndex]];
+        const selection = scriptureRequestSelection(
+          entry,
+          state.plan.bookMetrics,
+          state.policy,
+          requestedPassageIndex
+        );
+        const {partitioned, displaySegments, passageIndex, requestedPassages} = selection;
+        // A library resource can explicitly select one constituent chapter from
+        // an otherwise policy-compliant grouped occurrence.  That selection is
+        // independent of whether the ordinary daily view needs chapter tabs.
         return {
           available: true,
           isMock: true,
@@ -1645,6 +1797,24 @@
     return segments;
   }
 
+  function scriptureRequestSelection(entry, bookMetrics, policy, requestedIndex) {
+    if (!entry || entry.kind !== "chapter") {
+      return {partitioned: false, displaySegments: [], passageIndex: null, requestedPassages: []};
+    }
+    const displaySegments = scriptureDisplaySegments(entry, bookMetrics, policy);
+    const partitioned = readingRequiresPartitionedScripture(entry, bookMetrics, policy);
+    const explicitIndex = Number.isInteger(requestedIndex) && requestedIndex >= 0 && requestedIndex < displaySegments.length
+      ? requestedIndex
+      : null;
+    const passageIndex = explicitIndex === null ? (partitioned ? 0 : null) : explicitIndex;
+    return {
+      partitioned,
+      displaySegments,
+      passageIndex,
+      requestedPassages: passageIndex === null ? entry.passages : [displaySegments[passageIndex]]
+    };
+  }
+
   function scripturePassageIndexForSelection(entry, selection) {
     if (!entry || !selection) return null;
     const directIndex = Array.isArray(entry.passages) ? entry.passages.findIndex((passage) =>
@@ -1694,12 +1864,17 @@
   }
 
   function normalizedScripturePassageIndex(entry, requestedIndex) {
-    if (!entry) return null;
-    const segments = scriptureDisplaySegments(entry, state.plan && state.plan.bookMetrics, state.policy);
-    if (Number.isInteger(requestedIndex) && requestedIndex >= 0 && requestedIndex < segments.length) {
-      return requestedIndex;
-    }
-    return readingRequiresPartitionedScripture(entry, state.plan && state.plan.bookMetrics, state.policy) ? 0 : null;
+    return scriptureRequestSelection(
+      entry,
+      state.plan && state.plan.bookMetrics,
+      state.policy,
+      requestedIndex
+    ).passageIndex;
+  }
+
+  function scriptureResponseMatchesRequest(scripture, requestedPassageIndex) {
+    return !scripture || !Number.isInteger(requestedPassageIndex) ||
+      scripture.passageIndex === requestedPassageIndex;
   }
 
   function extractNumberedVerseText(passageText, verseNumber) {
@@ -2040,7 +2215,9 @@
     scriptureState.hidden = false;
     scriptureState.dataset.state = "info";
     state.currentScripture = scripture;
-    state.activeScripturePassageIndex = scripture && scripture.partitioned === true
+    // Keep an explicit library segment active even when the complete daily
+    // occurrence is small enough that ordinary reading does not need tabs.
+    state.activeScripturePassageIndex = scripture && Number.isInteger(scripture.passageIndex)
       ? scripture.passageIndex
       : null;
     renderScripturePassageControls(state.currentEntry, state.activeScripturePassageIndex);
@@ -2180,9 +2357,16 @@
         usable.push(record);
       }
     }
-    const partitioned = readingRequiresPartitionedScripture(entry, state.plan.bookMetrics, state.policy);
-    const displaySegments = scriptureDisplaySegments(entry, state.plan.bookMetrics, state.policy);
-    const passageIndex = partitioned ? normalizedScripturePassageIndex(entry, requestedPassageIndex) : null;
+    const selection = scriptureRequestSelection(
+      entry,
+      state.plan.bookMetrics,
+      state.policy,
+      requestedPassageIndex
+    );
+    const {partitioned, displaySegments, passageIndex} = selection;
+    // An explicit library selection remains one cache shard even if the normal
+    // daily occurrence can be displayed together.  Without an explicit index,
+    // retain the normal whole-occurrence cache behavior.
     const requiredIndices = passageIndex === null ? displaySegments.map((_, index) => index) : [passageIndex];
     const selected = requiredIndices.map((index) => usable.find((record) => record.passageIndex === index));
     if (selected.some((record) => !record)) return null;
@@ -2655,7 +2839,7 @@
     const retainFullPassage = !options || options.retainFullPassage !== false;
     const persist = !options || options.persist !== false;
     const remembered = state.scriptureMemoryByReadingId.get(entry.readingId);
-    if (remembered && (passageIndex === null || remembered.passageIndex === passageIndex)) {
+    if (remembered && remembered.passageIndex === passageIndex) {
       return {scripture: remembered, source: "memory"};
     }
     const requestKey = `${entry.readingId}:${passageIndex === null ? "all" : passageIndex}`;
@@ -2670,7 +2854,7 @@
     if (scripture && scripture.readingId && scripture.readingId !== entry.readingId) {
       throw appError("Scripture did not match the requested reading.", "CONTENT_MISMATCH");
     }
-    if (scripture && scripture.partitioned === true && scripture.passageIndex !== passageIndex) {
+    if (!scriptureResponseMatchesRequest(scripture, passageIndex)) {
       throw appError("Scripture did not match the selected chapter.", "CONTENT_MISMATCH");
     }
     const currentPriorityIds = new Set(priorityReadingEntries(state.plan, state.schedule, HOT_READING_COUNT)
@@ -2795,6 +2979,74 @@
     state.selectedCalendarDate = date;
     renderCalendar();
     if (options && options.focus) element("openSelectedReading").focus({preventScroll: true});
+  }
+
+  function renderLibraryPicker(preferred) {
+    const panel = element("libraryPicker");
+    const bookSelect = element("libraryBookSelect");
+    const resourceSelect = element("libraryResourceSelect");
+    const openButton = element("libraryOpenButton");
+    if (!panel || !bookSelect || !resourceSelect || !openButton || !state.plan) return;
+    const catalog = buildPreparedLibraryCatalog(state.plan, state.preparedReadingIds);
+    state.libraryCatalog = catalog;
+    panel.hidden = false;
+    const requestedBookId = preferred && preferred.bookId || bookSelect.value;
+    const requestedResourceKey = preferred && preferred.resourceKey || resourceSelect.value;
+    const selectedBook = catalog.books.find((book) => book.bookId === requestedBookId && book.prepared) ||
+      catalog.books.find((book) => book.prepared) || null;
+
+    bookSelect.replaceChildren();
+    catalog.books.forEach((book) => {
+      const option = root.document.createElement("option");
+      option.value = book.bookId;
+      option.textContent = book.label;
+      option.disabled = !book.prepared;
+      bookSelect.appendChild(option);
+    });
+    bookSelect.disabled = !selectedBook;
+    if (!selectedBook) {
+      resourceSelect.replaceChildren();
+      resourceSelect.disabled = true;
+      openButton.disabled = true;
+      return;
+    }
+    bookSelect.value = selectedBook.bookId;
+    resourceSelect.replaceChildren();
+    selectedBook.resources.forEach((resource) => {
+      const option = root.document.createElement("option");
+      option.value = resource.key;
+      option.textContent = resource.displayLabel || resource.label;
+      option.disabled = !resource.prepared;
+      resourceSelect.appendChild(option);
+    });
+    const selectedResource = selectedBook.resources.find((resource) => resource.key === requestedResourceKey && resource.prepared) ||
+      selectedBook.resources.find((resource) => resource.prepared) || null;
+    resourceSelect.disabled = !selectedResource;
+    if (!selectedResource) {
+      openButton.disabled = true;
+      return;
+    }
+    resourceSelect.value = selectedResource.key;
+    openButton.disabled = false;
+    openButton.dataset.resourceKey = selectedResource.key;
+    openButton.setAttribute("aria-label", `Open ${selectedBook.label}, ${selectedResource.displayLabel || selectedResource.label}`);
+  }
+
+  function clearLibraryPicker() {
+    state.libraryCatalog = null;
+    state.currentLibraryResource = null;
+    const panel = element("libraryPicker");
+    if (panel) panel.hidden = true;
+  }
+
+  async function openSelectedLibraryResource() {
+    const resourceKey = element("libraryOpenButton").dataset.resourceKey;
+    const resource = catalogResourceByKey(state.libraryCatalog, resourceKey);
+    if (!resource || !resource.prepared || !hasPreparedReading({readingId: resource.readingId})) {
+      setSyncStatus("That study is not prepared yet");
+      return;
+    }
+    await openReading(resource.readingId, {libraryMode: true, libraryResource: resource});
   }
 
   function renderCalendarLegend() {
@@ -3324,6 +3576,7 @@
   function showHome(options) {
     state.view = "home";
     state.currentEntry = null;
+    state.currentLibraryResource = null;
     state.scriptureRequestToken += 1;
     state.commentSyncToken += 1;
     state.currentScripture = null;
@@ -3335,7 +3588,10 @@
     element("skipLink").href = "#selectedDayTitle";
     element("skipLink").textContent = "Skip to today’s reading";
     setBanner("");
-    refreshCurrentCalendarDate();
+    const calendarDateChanged = refreshCurrentCalendarDate();
+    // A library-opened occurrence can be outside the normal calendar window. Returning
+    // Home must restore the ordinary schedule even when the Detroit civil date did not change.
+    if (!calendarDateChanged) state.schedule = calculateSchedule(state.plan, state.config, new Date());
     renderCalendar();
     if ((!options || options.sync !== false) && (!root.navigator || root.navigator.onLine !== false)) {
       resumeOnlineWork();
@@ -3352,22 +3608,29 @@
     element("skipLink").textContent = "Skip to the reading";
     setReadingPage(0, {focus: false});
     if (root.scrollTo) root.scrollTo({top: 0, behavior: "auto"});
-    const loading = loadReading(readingId, {testingOverride: Boolean(options && options.testingOverride)});
+    const loading = loadReading(readingId, {
+      testingOverride: Boolean(options && options.testingOverride),
+      libraryMode: Boolean(options && options.libraryMode),
+      libraryResource: options && options.libraryResource || null
+    });
     element("readingTitle").focus({preventScroll: true});
     await loading;
   }
 
-  function renderReadingShell(schedule) {
+  function renderReadingShell(schedule, options) {
     const entry = schedule.selectedEntry;
     state.currentEntry = entry;
+    state.currentLibraryResource = schedule.libraryMode && options && options.libraryResource || null;
     state.currentScripture = null;
     state.currentVerseCommentary = null;
     state.currentHenrySourceLink = null;
     notifyHighlightEnhancer();
     element("readingDate").textContent = formatReadingDate(schedule.readingDate);
-    element("readingPosition").textContent = entry.sourcePlanDay
-      ? `Original plan day ${entry.sourcePlanDay} of 92 · Bridge day ${entry.dayIndex} of ${state.plan.entries.length}`
-      : `Day ${entry.dayIndex} of ${state.plan.entries.length}`;
+    element("readingPosition").textContent = schedule.libraryMode
+      ? libraryPositionLabel(entry, state.currentLibraryResource, state.plan.entries.length)
+      : entry.sourcePlanDay
+        ? `Original plan day ${entry.sourcePlanDay} of 92 · Bridge day ${entry.dayIndex} of ${state.plan.entries.length}`
+        : `Day ${entry.dayIndex} of ${state.plan.entries.length}`;
     const passageCount = Array.isArray(entry.passages) ? entry.passages.length : 1;
     element("readingKind").textContent = entry.kind === "book_intro"
       ? "Book introduction day"
@@ -3383,6 +3646,8 @@
       state.currentVerseCommentary = null;
       state.currentHenrySourceLink = null;
       setBanner("This future reading is locked by the shared plan configuration.", "info");
+    } else if (schedule.libraryMode) {
+      setBanner("");
     } else if (schedule.usingTestingOverride) {
       setBanner("Development override is active. The shared calendar has not been changed.", "info");
     } else if (schedule.status === "before_start") {
@@ -3395,9 +3660,12 @@
   }
 
   async function loadReading(requestedReadingId, options) {
-    const schedule = calculateSchedule(state.plan, state.config, new Date(), requestedReadingId, options);
+    const libraryMode = Boolean(options && options.libraryMode);
+    const schedule = libraryMode
+      ? calculateLibrarySchedule(state.plan, state.config, new Date(), requestedReadingId, state.preparedReadingIds)
+      : calculateSchedule(state.plan, state.config, new Date(), requestedReadingId, options);
     state.schedule = schedule;
-    renderReadingShell(schedule);
+    renderReadingShell(schedule, options);
     clearHistoricalContextPanel();
     if (schedule.locked) {
       state.verseOfTheDay = null;
@@ -3413,6 +3681,9 @@
     }
     setSyncStatus("Loading reading…");
     const entry = schedule.selectedEntry;
+    if (libraryMode && !hasPreparedReading(entry)) {
+      throw appError("That library study is not prepared.", "CONTENT_MISMATCH");
+    }
     if (!hasPreparedReading(entry)) {
       state.verseOfTheDay = null;
       prepareVerseOfTheDay();
@@ -3438,7 +3709,12 @@
       throw appError("Private commentary did not match the selected reading.", "CONTENT_MISMATCH");
     }
     renderCommentary(commentary, payload.sources || state.sources || []);
-    if (entry.kind === "chapter") loadScripture(entry).catch(() => {});
+    if (entry.kind === "chapter") {
+      const passageIndex = libraryMode && state.currentLibraryResource &&
+        Number.isInteger(state.currentLibraryResource.passageIndex)
+        ? state.currentLibraryResource.passageIndex : undefined;
+      loadScripture(entry, {passageIndex}).catch(() => {});
+    }
     await updateCacheInspector();
     setSyncStatus(result.source === "cache" || (root.navigator && root.navigator.onLine === false)
       ? "Offline · cached reading and drafts available"
@@ -4121,6 +4397,16 @@
       const readingId = element("openSelectedReading").dataset.readingId;
       if (readingId) openReading(readingId).catch(handleFatalError);
     });
+    element("libraryBookSelect").addEventListener("change", (event) => {
+      renderLibraryPicker({bookId: event.target.value});
+    });
+    element("libraryResourceSelect").addEventListener("change", (event) => {
+      const resource = catalogResourceByKey(state.libraryCatalog, event.target.value);
+      renderLibraryPicker({bookId: resource && resource.bookId, resourceKey: event.target.value});
+    });
+    element("libraryOpenButton").addEventListener("click", () => {
+      openSelectedLibraryResource().catch(handleFatalError);
+    });
     [0, 1, 2].forEach((index) => {
       element(`pageStep${index}`).addEventListener("click", () => setReadingPage(index));
     });
@@ -4209,6 +4495,7 @@
     element("verseOfDayNotice").textContent = esvNotice;
     element("selectedDayVerseNotice").textContent = esvNotice;
     wireEvents();
+    renderLibraryPicker();
     const now = new Date();
     state.schedule = calculateSchedule(state.plan, state.config, now);
     state.activeCalendarDate = calendarDateInTimeZone(now, state.config.timezone);
@@ -4245,6 +4532,7 @@
     state.config = null;
     state.plan = null;
     state.preparedReadingIds = new Set();
+    clearLibraryPicker();
     state.policy = null;
     state.session = null;
     state.sources = [];
@@ -4479,9 +4767,13 @@
 
   return {
     bootstrapRecordIsFresh,
+    bookNameForId,
+    buildPreparedLibraryCatalog,
     buildMonthCalendar,
     calendarDateInTimeZone,
     calculateSchedule,
+    calculateLibrarySchedule,
+    catalogResourceByKey,
     civilDayNumber,
     compactOutbox,
     createRequestId,
@@ -4511,12 +4803,15 @@
     normalizedVerseCommentaryShard,
     normalizedVerseOfTheDay,
     listCurrentHighlights,
+    libraryPositionLabel,
     registerHighlightEnhancer,
     safeExternalUrl,
     safeVersionedAppUrl,
     selectedDayVerseSelection,
     scriptureFailureMayRetry,
     scriptureDisplaySegments,
+    scriptureRequestSelection,
+    scriptureResponseMatchesRequest,
     scripturePassageIndexForSelection,
     scripturePrefetchPassageIndex,
     scriptureRetentionTargetCount,

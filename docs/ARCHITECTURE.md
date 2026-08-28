@@ -120,13 +120,15 @@ Calendar selection reads the verse-of-the-day reference from the already validat
 
 The service worker caches only generated public HTML, JavaScript, CSS, icons, and immutable release metadata. It bypasses all non-GET, cross-origin, config, Apps Script, ESV, and private traffic. A complete new public cache installs before activation; the user receives an explicit restart control; the current and newest prior app cache remain for rollback.
 
-## Permanent study library (approved design; not yet implemented)
+## Permanent study library and active-plan picker
 
 Google Drive will be the canonical permanent library for every reviewed, lawfully storable study layer: orientation, book overview, executive and comprehensive syntheses, takeaway/verse-reference metadata, archaeological/historical preview and dossier, source/coverage metadata, hashes, review history, and reviewed Matthew Henry derivatives. ESV wording remains exclusively in its independent provider path and never enters the library.
 
 A canonical resource identity (for example `GEN-001` or `intro-GEN`) is distinct from a dated plan occurrence/`readingId`. The occurrence retains daily discussion and completion history; the resource retains reusable study material and chapter history across schedule changes and rereads. Highlights carry both canonical book/chapter/verse coordinates and their originating occurrence, with append-only revision-aware attribution. The Sheet remains canonical for append-only comment, permanent-note, and highlight events; restricted Drive exports are backups, not a competing live store.
 
-Future library mode will add accessible Book and Chapter/Overview selectors. Unprepared resources are disabled; partially prepared Proverbs chapters remain selectable only with explicit coverage; library browsing never marks a scheduled day complete. The phone will retain the current-through-T+7 private pack plus a bounded recent-resource cache, not the whole library automatically. Permanent chapter notes will offer an explicit `private` or `shared` visibility choice rather than inferring a default. These are review-approved contracts only and do not alter the deployed reader or sharing model.
+The installed reader now has a compact sticky-header **Book** and **Chapter/Overview** picker for the already authorized active-plan prepared prefix. Its catalog is derived only from the validated active plan, its `bookMetrics`, and the bootstrap's prepared-reading membership; it is not a Drive index. Books follow first plan occurrence order. Unprepared books and resources are disabled; grouped entries retain their original occurrence-keyed `readingId`, and partial ranges remain separate options labeled with exact verse coverage. A picker open starts on Orientation, identifies the compact library mode in the position line, and does not create completion or activity by itself. Library mode may reopen a prepared occurrence outside the calendar's ordinary future lock; normal calendar selection and its lock rules are unchanged.
+
+The future permanent-library layer will extend rather than replace this picker with reusable canonical resources, explicit permanent-note visibility, and a bounded recent-resource cache. The phone will retain the current-through-T+7 private pack plus bounded recent resources, not the whole library automatically. These remaining contracts do not yet create a Drive migration, permanent note events, or whole-library persistence.
 
 ## Versioning and release stability
 

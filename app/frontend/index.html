@@ -21,13 +21,20 @@
     <a id="skipLink" class="skip-link" href="#selectedDayTitle">Skip to today’s reading</a>
 
     <header class="app-header">
-      <div>
+      <div class="header-brand">
         <p class="eyebrow">Private two-person study</p>
         <button id="brandHomeButton" class="brand-button" type="button" aria-label="Daily Bible Reader home">Daily Bible Reader</button>
       </div>
       <div class="header-status">
         <span id="authStatus" class="status-pill">Local mock</span>
         <span id="syncStatus" class="sync-label" aria-live="polite">Starting…</span>
+      </div>
+      <div id="libraryPicker" class="library-picker" aria-label="Prepared study library" hidden>
+        <label class="visually-hidden" for="libraryBookSelect">Book</label>
+        <select id="libraryBookSelect" aria-label="Book" disabled></select>
+        <label class="visually-hidden" for="libraryResourceSelect">Chapter or overview</label>
+        <select id="libraryResourceSelect" aria-label="Chapter or overview" disabled></select>
+        <button id="libraryOpenButton" type="button" disabled>Open</button>
       </div>
     </header>
 

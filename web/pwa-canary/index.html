@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-pwa-release="2cdc4cede6ed8fde">
+<html lang="en" data-pwa-release="9bb292cdb149a96f">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -12,19 +12,26 @@
     <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon-180.png">
     <link rel="icon" type="image/png" sizes="192x192" href="assets/bible-reader-icon-192.png">
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="../releases/0ddb985f7d7adef0/styles.css" integrity="sha384-5FUkOguS/SD/GmwWle+2A76FbrFBAW++mNJJkr0ss9qD+HB8Qs0gj4AFrLAikG5y" crossorigin="anonymous">
+    <link rel="stylesheet" href="../releases/4a4166ba77d11f13/styles.css" integrity="sha384-elqL6DpbRhi0Qs4lawXi9QIdFnSd9SfMmFTte/yrU5QAiTqz/AO5Gu6XV4vLosN2" crossorigin="anonymous">
   </head>
   <body>
     <a id="skipLink" class="skip-link" href="#selectedDayTitle">Skip to today’s reading</a>
 
     <header class="app-header">
-      <div>
+      <div class="header-brand">
         <p class="eyebrow">Private two-person study</p>
         <button id="brandHomeButton" class="brand-button" type="button" aria-label="Daily Bible Reader home">Daily Bible Reader</button>
       </div>
       <div class="header-status">
         <span id="authStatus" class="status-pill">Local mock</span>
         <span id="syncStatus" class="sync-label" aria-live="polite">Starting…</span>
+      </div>
+      <div id="libraryPicker" class="library-picker" aria-label="Prepared study library" hidden>
+        <label class="visually-hidden" for="libraryBookSelect">Book</label>
+        <select id="libraryBookSelect" aria-label="Book" disabled></select>
+        <label class="visually-hidden" for="libraryResourceSelect">Chapter or overview</label>
+        <select id="libraryResourceSelect" aria-label="Chapter or overview" disabled></select>
+        <button id="libraryOpenButton" type="button" disabled>Open</button>
       </div>
     </header>
 
@@ -379,6 +386,6 @@
       <p>Private two-person bridge · Seven scheduled days · No runtime AI</p>
     </footer>
 
-    <script src="assets/pwa-client.2cdc4cede6ed8fde.js"></script>
+    <script src="assets/pwa-client.9bb292cdb149a96f.js"></script>
   </body>
 </html>

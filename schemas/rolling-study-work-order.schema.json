@@ -17,11 +17,11 @@
     "planExtensionRequired": {"type": "boolean"},
     "reading": {"type": ["object", "null"]},
     "requiredComponents": {
-      "const": ["planEntry", "orientation", "scriptureReference", "verseOfTheDayReference", "commentarySummary", "practicalTakeaway", "comprehensiveSynthesis", "sourceRegistryAndCoverage", "reviewedMatthewHenryVerseLayerOrVerifiedFullTextLink", "commentaryMetadataAndHash", "privateManifestPromotion", "driveReadbackVerification"]
+      "const": ["planEntry", "orientation", "scriptureReference", "verseOfTheDayReference", "commentarySummary", "practicalTakeaway", "comprehensiveSynthesis", "sourceRegistryAndCoverage", "reviewedMatthewHenryVerseLayerOrVerifiedFullTextLink", "commentaryMetadataAndHash", "currentContentProtocolAndHistoricalContextAssessment", "privateManifestPromotion", "driveReadbackVerification"]
     },
     "guards": {
       "type": "object",
-      "required": ["maxReadings", "exactDaysAhead", "privateContentOnly", "publishAfterPrimaryReview", "requiredReviewStatus", "contentFirstManifestLast", "scriptureTextStored", "runtimeAiAllowed", "commentsReadable", "sparkScope"],
+      "required": ["maxReadings", "exactDaysAhead", "privateContentOnly", "publishAfterPrimaryReview", "requiredReviewStatus", "contentFirstManifestLast", "scriptureTextStored", "runtimeAiAllowed", "commentsReadable", "sparkScope", "contentProtocolVersion"],
       "properties": {
         "maxReadings": {"const": 1},
         "exactDaysAhead": {"const": 7},
@@ -32,7 +32,8 @@
         "scriptureTextStored": {"const": false},
         "runtimeAiAllowed": {"const": false},
         "commentsReadable": {"const": false},
-        "sparkScope": {"const": "matthew_henry_verse_layer_only"}
+        "sparkScope": {"const": "matthew_henry_verse_layer_only"},
+        "contentProtocolVersion": {"const": "daily-study-protocol/v1"}
       },
       "additionalProperties": false
     }

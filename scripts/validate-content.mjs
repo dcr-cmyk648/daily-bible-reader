@@ -91,7 +91,7 @@ async function main() {
     schemas[filename] = schema;
   }
 
-  const [plan, fullBridgeSchedule, config, deploymentConfig, registry, placeholder, referencePlan, policies, manifestExample, appsManifest, longTermInput, longTermCandidate] = await Promise.all([
+  const [plan, fullBridgeSchedule, config, deploymentConfig, registry, placeholder, referencePlan, policies, manifestExample, appsManifest, longTermInput, longTermCandidate, dailyStudyProtocol] = await Promise.all([
     json("fixtures/pilot-content/plan.json"),
     json("config/bridge-schedules/celebration-y3q4-bridge-full.json"),
     json("fixtures/pilot-content/app-config.json"),
@@ -103,7 +103,8 @@ async function main() {
     json("config/private-manifest.example.json"),
     json("app/apps-script/appsscript.json"),
     json("config/long-term-plan/four-stream-candidate-input.json"),
-    json("config/long-term-plan/four-stream-candidate.json")
+    json("config/long-term-plan/four-stream-candidate.json"),
+    json("config/daily-study-protocol.json")
   ]);
 
   assertSchemaValid(plan, schemas["plan.schema.json"], {label: "Pilot plan", externalSchemas: schemas});
@@ -111,6 +112,7 @@ async function main() {
   assertSchemaValid(longTermCandidate, schemas["plan.schema.json"], {label: "Long-term review candidate", externalSchemas: schemas});
   assertSchemaValid(registry, schemas["source.schema.json"], {label: "Source registry", externalSchemas: schemas});
   assertSchemaValid(placeholder, schemas["commentary.schema.json"], {label: "Bridge commentary placeholder", externalSchemas: schemas});
+  assertSchemaValid(dailyStudyProtocol, schemas["daily-study-protocol.schema.json"], {label: "Canonical daily-study protocol", externalSchemas: schemas});
   policies.policies.forEach((policy, index) => assertSchemaValid(policy, schemas["provider-policy.schema.json"], {
     label: `Provider policy ${index + 1}`,
     externalSchemas: schemas

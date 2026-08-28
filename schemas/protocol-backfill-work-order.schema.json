@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daily-bible-reader.local/schemas/protocol-backfill-work-order.schema.json",
+  "title": "One-reading prior-study protocol refresh work order",
+  "type": "object",
+  "required": ["schemaVersion", "workOrderId", "issuedAt", "planVersion", "protocolVersion", "action", "reasonCode", "reading", "metadataPath", "manifestEntryPresent", "guards"],
+  "properties": {
+    "schemaVersion": {"const": "protocol-backfill-work-order/v1"},
+    "workOrderId": {"type": "string", "pattern": "^PBWO-[a-f0-9]{24}$"},
+    "issuedAt": {"type": "string", "format": "date-time"},
+    "planVersion": {"type": "string", "minLength": 1, "maxLength": 200},
+    "protocolVersion": {"const": "daily-study-protocol/v1"},
+    "action": {"enum": ["deferred", "none", "refresh_review_publish"]},
+    "reasonCode": {"enum": ["horizon_not_ready", "no_stale_prior_studies", "content_protocol_version_missing_or_stale", "historical_context_assessment_missing", "historical_context_assessment_invalid", "historical_context_headings_ambiguous", "historical_context_included_invalid", "historical_context_not_material_invalid"]},
+    "reading": {"type": ["object", "null"]},
+    "metadataPath": {"type": ["string", "null"], "pattern": "^private-content/bridge/celebration-y3q4/[A-Za-z0-9][A-Za-z0-9._:-]{2,159}\\.metadata\\.json$"},
+    "manifestEntryPresent": {"type": "boolean"},
+    "guards": {
+      "type": "object",
+      "required": ["maxReadings", "horizonPreparationFirst", "alreadyReadOnly", "manifestBackedOnly", "stableReadingIdRequired", "preserveCommentsAndHighlights", "scriptureTextStored", "primaryReviewRequired", "preservePriorVersions", "preserveNewestReviewedHenry", "contentFirstManifestLast", "runtimeAiAllowed", "commentsReadable", "sparkScope"],
+      "properties": {
+        "maxReadings": {"const": 1}, "horizonPreparationFirst": {"const": true}, "alreadyReadOnly": {"const": true}, "manifestBackedOnly": {"const": true}, "stableReadingIdRequired": {"const": true}, "preserveCommentsAndHighlights": {"const": true}, "scriptureTextStored": {"const": false}, "primaryReviewRequired": {"const": true}, "preservePriorVersions": {"const": true}, "preserveNewestReviewedHenry": {"const": true}, "contentFirstManifestLast": {"const": true}, "runtimeAiAllowed": {"const": false}, "commentsReadable": {"const": false}, "sparkScope": {"const": "matthew_henry_verse_layer_only"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "allOf": [
+    {"if": {"properties": {"action": {"enum": ["deferred", "none"]}}}, "then": {"properties": {"reading": {"type": "null"}, "metadataPath": {"type": "null"}, "manifestEntryPresent": {"const": false}}}},
+    {"if": {"properties": {"action": {"const": "refresh_review_publish"}}}, "then": {"properties": {"reading": {"type": "object"}, "metadataPath": {"type": "string"}, "manifestEntryPresent": {"const": true}}}}
+  ],
+  "additionalProperties": false
+}

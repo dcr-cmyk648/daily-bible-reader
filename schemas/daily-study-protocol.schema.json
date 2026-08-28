@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daily-bible-reader.local/schemas/daily-study-protocol.schema.json",
+  "title": "Canonical daily-study editorial protocol",
+  "type": "object",
+  "required": ["schemaVersion", "protocolVersion", "workflowName", "requiredGenerationFields", "requiredComponentAssessments", "historicalContext"],
+  "properties": {
+    "schemaVersion": {"const": "daily-study-protocol/v1"},
+    "protocolVersion": {"type": "string", "pattern": "^daily-study-protocol/v[1-9][0-9]*$"},
+    "workflowName": {"type": "string", "minLength": 1, "maxLength": 160},
+    "requiredGenerationFields": {"const": ["contentProtocolVersion"]},
+    "requiredComponentAssessments": {"const": ["historicalContext"]},
+    "historicalContext": {
+      "type": "object",
+      "required": ["includedRequires", "notMaterialRequires"],
+      "properties": {
+        "includedRequires": {"const": ["Archaeological and historical context", "Archaeological and historical context — expanded study"]},
+        "notMaterialRequires": {"const": ["rationale", "no_context_layers"]}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "daily-study-protocol/v1",
+  "protocolVersion": "daily-study-protocol/v1",
+  "workflowName": "commentary-workflow-v14-protocol-refresh",
+  "requiredGenerationFields": ["contentProtocolVersion"],
+  "requiredComponentAssessments": ["historicalContext"],
+  "historicalContext": {
+    "includedRequires": [
+      "Archaeological and historical context",
+      "Archaeological and historical context — expanded study"
+    ],
+    "notMaterialRequires": ["rationale", "no_context_layers"]
+  }
+}

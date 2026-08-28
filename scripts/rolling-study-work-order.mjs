@@ -33,15 +33,18 @@ async function main() {
   const today = options.today || new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Detroit", year: "numeric", month: "2-digit", day: "2-digit"
   }).format(new Date());
-  const [plan, privatePlan, appConfig, referencePlan, metrics, schema, manifest] = await Promise.all([
+  const [plan, privatePlan, appConfig, referencePlan, metrics, schema, protocolSchema, protocol, manifest] = await Promise.all([
     readJson(path.join(ROOT, "config", "bridge-schedules", "celebration-y3q4-bridge-full.json")),
     readJson(path.join(ROOT, "fixtures", "pilot-content", "plan.json")),
     readJson(path.join(ROOT, "fixtures", "pilot-content", "app-config.json")),
     readJson(path.join(ROOT, "config", "reference-plans", "celebration-y3q4.json")),
     readJson(path.join(ROOT, "config", "reference-plans", "celebration-y3q4-chapter-metrics.json")),
     readJson(path.join(ROOT, "schemas", "rolling-study-work-order.schema.json")),
+    readJson(path.join(ROOT, "schemas", "daily-study-protocol.schema.json")),
+    readJson(path.join(ROOT, "config", "daily-study-protocol.json")),
     readJson(path.join(PRIVATE_CONTENT, "private-manifest.json"), true)
   ]);
+  assertSchemaValid(protocol, protocolSchema, {label: "Canonical daily-study protocol"});
   const firstSourceDay = plan.entries[0].sourcePlanDay;
   const finalSourceDay = plan.entries.at(-1).sourcePlanDay;
   const lookaheadDays = appConfig.futureLookaheadDays;
@@ -60,7 +63,7 @@ async function main() {
     return [readingId, {metadata, markdownBytes, manifestHasReading: Boolean(manifest && manifest.readings && manifest.readings[readingId])}];
   })));
   const workOrder = buildRollingStudyWorkOrder({
-    plan, privatePlan, appConfig, referencePlan, metrics, today, issuedAt: new Date().toISOString(), readingArtifacts
+    plan, privatePlan, appConfig, referencePlan, metrics, protocol, today, issuedAt: new Date().toISOString(), readingArtifacts
   });
   assertSchemaValid(workOrder, schema, {label: "Rolling study work order"});
   process.stdout.write(`${JSON.stringify(workOrder, null, 2)}\n`);

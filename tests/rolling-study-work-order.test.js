@@ -11,6 +11,7 @@ const inputs = () => ({
   appConfig: json("fixtures/pilot-content/app-config.json"),
   referencePlan: json("config/reference-plans/celebration-y3q4.json"),
   metrics: json("config/reference-plans/celebration-y3q4-chapter-metrics.json"),
+  protocol: json("config/daily-study-protocol.json"),
   today: "2026-08-13",
   issuedAt: "2026-08-13T07:00:00.000Z"
 });
@@ -27,7 +28,14 @@ function reviewedArtifact(entry) {
     metadata: {
       readingId: entry.readingId,
       publicationStatus: "draft",
-      generation: {humanReviewStatus: "in_review", contentHash: createHash("sha256").update(markdownBytes).digest("hex")},
+      generation: {
+        humanReviewStatus: "in_review",
+        contentHash: createHash("sha256").update(markdownBytes).digest("hex"),
+        contentProtocolVersion: "daily-study-protocol/v1"
+      },
+      componentAssessments: {
+        historicalContext: {status: "not_material", rationale: "Fabricated test reading has no meaningful contextual material to add."}
+      },
       verseCommentaries: entry.passages.map(() => ({review_status: "in_review"}))
     },
     markdownBytes,
@@ -163,10 +171,13 @@ test("readiness requires exact private bytes, reviewed Henry, and manifest prese
     generation: {humanReviewStatus: "in_review", contentHash: createHash("sha256").update(markdownBytes).digest("hex")},
     verseCommentary: {review_status: "in_review"}
   };
-  assert.equal(privateReadingReady({entry, metadata, markdownBytes, manifestHasReading: true}), true);
-  assert.equal(privateReadingReady({entry, metadata, markdownBytes: Buffer.from("CHANGED"), manifestHasReading: true}), false);
-  assert.equal(privateReadingReady({entry, metadata, markdownBytes, manifestHasReading: false}), false);
-  assert.equal(privateReadingReady({entry, metadata: {...metadata, verseCommentary: {review_status: "unreviewed"}}, markdownBytes, manifestHasReading: true}), false);
+  const protocol = inputs().protocol;
+  metadata.generation.contentProtocolVersion = protocol.protocolVersion;
+  metadata.componentAssessments = {historicalContext: {status: "not_material", rationale: "Fabricated test reading has no meaningful contextual material to add."}};
+  assert.equal(privateReadingReady({entry, metadata, markdownBytes, manifestHasReading: true, protocol}), true);
+  assert.equal(privateReadingReady({entry, metadata, markdownBytes: Buffer.from("CHANGED"), manifestHasReading: true, protocol}), false);
+  assert.equal(privateReadingReady({entry, metadata, markdownBytes, manifestHasReading: false, protocol}), false);
+  assert.equal(privateReadingReady({entry, metadata: {...metadata, verseCommentary: {review_status: "unreviewed"}}, markdownBytes, manifestHasReading: true, protocol}), false);
   const linked = structuredClone(metadata);
   delete linked.verseCommentary;
   linked.henrySourceLink = {
@@ -175,7 +186,7 @@ test("readiness requires exact private bytes, reviewed Henry, and manifest prese
     url: "https://example.test/public-domain-commentary",
     note: "A verified test-only source link replaces an unavailable condensation."
   };
-  assert.equal(privateReadingReady({entry, metadata: linked, markdownBytes, manifestHasReading: true}), true);
+  assert.equal(privateReadingReady({entry, metadata: linked, markdownBytes, manifestHasReading: true, protocol}), true);
   linked.henrySourceLink.url = "javascript:alert(1)";
-  assert.equal(privateReadingReady({entry, metadata: linked, markdownBytes, manifestHasReading: true}), false);
+  assert.equal(privateReadingReady({entry, metadata: linked, markdownBytes, manifestHasReading: true, protocol}), false);
 });

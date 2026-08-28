@@ -1,10 +1,11 @@
 import {createHash} from "node:crypto";
 import {authorizedBridgeSourceDay} from "./bridge-extension.mjs";
+import {evaluateContentProtocolFreshness, protocolDescriptorIsValid} from "./daily-study-protocol.mjs";
 
 const REQUIRED_COMPONENTS = Object.freeze([
   "planEntry", "orientation", "scriptureReference", "verseOfTheDayReference", "commentarySummary",
   "practicalTakeaway", "comprehensiveSynthesis", "sourceRegistryAndCoverage", "reviewedMatthewHenryVerseLayerOrVerifiedFullTextLink",
-  "commentaryMetadataAndHash", "privateManifestPromotion", "driveReadbackVerification"
+  "commentaryMetadataAndHash", "currentContentProtocolAndHistoricalContextAssessment", "privateManifestPromotion", "driveReadbackVerification"
 ]);
 const GUARDS = Object.freeze({
   maxReadings: 1,
@@ -32,8 +33,9 @@ function civilDayOffset(from, to) {
   return Math.floor((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000);
 }
 
-export function privateReadingReady({entry, metadata, markdownBytes, manifestHasReading}) {
+export function privateReadingReady({entry, metadata, markdownBytes, manifestHasReading, protocol}) {
   if (!entry || !metadata || metadata.readingId !== entry.readingId || !manifestHasReading || !markdownBytes) return false;
+  if (!protocolDescriptorIsValid(protocol) || !evaluateContentProtocolFreshness({metadata, markdownBytes, protocol}).current) return false;
   if (!["draft", "reviewed", "published"].includes(metadata.publicationStatus) ||
       !["in_review", "approved"].includes(metadata.generation && metadata.generation.humanReviewStatus)) return false;
   if (metadata.generation.contentHash !== sha256(markdownBytes)) return false;
@@ -55,7 +57,8 @@ export function privateReadingReady({entry, metadata, markdownBytes, manifestHas
 }
 
 export function buildRollingStudyWorkOrder({plan, privatePlan = plan, appConfig, referencePlan, metrics, today, issuedAt,
-  readingArtifacts = {}, metadata = null, markdownBytes = null, manifestHasReading = false}) {
+  protocol, readingArtifacts = {}, metadata = null, markdownBytes = null, manifestHasReading = false}) {
+  if (!protocolDescriptorIsValid(protocol)) throw new Error("A valid canonical daily-study protocol is required.");
   const firstSourceDay = plan.entries[0].sourcePlanDay;
   const finalSourceDay = plan.entries.at(-1).sourcePlanDay;
   const lookaheadDays = appConfig.futureLookaheadDays;
@@ -82,7 +85,7 @@ export function buildRollingStudyWorkOrder({plan, privatePlan = plan, appConfig,
   }
   const entry = horizonEntries.find((candidate) => {
     const artifact = artifacts[candidate.readingId] || {};
-    return !privateReadingReady({entry: candidate, ...artifact});
+    return !privateReadingReady({entry: candidate, protocol, ...artifact});
   });
   // The public/calendar schedule is already complete. This legacy field now
   // records whether the rollback-compatible private prepared-prefix plan must
@@ -110,6 +113,6 @@ export function buildRollingStudyWorkOrder({plan, privatePlan = plan, appConfig,
     planExtensionRequired,
     reading: entry ? structuredClone(entry) : action === "none" && legacyTarget ? structuredClone(legacyTarget) : null,
     requiredComponents: REQUIRED_COMPONENTS,
-    guards: GUARDS
+    guards: {...GUARDS, contentProtocolVersion: protocol.protocolVersion}
   };
 }

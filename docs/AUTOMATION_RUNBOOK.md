@@ -20,7 +20,7 @@ The complete factual D054–D092 schedule is compiled into the current backend, 
 
 Invoke `$draft-daily-commentary` with the unchanged rolling work order. Read all workflow documents required by the skill. Work only in ignored private staging and the canonical ignored source registry.
 
-The daily surface needs a brief standalone orientation, ESV reference only, one coherent main synthesis, one representative verse reference, and a concrete one-sentence action. The deep study uses custom headings suited to the passage and numbered citations. When meaningful reading-specific archaeological or historical evidence exists, add both exact H3 layers: `### Archaeological and historical context` as a concise preview and `### Archaeological and historical context — expanded study` as a separately researched dossier. Omit both when they would be filler. A prepared study with the preview must also have the expanded dossier, which uses distinct materially fuller prose, at least two custom H4 topical headings, evidence-versus-inference boundaries, inline claim citations, and a nearby bibliography; never duplicate or mechanically stretch the preview. Writing should be content-rich and readable, aimed at highly educated Christian readers, confessional without pretending difficult evidence does not exist, and practical without filler. Secular or anti-supernatural critical proposals appear only when notably influential and are assessed rather than treated as neutral default explanations. Spark remains limited to the Matthew Henry verse-by-verse layer, not either historical-context layer.
+The daily surface needs a brief standalone orientation, ESV reference only, one coherent main synthesis, one representative verse reference, and a concrete one-sentence action. The deep study uses custom headings suited to the passage and numbered citations. Set `generation.contentProtocolVersion` to the canonical `daily-study-protocol/v1` and record exactly one `componentAssessments.historicalContext` decision. When meaningful reading-specific archaeological or historical evidence exists, set it to `included` and add both exact H3 layers: `### Archaeological and historical context` as a concise preview and `### Archaeological and historical context — expanded study` as a separately researched dossier. Set it to `not_material` only with a concise rationale and neither layer. A prepared study with the preview must also have the expanded dossier, which uses distinct materially fuller prose, at least two custom H4 topical headings, evidence-versus-inference boundaries, inline claim citations, and a nearby bibliography; never duplicate or mechanically stretch the preview. Writing should be content-rich and readable, aimed at highly educated Christian readers, confessional without pretending difficult evidence does not exist, and practical without filler. Secular or anti-supernatural critical proposals appear only when notably influential and are assessed rather than treated as neutral default explanations. Spark remains limited to the Matthew Henry verse-by-verse layer, not either historical-context layer.
 
 For the Henry layer, write the unchanged one-reading `mhc-ensure-request/v1` packet to ignored private staging, validate it against `schemas/mhc-ensure.schema.json`, and run:
 
@@ -69,9 +69,25 @@ After—and only after—exact Drive readback proves the named reading is live, 
 
 Report every reading/date repaired in order, source categories and limitations, Henry generation/review status, tests/gates, Drive readback, resulting ready-through date, commit, Pages release, and any failure. Do not include private IDs, reader codes, comments, ESV wording, or copyrighted source text.
 
-## 5. Opportunistic Henry backfill
+## 5. One-reading protocol refresh backfill
 
-After—and only after—the T+7 lane is complete and verified, inspect the one-reading backfill queue:
+Only after the T+7 lane reports `none` or `plan_complete` and exact Drive readback is verified, run:
+
+```sh
+npm run study:protocol-backfill:next
+```
+
+Validate the result against `schemas/protocol-backfill-work-order.schema.json`.
+
+- `deferred`: the T+7 horizon is not ready; do not inspect historical work.
+- `none`: every already-read manifest-backed study is current under `daily-study-protocol/v1`.
+- `refresh_review_publish`: perform one complete primary-reviewed refresh of only the named prior reading, selected most-recent-first. It must preserve the stable reading ID and therefore existing comments/highlights; retain and revalidate the newest reviewed Henry artifact or verified fallback; preserve prior versions; and never store ESV wording. Reconsider the synthesis, sources, citations, and historical-context assessment rather than merely adding version metadata. Upload versioned content and metadata first, update the manifest last, then verify exact Drive bytes and unchanged narrow sharing.
+
+This lane is higher priority than Henry-only backfill. It may select one reading only and never alters backend authorization, sharing, comments, highlights, or plan placement.
+
+## 6. Opportunistic Henry backfill
+
+After—and only after—the T+7 lane is complete and verified and the protocol-refresh lane reports `none`, inspect the one-reading Henry-backfill queue:
 
 ```sh
 npm run mhc:backfill:next

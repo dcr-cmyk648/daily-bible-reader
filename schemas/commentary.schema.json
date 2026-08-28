@@ -159,6 +159,28 @@
       },
       "additionalProperties": false
     },
+    "componentAssessments": {
+      "type": "object",
+      "properties": {
+        "historicalContext": {
+          "type": "object",
+          "required": ["status"],
+          "properties": {
+            "status": {"enum": ["included", "not_material"]},
+            "rationale": {"type": "string", "minLength": 1, "maxLength": 2000}
+          },
+          "allOf": [
+            {
+              "if": {"properties": {"status": {"const": "not_material"}}, "required": ["status"]},
+              "then": {"required": ["rationale"]}
+            }
+          ],
+          "additionalProperties": false,
+          "description": "Optional for legacy readability. Current protocol readiness requires this assessment and validates it against the exact comprehensive-synthesis context headings."
+        }
+      },
+      "additionalProperties": false
+    },
     "generation": {
       "type": "object",
       "required": ["generatedAt", "modelOrTool", "promptOrWorkflowVersion", "sourceSetVersion", "humanReviewStatus", "contentHash", "priorVersions", "knownLimitations"],
@@ -166,6 +188,7 @@
         "generatedAt": {"type": ["string", "null"], "format": "date-time"},
         "modelOrTool": {"type": ["string", "null"], "maxLength": 300},
         "promptOrWorkflowVersion": {"type": "string", "minLength": 1, "maxLength": 100},
+        "contentProtocolVersion": {"type": "string", "minLength": 1, "maxLength": 100, "description": "Optional for legacy readability. Current protocol readiness requires the exact canonical daily-study protocol version."},
         "sourceSetVersion": {"type": "string", "minLength": 1, "maxLength": 100},
         "humanReviewStatus": {"enum": ["not_started", "unreviewed", "in_review", "approved", "changes_requested"]},
         "contentHash": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},

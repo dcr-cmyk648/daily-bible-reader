@@ -14,12 +14,14 @@ test("bridge artifacts validate against their declared JSON Schemas", async () =
     "plan.schema.json",
     "source.schema.json",
     "commentary.schema.json",
+    "daily-study-protocol.schema.json",
     "provider-policy.schema.json"
   ].map((filename) => [filename, json(`schemas/${filename}`)]));
   const cases = [
     [json("fixtures/pilot-content/plan.json"), schemas["plan.schema.json"]],
     [json("fixtures/pilot-content/source-registry.json"), schemas["source.schema.json"]],
     [json("fixtures/pilot-content/bridge-placeholder.commentary.json"), schemas["commentary.schema.json"]],
+    [json("config/daily-study-protocol.json"), schemas["daily-study-protocol.schema.json"]],
     [json("config/provider-policies.example.json").policies[0], schemas["provider-policy.schema.json"]]
   ];
   cases.forEach(([value, schema]) => assert.deepEqual(validateAgainstSchema(value, schema, {externalSchemas: schemas}), []));

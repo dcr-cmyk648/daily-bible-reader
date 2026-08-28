@@ -69,8 +69,8 @@ Make the current daily-study protocol an explicit, auditable content contract. C
 - [x] Rebuild and validate the private bundle: 25 end-to-end prepared studies, 28 syntheses, 200 registered sources, and no stored Scripture.
 - [x] Run the final repository-wide gate after synchronizing D081: repository safety inspected 293 files; content validation accepted 26 schemas, 28 private-prefix readings, and the full 39-reading schedule; private validation accepted 25 end-to-end studies, 28 syntheses, and 200 registered sources with no stored Scripture; 245/245 tests, all builds, and exact Pages verification passed.
 - [x] Commit the tracked protocol machinery and factual D081 prefix synchronization; no unrelated immutable web artifact was staged.
-- [ ] Push the finalized commit to `main` and verify the remote ref.
+- [x] Push the finalized implementation commit `6e84f79` to `origin/main` after rebasing it over the concurrent D081 T+7 publication; the combined repository-wide gate passed before push.
 
 ## Exact next action
 
-Push the finalized commit to `origin/main`, verify the remote ref, and close the milestone.
+Milestone complete. The next scheduled preparation run must refresh D075/Zechariah 6 as the earliest current-horizon protocol-stale study; historical prior-study backfill remains deferred until the full T+7 horizon is current.

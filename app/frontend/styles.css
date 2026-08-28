@@ -180,9 +180,8 @@ h3 {
 }
 
 .app-header {
-  position: sticky;
+  position: static;
   z-index: 20;
-  top: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;

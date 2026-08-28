@@ -82,12 +82,16 @@ test("prepared-library catalog preserves plan order, grouped occurrences, exact 
   const html = fs.readFileSync(path.join(__dirname, "../app/frontend/index.html"), "utf8");
   const css = fs.readFileSync(path.join(__dirname, "../app/frontend/styles.css"), "utf8");
   const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
+  const headerCssStart = css.indexOf(".app-header {");
+  const headerCss = css.slice(headerCssStart, css.indexOf("}", headerCssStart) + 1);
   assert.match(html, /id="libraryPicker"[^>]*aria-label="Prepared study library"/);
   assert.match(html, /id="libraryBookSelect" aria-label="Book"/);
   assert.match(html, /id="libraryResourceSelect" aria-label="Chapter or overview"/);
   assert.match(html, /id="libraryOpenButton"[^>]*>Open</);
   assert.match(css, /\.library-picker\s*\{[\s\S]*?grid-template-columns/);
   assert.match(css, /\.library-picker select,[\s\S]*?min-height:\s*2\.75rem/);
+  assert.match(headerCss, /position:\s*static;/);
+  assert.doesNotMatch(headerCss, /position:\s*(?:sticky|fixed);/);
   assert.match(source, /function buildPreparedLibraryCatalog\(/);
   assert.match(source, /function calculateLibrarySchedule\(/);
   assert.match(source, /openReading\(resource\.readingId, \{libraryMode: true, libraryResource: resource\}\)/);
@@ -1077,13 +1081,13 @@ test("mobile comment composition keeps direct text focus and cannot be stolen by
   assert.doesNotMatch(loadReading, /readingTitle"\)\.focus/);
 });
 
-test("page changes expose the active reading step below the measured sticky header", () => {
+test("page changes expose the active reading step below any visible app header", () => {
   const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
   const html = fs.readFileSync(path.join(__dirname, "../app/frontend/index.html"), "utf8");
   const navigation = source.slice(source.indexOf("function setReadingPage"), source.indexOf("function refreshCurrentCalendarDate"));
   assert.match(html, /id="readingProgress" class="reading-progress"/);
   assert.match(navigation, /progress\.getBoundingClientRect\(\)\.top/);
-  assert.match(navigation, /stickyHeader\.getBoundingClientRect\(\)\.bottom/);
+  assert.match(navigation, /appHeader\.getBoundingClientRect\(\)\.bottom/);
   assert.match(navigation, /root\.scrollTo\(\{top: Math\.max\(0, targetTop\), behavior: "auto"\}\)/);
   assert.doesNotMatch(navigation, /heading\.scrollIntoView/);
 });

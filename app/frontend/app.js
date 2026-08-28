@@ -3549,10 +3549,10 @@
           ? state.currentEntry && state.currentEntry.kind === "book_intro" ? "bookIntroductionHeading" : "scriptureHeading"
           : "commentarySummaryHeading");
       const progress = element("readingProgress");
-      const stickyHeader = root.document.querySelector(".app-header");
+      const appHeader = root.document.querySelector(".app-header");
       const currentScroll = Number(root.scrollY || root.pageYOffset || 0);
-      const stickyBottom = stickyHeader ? Math.max(0, stickyHeader.getBoundingClientRect().bottom) : 0;
-      const targetTop = currentScroll + progress.getBoundingClientRect().top - stickyBottom - 8;
+      const visibleHeaderBottom = appHeader ? Math.max(0, appHeader.getBoundingClientRect().bottom) : 0;
+      const targetTop = currentScroll + progress.getBoundingClientRect().top - visibleHeaderBottom - 8;
       if (root.scrollTo) root.scrollTo({top: Math.max(0, targetTop), behavior: "auto"});
       heading.focus({preventScroll: true});
     }

@@ -84,6 +84,7 @@ test("prepared-library catalog preserves plan order, grouped occurrences, exact 
   const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
   const headerCssStart = css.indexOf(".app-header {");
   const headerCss = css.slice(headerCssStart, css.indexOf("}", headerCssStart) + 1);
+  const mobileCss = css.slice(css.indexOf("@media (max-width: 35rem)"));
   assert.match(html, /id="libraryPicker"[^>]*aria-label="Prepared study library"/);
   assert.match(html, /id="libraryBookSelect" aria-label="Book"/);
   assert.match(html, /id="libraryResourceSelect" aria-label="Chapter or overview"/);
@@ -92,6 +93,11 @@ test("prepared-library catalog preserves plan order, grouped occurrences, exact 
   assert.match(css, /\.library-picker select,[\s\S]*?min-height:\s*2\.75rem/);
   assert.match(headerCss, /position:\s*static;/);
   assert.doesNotMatch(headerCss, /position:\s*(?:sticky|fixed);/);
+  assert.match(css, /\.brand-button\s*\{[^}]*white-space:\s*nowrap;/);
+  assert.match(mobileCss, /\.app-header\s*\{[^}]*grid-template-columns:\s*minmax\(10rem,\s*0\.95fr\)\s+minmax\(0,\s*1\.05fr\);/);
+  assert.match(mobileCss, /\.header-status\s*\{[^}]*max-width:\s*none;/);
+  assert.match(mobileCss, /\.reading-toolbar\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*auto\s+minmax\(0,\s*1fr\);/);
+  assert.match(mobileCss, /\.reading-position strong\s*\{[^}]*text-overflow:\s*clip;[^}]*white-space:\s*normal;/);
   assert.match(source, /function buildPreparedLibraryCatalog\(/);
   assert.match(source, /function calculateLibrarySchedule\(/);
   assert.match(source, /openReading\(resource\.readingId, \{libraryMode: true, libraryResource: resource\}\)/);

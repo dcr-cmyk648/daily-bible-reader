@@ -2192,15 +2192,20 @@
     notifyHighlightEnhancer();
   }
 
+  async function ensureCurrentHighlightAccess(readingId) {
+    if (!state.currentEntry || state.currentEntry.readingId !== readingId) return false;
+    return recoverServerAccess();
+  }
+
   async function listCurrentHighlights(readingId) {
-    if (!state.currentEntry || state.currentEntry.readingId !== readingId || !serverCallsAllowed()) {
+    if (!await ensureCurrentHighlightAccess(readingId)) {
       throw appError("Shared highlights require a confirmed connection.", "OFFLINE_HIGHLIGHTS_UNAVAILABLE");
     }
     return state.adapter.listHighlights(readingId);
   }
 
   async function submitCurrentHighlightEvent(payload) {
-    if (!state.currentEntry || state.currentEntry.readingId !== payload.readingId || !serverCallsAllowed()) {
+    if (!await ensureCurrentHighlightAccess(payload.readingId)) {
       throw appError("Shared highlights require a confirmed connection.", "OFFLINE_HIGHLIGHTS_UNAVAILABLE");
     }
     return state.adapter.submitHighlightEvent(payload);
@@ -2775,6 +2780,24 @@
 
   function serverCallsAllowed() {
     return Boolean(state.adapter && (state.adapter.kind === "mock" || state.serverAccessConfirmed));
+  }
+
+  async function recoverServerAccess() {
+    if (serverCallsAllowed()) return true;
+    if (!state.adapter || state.adapter.kind !== "apps-script" || !state.plan || !state.session ||
+        (root.navigator && root.navigator.onLine === false)) return false;
+    try {
+      return Boolean(await confirmServerAccess({
+        expectedAuthorId: state.session.authorId,
+        hadCachedShell: true
+      }));
+    } catch (error) {
+      if (explicitAccessFailure(error)) {
+        handleFatalError(error);
+        return null;
+      }
+      return false;
+    }
   }
 
   async function readingPayloadWithCache(readingId) {
@@ -3434,7 +3457,9 @@
 
   async function syncCalendarCompletion() {
     if (!state.plan || !state.session || !state.calendarWindow) return;
-    if (!serverCallsAllowed()) {
+    const access = await recoverServerAccess();
+    if (access === null) return;
+    if (!access) {
       await hydrateCalendarCompletion();
       element("calendarStatus").textContent = "Saved progress is ready · confirming shared comments in the background.";
       setSyncStatus("Saved data ready · confirming access");
@@ -4093,7 +4118,9 @@
     if (!readingId) return;
     const token = ++state.commentSyncToken;
     const background = Boolean(options && options.background);
-    if (!serverCallsAllowed()) {
+    const access = await recoverServerAccess();
+    if (access === null) return;
+    if (!access) {
       await loadCachedDiscussion(readingId);
       if (!background) setSyncStatus("Saved discussion ready · writes will sync after access is confirmed");
       return;
@@ -4190,7 +4217,9 @@
   }
 
   async function flushOutbox() {
-    if (!serverCallsAllowed()) {
+    const access = await recoverServerAccess();
+    if (access === null) return;
+    if (!access) {
       const queued = compactOutbox(await state.store.getAll("commentOutbox"));
       setSyncStatus(queued.length
         ? `${queued.length} comment update${queued.length === 1 ? "" : "s"} saved locally · awaiting secure access`
@@ -4802,6 +4831,7 @@
     normalizedBookCommentaryResource,
     normalizedVerseCommentaryShard,
     normalizedVerseOfTheDay,
+    ensureCurrentHighlightAccess,
     listCurrentHighlights,
     libraryPositionLabel,
     registerHighlightEnhancer,

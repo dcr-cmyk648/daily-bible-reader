@@ -236,6 +236,140 @@ test("highlight toggles paint immediately and reconcile from the write response"
   assert.doesNotMatch(toggle, /await\s+refreshHighlights\s*\(/);
 });
 
+test("highlight sheet retries stale access before fabricated add/remove without Safari 12-missing DOM APIs", async () => {
+  const highlights = fs.readFileSync(path.join(__dirname, "../app/frontend/highlights.js"), "utf8");
+  class FakeNode {
+    constructor() {
+      this.children = [];
+      this.parentNode = null;
+      this.dataset = {};
+      this.attributes = new Map();
+      this.listeners = new Map();
+      this.hidden = false;
+      this.textContent = "";
+    }
+    get firstChild() { return this.children[0] || null; }
+    get lastElementChild() { return this.children[this.children.length - 1] || null; }
+    appendChild(child) { child.parentNode = this; this.children.push(child); return child; }
+    append(...children) { children.forEach((child) => this.appendChild(child)); }
+    removeChild(child) { this.children.splice(this.children.indexOf(child), 1); child.parentNode = null; return child; }
+    replaceChild(replacement, child) {
+      const index = this.children.indexOf(child);
+      this.children[index] = replacement;
+      child.parentNode = null;
+      replacement.parentNode = this;
+      return child;
+    }
+    setAttribute(name, value) { this.attributes.set(name, String(value)); }
+    addEventListener(name, listener) { this.listeners.set(name, listener); }
+    async click() { return this.listeners.get("click") && this.listeners.get("click")({}); }
+    querySelector(selector) { return find(this, selector); }
+    focus(options) {
+      if (options) throw new Error("Safari 12 focus options are unavailable");
+      this.focused = true;
+    }
+  }
+  const findAll = (node, selector, results = []) => {
+    const matches = selector === ".scripture-verse" ? node.className === "scripture-verse" :
+      selector === ".mock-verses" ? node.className === "mock-verses" : false;
+    if (matches) results.push(node);
+    node.children.forEach((child) => findAll(child, selector, results));
+    return results;
+  };
+  const find = (node, selector) => findAll(node, selector)[0] || null;
+  const nodes = new Map();
+  const make = (id) => { const node = new FakeNode(); nodes.set(id, node); return node; };
+  ["highlightPopover", "highlightPopoverReference", "highlightPopoverList", "highlightClose",
+    "highlightAction", "highlightStatus", "highlightHelp", "verseCommentaryDetails",
+    "verseCommentaryUnavailable", "verseCommentaryFallback", "verseCommentaryFallbackLink",
+    "verseCommentaryFallbackNote", "verseCommentarySource", "verseCommentarySourceAtoms",
+    "verseCommentaryLabel", "verseCommentaryBlurb", "verseCommentaryReference",
+    "verseCommentaryScope", "verseCommentaryScopeRow", "verseCommentarySourceNote", "scriptureContent"]
+    .forEach(make);
+  nodes.get("highlightPopover").hidden = true;
+  const section = new FakeNode();
+  section.className = "scripture-passage";
+  const mockList = new FakeNode();
+  mockList.className = "mock-verses";
+  section.appendChild(mockList);
+  nodes.get("scriptureContent").appendChild(section);
+  let enhancer;
+  let sequence = 0;
+  let recoveryAttempts = 0;
+  const context = {
+    DailyBibleReader: {
+      registerHighlightEnhancer(value) { enhancer = value; },
+      splitNumberedVerses() { return []; },
+      listCurrentHighlights: async () => [],
+      ensureCurrentHighlightAccess: async () => {
+        recoveryAttempts += 1;
+        return recoveryAttempts > 1;
+      },
+      createRequestId() { sequence += 1; return `fabricated-${sequence}`; },
+      submitCurrentHighlightEvent: async (payload) => ({event: {
+        ...payload, highlightId: "fabricated-highlight", authorId: "dustin", displayName: "Dustin",
+        revision: 1, updatedAt: "2026-08-30T12:00:00.000Z", deletedAt: payload.eventType === "delete" ? "2026-08-30T12:00:01.000Z" : null
+      }})
+    },
+    document: {
+      createElement() { return new FakeNode(); },
+      getElementById(id) { return nodes.get(id); },
+      querySelectorAll(selector) {
+        return selector === "#scriptureContent .scripture-passage" ? [section] : findAll(nodes.get("scriptureContent"), selector);
+      },
+      contains() { return true; },
+      addEventListener() {}
+    },
+    Intl,
+    Date,
+    Promise
+  };
+  context.globalThis = context;
+  vm.runInNewContext(highlights, context, {filename: "highlights.js"});
+  enhancer.render({
+    readingId: "FABRICATED-001",
+    planVersion: "fabricated/v1",
+    scripture: {isMock: true, passages: [{bookId: "FAB", chapter: 1, canonical: "Fabricated 1", verses: ["FABRICATED TEST VERSE."]}]},
+    participants: [{authorId: "dustin", displayName: "Dustin"}, {authorId: "shane", displayName: "Shane"}],
+    session: {authorId: "dustin", displayName: "Dustin"},
+    online: false
+  });
+  await Promise.resolve();
+  const verse = find(nodes.get("scriptureContent"), ".scripture-verse");
+  await verse.click();
+  assert.equal(nodes.get("highlightPopover").hidden, false);
+  assert.equal(nodes.get("highlightClose").focused, true);
+  assert.equal(nodes.get("highlightAction").disabled, false);
+  await nodes.get("highlightAction").click();
+  assert.equal(recoveryAttempts, 2);
+  assert.equal(verse.attributes.get("data-highlight-reader-0"), "true");
+  await Promise.resolve();
+  await Promise.resolve();
+  await nodes.get("highlightAction").click();
+  assert.equal(verse.attributes.get("data-highlight-reader-0"), "false");
+});
+
+test("cached-shell sync paths reconfirm access once before shared RPCs and stay offline when the browser is offline", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
+  const highlights = fs.readFileSync(path.join(__dirname, "../app/frontend/highlights.js"), "utf8");
+  const recovery = source.slice(source.indexOf("async function recoverServerAccess"), source.indexOf("async function readingPayloadWithCache"));
+  assert.match(recovery, /if \(serverCallsAllowed\(\)\) return true;/);
+  assert.match(recovery, /state\.adapter\.kind !== "apps-script"/);
+  assert.match(recovery, /root\.navigator && root\.navigator\.onLine === false\)\) return false;/);
+  assert.match(recovery, /confirmServerAccess\(\{[\s\S]*?hadCachedShell: true/);
+  assert.match(recovery, /if \(explicitAccessFailure\(error\)\) \{\s*handleFatalError\(error\);\s*return null;/);
+  assert.match(source, /if \(state\.authorizationPromise\) return state\.authorizationPromise;/);
+  ["syncCalendarCompletion", "refreshComments", "flushOutbox"].forEach((name) => {
+    const start = source.indexOf(`async function ${name}`);
+    const end = source.indexOf("\n  async function", start + 1);
+    const body = source.slice(start, end === -1 ? source.length : end);
+    assert.ok(body.indexOf("await recoverServerAccess()") < body.indexOf("state.adapter."));
+    assert.match(body, /if \(access === null\) return;\s*if \(!access\)/);
+  });
+  assert.match(source, /async function ensureCurrentHighlightAccess\(readingId\)[\s\S]*?return recoverServerAccess\(\);/);
+  assert.match(highlights, /api\.ensureCurrentHighlightAccess\(context\.readingId\)/);
+});
+
 test("a signed-in reader's active or queued comment marks only that reading complete", () => {
   const comments = [
     {commentId: "comment:1234567890123456", readingId: "intro-GEN", authorId: "dustin", deletedAt: null},
@@ -1102,7 +1236,7 @@ test("cached calendar and commentary render before background authorization whil
   const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
   assert.match(source, /cachedBootstrapForCredential\(credential\)[\s\S]*?installBootstrap\(cached, \{cached: true\}\)[\s\S]*?confirmServerAccess/);
   assert.match(source, /function serverCallsAllowed\(\)/);
-  assert.match(source, /async function flushOutbox\(\) \{\s*if \(!serverCallsAllowed\(\)\)/);
+  assert.match(source, /async function flushOutbox\(\) \{\s*const access = await recoverServerAccess\(\);\s*if \(access === null\) return;/);
   const cacheFlow = source.slice(source.indexOf("async function readingPayloadWithCache"), source.indexOf("async function loadScripture"));
   assert.ok(cacheFlow.indexOf("cachedPrivatePayload(readingId)") < cacheFlow.indexOf("state.adapter.getReadingPayload(readingId)"));
   assert.match(source, /clearPrivateDataAfterAccessFailure\(\)/);

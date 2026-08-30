@@ -17,6 +17,26 @@
     return root.document.getElementById(id);
   }
 
+  // The optional enhancer deliberately supports Safari 12. Keep node
+  // replacement local rather than allowing a verse tap to abort while the
+  // sheet is rendering.
+  function clearChildren(node) {
+    while (node && node.firstChild) node.removeChild(node.firstChild);
+  }
+
+  function replaceNode(node, replacement) {
+    if (node && node.parentNode) node.parentNode.replaceChild(replacement, node);
+  }
+
+  function focusElement(node) {
+    if (!node || typeof node.focus !== "function") return;
+    try {
+      node.focus({preventScroll: true});
+    } catch (_) {
+      node.focus();
+    }
+  }
+
   function referenceKey(reference) {
     return reference ? reference.bookId + ":" + reference.chapter + ":" + reference.verse : "";
   }
@@ -58,7 +78,7 @@
     var popover = element("highlightPopover");
     if (popover) popover.hidden = true;
     if (restoreFocus !== false && trigger && root.document.contains(trigger)) {
-      trigger.focus({preventScroll: true});
+      focusElement(trigger);
     }
   }
 
@@ -116,7 +136,7 @@
       selectedReference = {bookId: passage.bookId, chapter: Number(passage.chapter), verse: record.verse};
       selectedTrigger = button;
       renderPopover();
-      element("highlightClose").focus({preventScroll: true});
+      focusElement(element("highlightClose"));
     });
     return button;
   }
@@ -143,11 +163,11 @@
           return {verse: start + verseIndex, text: String(text)};
         });
         var mockList = section.querySelector(".mock-verses");
-        if (mockList && records.length) mockList.replaceWith(verseList(passage, records));
+        if (mockList && records.length) replaceNode(mockList, verseList(passage, records));
       } else {
         records = api.splitNumberedVerses(passage.passage);
         var pre = section.querySelector("pre");
-        if (pre && records.length) pre.replaceWith(verseList(passage, records));
+        if (pre && records.length) replaceNode(pre, verseList(passage, records));
       }
       rendered += records.length;
     });
@@ -165,7 +185,7 @@
     element("highlightPopoverReference").textContent = referenceLabel(selectedReference);
     renderVerseCommentary();
     var list = element("highlightPopoverList");
-    list.replaceChildren();
+    clearChildren(list);
     if (!active.length) {
       var empty = root.document.createElement("p");
       empty.textContent = "Neither reader has highlighted this verse.";
@@ -191,13 +211,17 @@
       return context.session && highlight.authorId === context.session.authorId;
     });
     var action = element("highlightAction");
+    var canRetryAccess = !context.online && (!root.navigator || root.navigator.onLine !== false) &&
+      typeof api.ensureCurrentHighlightAccess === "function";
     action.textContent = own ? "Remove my highlight" : "Highlight this verse";
     action.dataset.action = own ? "delete" : "create";
-    action.disabled = writing || !context.online;
+    action.disabled = writing || (!context.online && !canRetryAccess);
     element("highlightStatus").textContent = writing
       ? "Saving this change…"
       : statusMessage || (context.online
         ? "Highlights are shared with both readers; each person keeps their own color."
+        : canRetryAccess
+          ? "Shared highlights need to reconnect. Tap to retry."
         : "Shared highlights require a confirmed connection.");
     popover.hidden = false;
   }
@@ -213,7 +237,7 @@
     var source = element("verseCommentarySource");
     var sourceAtoms = element("verseCommentarySourceAtoms");
     source.open = false;
-    sourceAtoms.replaceChildren();
+    clearChildren(sourceAtoms);
     if (!record) {
       var sourceLink = context && context.henrySourceLink;
       element("verseCommentaryLabel").textContent = "Matthew Henry commentary";
@@ -257,7 +281,19 @@
   }
 
   async function refreshHighlights() {
-    if (!context || !context.online) return;
+    if (!context) return;
+    var refreshContext = context;
+    if (!context.online && typeof api.ensureCurrentHighlightAccess === "function") {
+      var recovered = false;
+      try {
+        recovered = await api.ensureCurrentHighlightAccess(context.readingId);
+      } catch (_) {
+        recovered = false;
+      }
+      if (context !== refreshContext) return;
+      context.online = Boolean(recovered);
+    }
+    if (!context.online) return;
     var readingId = context.readingId;
     var token = ++refreshToken;
     try {
@@ -273,13 +309,31 @@
   }
 
   async function toggleHighlight() {
-    if (writing || !context || !context.online || !selectedReference) return;
+    if (writing || !context || !selectedReference) return;
     var operationContext = context;
     var operationReference = {
       bookId: selectedReference.bookId,
       chapter: selectedReference.chapter,
       verse: selectedReference.verse
     };
+    if (!context.online && typeof api.ensureCurrentHighlightAccess === "function") {
+      var recovered = false;
+      try {
+        recovered = await api.ensureCurrentHighlightAccess(context.readingId);
+      } catch (_) {
+        recovered = false;
+      }
+      if (context !== operationContext || !selectedReference ||
+          referenceKey(selectedReference) !== referenceKey(operationReference)) return;
+      context.online = Boolean(recovered);
+    }
+    if (context !== operationContext || !selectedReference ||
+        referenceKey(selectedReference) !== referenceKey(operationReference)) return;
+    if (!context.online) {
+      statusMessage = "Shared highlights could not reconnect. Check the connection and retry.";
+      renderPopover();
+      return;
+    }
     var operationToken = ++writeToken;
     ++refreshToken;
     writing = true;

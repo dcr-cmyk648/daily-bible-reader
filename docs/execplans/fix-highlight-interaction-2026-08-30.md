@@ -55,7 +55,7 @@ Find and fix the regression that prevents verse highlighting in the installed Gi
 - [x] Regression test and implementation accepted; `node --test tests/outbox-and-frontend.test.js` passed (54/54), including fabricated add/remove behavior with the unavailable DOM APIs and focus-options fallback.
 - [x] Follow-up 2b: added shared cached-shell reconfirmation before calendar, discussion/outbox, and highlight RPC paths; explicit failures route to the fail-closed UI and stop local fallback, online verse sheets support manual retry, and `node --test tests/outbox-and-frontend.test.js` passed (55/55).
 - [x] Full release gate passed: repository safety inspected 303 files; 247/247 tests, all validators/builds, and exact Pages verification passed.
-- [ ] Pages release deployed and verified live.
+- [x] Pages release deployed and verified live: code commit `ff0c758`, safety/test run `33310882907`, Pages run `33310882428`, and all 12 public files matched committed bytes and expected MIME types.
 
 ## Discoveries
 
@@ -65,4 +65,4 @@ Find and fix the regression that prevents verse highlighting in the installed Gi
 
 ## Exact next action
 
-Commit and push the prepared frontend `dada2adad57f8a21` / PWA `30035a84a8584888` release, wait for GitHub safety and Pages completion, and verify the live files byte-for-byte with expected MIME types.
+Have Dustin reopen the installed Pages app, use **Sync**, add/remove one verse highlight, and confirm the calendar/discussion state updates without force-closing. This is the required installed-iPhone gate for the changed client authorization-recovery path.

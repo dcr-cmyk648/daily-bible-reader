@@ -180,6 +180,34 @@ test("form bridge propagates a bounded public transport error", async () => {
   });
 });
 
+test("Apps Script compatibility runner preserves explicit access-denial codes", async () => {
+  const {api} = harness((form, emit) => {
+    const sent = fields(form);
+    emit("https://script.google.com", {
+      channel: "dbr-rpc-response/v1",
+      requestId: sent.request_id,
+      responseNonce: sent.response_nonce,
+      ok: false,
+      error: {code: "READER_CODE_INVALID", message: "Fabricated reader code rejected."}
+    });
+  });
+  await new Promise((resolve, reject) => api.createRunner(CONFIG, null, (error) => {
+    try {
+      assert.equal(error.code, "READER_CODE_INVALID");
+      assert.equal(error.message, "Fabricated reader code rejected.");
+      resolve();
+    } catch (failure) { reject(failure); }
+  }).confirmReaderAccess("fabricated-reader-code"));
+});
+
+test("Pages bridge defers submission until its iframe target is inserted and settles before the core RPC timeout", () => {
+  const client = fs.readFileSync(path.join(__dirname, "../app/pages-pwa/client.js"), "utf8");
+  const frontend = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
+  assert.match(client, /body\.appendChild\(iframe\);[\s\S]*?body\.appendChild\(form\);[\s\S]*?setTimeout\(function submitAfterInsertion\(\)/);
+  assert.match(client, /RPC_TIMEOUT_MS = 45000/);
+  assert.match(frontend, /The server did not respond in time[\s\S]*?\}, 50000\)/);
+});
+
 test("Pages release validation confines integrity-checked assets to one immutable release", () => {
   const {api} = harness();
   const asset = (name, filename) => ({

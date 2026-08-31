@@ -349,16 +349,21 @@ test("highlight sheet retries stale access before fabricated add/remove without 
   assert.equal(verse.attributes.get("data-highlight-reader-0"), "false");
 });
 
-test("cached-shell sync paths reconfirm access once before shared RPCs and stay offline when the browser is offline", () => {
+test("cached-shell sync paths retry once despite a false offline browser hint", () => {
   const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
   const highlights = fs.readFileSync(path.join(__dirname, "../app/frontend/highlights.js"), "utf8");
   const recovery = source.slice(source.indexOf("async function recoverServerAccess"), source.indexOf("async function readingPayloadWithCache"));
   assert.match(recovery, /if \(serverCallsAllowed\(\)\) return true;/);
   assert.match(recovery, /state\.adapter\.kind !== "apps-script"/);
-  assert.match(recovery, /root\.navigator && root\.navigator\.onLine === false\)\) return false;/);
+  assert.doesNotMatch(recovery, /root\.navigator && root\.navigator\.onLine === false/);
+  assert.match(recovery, /lastAccessRecoveryFailureAt/);
+  assert.match(recovery, /now - state\.lastAccessRecoveryFailureAt < 15000/);
   assert.match(recovery, /confirmServerAccess\(\{[\s\S]*?hadCachedShell: true/);
   assert.match(recovery, /if \(explicitAccessFailure\(error\)\) \{\s*handleFatalError\(error\);\s*return null;/);
   assert.match(source, /if \(state\.authorizationPromise\) return state\.authorizationPromise;/);
+  const resumeApplication = source.slice(source.indexOf("function resumeApplication"), source.indexOf("function focusCommentComposer"));
+  assert.match(resumeApplication, /resumeOnlineWork\(\);/);
+  assert.doesNotMatch(resumeApplication, /navigator\.onLine/);
   ["syncCalendarCompletion", "refreshComments", "flushOutbox"].forEach((name) => {
     const start = source.indexOf(`async function ${name}`);
     const end = source.indexOf("\n  async function", start + 1);
@@ -366,8 +371,8 @@ test("cached-shell sync paths reconfirm access once before shared RPCs and stay 
     assert.ok(body.indexOf("await recoverServerAccess()") < body.indexOf("state.adapter."));
     assert.match(body, /if \(access === null\) return;\s*if \(!access\)/);
   });
-  assert.match(source, /async function ensureCurrentHighlightAccess\(readingId\)[\s\S]*?return recoverServerAccess\(\);/);
-  assert.match(highlights, /api\.ensureCurrentHighlightAccess\(context\.readingId\)/);
+  assert.match(source, /async function ensureCurrentHighlightAccess\(readingId, options\)[\s\S]*?return recoverServerAccess\(options\);/);
+  assert.match(highlights, /api\.ensureCurrentHighlightAccess\(context\.readingId, \{force: true\}\)/);
 });
 
 test("a signed-in reader's active or queued comment marks only that reading complete", () => {
@@ -1242,19 +1247,19 @@ test("cached calendar and commentary render before background authorization whil
   assert.match(source, /clearPrivateDataAfterAccessFailure\(\)/);
 });
 
-test("online cached readings paint first, then use one confirmed recovery to rerender authoritative commentary", () => {
+test("cached readings paint first, then use one confirmed recovery to rerender authoritative commentary", () => {
   const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
   const cacheFlow = source.slice(source.indexOf("async function readingPayloadWithCache"), source.indexOf("function syncScriptureMemoryWindow"));
   const revalidation = source.slice(source.indexOf("async function revalidateOpenReading"), source.indexOf("function syncScriptureMemoryWindow"));
   const loadReading = source.slice(source.indexOf("async function loadReading"), source.indexOf("async function warmPriorityWindow"));
   assert.match(cacheFlow, /if \(cached\) return \{payload: cached, source: "cache"\};/);
   assert.match(cacheFlow, /const access = await recoverServerAccess\(\);/);
-  assert.match(revalidation, /root\.navigator && root\.navigator\.onLine === false\)\) \{\s*return \{state: "offline"\};/);
+  assert.doesNotMatch(revalidation, /navigator\.onLine/);
   assert.match(revalidation, /state\.readingRevalidationById\.get\(entry\.readingId\)/);
   assert.match(revalidation, /await persistPrivatePayload\(entry\.readingId, payload\);/);
   assert.doesNotMatch(revalidation, /renderCommentary\(/);
   assert.match(revalidation, /if \(explicitAccessFailure\(error\)\) \{\s*handleFatalError\(error\);\s*return \{state: "denied"\};/);
-  assert.match(loadReading, /browserOffline \? "Offline · cached reading and drafts available" : "Saved reading shown · checking for updates"/);
+  assert.match(loadReading, /setSyncStatus\("Saved reading shown · checking for updates"\)/);
   assert.match(loadReading, /retryOpenReadingSync\(\)\.catch/);
   assert.ok(loadReading.indexOf("retryOpenReadingSync().catch") <
     loadReading.indexOf("refreshComments({background: true, readingId: entry.readingId})"));
@@ -1271,9 +1276,9 @@ test("reading Sync and resume retry the open payload without duplicate commentar
   const resume = source.slice(source.indexOf("function resumeOnlineWork"), source.indexOf("function resumeApplication"));
   assert.match(persist, /privatePayloadRevision\(previous\) !== privatePayloadRevision\(payload\)[\s\S]*?renderCommentary\(commentary, payload\.sources \|\| state\.sources \|\| \[\]\)/);
   assert.doesNotMatch(revalidation, /renderCommentary\(/);
-  assert.match(manualSync, /const access = await recoverServerAccess\(\);\s*if \(access === null\) return;/);
+  assert.match(manualSync, /const access = await recoverServerAccess\(\{force: true\}\);\s*if \(access === null\) return;/);
   assert.match(manualSync, /if \(!access\) \{[\s\S]*?secure sync retry available/);
-  assert.ok(manualSync.indexOf("await recoverServerAccess()") < manualSync.indexOf("await retryOpenReadingSync()"));
+  assert.ok(manualSync.indexOf("await recoverServerAccess({force: true})") < manualSync.indexOf("await retryOpenReadingSync()"));
   assert.match(manualSync, /const refresh = await retryOpenReadingSync\(\);/);
   assert.match(manualSync, /await flushOutbox\(\);/);
   assert.match(source, /refreshComments"\)\.addEventListener\("click", \(\) => syncSharedActivity\(\)\.catch/);

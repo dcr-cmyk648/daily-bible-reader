@@ -319,7 +319,7 @@
     if (!context.online && typeof api.ensureCurrentHighlightAccess === "function") {
       var recovered = false;
       try {
-        recovered = await api.ensureCurrentHighlightAccess(context.readingId);
+        recovered = await api.ensureCurrentHighlightAccess(context.readingId, {force: true});
       } catch (_) {
         recovered = false;
       }

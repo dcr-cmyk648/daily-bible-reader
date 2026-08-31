@@ -218,12 +218,14 @@
         resolve: resolve,
         reject: reject
       });
-      try {
-        form.submit();
-      } catch (_error) {
-        cleanupRequest(requestId);
-        reject(bridgeError({code: "SERVER_UNAVAILABLE", message: "The private backend request could not be sent."}));
-      }
+      root.setTimeout(function submitAfterInsertion() {
+        try {
+          form.submit();
+        } catch (_error) {
+          cleanupRequest(requestId);
+          reject(bridgeError({code: "SERVER_UNAVAILABLE", message: "The private backend request could not be sent."}));
+        }
+      }, 0);
     });
   }
 
@@ -244,7 +246,7 @@
           execute(config, property, args).then(
             function succeeded(value) { if (typeof successHandler === "function") successHandler(value); },
             function failed(error) {
-              if (typeof failureHandler === "function") failureHandler({message: error && error.message || "Server request failed."});
+              if (typeof failureHandler === "function") failureHandler(bridgeError(error, "Server request failed."));
             }
           );
         };

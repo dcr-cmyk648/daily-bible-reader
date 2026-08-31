@@ -79,6 +79,7 @@
     adapter: null,
     activeCalendarDate: null,
     authorizationPromise: null,
+    lastAccessRecoveryFailureAt: 0,
     serverAccessConfirmed: false,
     bootstrap: null,
     calendarMonthDate: null,
@@ -1060,7 +1061,7 @@
         if (settled) return;
         settled = true;
         reject(appError("The server did not respond in time.", "SERVER_TIMEOUT"));
-      }, 30000);
+      }, 50000);
       const finish = (callback, value) => {
         if (settled) return;
         settled = true;
@@ -1071,7 +1072,7 @@
         .withSuccessHandler((response) => finish(resolve, response))
         .withFailureHandler((failure) => finish(
           reject,
-          appError(failure && failure.message ? failure.message : "Server request failed.", "SERVER_ERROR")
+          appError(failure && failure.message ? failure.message : "Server request failed.", failure && failure.code || "SERVER_ERROR")
         ));
       try {
         runner[method](...args);
@@ -2193,9 +2194,9 @@
     notifyHighlightEnhancer();
   }
 
-  async function ensureCurrentHighlightAccess(readingId) {
+  async function ensureCurrentHighlightAccess(readingId, options) {
     if (!state.currentEntry || state.currentEntry.readingId !== readingId) return false;
-    return recoverServerAccess();
+    return recoverServerAccess(options);
   }
 
   async function listCurrentHighlights(readingId) {
@@ -2783,20 +2784,25 @@
     return Boolean(state.adapter && (state.adapter.kind === "mock" || state.serverAccessConfirmed));
   }
 
-  async function recoverServerAccess() {
+  async function recoverServerAccess(options) {
     if (serverCallsAllowed()) return true;
-    if (!state.adapter || state.adapter.kind !== "apps-script" || !state.plan || !state.session ||
-        (root.navigator && root.navigator.onLine === false)) return false;
+    if (!state.adapter || state.adapter.kind !== "apps-script" || !state.plan || !state.session) return false;
+    const force = Boolean(options && options.force);
+    const now = Date.now();
+    if (!force && state.lastAccessRecoveryFailureAt && now - state.lastAccessRecoveryFailureAt < 15000) return false;
     try {
-      return Boolean(await confirmServerAccess({
+      const confirmed = Boolean(await confirmServerAccess({
         expectedAuthorId: state.session.authorId,
         hadCachedShell: true
       }));
+      state.lastAccessRecoveryFailureAt = confirmed ? 0 : now;
+      return confirmed;
     } catch (error) {
       if (explicitAccessFailure(error)) {
         handleFatalError(error);
         return null;
       }
+      state.lastAccessRecoveryFailureAt = now;
       return false;
     }
   }
@@ -2822,7 +2828,7 @@
   }
 
   async function revalidateOpenReading(entry) {
-    if (!entry || !hasPreparedReading(entry) || (root.navigator && root.navigator.onLine === false)) {
+    if (!entry || !hasPreparedReading(entry)) {
       return {state: "offline"};
     }
     const existing = state.readingRevalidationById.get(entry.readingId);
@@ -3641,7 +3647,7 @@
     // Home must restore the ordinary schedule even when the Detroit civil date did not change.
     if (!calendarDateChanged) state.schedule = calculateSchedule(state.plan, state.config, new Date());
     renderCalendar();
-    if ((!options || options.sync !== false) && (!root.navigator || root.navigator.onLine !== false)) {
+    if (!options || options.sync !== false) {
       resumeOnlineWork();
     }
     if (root.scrollTo) root.scrollTo({top: 0, behavior: "auto"});
@@ -3763,9 +3769,8 @@
       loadScripture(entry, {passageIndex}).catch(() => {});
     }
     await updateCacheInspector();
-    const browserOffline = Boolean(root.navigator && root.navigator.onLine === false);
     if (result.source === "cache") {
-      setSyncStatus(browserOffline ? "Offline · cached reading and drafts available" : "Saved reading shown · checking for updates");
+      setSyncStatus("Saved reading shown · checking for updates");
       retryOpenReadingSync().catch(() => {});
     } else {
       setSyncStatus("Ready");
@@ -4219,8 +4224,7 @@
     element("commentBody").value = "";
     await state.store.delete("commentDrafts", `comment:${state.currentEntry.readingId}`);
     await refreshComments();
-    if (!root.navigator || root.navigator.onLine !== false || state.adapter.kind === "mock") await flushOutbox();
-    else setSyncStatus("Offline · comment queued");
+    await flushOutbox();
   }
 
   async function editComment(comment, revised) {
@@ -4239,7 +4243,7 @@
       baseRevision: comment.revision
     });
     await refreshComments();
-    if (!root.navigator || root.navigator.onLine !== false || state.adapter.kind === "mock") await flushOutbox();
+    await flushOutbox();
   }
 
   async function deleteComment(comment) {
@@ -4253,7 +4257,7 @@
       baseRevision: comment.revision
     });
     await refreshComments();
-    if (!root.navigator || root.navigator.onLine !== false || state.adapter.kind === "mock") await flushOutbox();
+    await flushOutbox();
   }
 
   async function flushOutbox() {
@@ -4264,10 +4268,6 @@
       setSyncStatus(queued.length
         ? `${queued.length} comment update${queued.length === 1 ? "" : "s"} saved locally · awaiting secure access`
         : "Saved data ready · confirming access");
-      return;
-    }
-    if (root.navigator && root.navigator.onLine === false && state.adapter.kind !== "mock") {
-      setSyncStatus("Offline · writes remain queued");
       return;
     }
     const queued = compactOutbox(await state.store.getAll("commentOutbox"));
@@ -4295,12 +4295,10 @@
   }
 
   async function syncSharedActivity() {
-    const access = await recoverServerAccess();
+    const access = await recoverServerAccess({force: true});
     if (access === null) return;
     if (!access) {
-      setSyncStatus(root.navigator && root.navigator.onLine === false
-        ? "Offline · drafts remain local"
-        : "Saved reading shown · secure sync retry available");
+      setSyncStatus("Saved reading shown · secure sync retry available");
       return;
     }
     const refresh = await retryOpenReadingSync();
@@ -4405,7 +4403,7 @@
     element("offlinePackStatus").textContent = "Downloaded reading data cleared. Reader access remains remembered; reconnect to prepare the offline window again.";
     setSyncStatus("Downloaded data cleared");
     if (state.currentEntry && state.currentEntry.kind === "chapter") await loadScripture(state.currentEntry);
-    if (state.view === "home" && (!root.navigator || root.navigator.onLine !== false)) resumeOnlineWork();
+    if (state.view === "home") resumeOnlineWork();
   }
 
   async function forgetReaderAccess() {
@@ -4457,7 +4455,7 @@
   function resumeApplication() {
     const dateChanged = refreshCurrentCalendarDate();
     if (dateChanged && state.view === "home") renderCalendar();
-    if (!root.navigator || root.navigator.onLine !== false) resumeOnlineWork();
+    resumeOnlineWork();
   }
 
   function focusCommentComposer() {

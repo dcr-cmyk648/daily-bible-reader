@@ -56,11 +56,11 @@ Fix the installed Pages reader state in which an online device paints retained c
 - [x] Reproduction test and implementation accepted; `node --test tests/outbox-and-frontend.test.js` passed (57/57), `node --check app/frontend/app.js` and `git diff --check` passed.
 - [x] Isolated 390×844 Chrome smoke passed: fabricated stale `CC-Y3Q4-D077` cache painted while disconnected, connectivity recovery replaced it with the authoritative fabricated fixture, the visible Sync action completed, no page errors occurred, and document width remained 390 px.
 - [x] Full local release gate passed: repository safety inspected 308 files; all validators, 249/249 tests, both builds, and exact prepared Pages verification passed.
-- [ ] Pages release deployed and verified live.
+- [x] Pages release deployed and verified live: commit `fc3dd08`, GitHub safety/test run `33392197299`, Pages deployment `33392196777`, and all 12 HTTPS files matched committed bytes plus expected MIME types.
 
 ## Exact next action
 
-Commit and push the validated source plus immutable releases `81e02dcc477061b4` / `3d946af577c6bd19`, wait for GitHub workflows, and compare the live HTTPS bytes/MIME types with the committed artifacts.
+Have Dustin reopen the installed iPhone app, allow its update prompt/restart if shown, open Zechariah 7, and confirm the header no longer remains **Offline** and both historical-context layers appear without clearing downloaded data. The visible Sync control should complete if tapped.
 
 ## Discoveries
 

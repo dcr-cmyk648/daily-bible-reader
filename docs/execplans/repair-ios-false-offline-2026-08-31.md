@@ -64,11 +64,12 @@ The first published repair removed the false reachability veto and the second ha
 - [x] Validated 28-entry plan restored in place; raw Drive readback matches the manifest prefix and all read-only backend routes now succeed.
 - [x] Client classification/storm-control regression milestone implemented and fully validated as an immutable release candidate.
 - [x] Publication workflow and the active daily automation require exact plan-prefix readback plus authenticated bootstrap health before declaring success.
-- [ ] Publish the validated code-only release and pass the installed-iPhone Sync gate.
+- [x] Publish the validated code-only release and verify GitHub workflows plus exact live bytes/MIME.
+- [ ] Pass the installed-iPhone Sync gate without clearing retained data.
 
 ## Exact next action
 
-Publish the validated code-only release, verify GitHub workflows and exact live bytes/MIME, then repeat the installed-iPhone Sync check without clearing downloaded data.
+Repeat the installed-iPhone Sync check without clearing downloaded data. A successful calendar/discussion/highlight refresh closes this repair.
 
 ## Discoveries
 
@@ -167,3 +168,10 @@ Publish the validated code-only release, verify GitHub workflows and exact live 
 - The complete local release gate passed: repository safety over 318 files, all content/source/private validators, 254/254 tests, every build, and exact tracked Pages verification.
 - Immutable release candidate: frontend `3e0281c1ba2d501c`; PWA `41ea61216d032f66`.
 - A fabricated 390×844 browser smoke exercised both boundaries. Confirmation plus healthy bootstrap set confirmed access and started 13 downstream calls; confirmation plus `CONTENT_INVALID` retained the plan/session, started zero downstream calls, displayed the precise incomplete-service state, produced no horizontal overflow, and logged no application error.
+
+## Authoritative repair publication
+
+- Commit `8a246ba` passed repository safety/test run `33405097351` and Pages deployment `33405096738`.
+- All 12 live shell/release files returned HTTPS 200 on the first verification attempt, matched the committed bytes exactly, and carried the expected MIME types.
+- Live immutable artifacts are frontend `3e0281c1ba2d501c` and PWA `41ea61216d032f66`.
+- Apps Script version 29, both version-23 rollback deployments, reader hashes, Sheet permissions, comments, highlights, and ESV configuration were not changed. The only private-state mutation was the validated in-place rolling-plan repair described above.

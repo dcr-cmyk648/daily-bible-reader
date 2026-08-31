@@ -102,6 +102,7 @@
     privatePayloadRequestByReadingId: new Map(),
     readerCode: "",
     readerCodeSubmitting: false,
+    readingRevalidationById: new Map(),
     schedule: null,
     selectedCalendarDate: null,
     session: null,
@@ -2802,25 +2803,10 @@
 
   async function readingPayloadWithCache(readingId) {
     const cached = await cachedPrivatePayload(readingId);
-    if (cached) {
-      if (serverCallsAllowed() && (!root.navigator || root.navigator.onLine !== false)) {
-        if (privatePayloadNeedsBlockingRefresh(cached)) {
-          try {
-            const payload = await state.adapter.getReadingPayload(readingId);
-            await persistPrivatePayload(readingId, payload);
-            return {payload, source: "network"};
-          } catch (error) {
-            if (!mayUseOfflineFallback(error)) throw error;
-          }
-        } else {
-          state.adapter.getReadingPayload(readingId)
-            .then((payload) => persistPrivatePayload(readingId, payload))
-            .catch(() => {});
-        }
-      }
-      return {payload: cached, source: "cache"};
-    }
-    if (!serverCallsAllowed()) {
+    if (cached) return {payload: cached, source: "cache"};
+    const access = await recoverServerAccess();
+    if (access === null) throw appError("Secure reader access was denied.", "AUTH_REQUIRED");
+    if (!access) {
       throw appError("This reading has not been downloaded and secure access is not yet confirmed.", "OFFLINE_CONTENT_UNAVAILABLE");
     }
     try {
@@ -2832,6 +2818,43 @@
       const fallback = await cachedPrivatePayload(readingId);
       if (!fallback) throw error;
       return {payload: fallback, source: "cache"};
+    }
+  }
+
+  async function revalidateOpenReading(entry) {
+    if (!entry || !hasPreparedReading(entry) || (root.navigator && root.navigator.onLine === false)) {
+      return {state: "offline"};
+    }
+    const existing = state.readingRevalidationById.get(entry.readingId);
+    if (existing) return existing;
+    const run = async () => {
+      const access = await recoverServerAccess();
+      if (access === null) return {state: "denied"};
+      if (!access) return {state: "retryable"};
+      try {
+        const payload = await state.adapter.getReadingPayload(entry.readingId);
+        const commentary = payload && (payload.commentary || payload.metadata);
+        if (!commentary || commentary.readingId !== entry.readingId) {
+          throw appError("Private commentary did not match the selected reading.", "CONTENT_MISMATCH");
+        }
+        await persistPrivatePayload(entry.readingId, payload);
+        return {state: "refreshed"};
+      } catch (error) {
+        if (explicitAccessFailure(error)) {
+          handleFatalError(error);
+          return {state: "denied"};
+        }
+        return {state: "retryable"};
+      }
+    };
+    const pending = run();
+    state.readingRevalidationById.set(entry.readingId, pending);
+    try {
+      return await pending;
+    } finally {
+      if (state.readingRevalidationById.get(entry.readingId) === pending) {
+        state.readingRevalidationById.delete(entry.readingId);
+      }
     }
   }
 
@@ -3725,7 +3748,6 @@
     }
     await loadCachedDiscussion(entry.readingId);
     await loadDraft(entry.readingId);
-    refreshComments({background: true, readingId: entry.readingId}).catch(() => {});
     const result = await readingPayloadWithCache(entry.readingId);
     const payload = result.payload;
     if (state.currentEntry.readingId !== entry.readingId) return;
@@ -3741,9 +3763,27 @@
       loadScripture(entry, {passageIndex}).catch(() => {});
     }
     await updateCacheInspector();
-    setSyncStatus(result.source === "cache" || (root.navigator && root.navigator.onLine === false)
-      ? "Offline · cached reading and drafts available"
-      : "Ready");
+    const browserOffline = Boolean(root.navigator && root.navigator.onLine === false);
+    if (result.source === "cache") {
+      setSyncStatus(browserOffline ? "Offline · cached reading and drafts available" : "Saved reading shown · checking for updates");
+      retryOpenReadingSync().catch(() => {});
+    } else {
+      setSyncStatus("Ready");
+    }
+    refreshComments({background: true, readingId: entry.readingId}).catch(() => {});
+  }
+
+  function retryOpenReadingSync() {
+    const entry = state.view === "reading" && state.currentEntry && hasPreparedReading(state.currentEntry)
+      ? state.currentEntry
+      : null;
+    if (!entry) return Promise.resolve({state: "not_open"});
+    return revalidateOpenReading(entry).then((refresh) => {
+      if (!state.currentEntry || state.currentEntry.readingId !== entry.readingId || refresh.state === "denied") return refresh;
+      if (refresh.state === "refreshed") setSyncStatus("Reading synchronized");
+      else if (refresh.state === "retryable") setSyncStatus("Saved reading shown · secure sync retry available");
+      return refresh;
+    });
   }
 
   async function warmPriorityWindow() {
@@ -4254,6 +4294,23 @@
     if (!remaining.length) setSyncStatus("Discussion synchronized");
   }
 
+  async function syncSharedActivity() {
+    const access = await recoverServerAccess();
+    if (access === null) return;
+    if (!access) {
+      setSyncStatus(root.navigator && root.navigator.onLine === false
+        ? "Offline · drafts remain local"
+        : "Saved reading shown · secure sync retry available");
+      return;
+    }
+    const refresh = await retryOpenReadingSync();
+    if (refresh.state === "denied") return;
+    await flushOutbox();
+    if (refresh.state === "refreshed" && state.view === "reading") {
+      setSyncStatus("Reading and discussion synchronized");
+    }
+  }
+
   async function updateCacheInspector() {
     if (!state.store || !state.policy) return;
     const [scripture, content, completion, outbox, drafts, snapshots, mockEvents, credential] = await Promise.all([
@@ -4336,6 +4393,7 @@
     state.comments = [];
     state.privatePayloadByReadingId = new Map();
     state.privatePayloadRequestByReadingId = new Map();
+    state.readingRevalidationById = new Map();
     resetScriptureMemory();
     state.completionByReadingId = new Map();
     state.completedReadingIds = new Set();
@@ -4383,7 +4441,9 @@
 
   function resumeOnlineWork() {
     if (state.adapter && state.adapter.kind === "apps-script" && !state.serverAccessConfirmed && state.plan && state.session) {
-      confirmServerAccess({expectedAuthorId: state.session.authorId, hadCachedShell: true}).catch(handleFatalError);
+      recoverServerAccess().then((access) => {
+        if (access === true) resumeOnlineWork();
+      }).catch(() => {});
       return;
     }
     if (!serverCallsAllowed()) return;
@@ -4391,6 +4451,7 @@
     flushOutbox().catch(() => setSyncStatus("Sync retry failed"));
     notifyHighlightEnhancer();
     if (state.view === "home") syncCalendarCompletion().catch(() => {});
+    else retryOpenReadingSync().catch(() => {});
   }
 
   function resumeApplication() {
@@ -4445,13 +4506,13 @@
     element("retryScripture").addEventListener("click", () => state.currentEntry && loadScripture(state.currentEntry, {
       passageIndex: state.activeScripturePassageIndex
     }));
-    element("refreshComments").addEventListener("click", refreshComments);
+    element("refreshComments").addEventListener("click", () => syncSharedActivity().catch(() => setSyncStatus("Sync retry failed")));
     element("commentForm").addEventListener("submit", submitNewComment);
     const commentBody = element("commentBody");
     commentBody.addEventListener("input", scheduleDraftSave);
     commentBody.addEventListener("pointerup", focusCommentComposer);
     commentBody.addEventListener("click", focusCommentComposer);
-    element("syncOutbox").addEventListener("click", flushOutbox);
+    element("syncOutbox").addEventListener("click", () => syncSharedActivity().catch(() => setSyncStatus("Sync retry failed")));
     element("clearDownloadedData").addEventListener("click", clearDownloadedData);
     element("forgetReaderAccess").addEventListener("click", forgetReaderAccess);
     root.addEventListener("online", resumeApplication);
@@ -4568,6 +4629,7 @@
     state.comments = [];
     state.privatePayloadByReadingId = new Map();
     state.privatePayloadRequestByReadingId = new Map();
+    state.readingRevalidationById = new Map();
     resetScriptureMemory();
     state.currentScripture = null;
     state.currentVerseCommentary = null;

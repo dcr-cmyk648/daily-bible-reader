@@ -845,7 +845,7 @@ test("content readiness requires every end-to-end study component and exposes th
   assert.match(source, /offlineStatus\.dataset\.state = contentCount === windowEntries\.length/);
   assert.doesNotMatch(source, /Tomorrow's full study is not yet prepared/);
   assert.match(source, /contentDiagnosticsArePrivateToOwner/);
-  assert.match(source, /privatePayloadNeedsBlockingRefresh\(cached\)/);
+  assert.match(source, /async function revalidateOpenReading\(entry\)/);
   assert.match(source, /Study updated to the newest version/);
 });
 
@@ -1240,6 +1240,47 @@ test("cached calendar and commentary render before background authorization whil
   const cacheFlow = source.slice(source.indexOf("async function readingPayloadWithCache"), source.indexOf("async function loadScripture"));
   assert.ok(cacheFlow.indexOf("cachedPrivatePayload(readingId)") < cacheFlow.indexOf("state.adapter.getReadingPayload(readingId)"));
   assert.match(source, /clearPrivateDataAfterAccessFailure\(\)/);
+});
+
+test("online cached readings paint first, then use one confirmed recovery to rerender authoritative commentary", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
+  const cacheFlow = source.slice(source.indexOf("async function readingPayloadWithCache"), source.indexOf("function syncScriptureMemoryWindow"));
+  const revalidation = source.slice(source.indexOf("async function revalidateOpenReading"), source.indexOf("function syncScriptureMemoryWindow"));
+  const loadReading = source.slice(source.indexOf("async function loadReading"), source.indexOf("async function warmPriorityWindow"));
+  assert.match(cacheFlow, /if \(cached\) return \{payload: cached, source: "cache"\};/);
+  assert.match(cacheFlow, /const access = await recoverServerAccess\(\);/);
+  assert.match(revalidation, /root\.navigator && root\.navigator\.onLine === false\)\) \{\s*return \{state: "offline"\};/);
+  assert.match(revalidation, /state\.readingRevalidationById\.get\(entry\.readingId\)/);
+  assert.match(revalidation, /await persistPrivatePayload\(entry\.readingId, payload\);/);
+  assert.doesNotMatch(revalidation, /renderCommentary\(/);
+  assert.match(revalidation, /if \(explicitAccessFailure\(error\)\) \{\s*handleFatalError\(error\);\s*return \{state: "denied"\};/);
+  assert.match(loadReading, /browserOffline \? "Offline · cached reading and drafts available" : "Saved reading shown · checking for updates"/);
+  assert.match(loadReading, /retryOpenReadingSync\(\)\.catch/);
+  assert.ok(loadReading.indexOf("retryOpenReadingSync().catch") <
+    loadReading.indexOf("refreshComments({background: true, readingId: entry.readingId})"));
+  assert.match(loadReading, /refresh\.state === "refreshed"\) setSyncStatus\("Reading synchronized"\)/);
+  assert.match(loadReading, /refresh\.state === "retryable"\) setSyncStatus\("Saved reading shown · secure sync retry available"\)/);
+  assert.match(source, /renderHistoricalContextPanels\(comprehensivePartition\.context, sources \|\| \[\]\)/);
+});
+
+test("reading Sync and resume retry the open payload without duplicate commentary renders", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
+  const persist = source.slice(source.indexOf("async function persistPrivatePayload"), source.indexOf("function mayUseOfflineFallback"));
+  const revalidation = source.slice(source.indexOf("async function revalidateOpenReading"), source.indexOf("function syncScriptureMemoryWindow"));
+  const manualSync = source.slice(source.indexOf("async function syncSharedActivity"), source.indexOf("async function updateCacheInspector"));
+  const resume = source.slice(source.indexOf("function resumeOnlineWork"), source.indexOf("function resumeApplication"));
+  assert.match(persist, /privatePayloadRevision\(previous\) !== privatePayloadRevision\(payload\)[\s\S]*?renderCommentary\(commentary, payload\.sources \|\| state\.sources \|\| \[\]\)/);
+  assert.doesNotMatch(revalidation, /renderCommentary\(/);
+  assert.match(manualSync, /const access = await recoverServerAccess\(\);\s*if \(access === null\) return;/);
+  assert.match(manualSync, /if \(!access\) \{[\s\S]*?secure sync retry available/);
+  assert.ok(manualSync.indexOf("await recoverServerAccess()") < manualSync.indexOf("await retryOpenReadingSync()"));
+  assert.match(manualSync, /const refresh = await retryOpenReadingSync\(\);/);
+  assert.match(manualSync, /await flushOutbox\(\);/);
+  assert.match(source, /refreshComments"\)\.addEventListener\("click", \(\) => syncSharedActivity\(\)\.catch/);
+  assert.match(source, /syncOutbox"\)\.addEventListener\("click", \(\) => syncSharedActivity\(\)\.catch/);
+  assert.match(resume, /recoverServerAccess\(\)\.then\(\(access\) => \{\s*if \(access === true\) resumeOnlineWork\(\);/);
+  assert.match(resume, /else retryOpenReadingSync\(\)\.catch/);
+  assert.ok((source.match(/state\.readingRevalidationById = new Map\(\);/g) || []).length >= 2);
 });
 
 test("calendar uses a compact monthly selector with two-reader dots and a date-specific action", () => {

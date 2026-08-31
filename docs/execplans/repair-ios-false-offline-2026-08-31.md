@@ -56,11 +56,11 @@ The first published repair removed the false reachability veto but the installed
 - [x] Focused implementation milestone implemented and accepted after primary diff review.
 - [x] Full local release gate passed.
 - [x] Pages release deployed and verified live.
-- [x] Reopened WebKit transport repair implemented, accepted after primary review, and fully validated locally; pending publication and installed-phone gate.
+- [x] Reopened WebKit transport repair implemented, accepted, fully validated, published, and verified live; pending installed-phone gate.
 
 ## Exact next action
 
-Publish the offscreen-but-rendered named-frame/CSP redirect repair, verify the immutable live release, then repeat the installed-iPhone update/reopen check without clearing downloaded data.
+Repeat the installed-iPhone update/reopen check without clearing downloaded data; confirm secure sync and authoritative current-reading refresh.
 
 ## Discoveries
 
@@ -125,3 +125,11 @@ Publish the offscreen-but-rendered named-frame/CSP redirect repair, verify the i
 - `npm run build && npm run publish:pages && npm run check` passed; repository safety covered 314 files, all validators passed, 252/252 tests passed, and the generated Pages artifacts verified exactly.
 - New PWA artifact: `ff1e8a6ddead3094`; the unchanged frontend remains `f08fa5a23afa3ea2`.
 - A fabricated 390×844 generated-PWA smoke exercised the actual form creation/submission/nonce-response cleanup path. The named target had `display:block`, fixed 1×1 geometry, opacity zero, pointer events disabled, `inert`, `aria-hidden`, and `tabIndex=-1`; all three exact Google request/response host patterns were present in `frame-src` and `form-action`; horizontal overflow was zero and no page error occurred.
+
+## Reopened publication
+
+- Code commit `4a147c6` passed GitHub safety/test run `33399811628` and Pages deployment `33399810254`.
+- All 12 live shell/release files returned HTTPS 200 on the first verification attempt, matched the committed bytes exactly, and had expected MIME types.
+- A live 390×844 Chromium probe with a fabricated invalid reader code completed the real Apps Script bridge in 2.6 seconds, returned the expected denial envelope, and reported no CSP violation.
+- Live artifacts: unchanged frontend `f08fa5a23afa3ea2`; PWA `ff1e8a6ddead3094`.
+- Apps Script version 29, rollback deployments, Drive/Sheet state, private content, reader codes/hashes, and device cache were not changed.

@@ -4,6 +4,8 @@
 
 Make the installed Pages reader recover its authenticated Apps Script connection and authoritative current-study payload when iOS reports a stale `navigator.onLine === false` value despite working cellular/Wi-Fi connectivity.
 
+The first published repair removed the false reachability veto but the installed-phone gate still failed. The reopened goal is therefore to repair the WebKit-specific named-frame POST transport itself, without altering credentials, backend identity, private content, or cached reader data.
+
 ## Requirements
 
 - Keep the retained calendar/commentary first paint immediate and usable.
@@ -54,10 +56,11 @@ Make the installed Pages reader recover its authenticated Apps Script connection
 - [x] Focused implementation milestone implemented and accepted after primary diff review.
 - [x] Full local release gate passed.
 - [x] Pages release deployed and verified live.
+- [x] Reopened WebKit transport repair implemented, accepted after primary review, and fully validated locally; pending publication and installed-phone gate.
 
 ## Exact next action
 
-Request the installed-iPhone update/reopen check; confirm that the header leaves the offline state and the current reading refreshes without clearing downloaded data.
+Publish the offscreen-but-rendered named-frame/CSP redirect repair, verify the immutable live release, then repeat the installed-iPhone update/reopen check without clearing downloaded data.
 
 ## Discoveries
 
@@ -86,3 +89,39 @@ Request the installed-iPhone update/reopen check; confirm that the header leaves
 - All 12 live shell/release files returned HTTPS 200, matched the committed bytes exactly, and had the expected MIME types on the first verification attempt.
 - Live immutable artifacts: frontend `f08fa5a23afa3ea2`; PWA `2968fc2194622313`.
 - Apps Script version 29, both version-23 rollback deployments, Drive/Sheet state, private content, and authentication configuration were not changed.
+
+## Reopened phone-gate evidence
+
+- Dustin accepted PWA `2968fc2194622313`; synchronization still failed and returned to the offline retained-data state. This disproves the stale-`navigator.onLine` gate as the complete cause.
+- A live 390×844 Chromium probe used only a fabricated invalid reader code. It completed the real Apps Script form bridge in about 2.4 seconds and received the expected `READER_CODE_INVALID` envelope, proving the public deployment and current nonce/origin response contract are alive.
+- The response target is currently `iframe.hidden = true`, which maps to `display:none`. WebKit bug 3581 documents named iframes hidden with `display:none` disappearing from the frame collection, including a form-target scenario. That is materially consistent with an iPhone-only named-target failure while Chromium succeeds.
+- The Pages CSP permits `form-action https://script.google.com` but not the generated `https://*.googleusercontent.com` response host. The CSP specification and cross-browser web-platform redirect test treat a redirected POST destination as part of the `form-action` boundary. `frame-src` already permits both hosts.
+- The downloaded Playwright WebKit build cannot launch on this host's newer macOS version, so it cannot honestly substitute for the installed-phone gate. The implementation must add a regression contract for a rendered, non-focusable, offscreen frame and both Google form-action hosts, then rely on the actual iPhone as final acceptance.
+
+## Reopened implementation decision
+
+- Keep the per-request nonce-bound POST bridge, bearer-code body transport, exact origin, rate limits, and backend unchanged.
+- Replace the display-none target iframe with a one-pixel, opacity-zero, pointer-inert, non-focusable offscreen iframe that remains in WebKit's rendered frame tree. Keep the form itself noninteractive and remove both nodes on settlement.
+- Permit only `https://script.google.com` and `https://*.googleusercontent.com` in the Pages `form-action`, matching the already-approved `frame-src` hosts; do not broaden any other CSP directive.
+- Preserve the one-turn post-insertion submit deferral and bounded timeout unless the focused implementation proves a narrower readiness step is required.
+
+## Reopened implementation result
+
+- The target iframe no longer uses `hidden`/`display:none`. It is fixed-position, one pixel, offscreen, opacity-zero, clipped, pointer-inert, `aria-hidden`, and `tabIndex=-1`, preserving a rendered named browsing context while remaining noninteractive.
+- `form-action` now permits only `https://script.google.com`, the bare `https://script.googleusercontent.com` response host, and generated `https://*.googleusercontent.com` response hosts. `frame-src` carries the same exact set, matching the client's existing response-origin validator; no other CSP directive changed.
+- Focused tests assert the rendered/inert properties, nonce-bound cleanup after submission, submit deferral, timeout ordering, exact CSP hosts, and explicit error-code propagation.
+
+## Reopened focused validation
+
+- `node --check app/pages-pwa/client.js && node --check scripts/build-pages-pwa.mjs`
+- `node --test tests/pages-pwa.test.js` — 13 passing, 0 failing.
+- `npm run build:pwa` — built local canary `ff1e8a6ddead3094` against frontend `f08fa5a23afa3ea2`.
+- `git diff --check` — passed.
+- `npm run verify:pwa` intentionally not run: it asserts the unpublished `web/pwa-canary/` matches this new local build, which would require forbidden publication/generated-artifact mutation.
+
+## Reopened full local validation
+
+- `npm run safety` before generation passed over 313 files.
+- `npm run build && npm run publish:pages && npm run check` passed; repository safety covered 314 files, all validators passed, 252/252 tests passed, and the generated Pages artifacts verified exactly.
+- New PWA artifact: `ff1e8a6ddead3094`; the unchanged frontend remains `f08fa5a23afa3ea2`.
+- A fabricated 390×844 generated-PWA smoke exercised the actual form creation/submission/nonce-response cleanup path. The named target had `display:block`, fixed 1×1 geometry, opacity zero, pointer events disabled, `inert`, `aria-hidden`, and `tabIndex=-1`; all three exact Google request/response host patterns were present in `frame-src` and `form-action`; horizontal overflow was zero and no page error occurred.

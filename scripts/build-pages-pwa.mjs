@@ -144,10 +144,10 @@ async function main() {
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data:",
     "connect-src 'self'",
-    "frame-src https://script.google.com https://*.googleusercontent.com",
+    "frame-src https://script.google.com https://script.googleusercontent.com https://*.googleusercontent.com",
     "object-src 'none'",
     "base-uri 'none'",
-    "form-action https://script.google.com",
+    "form-action https://script.google.com https://script.googleusercontent.com https://*.googleusercontent.com",
     "frame-ancestors 'none'"
   ].join("; ");
   let html = sourceHtml;

@@ -30,6 +30,7 @@ function harness(onSubmit) {
       tagName: tagName.toUpperCase(),
       children: [],
       removed: false,
+      style: {},
       appendChild(child) { this.children.push(child); return child; },
       setAttribute(name, value) { this[name] = String(value); },
       remove() { this.removed = true; },
@@ -90,7 +91,7 @@ test("Pages PWA validates only the narrow public token-bridge configuration", ()
 
 test("form bridge keeps the bearer code in a POST body and accepts only a nonce-bound Google response", async () => {
   let request;
-  const {api} = harness((form, emit) => {
+  const {api, appended} = harness((form, emit) => {
     request = form;
     const sent = fields(form);
     emit("https://evil.example", {
@@ -128,6 +129,17 @@ test("form bridge keeps the bearer code in a POST body and accepts only a nonce-
   assert.deepEqual(JSON.parse(sent.args_json), [readerCode]);
   assert.match(sent.request_id, /^rpc-[a-f0-9]{32}$/);
   assert.match(sent.response_nonce, /^[a-f0-9]{48}$/);
+  const iframe = appended.find((node) => node.tagName === "IFRAME");
+  assert.equal(iframe.hidden, undefined);
+  assert.equal(iframe["aria-hidden"], "true");
+  assert.equal(iframe.inert, "");
+  assert.equal(iframe.tabIndex, -1);
+  assert.deepEqual(iframe.style, {
+    position: "fixed", width: "1px", height: "1px", left: "-1px", top: "-1px",
+    opacity: "0", pointerEvents: "none", border: "0", clipPath: "inset(50%)"
+  });
+  assert.equal(iframe.removed, true);
+  assert.equal(request.removed, true);
   assert.throws(() => api.execute(CONFIG, "arbitraryServerFunction", []), /not allowlisted/);
 });
 
@@ -208,6 +220,22 @@ test("Pages bridge defers submission until its iframe target is inserted and set
   assert.match(frontend, /The server did not respond in time[\s\S]*?\}, 50000\)/);
 });
 
+test("Pages iframe target remains rendered but inert for WebKit named-frame POSTs", () => {
+  const client = fs.readFileSync(path.join(__dirname, "../app/pages-pwa/client.js"), "utf8");
+  const frame = client.slice(client.indexOf('var iframe = root.document.createElement("iframe")'), client.indexOf('var form = root.document.createElement("form")'));
+  assert.doesNotMatch(frame, /\.hidden\s*=|display\s*=\s*["']none/);
+  [
+    /setAttribute\("aria-hidden", "true"\)/,
+    /setAttribute\("inert", ""\)/,
+    /tabIndex = -1/,
+    /style\.width = "1px"/,
+    /style\.height = "1px"/,
+    /style\.opacity = "0"/,
+    /style\.pointerEvents = "none"/,
+    /style\.clipPath = "inset\(50%\)"/
+  ].forEach((pattern) => assert.match(frame, pattern));
+});
+
 test("Pages release validation confines integrity-checked assets to one immutable release", () => {
   const {api} = harness();
   const asset = (name, filename) => ({
@@ -249,6 +277,9 @@ test("Pages PWA build keeps the canary isolated from the stable frontend release
   assert.match(build, /dist\/pages-pwa/);
   assert.match(publish, /web\/pwa-canary/);
   assert.doesNotMatch(publish, /\brm\s*\(/);
+  assert.match(build, /frame-src https:\/\/script\.google\.com https:\/\/script\.googleusercontent\.com https:\/\/\*\.googleusercontent\.com/);
+  assert.match(build, /form-action https:\/\/script\.google\.com https:\/\/script\.googleusercontent\.com https:\/\/\*\.googleusercontent\.com/);
+  assert.doesNotMatch(build, /form-action \*/);
 });
 
 test("Pages startup timing stays in memory and records only named milestones", () => {

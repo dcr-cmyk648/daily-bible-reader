@@ -53,11 +53,11 @@ Make the installed Pages reader recover its authenticated Apps Script connection
 - [x] False-offline hard gates and transport timeout/error-propagation weaknesses identified.
 - [x] Focused implementation milestone implemented and accepted after primary diff review.
 - [x] Full local release gate passed.
-- [ ] Pages release deployed and verified live.
+- [x] Pages release deployed and verified live.
 
 ## Exact next action
 
-Commit and publish the immutable Pages release, verify GitHub workflows and exact live bytes/MIME, then request the installed-iPhone recovery check.
+Request the installed-iPhone update/reopen check; confirm that the header leaves the offline state and the current reading refreshes without clearing downloaded data.
 
 ## Discoveries
 
@@ -79,3 +79,10 @@ Commit and publish the immutable Pages release, verify GitHub workflows and exac
 - `npm run build && npm run publish:pages && npm run check` — passed; repository safety covered 313 files, all validators passed, 251/251 tests passed, and the generated Pages artifacts verified exactly.
 - New immutable artifacts: frontend `f08fa5a23afa3ea2`; PWA `2968fc2194622313`.
 - Fabricated 390×844 browser smoke forced `navigator.onLine === false` while leaving a successful private-bridge adapter available. The reader made exactly one confirmation attempt, set confirmed access, reported `Calendar synchronized`, had no page error, and had no horizontal overflow.
+
+## Publication
+
+- Code commit `a52322b` passed GitHub safety/test run `33397633499` and Pages deployment `33397632371`.
+- All 12 live shell/release files returned HTTPS 200, matched the committed bytes exactly, and had the expected MIME types on the first verification attempt.
+- Live immutable artifacts: frontend `f08fa5a23afa3ea2`; PWA `2968fc2194622313`.
+- Apps Script version 29, both version-23 rollback deployments, Drive/Sheet state, private content, and authentication configuration were not changed.

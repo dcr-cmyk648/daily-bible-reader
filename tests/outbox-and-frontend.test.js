@@ -26,6 +26,43 @@ test("offline create followed by delete disappears before sync", () => {
   assert.deepEqual(app.compactOutbox(items), []);
 });
 
+test("retained sync failures distinguish service publication, discussion store, transport, and payload faults", () => {
+  assert.equal(app.contentServiceFailure({code: "CONTENT_INVALID"}), true);
+  assert.equal(app.contentServiceFailure({code: "SOURCE_REGISTRY_INVALID"}), true);
+  assert.equal(app.commentStoreFailure({code: "COMMENT_STORE_UNAVAILABLE"}), true);
+  assert.equal(app.retainedCalendarFailureStatus({code: "CONTENT_INVALID"}),
+    "Study service update is incomplete · saved calendar retained");
+  assert.equal(app.retainedCalendarFailureStatus({code: "COMMENT_STORE_BUSY"}),
+    "Shared discussion is unavailable · saved calendar retained");
+  assert.match(app.retainedCalendarFailureStatus({code: "SERVER_TIMEOUT"}), /^Offline/);
+  assert.equal(app.retainedOutboxFailureStatus({code: "CONTENT_INVALID"}),
+    "Study service update is incomplete · comment saved locally");
+  assert.equal(app.retainedOutboxFailureStatus({code: "COMMENT_STORE_UNAVAILABLE"}),
+    "Shared discussion is unavailable · comment saved locally");
+  assert.equal(app.retainedOutboxFailureStatus({code: "REVISION_CONFLICT"}),
+    "Comment update needs attention · saved locally");
+});
+
+test("cached-shell confirmation waits for authoritative bootstrap before dependent work and keeps failures retained", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
+  const refresh = source.slice(source.indexOf("async function refreshBootstrapAfterConfirmation"), source.indexOf("async function confirmServerAccess"));
+  const confirm = source.slice(source.indexOf("async function confirmServerAccess"), source.indexOf("async function startAuthorizedApplication"));
+  const calendar = source.slice(source.indexOf("async function syncCalendarCompletion"), source.indexOf("function showHome"));
+  const outbox = source.slice(source.indexOf("async function flushOutbox"), source.indexOf("async function syncSharedActivity"));
+  assert.match(refresh, /await state\.adapter\.getBootstrapData\(\)/);
+  assert.match(refresh, /return true;/);
+  assert.match(refresh, /contentServiceFailure\(error\)[\s\S]*?saved data retained/);
+  assert.doesNotMatch(refresh, /startConfirmedBackgroundWork/);
+  assert.ok(confirm.indexOf("await refreshBootstrapAfterConfirmation(expectedAuthorId)") <
+    confirm.indexOf("state.serverAccessConfirmed = true"));
+  assert.ok(confirm.indexOf("state.serverAccessConfirmed = true") < confirm.indexOf("startConfirmedBackgroundWork()"));
+  assert.match(calendar, /catch \(error\) \{[\s\S]*?explicitAccessFailure\(error\)[\s\S]*?state\.serverAccessConfirmed = false;[\s\S]*?handleFatalError\(error\)/);
+  assert.match(calendar, /retainedCalendarFailureStatus\(error\)/);
+  assert.match(outbox, /catch \(error\) \{[\s\S]*?explicitAccessFailure\(error\)[\s\S]*?state\.serverAccessConfirmed = false;[\s\S]*?handleFatalError\(error\)/);
+  assert.match(outbox, /await state\.store\.put\("commentOutbox", \{\.\.\.item, status: "error"/);
+  assert.match(outbox, /retainedOutboxFailureStatus\(error\)/);
+});
+
 test("prepared-library catalog preserves plan order, grouped occurrences, exact partial coverage, and normal future locks", () => {
   const plan = {
     planVersion: "library-test/v1",
@@ -1258,7 +1295,7 @@ test("cached readings paint first, then use one confirmed recovery to rerender a
   assert.match(revalidation, /state\.readingRevalidationById\.get\(entry\.readingId\)/);
   assert.match(revalidation, /await persistPrivatePayload\(entry\.readingId, payload\);/);
   assert.doesNotMatch(revalidation, /renderCommentary\(/);
-  assert.match(revalidation, /if \(explicitAccessFailure\(error\)\) \{\s*handleFatalError\(error\);\s*return \{state: "denied"\};/);
+  assert.match(revalidation, /if \(explicitAccessFailure\(error\)\) \{\s*state\.serverAccessConfirmed = false;\s*handleFatalError\(error\);\s*return \{state: "denied"\};/);
   assert.match(loadReading, /setSyncStatus\("Saved reading shown · checking for updates"\)/);
   assert.match(loadReading, /retryOpenReadingSync\(\)\.catch/);
   assert.ok(loadReading.indexOf("retryOpenReadingSync().catch") <

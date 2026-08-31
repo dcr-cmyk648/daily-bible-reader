@@ -31,7 +31,7 @@ The user has authorized this narrow recurring publication lane. It does not auth
 4. Compare every Henry condensation with every cited exact atom. `npm run mhc:review` creates and applies a hash-bound review record; altered generation bytes invalidate it.
 5. Mark the study `in_review` only after direct content/source review. Machine validation alone is insufficient.
 6. Run private-content validation, source validation, repository safety, tests, builds, and release checks.
-7. Upload new/versioned private plan, config, registry, Markdown, and metadata first. Update the single private manifest pointer last. Verify exact bytes and sharing after write.
+7. Upload new/versioned private plan, config, registry, Markdown, and metadata first. Read back the rolling plan and verify it is the exact contiguous prefix represented by the staged manifest; only then update the single private manifest pointer last. Verify exact bytes and sharing after write, then require an authenticated `getBootstrapData` health check before recording publication success.
 8. Commit and push only code, schemas, factual plan metadata, tests, and documentation. Publish the existing code-only Pages/Apps Script path only when code or plan delivery requires it.
 
 A failed reading never advances the private manifest. The same gap is returned on the next evaluation. A successful recovery reevaluates only after exact readback and stops when the bounded horizon is complete. No ESV text, private commentary, source extract, reader code/hash, comment body, Google resource ID, or secret enters Git or Pages.

@@ -4,7 +4,7 @@
 
 Make the installed Pages reader recover its authenticated Apps Script connection and authoritative current-study payload when iOS reports a stale `navigator.onLine === false` value despite working cellular/Wi-Fi connectivity.
 
-The first published repair removed the false reachability veto but the installed-phone gate still failed. The reopened goal is therefore to repair the WebKit-specific named-frame POST transport itself, without altering credentials, backend identity, private content, or cached reader data.
+The first published repair removed the false reachability veto and the second hardened the WebKit named-frame POST transport, but the installed-phone gate still failed. The authoritative goal is now to keep valid cached data usable while accurately surfacing backend content-publication failures, and to prevent an incomplete private plan/manifest promotion from masquerading as an offline or authentication problem.
 
 ## Requirements
 
@@ -16,6 +16,8 @@ The first published repair removed the false reachability veto but the installed
 - An explicit reader-code/access denial must preserve its backend error code and fail closed rather than being mislabeled as an ordinary network failure.
 - Harden the form/iframe transport if needed so a newly inserted target is ready before submission and the core timeout cannot fire before the transport's own timeout.
 - Preserve the token backend, deployment identity, Drive/Sheet/ESV contracts, IndexedDB schema, and service-worker private-data boundary unless direct evidence proves a backend change is necessary.
+- After a successful access confirmation, preserve and classify downstream RPC error codes. A private publication/configuration failure must not be reported as network offline, must not clear cached content or queued writes, and must not trigger a storm of calls that are known to depend on the same invalid private state.
+- A private reading publication is not complete until its rolling plan and manifest contain the same contiguous prefix and a real authenticated `getBootstrapData` read succeeds after manifest-last promotion.
 
 ## Evidence and repository state
 
@@ -57,10 +59,16 @@ The first published repair removed the false reachability veto but the installed
 - [x] Full local release gate passed.
 - [x] Pages release deployed and verified live.
 - [x] Reopened WebKit transport repair implemented, accepted, fully validated, published, and verified live; pending installed-phone gate.
+- [x] Real Dustin-authenticated direct-backend diagnostic isolated the actual failure as `CONTENT_INVALID` after successful `confirmReaderAccess`.
+- [x] Drive mismatch identified: manifest through D081 (28 records), active rolling plan only through D079 (26 records).
+- [x] Validated 28-entry plan restored in place; raw Drive readback matches the manifest prefix and all read-only backend routes now succeed.
+- [x] Client classification/storm-control regression milestone implemented and fully validated as an immutable release candidate.
+- [x] Publication workflow and the active daily automation require exact plan-prefix readback plus authenticated bootstrap health before declaring success.
+- [ ] Publish the validated code-only release and pass the installed-iPhone Sync gate.
 
 ## Exact next action
 
-Repeat the installed-iPhone update/reopen check without clearing downloaded data; confirm secure sync and authoritative current-reading refresh.
+Publish the validated code-only release, verify GitHub workflows and exact live bytes/MIME, then repeat the installed-iPhone Sync check without clearing downloaded data.
 
 ## Discoveries
 
@@ -69,6 +77,18 @@ Repeat the installed-iPhone update/reopen check without clearing downloaded data
 - Successful confirmation already starts the existing bootstrap/calendar background refresh. Open-reading revalidation then persists the authoritative payload and lets the revision-aware persistence path rerender only a changed study; discussion/outbox refresh follows through the confirmed shared path.
 - The Pages compatibility runner was discarding `error.code`. It now passes the bridge error through intact, and the core wrapper retains that code so explicit reader-code/access denial reaches the existing fail-closed gate.
 - The form bridge now defers submit one event turn after inserting its iframe target. The core RPC timeout is 50 seconds, after the bridge's 45-second bounded timeout, so core cannot preempt the transport error.
+- The phone's later sequence, `Sync paused · retry available` followed by `Offline · saved calendar available`, could not be produced by a failed initial confirmation: `flushOutbox()` reaches that state only after server access is considered confirmed and a downstream write fails. The calendar catch then discarded the error code and mislabeled every failure as offline.
+- A read-only direct POST to the intended Apps Script backend, using the locally retained Dustin credential without exposing it or private response data, proved `confirmReaderAccess` succeeded while `getBootstrapData` returned `CONTENT_INVALID`.
+- The canonical Drive manifest had 28 records through D081 while its referenced rolling plan had only 26 entries through D079. `dbrValidatePrivateConfig_()` correctly rejected the non-identical prefix; every comment/highlight/calendar route rereads that private state, so the one publication mismatch disabled all shared operations.
+- D080 and D081 publication-result records asserted payload and manifest readback but contained no assertion that the rolling plan was updated/read back or that authenticated bootstrap succeeded. That missing release gate allowed both publications to be marked successful while leaving the backend unusable.
+- Replacing the referenced plan with the repository's validated 28-entry fixture restored a matching D054–D081 prefix. Raw Drive readback reported 28 entries and the live backend then succeeded for confirmation, 39-entry bootstrap with 28 prepared records, calendar activity, comments, highlights, and reading payload; an intentionally invalid empty comment stopped at `COMMENT_EMPTY` before any write.
+
+## Authoritative repair decision
+
+- Keep token authentication, owner-executed deployment identity, reader hashes, Sheet permissions, and Apps Script version 29 unchanged; direct evidence shows all are valid.
+- Treat `CONTENT_INVALID` and other durable backend publication/configuration failures as a retained-data service fault, not as offline reachability. Preserve cached studies, drafts, and the outbox; show a concise actionable state and do not continue dependent background calls during the same failed refresh cycle.
+- Preserve explicit authentication failures as fail-closed reader-code gates. Preserve genuinely transient transport errors as offline/retryable states.
+- Require future publication records and the scheduled workflow to verify rolling-plan readback before manifest promotion and a real authenticated bootstrap read after promotion. A manifest-only assertion is insufficient.
 
 ## Focused validation
 
@@ -133,3 +153,17 @@ Repeat the installed-iPhone update/reopen check without clearing downloaded data
 - A live 390×844 Chromium probe with a fabricated invalid reader code completed the real Apps Script bridge in 2.6 seconds, returned the expected denial envelope, and reported no CSP violation.
 - Live artifacts: unchanged frontend `f08fa5a23afa3ea2`; PWA `ff1e8a6ddead3094`.
 - Apps Script version 29, rollback deployments, Drive/Sheet state, private content, reader codes/hashes, and device cache were not changed.
+
+## Authoritative private-state repair and client result
+
+- A direct authenticated diagnostic proved that the Dustin reader code, token hashing, reader identity, and Apps Script request bridge succeeded. The next call, `getBootstrapData`, failed with `CONTENT_INVALID`; this was a downstream private-state validation fault rather than an authentication or transport failure.
+- The manifest contained the contiguous D054–D081 prepared prefix while its referenced active rolling plan stopped at D079. The referenced plan was repaired in place from the already validated 28-entry local plan. Exact raw Drive readback now contains D054–D081 in the manifest's order, and authenticated bootstrap, calendar activity, comments, highlights, and reading-payload reads all succeed. An empty invalid comment probe stopped at `COMMENT_EMPTY` before any write.
+- Cached-shell confirmation now remains provisional until authoritative bootstrap succeeds. A durable content/publication failure retains the cached plan, studies, drafts, and outbox, reports **Study service update is incomplete** rather than **Offline**, and starts none of the dependent calendar/comment/highlight/background calls. Explicit access failures still invalidate confirmed access and fail closed; genuine transport failures retain the offline wording.
+- The commentary/publication workflow and the active **Prepare Daily Bible Reader T+7** automation now require exact rolling-plan bytes, exact ordered plan/manifest-prefix equality, and a successful real authenticated bootstrap after manifest-last promotion. A failed post-promotion health check restores and verifies the prior manifest or reports an explicit incident.
+
+## Authoritative repair validation
+
+- Focused frontend checks passed: `node --check app/frontend/app.js`, 59/59 outbox/frontend tests, and `git diff --check`.
+- The complete local release gate passed: repository safety over 318 files, all content/source/private validators, 254/254 tests, every build, and exact tracked Pages verification.
+- Immutable release candidate: frontend `3e0281c1ba2d501c`; PWA `41ea61216d032f66`.
+- A fabricated 390×844 browser smoke exercised both boundaries. Confirmation plus healthy bootstrap set confirmed access and started 13 downstream calls; confirmation plus `CONTENT_INVALID` retained the plan/session, started zero downstream calls, displayed the precise incomplete-service state, produced no horizontal overflow, and logged no application error.

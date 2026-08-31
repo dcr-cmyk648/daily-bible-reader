@@ -2780,6 +2780,37 @@
       "READER_CODE_REQUIRED", "READER_CODE_INVALID", "CONTENT_ACCESS_DENIED"].includes(error.code));
   }
 
+  function contentServiceFailure(error) {
+    return Boolean(error && ["CONTENT_INVALID", "CONTENT_MISMATCH", "SOURCE_REGISTRY_INVALID",
+      "INVALID_MANIFEST", "INVALID_PLAN", "PLAN_VERSION_MISMATCH", "INVALID_SERVER_CONFIG"].includes(error.code));
+  }
+
+  function commentStoreFailure(error) {
+    return Boolean(error && ["COMMENT_STORE_BUSY", "COMMENT_STORE_UNAVAILABLE"].includes(error.code));
+  }
+
+  function transportFailure(error) {
+    return Boolean(!error || ["BRIDGE_UNAVAILABLE", "SERVER_ERROR", "SERVER_TIMEOUT", "SERVER_UNAVAILABLE"].includes(error.code));
+  }
+
+  function retainedCalendarFailureStatus(error) {
+    if (contentServiceFailure(error)) return "Study service update is incomplete · saved calendar retained";
+    if (commentStoreFailure(error)) return "Shared discussion is unavailable · saved calendar retained";
+    if (transportFailure(error)) return "Offline · showing both readers’ last saved progress.";
+    return "Shared discussion update needs attention · saved calendar retained";
+  }
+
+  function retainedOutboxFailureStatus(error) {
+    if (contentServiceFailure(error)) return "Study service update is incomplete · comment saved locally";
+    if (commentStoreFailure(error)) return "Shared discussion is unavailable · comment saved locally";
+    if (transportFailure(error)) return "Offline · comment saved locally";
+    if (error && ["REVISION_CONFLICT", "COMMENT_EMPTY", "COMMENT_FORBIDDEN", "COMMENT_INVALID",
+      "COMMENT_NOT_FOUND", "COMMENT_TOO_LARGE", "INVALID_COMMENT_EVENT", "INVALID_REVISION"].includes(error.code)) {
+      return "Comment update needs attention · saved locally";
+    }
+    return "Comment sync needs attention · saved locally";
+  }
+
   function serverCallsAllowed() {
     return Boolean(state.adapter && (state.adapter.kind === "mock" || state.serverAccessConfirmed));
   }
@@ -2847,6 +2878,7 @@
         return {state: "refreshed"};
       } catch (error) {
         if (explicitAccessFailure(error)) {
+          state.serverAccessConfirmed = false;
           handleFatalError(error);
           return {state: "denied"};
         }
@@ -3543,10 +3575,16 @@
         markStartupMilestone("freshDataSynchronized");
         element("calendarStatus").textContent = "Dustin and Shane’s progress is synchronized from shared comments.";
         setSyncStatus("Calendar synchronized");
-      } catch {
+      } catch (error) {
+        if (explicitAccessFailure(error)) {
+          state.serverAccessConfirmed = false;
+          handleFatalError(error);
+          return;
+        }
         await hydrateCalendarCompletion();
-        element("calendarStatus").textContent = "Offline · showing both readers’ last saved progress.";
-        setSyncStatus("Offline · saved calendar available");
+        const status = retainedCalendarFailureStatus(error);
+        element("calendarStatus").textContent = status;
+        setSyncStatus(status);
       } finally {
         button.disabled = false;
       }
@@ -4283,8 +4321,13 @@
         await state.store.delete("commentOutbox", item.clientRequestId);
         if (result && result.event) await state.store.put("commentSnapshot", result.event);
       } catch (error) {
+        if (explicitAccessFailure(error)) {
+          state.serverAccessConfirmed = false;
+          handleFatalError(error);
+          return;
+        }
         await state.store.put("commentOutbox", {...item, status: "error", errorCode: error.code || "SYNC_FAILED"});
-        setSyncStatus(error.code === "REVISION_CONFLICT" ? "Edit conflict · refresh required" : "Sync paused · retry available");
+        setSyncStatus(retainedOutboxFailureStatus(error));
         break;
       }
     }
@@ -4660,16 +4703,18 @@
       }
       await installBootstrap(bootstrap, {cached: false});
       await persistBootstrap(bootstrap);
-      startConfirmedBackgroundWork();
+      return true;
     } catch (error) {
       if (explicitAccessFailure(error)) {
         state.serverAccessConfirmed = false;
         await clearPrivateDataAfterAccessFailure();
         handleFatalError(error);
-        return;
+        return null;
       }
-      setSyncStatus("Saved data ready · background refresh will retry later");
-      startConfirmedBackgroundWork();
+      setSyncStatus(contentServiceFailure(error)
+        ? "Study service update is incomplete · saved data retained"
+        : "Saved data ready · background refresh will retry later");
+      return false;
     }
   }
 
@@ -4692,6 +4737,8 @@
           if (JSON.stringify(confirmedParticipants) !== JSON.stringify(cachedParticipants)) {
             throw appError("The authorized reader roster changed.", "AUTH_REQUIRED");
           }
+          const refreshed = await refreshBootstrapAfterConfirmation(expectedAuthorId);
+          if (!refreshed) return false;
           state.serverAccessConfirmed = true;
           markStartupMilestone("authorizationConfirmed");
           state.bootstrap = {...state.bootstrap, appBuildId: confirmation.appBuildId, appUrl: confirmation.appUrl};
@@ -4699,8 +4746,8 @@
           element("authStatus").textContent = `Reading as ${state.session.displayName}`;
           await rememberConfirmedDevice();
           setBanner("");
-          setSyncStatus("Ready · refreshing saved data in the background");
-          refreshBootstrapAfterConfirmation(expectedAuthorId).catch(() => {});
+          setSyncStatus("Ready");
+          startConfirmedBackgroundWork();
           return true;
         }
         const bootstrap = await state.adapter.getBootstrapData();
@@ -4865,6 +4912,8 @@
     catalogResourceByKey,
     civilDayNumber,
     compactOutbox,
+    contentServiceFailure,
+    commentStoreFailure,
     createRequestId,
     createBrowserStore,
     dateOnlyForDay,
@@ -4882,6 +4931,8 @@
     privatePayloadNeedsBlockingRefresh,
     privatePayloadRevision,
     privateRecordIsFresh,
+    retainedCalendarFailureStatus,
+    retainedOutboxFailureStatus,
     readingContentIsPrepared,
     readingRequiresPartitionedScripture,
     readingPreparationReport,

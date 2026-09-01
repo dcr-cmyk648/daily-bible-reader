@@ -1,5 +1,4 @@
 import {createHash} from "node:crypto";
-import {authorizedBridgeSourceDay} from "./bridge-extension.mjs";
 import {evaluateContentProtocolFreshness, protocolDescriptorIsValid} from "./daily-study-protocol.mjs";
 
 const REQUIRED_COMPONENTS = Object.freeze([
@@ -59,25 +58,22 @@ export function privateReadingReady({entry, metadata, markdownBytes, manifestHas
 export function buildRollingStudyWorkOrder({plan, privatePlan = plan, appConfig, referencePlan, metrics, today, issuedAt,
   protocol, readingArtifacts = {}, metadata = null, markdownBytes = null, manifestHasReading = false}) {
   if (!protocolDescriptorIsValid(protocol)) throw new Error("A valid canonical daily-study protocol is required.");
-  const firstSourceDay = plan.entries[0].sourcePlanDay;
-  const finalSourceDay = plan.entries.at(-1).sourcePlanDay;
   const lookaheadDays = appConfig.futureLookaheadDays;
-  const rawCurrentSourceDay = firstSourceDay + Math.max(0, civilDayOffset(appConfig.sharedStartDate, today));
-  const sourceDay = Math.min(authorizedBridgeSourceDay({plan, appConfig, today}), finalSourceDay);
+  const rawCurrentDayIndex = 1 + Math.max(0, civilDayOffset(appConfig.sharedStartDate, today));
+  const targetDayIndex = Math.min(rawCurrentDayIndex + lookaheadDays, plan.entries.length);
   const targetDate = addCivilDays(today, lookaheadDays);
-  const currentSourceDay = Math.min(Math.max(firstSourceDay, rawCurrentSourceDay), finalSourceDay);
   if (!privatePlan || privatePlan.planVersion !== plan.planVersion || !Array.isArray(privatePlan.entries) ||
       privatePlan.entries.some((candidate, index) => !plan.entries[index] ||
         candidate.readingId !== plan.entries[index].readingId ||
-        candidate.sourcePlanDay !== plan.entries[index].sourcePlanDay)) {
+        candidate.dayIndex !== plan.entries[index].dayIndex)) {
     throw new Error("The private prepared plan must be a contiguous prefix of the complete schedule.");
   }
-  const horizonEntries = rawCurrentSourceDay > finalSourceDay ? [] : plan.entries.filter((candidate) =>
-    candidate.sourcePlanDay >= currentSourceDay && candidate.sourcePlanDay <= sourceDay);
+  const horizonEntries = rawCurrentDayIndex > plan.entries.length ? [] : plan.entries.filter((candidate) =>
+    candidate.dayIndex >= rawCurrentDayIndex && candidate.dayIndex <= targetDayIndex);
   // `readingArtifacts` must cover the entire horizon. Missing evidence is
   // deliberately stale: choosing a later entry without inspecting a prefix
   // record could skip a failed or corrupt private publication.
-  const legacyTarget = plan.entries.find((candidate) => candidate.sourcePlanDay === sourceDay);
+  const legacyTarget = plan.entries.find((candidate) => candidate.dayIndex === targetDayIndex);
   const artifacts = {...readingArtifacts};
   if (legacyTarget && !Object.hasOwn(artifacts, legacyTarget.readingId) &&
       (metadata !== null || markdownBytes !== null || manifestHasReading)) {

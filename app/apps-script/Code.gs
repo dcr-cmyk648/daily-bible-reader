@@ -93,25 +93,24 @@ const DBR_ESV_POLICY = {
 };
 
 const DBR_BOOK_NAMES = {
-  "1PE": "1 Peter",
-  "2PE": "2 Peter",
-  HAB: "Habakkuk",
-  HAG: "Haggai",
-  JAS: "James",
-  MAL: "Malachi",
-  MIC: "Micah",
-  NAM: "Nahum",
-  PSA: "Psalms",
-  PRO: "Proverbs",
-  ZEC: "Zechariah",
-  ZEP: "Zephaniah"
+  GEN: "Genesis", EXO: "Exodus", LEV: "Leviticus", NUM: "Numbers", DEU: "Deuteronomy",
+  JOS: "Joshua", JDG: "Judges", RUT: "Ruth", "1SA": "1 Samuel", "2SA": "2 Samuel",
+  "1KI": "1 Kings", "2KI": "2 Kings", "1CH": "1 Chronicles", "2CH": "2 Chronicles", EZR: "Ezra",
+  NEH: "Nehemiah", EST: "Esther", JOB: "Job", PSA: "Psalms", PRO: "Proverbs",
+  ECC: "Ecclesiastes", SNG: "Song of Solomon", ISA: "Isaiah", JER: "Jeremiah", LAM: "Lamentations",
+  EZK: "Ezekiel", DAN: "Daniel", HOS: "Hosea", JOL: "Joel", AMO: "Amos",
+  OBA: "Obadiah", JON: "Jonah", MIC: "Micah", NAM: "Nahum", HAB: "Habakkuk",
+  ZEP: "Zephaniah", HAG: "Haggai", ZEC: "Zechariah", MAL: "Malachi", MAT: "Matthew",
+  MRK: "Mark", LUK: "Luke", JHN: "John", ACT: "Acts", ROM: "Romans",
+  "1CO": "1 Corinthians", "2CO": "2 Corinthians", GAL: "Galatians", EPH: "Ephesians", PHP: "Philippians",
+  COL: "Colossians", "1TH": "1 Thessalonians", "2TH": "2 Thessalonians", "1TI": "1 Timothy", "2TI": "2 Timothy",
+  TIT: "Titus", PHM: "Philemon", HEB: "Hebrews", JAS: "James", "1PE": "1 Peter",
+  "2PE": "2 Peter", "1JN": "1 John", "2JN": "2 John", "3JN": "3 John", JUD: "Jude", REV: "Revelation"
 };
-const DBR_BRIDGE_SOURCE_DAY_MIN = 54;
-const DBR_BRIDGE_SOURCE_DAY_MAX = 92;
 const DBR_PRIVATE_BATCH_MAX = 8;
 // Replaced only in the new backend build with tracked factual schedule metadata.
 // The private Drive plan remains the bounded prepared prefix for rollback compatibility.
-const DBR_COMPLETE_BRIDGE_SCHEDULE = JSON.parse("{\"__dbr_complete_bridge_schedule__\":true}");
+const DBR_ACTIVE_CALENDAR = JSON.parse("{\"__dbr_active_calendar__\":true}");
 
 function doGet() {
   const output = HtmlService.createHtmlOutputFromFile("Index")
@@ -138,7 +137,7 @@ function getBootstrapData(readerCode) {
       appBuildId: DBR_BUILD_ID,
       appUrl: ScriptApp.getService().getUrl(),
       config: privateState.config,
-      plan: privateState.plan,
+      plan: dbrCompactPlan_(privateState.plan),
       providerPolicy: DBR_ESV_POLICY,
       session: context.identity,
       participants: context.participants,
@@ -675,10 +674,9 @@ function dbrValidatePrivateConfig_(config, plan, manifest) {
       config.privateContentCacheMaxAgeSeconds > 1209600) {
     throw dbrError_("CONTENT_INVALID", "Schedule or offline configuration is invalid.");
   }
-  if (!plan || plan.schemaVersion !== "plan/v1" || plan.planVersion !== "celebration-y3q4-bridge-2026-v1" ||
-      !Array.isArray(plan.entries) || plan.entries.length < 1 ||
-      plan.entries.length > DBR_BRIDGE_SOURCE_DAY_MAX - DBR_BRIDGE_SOURCE_DAY_MIN + 1) {
-    throw dbrError_("CONTENT_INVALID", "The rolling bridge plan is invalid.");
+  if (!plan || plan.schemaVersion !== "plan/v1" || plan.planVersion !== DBR_ACTIVE_CALENDAR.planVersion ||
+      !Array.isArray(plan.entries) || plan.entries.length < 1 || plan.entries.length > DBR_ACTIVE_CALENDAR.entries.length) {
+    throw dbrError_("CONTENT_INVALID", "The rolling prepared plan is invalid.");
   }
   try {
     DBRServerCore.validatePlanStructure(plan);
@@ -692,23 +690,15 @@ function dbrValidatePrivateConfig_(config, plan, manifest) {
   const currentPlanDay = Math.max(1,
     dbrCivilDayNumber_(today) - dbrCivilDayNumber_(effectiveStartDate) + 1);
   const maximumRollingEntries = Math.min(
-    DBR_BRIDGE_SOURCE_DAY_MAX - DBR_BRIDGE_SOURCE_DAY_MIN + 1,
+    DBR_ACTIVE_CALENDAR.entries.length,
     currentPlanDay + config.preparedAheadDays
   );
   if (plan.entries.length > maximumRollingEntries) {
     throw dbrError_("CONTENT_INVALID", "The rolling prepared plan extends beyond the authorized seven-day horizon.");
   }
-  plan.entries.forEach(function (entry, index) {
-    const sourcePlanDay = DBR_BRIDGE_SOURCE_DAY_MIN + index;
-    const expectedReadingId = "CC-Y3Q4-D" + String(sourcePlanDay).padStart(3, "0");
-    if (!entry || entry.readingId !== expectedReadingId || entry.sourcePlanDay !== sourcePlanDay ||
-        entry.dayIndex !== index + 1 ||
-        entry.kind !== "chapter" || !Array.isArray(entry.passages) || !entry.passages.length ||
-        entry.passages.length > 5 || entry.bookId !== entry.passages[0].bookId ||
-        entry.chapter !== entry.passages[0].chapter) {
-      throw dbrError_("CONTENT_INVALID", "Bridge plan order or passage configuration is invalid.");
-    }
-  });
+  if (plan.entries.some(function (entry, index) {
+    return JSON.stringify(entry) !== JSON.stringify(DBR_ACTIVE_CALENDAR.entries[index]);
+  })) throw dbrError_("CONTENT_INVALID", "Prepared plan does not match the active calendar prefix.");
   if (manifest) {
     try {
       const prepared = DBRServerCore.manifestPreparedReadingIds(plan, manifest);
@@ -720,27 +710,41 @@ function dbrValidatePrivateConfig_(config, plan, manifest) {
 }
 
 function dbrResolveCompleteBridgeSchedule_(privatePlan, manifest) {
-  const fullPlan = DBR_COMPLETE_BRIDGE_SCHEDULE;
+  const fullPlan = DBR_ACTIVE_CALENDAR;
   if (!fullPlan || fullPlan.schemaVersion !== "plan/v1" ||
       fullPlan.planVersion !== privatePlan.planVersion ||
       !Array.isArray(fullPlan.entries) ||
-      fullPlan.entries.length !== DBR_BRIDGE_SOURCE_DAY_MAX - DBR_BRIDGE_SOURCE_DAY_MIN + 1) {
-    throw dbrError_("CONTENT_INVALID", "The compiled bridge schedule is invalid.");
+      fullPlan.entries.length !== 1263) {
+    throw dbrError_("CONTENT_INVALID", "The compiled active calendar is invalid.");
   }
   try {
     DBRServerCore.validatePlanStructure(fullPlan);
     const preparedIds = DBRServerCore.manifestPreparedReadingIds(fullPlan, manifest);
     if (preparedIds.length !== privatePlan.entries.length ||
         privatePlan.entries.some(function (entry, index) {
-          return !entry || entry.readingId !== fullPlan.entries[index].readingId ||
-            entry.sourcePlanDay !== fullPlan.entries[index].sourcePlanDay;
+          return !entry || JSON.stringify(entry) !== JSON.stringify(fullPlan.entries[index]);
         })) {
       throw new Error("Prepared prefix does not match compiled schedule.");
     }
   } catch (_) {
-    throw dbrError_("CONTENT_INVALID", "The prepared bridge prefix does not match the compiled schedule.");
+    throw dbrError_("CONTENT_INVALID", "The prepared prefix does not match the active calendar.");
   }
   return fullPlan;
+}
+
+function dbrCompactPlan_(plan) {
+  return {
+    schemaVersion: "compact-plan/v1", planVersion: plan.planVersion, title: plan.title, canonId: plan.canonId, calendarRevision: plan.calendarRevision,
+    bookMetrics: plan.bookMetrics,
+    entries: plan.entries.map(function (entry) {
+      const compact = {planVersion: entry.planVersion, dayIndex: entry.dayIndex, readingId: entry.readingId,
+        kind: entry.kind, bookId: entry.bookId};
+      ["civilDate", "sourcePlanDay", "chapter", "passages", "contextReadingIds"].forEach(function (key) {
+        if (entry[key] !== undefined) compact[key] = entry[key];
+      });
+      return compact;
+    })
+  };
 }
 
 function dbrReadTextFile_(fileId, maxBytes) {

@@ -240,6 +240,9 @@
   }
 
   function validatePlan(plan) {
+    if (plan && plan.schemaVersion === "compact-plan/v1") {
+      plan = {...plan, schemaVersion: "plan/v1"};
+    }
     if (!plan || !Array.isArray(plan.entries) || !plan.entries.length) {
       throw appError("The active reading plan is unavailable.", "INVALID_PLAN");
     }
@@ -421,13 +424,30 @@
     return {...schedule, libraryMode: true};
   }
 
+  function isActivatedLongTermOccurrence(entry) {
+    return Boolean(entry && entry.planVersion === "celebration-y3q4-bridge-2026-v1" &&
+      /^LTP-\d{4}-/.test(String(entry.readingId || "")) && entry.dayIndex > 39);
+  }
+
+  function occurrencePositionLabel(entry, planLength, mode) {
+    const generic = mode === "library"
+      ? `day ${entry.dayIndex} of ${planLength}`
+      : `Day ${entry.dayIndex} of ${planLength}`;
+    if (entry.sourcePlanDay) {
+      return mode === "library"
+        ? `bridge day ${entry.dayIndex} of ${planLength}`
+        : `Original plan day ${entry.sourcePlanDay} of 92 · Bridge day ${entry.dayIndex} of ${planLength}`;
+    }
+    if (!isActivatedLongTermOccurrence(entry)) return generic;
+    const longTerm = `day ${entry.dayIndex - 39} of ${planLength - 39}`;
+    return mode === "library" ? `long-term ${longTerm}` : `Four-stream plan · ${longTerm}`;
+  }
+
   function libraryPositionLabel(entry, resource, planLength) {
     const resourceLabel = resource
       ? `${bookNameForId(resource.bookId)} · ${resource.displayLabel || resource.label}`
       : titleForEntry(entry);
-    const occurrenceLabel = entry.sourcePlanDay
-      ? `bridge day ${entry.dayIndex} of ${planLength}`
-      : `day ${entry.dayIndex} of ${planLength}`;
+    const occurrenceLabel = occurrencePositionLabel(entry, planLength, "library");
     return `Library · ${resourceLabel} · ${occurrenceLabel}`;
   }
 
@@ -902,7 +922,7 @@
         const configPath = mhcPilotMode() ? "/__mhc/config.json" : "../../fixtures/pilot-content/app-config.json";
         const planPath = mhcPilotMode()
           ? "/__mhc/plan.json"
-          : "../../config/bridge-schedules/celebration-y3q4-bridge-full.json";
+          : "../../config/active-calendar/celebration-bridge-long-term-active.json";
         const registryPath = mhcPilotMode()
           ? "/__mhc/registry.json"
           : privateDraftMode()
@@ -2665,7 +2685,9 @@
       record.schemaVersion === BOOTSTRAP_CACHE_SCHEMA && record.payload &&
       record.authorId && credential && credential.authorId === record.authorId &&
       Number.isFinite(Date.parse(record.expiresAt)) && Date.parse(record.expiresAt) > now &&
-      record.payload.session && record.payload.session.authorId === record.authorId);
+      record.payload.session && record.payload.session.authorId === record.authorId &&
+      !(record.payload.plan && record.payload.plan.planVersion === "celebration-y3q4-bridge-2026-v1" &&
+        !/^[a-f0-9]{64}$/.test(String(record.payload.plan.calendarRevision || ""))));
   }
 
   async function cachedBootstrapForCredential(credential) {
@@ -3344,9 +3366,7 @@
     element("selectedDayDate").textContent = fullCalendarDate(day.date);
     element("selectedDayTitle").textContent = day.entry ? titleForEntry(day.entry) : "No reading scheduled";
     element("selectedDayPosition").textContent = day.entry
-      ? day.entry.sourcePlanDay
-        ? `Original plan day ${day.entry.sourcePlanDay} of 92 · Bridge day ${day.entry.dayIndex} of ${state.plan.entries.length}`
-        : `Day ${day.entry.dayIndex} of ${state.plan.entries.length}`
+      ? occurrencePositionLabel(day.entry, state.plan.entries.length, "selected")
       : "This date is outside the current active reading plan.";
     const completion = element("selectedDayCompletion");
     completion.replaceChildren();
@@ -3720,9 +3740,7 @@
     element("readingDate").textContent = formatReadingDate(schedule.readingDate);
     element("readingPosition").textContent = schedule.libraryMode
       ? libraryPositionLabel(entry, state.currentLibraryResource, state.plan.entries.length)
-      : entry.sourcePlanDay
-        ? `Original plan day ${entry.sourcePlanDay} of 92 · Bridge day ${entry.dayIndex} of ${state.plan.entries.length}`
-        : `Day ${entry.dayIndex} of ${state.plan.entries.length}`;
+      : occurrencePositionLabel(entry, state.plan.entries.length, "reading");
     const passageCount = Array.isArray(entry.passages) ? entry.passages.length : 1;
     element("readingKind").textContent = entry.kind === "book_intro"
       ? "Book introduction day"
@@ -4611,9 +4629,10 @@
   async function installBootstrap(bootstrap, options) {
     const hadApplication = Boolean(state.plan && state.session);
     const previousPlanVersion = state.plan && state.plan.planVersion;
+    const previousCalendarRevision = state.plan && state.plan.calendarRevision;
     const previousAppBuildId = state.bootstrap && state.bootstrap.appBuildId;
     applyBootstrapState(bootstrap);
-    if (hadApplication && (previousPlanVersion !== state.plan.planVersion ||
+    if (hadApplication && (previousPlanVersion !== state.plan.planVersion || previousCalendarRevision !== state.plan.calendarRevision ||
         previousAppBuildId !== bootstrap.appBuildId)) resetScriptureMemory();
     hideReaderCodeGate();
     element("authStatus").textContent = state.adapter.kind === "mock"
@@ -4945,6 +4964,7 @@
     ensureCurrentHighlightAccess,
     listCurrentHighlights,
     libraryPositionLabel,
+    occurrencePositionLabel,
     registerHighlightEnhancer,
     safeExternalUrl,
     safeVersionedAppUrl,

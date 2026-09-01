@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daily-bible-reader.local/schemas/active-calendar-activation.schema.json",
+  "title": "Daily Bible Reader active calendar activation",
+  "type": "object",
+  "required": ["schemaVersion", "activePlanVersion", "bridgeEntryCount", "activatedSourcePlanVersion", "activatedSourceScheduleSha256", "activeScheduleSha256"],
+  "properties": {
+    "schemaVersion": {"const": "active-calendar-activation/v1"},
+    "activePlanVersion": {"type": "string", "minLength": 1, "maxLength": 80},
+    "bridgeEntryCount": {"const": 39},
+    "activatedSourcePlanVersion": {"type": "string", "minLength": 1, "maxLength": 80},
+    "activatedSourceScheduleSha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "activeScheduleSha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  },
+  "additionalProperties": false
+}

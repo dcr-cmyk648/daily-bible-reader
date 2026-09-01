@@ -10,8 +10,8 @@ import process from "node:process";
 const ROOT = process.cwd();
 const PORT = Number(process.env.DBR_PORT || 4173);
 const HOST = "127.0.0.1";
-const ACTIVE_PLAN = JSON.parse(await readFile(path.join(ROOT, "config/bridge-schedules/celebration-y3q4-bridge-full.json"), "utf8"));
-const BRIDGE_READING_IDS = ACTIVE_PLAN.entries.map((entry) => entry.readingId);
+const ACTIVE_PLAN = JSON.parse(await readFile(path.join(ROOT, "config/active-calendar/celebration-bridge-long-term-active.json"), "utf8"));
+const ACTIVE_READING_IDS = ACTIVE_PLAN.entries.map((entry) => entry.readingId);
 const MHC_PILOT_READING_IDS = ["intro-GEN", "GEN-001"];
 const MHC_WINDOW_ROOT = path.join(ROOT, "private-commentary", "mhc", "stores", "current-window");
 const ALLOWED_PREFIXES = ["app/frontend/", "app/shared/", "fixtures/", "config/", "web/"];
@@ -107,7 +107,7 @@ async function windowStoreManifest() {
 }
 
 async function windowStoreReading(readingId) {
-  if (!BRIDGE_READING_IDS.includes(readingId)) throw new Error("Unknown reading");
+  if (!ACTIVE_READING_IDS.includes(readingId)) throw new Error("Unknown reading");
   try {
     const manifest = await windowStoreManifest();
     const descriptor = manifest.readings.find((candidate) => candidate.reading_id === readingId);
@@ -130,7 +130,7 @@ async function windowStoreReading(readingId) {
 }
 
 async function privateDraftPayload(readingId) {
-  if (!BRIDGE_READING_IDS.includes(readingId)) throw new Error("Unknown reading");
+  if (!ACTIVE_READING_IDS.includes(readingId)) throw new Error("Unknown reading");
   const contentDir = path.join(ROOT, "private-content/bridge/celebration-y3q4");
   const [markdown, metadata, registry] = await Promise.all([
     readFile(path.join(contentDir, `${readingId}.md`), "utf8"),
@@ -309,7 +309,7 @@ const server = createServer(async (request, response) => {
   const mhcWindowReading = /^\/__mhc\/window\/readings\/([A-Za-z0-9_-]+)\.json$/.exec(url.pathname);
   if (mhcWindowReading) {
     try {
-      if (!BRIDGE_READING_IDS.includes(mhcWindowReading[1])) throw new Error("Reading is outside the active plan");
+      if (!ACTIVE_READING_IDS.includes(mhcWindowReading[1])) throw new Error("Reading is outside the active plan");
       const reading = await windowStoreReading(mhcWindowReading[1]);
       if (!reading) throw new Error("Reading is outside the current window");
       sendJson(response, 200, reading, headers);
@@ -356,7 +356,7 @@ const server = createServer(async (request, response) => {
   const privateReading = /^\/__private\/reading\/([A-Za-z0-9_-]+)\.json$/.exec(url.pathname);
   if (privateReading) {
     try {
-      if (!BRIDGE_READING_IDS.includes(privateReading[1])) throw new Error("Reading is outside the active plan");
+      if (!ACTIVE_READING_IDS.includes(privateReading[1])) throw new Error("Reading is outside the active plan");
       sendJson(response, 200, await privateDraftPayload(privateReading[1]), headers);
     } catch {
       sendJson(response, 404, {error: "Private draft reading is unavailable."}, headers);

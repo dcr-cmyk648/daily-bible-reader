@@ -22,6 +22,13 @@ function privatePrefix(plan, lastSourceDayInclusive) {
   return privatePlan;
 }
 
+function activeInputs() {
+  const base = inputs();
+  base.plan = json("config/active-calendar/celebration-bridge-long-term-active.json");
+  base.privatePlan = { ...base.privatePlan, entries: base.privatePlan.entries.slice() };
+  return base;
+}
+
 function reviewedArtifact(entry) {
   const markdownBytes = Buffer.from(`FABRICATED PRIVATE COMMENTARY FOR ${entry.readingId}`);
   return {
@@ -189,4 +196,14 @@ test("readiness requires exact private bytes, reviewed Henry, and manifest prese
   assert.equal(privateReadingReady({entry, metadata: linked, markdownBytes, manifestHasReading: true, protocol}), true);
   linked.henrySourceLink.url = "javascript:alert(1)";
   assert.equal(privateReadingReady({entry, metadata: linked, markdownBytes, manifestHasReading: true, protocol}), false);
+});
+
+test("the rolling horizon crosses into the active long-term calendar by day index", () => {
+  const base = activeInputs();
+  const readingArtifacts = Object.fromEntries(base.plan.entries.slice(32, 39)
+    .map((entry) => [entry.readingId, reviewedArtifact(entry)]));
+  const order = buildRollingStudyWorkOrder({...base, today: "2026-09-09", readingArtifacts});
+  assert.equal(order.reading.readingId, "LTP-0001-GEN-INTRO");
+  assert.equal(order.planExtensionRequired, true);
+  assert.equal(order.reading.dayIndex, 40);
 });

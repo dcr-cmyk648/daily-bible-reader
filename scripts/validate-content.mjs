@@ -244,7 +244,7 @@ async function main() {
   assert(/PropertiesService\.getUserProperties\(\)/.test(code) && /DBR_READER_ENROLLMENT/.test(code), "Apps Script must support per-user reader enrollment.");
   assert(/readerCodeHash:\s*presentedReaderCodeHash/.test(code), "Per-user enrollment may store only the verified reader-code hash.");
   assert(!/Logger\.log\s*\(/.test(code), "Apps Script must not log reader codes or private payloads.");
-  assert(/DBR_COMPLETE_BRIDGE_SCHEDULE/.test(code), "Apps Script must compile the full factual bridge schedule separately from private Drive content.");
+  assert(/DBR_ACTIVE_CALENDAR/.test(code), "Apps Script must compile the full active calendar separately from private Drive content.");
 
   const ignore = await readFile(path.join(ROOT, ".gitignore"), "utf8");
   ["private-content/", "private-commentary/", "research/raw/", ".clasp.json", "config/*.local.json", "dist/"].forEach((entry) =>

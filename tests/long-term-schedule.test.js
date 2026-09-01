@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
+import {spawnSync} from "node:child_process";
 import {readFile} from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import {candidateMetrics, buildLongTermCandidate, renderLongTermDailySchedule, validateLongTermCandidate} from "../scripts/lib/long-term-schedule.mjs";
+import {ACTIVE_PLAN_VERSION, buildActiveCalendar, compactActiveCalendar, extendActivePrefix} from "../scripts/lib/active-calendar.mjs";
+import {validateAgainstSchema} from "../scripts/lib/schema-validator.mjs";
 
 const ROOT = process.cwd();
 const INPUT_PATH = path.join(ROOT, "config", "long-term-plan", "four-stream-candidate-input.json");
@@ -98,4 +101,54 @@ test("v2 validator rejects duplicate/gapped contributions, broken introduction a
   mutate((copy) => { copy.candidateMetadata.sundayPolicy = "one_psalm_or_proverbs_unit"; });
   mutate((copy) => { copy.entries[2].streamId = "new_testament"; });
   mutate((copy) => { copy.entries.find((entry) => entry.streamContributions.length === 2).passages.reverse(); });
+});
+
+test("active calendar transforms the locked v2 candidate without mutating it", async () => {
+  const [bridge, candidate] = await Promise.all([
+    load(path.join(ROOT, "config", "bridge-schedules", "celebration-y3q4-bridge-full.json")), load(CANDIDATE_PATH)
+  ]);
+  const before = JSON.stringify(candidate);
+  const {plan, activation} = buildActiveCalendar({bridge, candidate});
+  assert.equal(JSON.stringify(candidate), before);
+  assert.equal(plan.planVersion, ACTIVE_PLAN_VERSION);
+  assert.equal(plan.entries.length, 1263);
+  assert.equal(plan.entries[38].readingId, "CC-Y3Q4-D092");
+  assert.equal(plan.entries[39].readingId, "LTP-0001-GEN-INTRO");
+  assert.equal(plan.entries[39].dayIndex, 40);
+  assert.equal(activation.activatedSourcePlanVersion, candidate.planVersion);
+  assert.equal(activation.activatedSourceScheduleSha256, candidate.candidateMetadata.scheduleSha256);
+  assert.equal(compactActiveCalendar(plan).entries[39].orderingRationale, undefined);
+  const prefix = structuredClone(plan);
+  prefix.entries = prefix.entries.slice(0, 39);
+  const appConfig = {sharedStartDate: "2026-08-08"};
+  const [planSchema, readingSchema] = await Promise.all([
+    load(path.join(ROOT, "schemas", "plan.schema.json")), load(path.join(ROOT, "schemas", "reading.schema.json"))
+  ]);
+  assert.deepEqual(validateAgainstSchema(prefix, planSchema, {externalSchemas: {"reading.schema.json": readingSchema}}), []);
+  prefix.entries.forEach((entry) => assert.deepEqual(validateAgainstSchema(entry, readingSchema), []));
+  assert.ok(prefix.bookMetrics.GEN);
+
+  const introPrefix = extendActivePrefix({privatePlan: prefix, activePlan: plan, appConfig, today: "2026-09-16", lookaheadDays: 7});
+  assert.equal(introPrefix.entries.at(-1).readingId, "LTP-0001-GEN-INTRO");
+  assert.ok(introPrefix.bookMetrics.GEN);
+  const genesisPrefix = extendActivePrefix({privatePlan: introPrefix, activePlan: plan, appConfig, today: "2026-09-17", lookaheadDays: 7});
+  assert.equal(genesisPrefix.entries.at(-1).readingId, "LTP-0002-GEN-001");
+  assert.deepEqual(validateAgainstSchema(genesisPrefix, planSchema, {externalSchemas: {"reading.schema.json": readingSchema}}), []);
+  genesisPrefix.entries.forEach((entry) => assert.deepEqual(validateAgainstSchema(entry, readingSchema), []));
+
+  assert.throws(() => extendActivePrefix({privatePlan: prefix, activePlan: plan, appConfig, today: "bad", lookaheadDays: 7}), /YYYY/);
+  assert.throws(() => extendActivePrefix({privatePlan: prefix, activePlan: plan, appConfig, today: "2026-09-31", lookaheadDays: 7}), /YYYY/);
+  assert.throws(() => extendActivePrefix({privatePlan: prefix, activePlan: plan, appConfig, today: "2026-09-01", lookaheadDays: 7}), /horizon/);
+  assert.throws(() => extendActivePrefix({privatePlan: prefix, activePlan: plan, appConfig, today: "2026-09-16", lookaheadDays: "7"}), /Lookahead/);
+  assert.throws(() => extendActivePrefix({privatePlan: prefix, activePlan: plan, appConfig, today: "2026-09-16", lookaheadDays: 8}), /Lookahead/);
+  const reordered = structuredClone(prefix); [reordered.entries[0], reordered.entries[1]] = [reordered.entries[1], reordered.entries[0]];
+  assert.throws(() => extendActivePrefix({privatePlan: reordered, activePlan: plan, appConfig, today: "2026-09-16", lookaheadDays: 7}), /exactly/);
+  const skipped = structuredClone(prefix); skipped.entries.splice(1, 1);
+  assert.throws(() => extendActivePrefix({privatePlan: skipped, activePlan: plan, appConfig, today: "2026-09-16", lookaheadDays: 7}), /exactly/);
+  const tampered = structuredClone(prefix); tampered.entries[0].bookId = "BAD";
+  assert.throws(() => extendActivePrefix({privatePlan: tampered, activePlan: plan, appConfig, today: "2026-09-16", lookaheadDays: 7}), /exactly/);
+
+  const malformedCli = spawnSync(process.execPath, ["scripts/extend-active-prefix.mjs", "--unknown"], {cwd: ROOT, encoding: "utf8"});
+  assert.notEqual(malformedCli.status, 0);
+  assert.match(malformedCli.stderr, /Usage/);
 });

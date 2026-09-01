@@ -2,11 +2,14 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const vm = require("node:vm");
 
 const app = require("../app/frontend/app.js");
+const serverCore = require("../app/shared/server-core.js");
 const plan = JSON.parse(fs.readFileSync(path.join(__dirname, "../config/bridge-schedules/celebration-y3q4-bridge-full.json"), "utf8"));
 const config = JSON.parse(fs.readFileSync(path.join(__dirname, "../fixtures/pilot-content/app-config.json"), "utf8"));
 const bridgeIds = plan.entries.map((entry) => entry.readingId);
+const activePlan = JSON.parse(fs.readFileSync(path.join(__dirname, "../config/active-calendar/celebration-bridge-long-term-active.json"), "utf8"));
 
 function fixedConfig(overrides = {}) {
   return {...config, sharedStartDateMode: "fixed", testingOverrideEnabled: false, ...overrides};
@@ -20,6 +23,30 @@ function syntheticPlan(count = 4) {
       dayIndex: index + 1,
       readingId: `TST-${String(index + 1).padStart(3, "0")}`
     }))
+  };
+}
+
+function validatorHarness(today = "2026-09-01") {
+  const source = fs.readFileSync(path.join(__dirname, "../app/apps-script/Code.gs"), "utf8")
+    .replace(/JSON\.parse\("\{\\"__dbr_active_calendar__\\":true\}"\)/, `(${JSON.stringify(activePlan)})`);
+  const context = vm.createContext({
+    DBRServerCore: serverCore,
+    Utilities: {formatDate() { return today; }}
+  });
+  new vm.Script(`${source}\nglobalThis.__validatePrivateConfig = dbrValidatePrivateConfig_;`, {filename: "Code.gs"}).runInContext(context);
+  return context.__validatePrivateConfig;
+}
+
+function validManifestFor(entries) {
+  const fileId = (suffix) => `FABRICATED${suffix}ID`;
+  return {
+    schemaVersion: "private-manifest/v1",
+    appConfigFileId: fileId("CONFIG"),
+    planFileId: fileId("PLAN"),
+    sourceRegistryFileId: fileId("SOURCES"),
+    readings: Object.fromEntries(entries.map((entry, index) => [entry.readingId, {
+      contentFileId: fileId(`CONTENT${index}`), metadataFileId: fileId(`METADATA${index}`)
+    }]))
   };
 }
 
@@ -167,4 +194,65 @@ test("monthly calendar preserves Detroit civil dates across daylight saving", ()
   assert.equal(calendar.todayDate, "2026-03-09");
   assert.equal(calendar.calendarDayIndex, 3);
   assert.equal(calendar.days.find((day) => day.isToday).entry.readingId, "TST-003");
+});
+
+test("active calendar preserves bridge events and labels the September long-term transition", () => {
+  assert.equal(activePlan.entries.length, 1263);
+  assert.equal(activePlan.entries[38].readingId, "CC-Y3Q4-D092");
+  assert.equal(activePlan.entries[39].readingId, "LTP-0001-GEN-INTRO");
+  assert.equal(activePlan.entries[40].readingId, "LTP-0002-GEN-001");
+  const calendar = app.buildMonthCalendar(activePlan, config, new Date("2026-09-16T16:00:00Z"), new Set(), "2026-09-01");
+  assert.equal(calendar.days.find((day) => day.date === "2026-09-16").shortTitle, "Genesis: Book Introduction");
+  assert.equal(calendar.days.find((day) => day.date === "2026-09-17").shortTitle, "Genesis 1");
+});
+
+test("local mock defaults to the active calendar while ordinary future locks still apply", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
+  assert.match(source, /config\/active-calendar\/celebration-bridge-long-term-active\.json/);
+  assert.equal(activePlan.entries[39].civilDate, "2026-09-16");
+  assert.equal(activePlan.entries[40].civilDate, "2026-09-17");
+  const lockedConfig = fixedConfig({futureLookaheadDays: 0});
+  const schedule = app.calculateSchedule(activePlan, lockedConfig, new Date("2026-09-16T16:00:00Z"), "LTP-0002-GEN-001");
+  assert.equal(schedule.selectedEntry.readingId, "LTP-0001-GEN-INTRO");
+  const calendar = app.buildMonthCalendar(activePlan, lockedConfig, new Date("2026-09-16T16:00:00Z"), new Set(), "2026-09-01");
+  const genesisOne = calendar.days.find((day) => day.date === "2026-09-17");
+  assert.equal(genesisOne.entry.readingId, "LTP-0002-GEN-001");
+  assert.equal(genesisOne.accessible, false);
+});
+
+test("Apps Script names every active-calendar book and frontend cache requires calendar revision", () => {
+  const code = fs.readFileSync(path.join(__dirname, "../app/apps-script/Code.gs"), "utf8");
+  const match = /const DBR_BOOK_NAMES = (\{[\s\S]*?\n\});/.exec(code);
+  const names = Function(`return (${match[1]})`)();
+  assert.equal(Object.keys(names).length, 66);
+  activePlan.entries.flatMap((entry) => entry.passages || []).forEach((passage) => assert.ok(names[passage.bookId]));
+  const frontend = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
+  assert.match(frontend, /calendarRevision/);
+  assert.match(frontend, /previousCalendarRevision !== state\.plan\.calendarRevision/);
+});
+
+test("Apps Script private-config validator accepts the current active prefix and fails closed on active-calendar changes", () => {
+  const privatePlan = JSON.parse(fs.readFileSync(path.join(__dirname, "../fixtures/pilot-content/plan.json"), "utf8"));
+  const validate = validatorHarness();
+  const manifest = validManifestFor(privatePlan.entries);
+  assert.doesNotThrow(() => validate(config, privatePlan, manifest));
+
+  const changedPassage = structuredClone(privatePlan);
+  changedPassage.entries[0].passages[0].chapter += 1;
+  assert.throws(() => validate(config, changedPassage, manifest), /Prepared plan does not match/);
+
+  const changedBook = structuredClone(privatePlan);
+  changedBook.entries[0].bookId = "GEN";
+  assert.throws(() => validate(config, changedBook, manifest), /Prepared plan does not match/);
+});
+
+test("cached compatibility bootstrap requires a calendar revision while legacy plans remain readable", () => {
+  const record = {readingId: "__app-bootstrap__", schemaVersion: "bootstrap-cache/v1", authorId: "dustin",
+    cachedAt: "2026-09-01T00:00:00Z", expiresAt: "2026-09-02T00:00:00Z",
+    payload: {session: {authorId: "dustin"}, plan: {planVersion: "celebration-y3q4-bridge-2026-v1", calendarRevision: activePlan.calendarRevision}}};
+  assert.equal(app.bootstrapRecordIsFresh(record, Date.parse("2026-09-01T12:00:00Z"), {authorId: "dustin"}), true);
+  delete record.payload.plan.calendarRevision;
+  assert.equal(app.bootstrapRecordIsFresh(record, Date.parse("2026-09-01T12:00:00Z"), {authorId: "dustin"}), false);
+  record.payload.plan.planVersion = "legacy-v1";
+  assert.equal(app.bootstrapRecordIsFresh(record, Date.parse("2026-09-01T12:00:00Z"), {authorId: "dustin"}), true);
 });

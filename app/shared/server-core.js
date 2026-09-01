@@ -339,12 +339,12 @@
       throw domainError("INVALID_PLAN", "Reading plan is unavailable.");
     }
     const seenReadingIds = new Set();
+    const earlierIds = new Set();
     plan.entries.forEach((entry, index) => {
       if (!entry || entry.planVersion !== plan.planVersion || entry.dayIndex !== index + 1 ||
           !READING_ID.test(String(entry.readingId || "")) || seenReadingIds.has(entry.readingId)) {
         throw domainError("INVALID_PLAN", "Reading plan order or identifiers are invalid.");
       }
-      const earlierIds = new Set(plan.entries.slice(0, index).map((candidate) => candidate && candidate.readingId));
       const contextReadingIds = Array.isArray(entry.contextReadingIds) ? entry.contextReadingIds : [];
       if (contextReadingIds.some((readingId) => !earlierIds.has(readingId))) {
         throw domainError("INVALID_PLAN", "Context readings must refer only to earlier plan entries.");
@@ -360,6 +360,7 @@
         }
       });
       seenReadingIds.add(entry.readingId);
+      earlierIds.add(entry.readingId);
     });
 
     if (!plan.structure) return plan;

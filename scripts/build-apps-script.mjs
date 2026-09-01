@@ -75,7 +75,7 @@ function validateInlineScript(source, index) {
 }
 
 async function main() {
-  const [sourceHtml, css, providerPolicy, serverCore, boot, staticLoader, app, highlights, code, manifest, completeBridgePlan] = await Promise.all([
+  const [sourceHtml, css, providerPolicy, serverCore, boot, staticLoader, app, highlights, code, manifest, activeCalendar] = await Promise.all([
     text("app/frontend/index.html"),
     text("app/frontend/styles.css"),
     text("app/shared/provider-policy.js"),
@@ -86,7 +86,7 @@ async function main() {
     text("app/frontend/highlights.js"),
     text("app/apps-script/Code.gs"),
     text("app/apps-script/appsscript.json"),
-    text("config/bridge-schedules/celebration-y3q4-bridge-full.json").then(JSON.parse)
+    text("config/active-calendar/celebration-bridge-long-term-active.json").then(JSON.parse)
   ]);
 
   for (const [label, source] of [["provider policy", providerPolicy], ["server core", serverCore], ["boot", boot], ["static loader", staticLoader], ["frontend", app], ["highlights", highlights]]) {
@@ -177,7 +177,7 @@ async function main() {
     staticLoader,
     serverCore,
     code,
-    JSON.stringify(completeBridgePlan),
+    JSON.stringify(activeCalendar),
     manifest,
     PAGES_MANIFEST_URL,
     PAGES_FAVICON_URL
@@ -186,9 +186,9 @@ async function main() {
   const productionCode = code
     .replaceAll("__DBR_BUILD_ID__", serverBuildId)
     .replaceAll("__DBR_FAVICON_DATA_URL__", PAGES_FAVICON_URL)
-    .replace('JSON.parse("{\\"__dbr_complete_bridge_schedule__\\":true}")', JSON.stringify(completeBridgePlan));
+    .replace('JSON.parse("{\\"__dbr_active_calendar__\\":true}")', JSON.stringify(activeCalendar));
   if (productionCode.includes("__DBR_BUILD_ID__") || productionCode.includes("__DBR_FAVICON_DATA_URL__") ||
-      productionCode.includes("__dbr_complete_bridge_schedule__")) {
+      productionCode.includes("__dbr_active_calendar__")) {
     throw new Error("Could not inject the Apps Script build configuration.");
   }
 

@@ -9,6 +9,7 @@
     "planVersion": {"type": "string", "minLength": 1, "maxLength": 80},
     "title": {"type": "string", "minLength": 1, "maxLength": 200},
     "canonId": {"type": "string", "minLength": 1, "maxLength": 100},
+    "calendarRevision": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
     "structure": {
       "type": "object",
       "required": ["oneReadingUnitPerDay", "bookIntroductionPolicy", "interweavingStrategy", "targetFinishTogether", "streams"],

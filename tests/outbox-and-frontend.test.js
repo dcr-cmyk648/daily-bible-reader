@@ -115,6 +115,14 @@ test("prepared-library catalog preserves plan order, grouped occurrences, exact 
   assert.throws(() => app.calculateLibrarySchedule(plan, config, new Date("2026-09-16T12:00:00Z"), "PRO-002", preparedIds), /not prepared/);
   assert.equal(app.libraryPositionLabel(plan.entries[1], app.catalogResourceByKey(catalog, "GEN-001-002:passage:1"), plan.entries.length),
     "Library · Genesis · Chapter 2 · day 2 of 6");
+  const bridgeEntry = {planVersion: "celebration-y3q4-bridge-2026-v1", dayIndex: 2, sourcePlanDay: 55, readingId: "CC-Y3Q4-D055"};
+  const longTermEntry = {planVersion: "celebration-y3q4-bridge-2026-v1", dayIndex: 40, readingId: "LTP-0001-GEN-INTRO"};
+  assert.equal(app.occurrencePositionLabel(plan.entries[1], plan.entries.length, "library"), "day 2 of 6");
+  assert.equal(app.occurrencePositionLabel(bridgeEntry, 1263, "library"), "bridge day 2 of 1263");
+  assert.equal(app.occurrencePositionLabel(longTermEntry, 1263, "library"), "long-term day 1 of 1224");
+  assert.equal(app.occurrencePositionLabel(plan.entries[1], plan.entries.length, "selected"), "Day 2 of 6");
+  assert.equal(app.occurrencePositionLabel(bridgeEntry, 1263, "selected"), "Original plan day 55 of 92 · Bridge day 2 of 1263");
+  assert.equal(app.occurrencePositionLabel(longTermEntry, 1263, "reading"), "Four-stream plan · day 1 of 1224");
 
   const html = fs.readFileSync(path.join(__dirname, "../app/frontend/index.html"), "utf8");
   const css = fs.readFileSync(path.join(__dirname, "../app/frontend/styles.css"), "utf8");
@@ -1457,8 +1465,9 @@ test("local private-draft preview is localhost-only and restricted to active pla
   const frontend = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
   const builder = fs.readFileSync(path.join(__dirname, "../scripts/build-apps-script.mjs"), "utf8");
   assert.match(server, /const HOST = "127\.0\.0\.1";/);
-  assert.match(server, /const BRIDGE_READING_IDS = ACTIVE_PLAN\.entries\.map/);
-  assert.match(server, /BRIDGE_READING_IDS\.includes\(privateReading\[1\]\)/);
+  assert.match(server, /config\/active-calendar\/celebration-bridge-long-term-active\.json/);
+  assert.match(server, /const ACTIVE_READING_IDS = ACTIVE_PLAN\.entries\.map/);
+  assert.match(server, /ACTIVE_READING_IDS\.includes\(privateReading\[1\]\)/);
   assert.match(frontend, /\/\* DBR_LOCAL_ADAPTER_START \*\/[\s\S]*privateDraftMode\(\)[\s\S]*\/\* DBR_LOCAL_ADAPTER_END \*\//);
   assert.match(builder, /DBR_LOCAL_ADAPTER_START[\s\S]*DBR_LOCAL_ADAPTER_END/);
   assert.match(server, /\^\\\/__mhc\\\/reading\\\/\(intro-GEN\|GEN-001\)\\\.json\$/);

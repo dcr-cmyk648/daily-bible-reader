@@ -64,15 +64,16 @@ Make the installed reader's calendar continue seamlessly from Celebration Day 92
 
 - [x] User identified the missing September 16 continuation and implicitly requested activation of the previously approved schedule.
 - [x] Dirty selected checkout isolated; current `main`, candidate fingerprint, backend boundary, event-version compatibility, and bootstrap-size risk inspected.
-- [x] Implement and validate the active-calendar/runtime milestone; pending primary review.
-- [x] Implement and validate the cross-boundary T+7/private-prefix milestone; pending primary review.
+- [x] Implement and validate the active-calendar/runtime milestone; primary review accepted.
+- [x] Implement and validate the cross-boundary T+7/private-prefix milestone; primary review accepted.
 - [x] Complete remaining release-gate corrections: canonical 66-book Apps Script names, generated-source validator coverage, and schema-valid active-prefix extension coverage.
 - [x] Complete primary diff/security review, full repository gate, and fabricated 390×844 transition smoke.
-- [ ] Commit/push, publish immutable Pages/backend artifacts, verify live bytes/workflows, and hand off the installed-iPhone contract check.
+- [x] Commit `efac5ac2bfc2c5026242f1b3d49f4219feead92e`, publish the immutable Pages/token artifacts, and complete workflow/live-byte verification (CI `33509027873`, Pages `33509027172`, token backend version 30).
+- [ ] Complete the installed-iPhone update, reopen, and Sync contract check.
 
 ## Exact next action
 
-Primary: stage only the accepted final release artifacts, rerun repository safety, commit/push, wait for GitHub safety/test and Pages publication, deploy one new immutable token backend while preserving both version-23 rollback deployments, and complete exact live verification. Then request the installed-iPhone update/reopen/Sync check. Do not generate commentary or advance the private Drive prefix in this calendar-only release.
+Request and record the installed-iPhone update, reopen, and Sync contract check. The deployed token backend is immutable version 30; both rollback deployments remain version 23. Do not generate commentary or advance the private Drive prefix in this calendar-only release.
 
 ## Implementation discoveries
 
@@ -91,3 +92,4 @@ Primary: stage only the accepted final release artifacts, rerun repository safet
 - `npm run check` passed: 27 schemas, 28 private-prefix readings, 39 bridge reference readings, 261/261 tests, all builds, and exact Pages artifact verification.
 - Accepted build IDs are server `6c9af1e55eea498f`, frontend `ed7334640c4374d5`, and PWA `dcbfe042ccb37dd0`.
 - A fabricated 390×844 local browser smoke rendered the full September month without horizontal overflow; September 15/16/17 resolved to Malachi 4, Genesis introduction, and Genesis 1. Selecting both long-term entries showed four-stream days 1 and 2 and kept Open disabled until preparation.
+- Commit `efac5ac2bfc2c5026242f1b3d49f4219feead92e`, CI `33509027873`, and Pages `33509027172` are live/successful. Immutable token backend version 30 and restored HEAD readbacks are exact; both rollback deployments remain version 23. All listed live Pages assets matched expected bytes and MIME types, and the public status GET succeeded. An authenticated HTTP bootstrap has not been claimed; the authenticated browser/installed-iPhone update, reopen, and Sync gate remains external.

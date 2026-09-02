@@ -96,10 +96,13 @@ test("an empty queue is a stable no-op", () => {
 
 test("the canonical scheduled backfill instruction uses the strict Spark-to-Luna policy", () => {
   const prompt = readFileSync(new URL("../prompts/daily-study-scheduled-task.md", import.meta.url), "utf8");
-  assert.match(prompt, /For `generate_review_publish`[\s\S]*exact `gpt-5\.3-codex-spark` first[\s\S]*coded quota\/model-unavailable failure may use exact `gpt-5\.6-luna` with low reasoning/);
-  assert.match(prompt, /same-run Luna latch/);
+  assert.match(prompt, /For `generate_review_publish`[\s\S]*exact `gpt-5\.3-codex-spark` first, then exact `gpt-5\.6-luna` once at low reasoning only after a Spark model-execution failure/);
+  assert.match(prompt, /If both model attempts fail, retain the verified full-source link and prior manifest/);
+  assert.match(prompt, /continue the independently researched study without suppressing historical context or other non-Henry components/);
+  assert.match(prompt, /Deterministic request, source, checksum, schema, security, repository, review, and publication failures never fall back/);
+  assert.match(prompt, /do not use Sol, Terra, or any arbitrary model/);
   assert.doesNotMatch(prompt, /skip this probe entirely/);
-  assert.doesNotMatch(prompt, /do not retry, switch models/);
+  assert.doesNotMatch(prompt, /coded quota\/model-unavailable failure may use/);
 });
 
 test("scheduled commentary instructions preserve the paired historical-context contract", () => {

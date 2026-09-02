@@ -14,7 +14,7 @@ Validate the result against `schemas/rolling-study-work-order.schema.json`.
 - `plan_complete`: report completion; do not invent a next plan.
 - `prepare_publish`: work only on `reading.readingId`, which is the earliest missing or stale record in the current-through-T+7 horizon.
 
-The complete factual D054–D092 schedule is compiled into the current backend, so the daily lane never invents a calendar entry. `planExtensionRequired` now refers only to the separate rollback-compatible private prepared-prefix plan. If it is true and the named reading is the next contiguous private-prefix entry, run `npm run bridge:extend -- --source-day <sourcePlanDay>` immediately before manifest promotion. If an earlier prefix entry is missing, stop and report that first gap rather than skipping it. This preserves older deployments' exact private plan/manifest contract without changing the compiled calendar schedule.
+The complete active calendar is compiled into the current backend, so the daily lane never invents a calendar entry. `planExtensionRequired` now refers only to the separate rollback-compatible private prepared-prefix plan. If it is true and the named reading is the next contiguous private-prefix entry, run `npm run prefix:extend -- --today <YYYY-MM-DD>` immediately before manifest promotion. If an earlier prefix entry is missing, stop and report that first gap rather than skipping it. This preserves older deployments' exact private plan/manifest contract without changing the compiled calendar schedule.
 
 ## 2. Prepare the complete study
 
@@ -44,7 +44,7 @@ node scripts/sync-latest-mhc.mjs \
 
 The apply command rejects stale/reordered generation bytes and updates the checksum-bound private Henry library. A later schedule rebuild must reproduce the reviewed wording by replaying the same canonical approval and corrections against the raw generation. The bundle/sync step always follows that newest reviewed library pointer.
 
-If Spark reports a coded availability or account-quota limit, the controller may retry only exact Luna at low reasoning and record its actual provenance. Sol, Terra, and every other model are forbidden. Validation, source, controller, and generic failures do not retry another model; add a `henrySourceLink` to a verified HTTPS page containing the complete public-domain chapter commentary, bind it to the consulted Matthew Henry source record, and validate that link as the reading's explicit fallback. The app treats this as prepared, labels it honestly, and opens the full source from verse details.
+If Spark has a model-execution failure (including quota, availability, or process/no-output failure), the controller may retry only exact Luna once at low reasoning and record both attempts' provenance. Sol, Terra, and every other model are forbidden. If both model attempts fail, add or retain a `henrySourceLink` to a verified HTTPS page containing the complete public-domain chapter commentary, bind it to the consulted Matthew Henry source record, and validate that link as the reading's explicit fallback; the independently researched orientation, historical context, main synthesis, and takeaway continue. Deterministic request, source, checksum, schema, security, repository, review, and publication failures do not retry another model.
 
 ## 3. Validate and promote atomically
 
@@ -100,11 +100,11 @@ Validate the result against `schemas/mhc-backfill-work-order.schema.json`. The q
 - `review_attach_publish`: a generated artifact exists but still needs complete atom-by-atom primary review and approval;
 - `attach_publish`: a previously approved artifact needs only checksum revalidation, attachment, validation, and atomic private republication.
 
-If the T+7 lane already observed a Spark quota/availability failure, do not probe Spark again in the backfill lane. A backfill failure after the controller has exhausted its narrow Spark→Luna route is a safe deferral: retain the full-source link, leave the library and live manifest unchanged, and let the next daily task select the same reading. A successful generation still requires the same hash-bound review process described above. `npm run mhc:sync-latest` removes the fallback only while attaching the verified reviewed runtime. Upload versioned metadata first and replace the private manifest last. This lane never rewrites the orientation, multi-source synthesis, takeaway, or Scripture reference.
+If the T+7 lane already observed a Spark model-execution failure, do not probe Spark again in the backfill lane. A backfill failure after the controller has exhausted its narrow Spark→Luna route is a safe deferral: retain the full-source link, leave the library and live manifest unchanged, and let the next daily task select the same reading. A successful generation still requires the same hash-bound review process described above. `npm run mhc:sync-latest` removes the fallback only while attaching the verified reviewed runtime. Upload versioned metadata first and replace the private manifest last. This lane never rewrites the orientation, multi-source synthesis, takeaway, or Scripture reference.
 
 ## Failure rules
 
-- A non-quota generation, citation, review, or validation failure leaves the reading non-ready and retries the same work order. A confirmed Spark availability/quota failure uses only the documented full-source-link fallback.
+- A Spark model-execution failure receives one Luna-low attempt; two failed model attempts use only the documented full-source-link fallback. Deterministic request, source, checksum, schema, security, repository, review, and publication failures leave the reading non-ready and retry the same work order.
 - Backfill is lower priority than the end-to-end T+7 lane, processes at most one separate reading per run, and retains its working fallback on every failure.
 - A Drive upload failure leaves the old manifest current.
 - Missing local private storage or a dirty checkout stops publication.

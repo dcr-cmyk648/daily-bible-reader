@@ -402,6 +402,23 @@ function sparkAvailabilityError(classification) {
   return error;
 }
 
+function modelAttemptError({model, stage, message}) {
+  const code = model === SPARK_MODEL ? "SPARK_MODEL_GENERATION_FAILED" : "LUNA_MODEL_GENERATION_FAILED";
+  const error = new Error(`${code}: ${message}`);
+  error.code = code;
+  error.failureClassification = "model_execution_or_no_output";
+  error.stage = stage;
+  return error;
+}
+
+function isModelAttemptFailure(error, model) {
+  if (!error) return false;
+  if (model === SPARK_MODEL) {
+    return ["SPARK_QUOTA_UNAVAILABLE", "SPARK_MODEL_UNAVAILABLE", "SPARK_MODEL_GENERATION_FAILED"].includes(error.code);
+  }
+  return error.code === "LUNA_MODEL_GENERATION_FAILED";
+}
+
 function shouldRetryCodexFailure({model, text}) {
   return !classifySparkAvailabilityFailure({model, text}) && transientFailure(text);
 }
@@ -424,18 +441,70 @@ function actualWorkerModels(values) {
 }
 
 function routingState() {
-  return {sparkAvailabilityFailure: null, lunaLatched: false};
+  return {sparkFailure: null, lunaFailure: null};
 }
 
 async function routeHenryGeneration({routing = routingState(), invoke}) {
-  const initialModel = routing.lunaLatched ? LUNA_MODEL : SPARK_MODEL;
   try {
-    return {model: initialModel, result: await invoke(initialModel), routing};
-  } catch (error) {
-    if (initialModel !== SPARK_MODEL || !["SPARK_QUOTA_UNAVAILABLE", "SPARK_MODEL_UNAVAILABLE"].includes(error && error.code)) throw error;
-    routing.sparkAvailabilityFailure = error.code;
-    routing.lunaLatched = true;
-    return {model: LUNA_MODEL, result: await invoke(LUNA_MODEL), routing};
+    return {model: SPARK_MODEL, result: await invoke(SPARK_MODEL), routing, attempts: [SPARK_MODEL]};
+  } catch (sparkError) {
+    if (!isModelAttemptFailure(sparkError, SPARK_MODEL)) throw sparkError;
+    routing.sparkFailure = {code: sparkError.code, stage: sparkError.stage || null};
+    try {
+      return {model: LUNA_MODEL, result: await invoke(LUNA_MODEL), routing, attempts: [SPARK_MODEL, LUNA_MODEL]};
+    } catch (lunaError) {
+      if (!isModelAttemptFailure(lunaError, LUNA_MODEL)) throw lunaError;
+      routing.lunaFailure = {code: lunaError.code, stage: lunaError.stage || null};
+      return {
+        model: null,
+        result: null,
+        routing,
+        attempts: [SPARK_MODEL, LUNA_MODEL],
+        henryFallbackRequired: true,
+        fallback: {
+          kind: "verified_full_commentary_link",
+          reason: "both_model_attempts_failed",
+          spark: routing.sparkFailure,
+          luna: routing.lunaFailure
+        }
+      };
+    }
+  }
+}
+
+function buildHenryFallbackPassageResult({passage, normalized, routed}) {
+  if (!routed || !routed.henryFallbackRequired || routed.result || !routed.fallback) return null;
+  return {
+    book_id: passage.bookId,
+    chapter: passage.chapter,
+    verse_count: passage.verseCount,
+    normalization_schema_version: normalized.manifest.normalized_schema_version,
+    normalized_path: path.relative(PRIVATE_ROOT, normalized.paths.units),
+    normalized_batch_sha256: normalized.manifest.normalized_batch_sha256,
+    source_unit_ids: normalized.manifest.source_unit_ids,
+    exception_count: normalized.manifest.exception_count,
+    worker_model: null,
+    worker_models: actualWorkerModels(routed.attempts),
+    model_attempts: [...routed.attempts],
+    henry_fallback_required: true,
+    henry_fallback: routed.fallback,
+    generation_status: "verified_link_required",
+    validation_warnings: [],
+    review_applied: false,
+    corrected_verse_ids: [],
+    runtime_path: null,
+    record_count: 0,
+    source_atom_count: 0,
+    runtime: null
+  };
+}
+
+function assertPortableStoreEligible(scheduledResults) {
+  const fallbackReadingIds = (scheduledResults || [])
+    .filter((result) => result && (result.henryFallbackRequired || result.audit && result.audit.henry_link_fallback_required))
+    .map((result) => result.audit.reading_id);
+  if (fallbackReadingIds.length) {
+    throw new Error(`Verified-link-required Henry outcome cannot enter a portable store or durable catalog: ${fallbackReadingIds.join(", ")}.`);
   }
 }
 
@@ -733,6 +802,7 @@ async function generateLegacyOne(options) {
         worker_model: model,
         fingerprint,
         status: availabilityFailure ? "unavailable" : "failed",
+        error_code: availabilityFailure ? availabilityFailure.code : model === SPARK_MODEL ? "SPARK_MODEL_GENERATION_FAILED" : null,
         output_path: path.relative(PRIVATE_ROOT, outputPath),
         error: (availabilityFailure ? `${availabilityFailure.code}: ${availabilityFailure.message}` :
           processResult.error && processResult.error.message || processResult.stderr || "Codex exited without a result").slice(0, 2000)
@@ -740,7 +810,7 @@ async function generateLegacyOne(options) {
       await savePipelineJob(failure);
       await queueReview({...failure, reason: availabilityFailure ? "worker_availability" : "worker_failure"});
       if (availabilityFailure) throw sparkAvailabilityError(availabilityFailure);
-      throw new Error(`${model} generation failed. See ${path.relative(ROOT, jobDir)}.`);
+      throw modelAttemptError({model, stage: "legacy_generation", message: `${model} generation failed. See ${path.relative(ROOT, jobDir)}.`});
     }
 
     checked = await validateOutputFile({kind, outputPath, schema, units: normalized.units, bookId, chapter,
@@ -1461,7 +1531,7 @@ async function generateValidatedFactChunk({
     maxRetries
   });
   if (codexStageFailed(processResult, await exists(outputPath))) {
-    throw new Error(`${model} fact chunk ${chunk.chunkId} failed to produce output.`);
+    throw modelAttemptError({model, stage: "fact_chunk_generation", message: `${model} fact chunk ${chunk.chunkId} failed to produce output.`});
   }
   checked = await validateFactBriefFile({outputPath, schema: factSchema, chapterJobSpec: chunk.chapterJobSpec});
   const repairRunId = new Date().toISOString().replace(/[^0-9]/g, "").slice(0, 17);
@@ -1639,7 +1709,7 @@ async function generateValidatedWriterChunk({
       maxRetries
     });
     if (codexStageFailed(draftProcess, await exists(draftOutputPath))) {
-      throw new Error(`${model} writer chunk ${chunk.chunkId} failed to produce a draft.`);
+      throw modelAttemptError({model, stage: "writer_chunk_generation", message: `${model} writer chunk ${chunk.chunkId} failed to produce a draft.`});
     }
     draftChecked = await validatePath(draftOutputPath);
   }
@@ -1799,12 +1869,13 @@ async function generateAutonomousChapter(options) {
         fingerprint: factFingerprint,
         status: "failed",
         stage: "fact_chunk_validation",
+        error_code: error && error.code || null,
         output_path: path.relative(PRIVATE_ROOT, factOutputPath),
         error: error.message.slice(0, 2000)
       };
       await savePipelineJob(failure);
       await queueReview({...failure, reason: "autonomous_fact_chunk_failure"});
-      if (["SPARK_QUOTA_UNAVAILABLE", "SPARK_MODEL_UNAVAILABLE"].includes(error && error.code)) throw error;
+      if (isModelAttemptFailure(error, model)) throw error;
       throw new Error(`${model} chunked fact extraction failed. See ${path.relative(ROOT, factDir)}.`);
     }
     const mergedFactBrief = {
@@ -1980,12 +2051,13 @@ async function generateAutonomousChapter(options) {
       fingerprint,
       status: "failed",
       stage: "writer_chunk_validation",
+      error_code: error && error.code || null,
       output_path: path.relative(PRIVATE_ROOT, draftOutputPath),
       error: error.message.slice(0, 2000)
     };
     await savePipelineJob(failure);
     await queueReview({...failure, reason: "autonomous_writer_chunk_failure"});
-    if (["SPARK_QUOTA_UNAVAILABLE", "SPARK_MODEL_UNAVAILABLE"].includes(error && error.code)) throw error;
+    if (isModelAttemptFailure(error, model)) throw error;
     throw new Error(`${model} chunked autonomous writer failed. See ${path.relative(ROOT, jobDir)}.`);
   }
 
@@ -2347,8 +2419,11 @@ function quotedMarkdown(value) {
   return String(value || "").replace(/\r\n?/g, "\n").split("\n").map((line) => `> ${line}`).join("\n");
 }
 
-async function writeScheduleAuditReport(audit, passageResults, reportPath) {
-  const reviewLabel = audit.review_status === "approved"
+function renderScheduleAuditReport(audit, passageResults) {
+  const linkFallbackRequired = Boolean(audit.henry_link_fallback_required);
+  const reviewLabel = linkFallbackRequired
+    ? "VERIFIED LINK REQUIRED — NO GENERATED HENRY LAYER"
+    : audit.review_status === "approved"
     ? "APPROVED FOR ATTACHMENT"
     : audit.review_status === "in_review"
       ? "CODEX-REVIEWED FOR PRIVATE PILOT ATTACHMENT"
@@ -2356,9 +2431,20 @@ async function writeScheduleAuditReport(audit, passageResults, reportPath) {
   const lines = [
     `# ${audit.reading_id} Matthew Henry Spark audit`, "",
     `**${reviewLabel}.** Prepared for ${audit.schedule_date} with ${audit.worker_model}.`, "",
-    "The schedule's main commentary was not changed. Spark independently extracted a deterministically validated fact ledger, wrote each condensation from that ledger, and performed its own second-pass review. This report contains the admitted condensations and exact public-domain Henry commentary atoms cited for them; embedded Scripture transcription was removed before generation.", ""
+    linkFallbackRequired
+      ? "The schedule's main commentary was not changed. Both permitted Matthew Henry model attempts failed, so no condensation was generated or admitted and this report contains no generated runtime records. A separately verified credential-free link to the complete public-domain chapter commentary is required before the independent daily study may expose the Henry fallback."
+      : "The schedule's main commentary was not changed. Spark independently extracted a deterministically validated fact ledger, wrote each condensation from that ledger, and performed its own second-pass review. This report contains the admitted condensations and exact public-domain Henry commentary atoms cited for them; embedded Scripture transcription was removed before generation.", ""
   ];
   for (const result of passageResults) {
+    if (result.henry_fallback_required) {
+      const fallback = result.henry_fallback || {};
+      lines.push(`## ${result.book_id} ${result.chapter}`, "",
+        "Generation outcome: verified full-commentary link required; no generated verse runtime exists.", "",
+        `- ${result.worker_models && result.worker_models[0] || SPARK_MODEL}: ${fallback.spark && fallback.spark.code || "unknown"}${fallback.spark && fallback.spark.stage ? ` (${fallback.spark.stage})` : ""}.`,
+        `- ${result.worker_models && result.worker_models[1] || LUNA_MODEL}: ${fallback.luna && fallback.luna.code || "unknown"}${fallback.luna && fallback.luna.stage ? ` (${fallback.luna.stage})` : ""}.`,
+        "", "The independently researched study may continue, but the separately verified complete public-domain commentary link must be attached outside this generated-runtime lane.", "");
+      continue;
+    }
     if (!result.runtime) continue;
     lines.push(`## ${result.book_id} ${result.chapter}`, "");
     for (const [verseId, record] of Object.entries(result.runtime.records)) {
@@ -2378,8 +2464,16 @@ async function writeScheduleAuditReport(audit, passageResults, reportPath) {
     lines.push("Direct comparison against the cited atoms is still required.", "");
   }
   lines.push(`Approval: ${audit.human_review.approval || "not granted"}.`, "");
+  return `${lines.join("\n")}\n`;
+}
+
+async function writeScheduleAuditReport(audit, passageResults, reportPath) {
   await mkdir(path.dirname(reportPath), {recursive: true});
-  await writeFile(reportPath, `${lines.join("\n")}\n`, {encoding: "utf8", mode: 0o600});
+  await writeFile(reportPath, renderScheduleAuditReport(audit, passageResults), {encoding: "utf8", mode: 0o600});
+}
+
+function canPromoteScheduleReview({audit, passageResults}) {
+  return !audit.henry_link_fallback_required && (passageResults || []).every((result) => result.runtime && result.runtime_path);
 }
 
 function assertScheduleLaneOptions(options, command) {
@@ -2455,6 +2549,13 @@ async function scheduleReading(options, {plan, target, routing = routingState()}
         book: passage.bookId, chapter: passage.chapter, model, dryRun: options.dryRun,
         maxRetries: options.maxRetries, expectedReadingId: entry.readingId
       })});
+      const fallbackPassage = buildHenryFallbackPassageResult({passage, normalized, routed});
+      if (fallbackPassage) {
+        passageResults.push(fallbackPassage);
+        audit.passages.push(Object.fromEntries(Object.entries(fallbackPassage).filter(([key]) => key !== "runtime")));
+        audit.henry_link_fallback_required = true;
+        continue;
+      }
       const workerModel = routed.model;
       const generated = routed.result;
       if (generated.reviewApplied) {
@@ -2503,9 +2604,9 @@ async function scheduleReading(options, {plan, target, routing = routingState()}
       passageResults.push(passageResult);
       audit.passages.push(Object.fromEntries(Object.entries(passageResult).filter(([key]) => key !== "runtime")));
     }
-    audit.worker_models = actualWorkerModels(passageResults.map((result) => result.worker_model));
+    audit.worker_models = actualWorkerModels(passageResults.flatMap((result) => result.worker_models || [result.worker_model]));
     if (audit.worker_models.length === 1) audit.worker_model = audit.worker_models[0];
-    if (!options.dryRun) {
+    if (!options.dryRun && canPromoteScheduleReview({audit, passageResults})) {
       const canonicalReviewPath = path.join(auditPaths.root, "review.json");
       if (await exists(canonicalReviewPath)) {
         const review = await readJson(canonicalReviewPath);
@@ -2526,7 +2627,8 @@ async function scheduleReading(options, {plan, target, routing = routingState()}
         }
       }
     }
-    audit.audit_status = options.dryRun ? "prepared" : audit.human_review.status === "required" ? "unreviewed" : audit.human_review.status;
+    audit.audit_status = audit.henry_link_fallback_required ? "verified_link_required" :
+      options.dryRun ? "prepared" : audit.human_review.status === "required" ? "unreviewed" : audit.human_review.status;
     audit.completed_at = new Date().toISOString();
     await writeJson(auditPaths.manifest, audit);
     await writeScheduleAuditReport(audit, passageResults, auditPaths.report);
@@ -2537,13 +2639,22 @@ async function scheduleReading(options, {plan, target, routing = routingState()}
     await writeJson(auditPaths.manifest, audit);
     throw error;
   }
-  process.stdout.write(`${options.dryRun ? "Prepared" : "Generated"} private Spark-first audit for ${entry.readingId} (${target.scheduleDate}); actual worker(s): ${audit.worker_models.join(", ") || SPARK_MODEL}; nothing was published.\n`);
+  process.stdout.write(`${audit.henry_link_fallback_required ? "Recorded verified-link-required" : options.dryRun ? "Prepared" : "Generated"} private Spark-first audit for ${entry.readingId} (${target.scheduleDate}); actual worker(s): ${audit.worker_models.join(", ") || SPARK_MODEL}; nothing was published.\n`);
   process.stdout.write(`Audit report: ${path.relative(ROOT, auditPaths.report)}\n`);
-  return {target, audit, auditPaths, passageResults};
+  return {
+    target,
+    audit,
+    auditPaths,
+    passageResults,
+    henryFallbackRequired: Boolean(audit.henry_link_fallback_required)
+  };
 }
 
 function buildPortableWindowReading({plan, scheduledResult}) {
   const {target, audit, passageResults} = scheduledResult;
+  if (scheduledResult.henryFallbackRequired || audit.henry_link_fallback_required) {
+    throw new Error(`${audit.reading_id} has a verified-link-required Henry outcome and cannot enter the portable store.`);
+  }
   const chapters = passageResults.map((result) => {
     if (!result.runtime) throw new Error(`${audit.reading_id} has no validated runtime data for the portable store.`);
     if (result.runtime.prompt_version === PROMPT_VERSION) {
@@ -2561,7 +2672,7 @@ function buildPortableWindowReading({plan, scheduledResult}) {
       runtime: result.runtime
     };
   });
-  const workerModels = actualWorkerModels(passageResults.map((result) => result.worker_model));
+  const workerModels = actualWorkerModels(passageResults.flatMap((result) => result.worker_models || [result.worker_model]));
   return {
     schema_version: "mhc-portable-reading/v1",
     plan_version: plan.planVersion,
@@ -2668,6 +2779,7 @@ function buildActivationResult({request, completedAt, scheduledResults, store}) 
 }
 
 async function writePortableStores({plan, window, scheduledResults, writeWindow = true}) {
+  assertPortableStoreEligible(scheduledResults);
   const [storeSchema, runtimeSchema, activationSchema] = await Promise.all([
     readJson(WINDOW_STORE_SCHEMA_PATH),
     readJson(RUNTIME_SCHEMA_PATH),
@@ -3122,6 +3234,7 @@ export {
   buildActivationResult,
   buildAtomRestrictedFactChapterSpec,
   buildEnsureResult,
+  buildHenryFallbackPassageResult,
   buildFactChunks,
   buildWriterChunks,
   buildLibraryCatalog,
@@ -3154,6 +3267,9 @@ export {
   preflight,
   resultMetrics,
   routeHenryGeneration,
+  assertPortableStoreEligible,
+  canPromoteScheduleReview,
+  renderScheduleAuditReport,
   replaceQualificationCueFacts,
   replaceExplicitOmissionFacts,
   scheduleNext,

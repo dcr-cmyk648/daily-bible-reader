@@ -114,23 +114,115 @@ test("OSIS references map deterministically to canonical app IDs and bounded ran
   assert.equal(parseOsisReferenceRange("ambiguous"), null);
 });
 
-test("Henry routing is Spark-first, falls back only for coded availability failures, and latches Luna per batch", async () => {
+test("Henry routing is Spark-first, permits one Luna retry for model execution failure, and preserves a verified-link continuation after both workers fail", async () => {
   const {routeHenryGeneration} = await import("../scripts/mhc-pipeline.mjs");
   const calls = [];
   const success = await routeHenryGeneration({invoke: async (model) => { calls.push(model); return "ok"; }});
   assert.equal(success.model, "gpt-5.3-codex-spark");
   assert.deepEqual(calls, ["gpt-5.3-codex-spark"]);
-  const quota = Object.assign(new Error("quota"), {code: "SPARK_QUOTA_UNAVAILABLE"});
+
+  const generationFailure = Object.assign(new Error("chunked fact extraction failed"), {code: "SPARK_MODEL_GENERATION_FAILED", stage: "fact_chunk_generation"});
   const fallback = await routeHenryGeneration({routing: success.routing, invoke: async (model) => {
     calls.push(model);
-    if (model === "gpt-5.3-codex-spark") throw quota;
+    if (model === "gpt-5.3-codex-spark") throw generationFailure;
     return "luna";
   }});
   assert.equal(fallback.model, "gpt-5.6-luna");
   assert.deepEqual(calls.slice(-2), ["gpt-5.3-codex-spark", "gpt-5.6-luna"]);
-  await routeHenryGeneration({routing: fallback.routing, invoke: async (model) => { calls.push(model); return "latched"; }});
-  assert.equal(calls.at(-1), "gpt-5.6-luna");
-  await assert.rejects(() => routeHenryGeneration({invoke: async () => { throw new Error("validation failed"); }}), /validation failed/);
+  assert.equal(fallback.routing.sparkFailure.code, "SPARK_MODEL_GENERATION_FAILED");
+
+  const doubleFailure = await routeHenryGeneration({invoke: async (model) => {
+    calls.push(model);
+    throw Object.assign(new Error(`${model} failed`), {
+      code: model === "gpt-5.3-codex-spark" ? "SPARK_MODEL_GENERATION_FAILED" : "LUNA_MODEL_GENERATION_FAILED"
+    });
+  }});
+  assert.equal(doubleFailure.henryFallbackRequired, true);
+  assert.deepEqual(doubleFailure.attempts, ["gpt-5.3-codex-spark", "gpt-5.6-luna"]);
+  assert.equal(doubleFailure.fallback.kind, "verified_full_commentary_link");
+
+  const later = await routeHenryGeneration({routing: fallback.routing, invoke: async (model) => { calls.push(model); return "spark again"; }});
+  assert.equal(later.model, "gpt-5.3-codex-spark");
+  const rejectedOutputCalls = [];
+  await assert.rejects(() => routeHenryGeneration({invoke: async (model) => {
+    rejectedOutputCalls.push(model);
+    throw Object.assign(new Error("schema admission rejected Spark output"), {code: "SPARK_MODEL_OUTPUT_REJECTED"});
+  }}), /schema admission rejected Spark output/);
+  assert.deepEqual(rejectedOutputCalls, ["gpt-5.3-codex-spark"]);
+  await assert.rejects(() => routeHenryGeneration({invoke: async () => { throw new Error("source checksum failed"); }}), /source checksum failed/);
+});
+
+test("schedule consumer records a double-model verified-link outcome without creating a runtime, portable store, or catalog claim", async () => {
+  const controller = await import("../scripts/mhc-pipeline.mjs");
+  const routed = await controller.routeHenryGeneration({invoke: async (model) => {
+    throw Object.assign(new Error(`${model} unavailable`), {
+      code: model === "gpt-5.3-codex-spark" ? "SPARK_MODEL_GENERATION_FAILED" : "LUNA_MODEL_GENERATION_FAILED",
+      stage: "fact_chunk_generation"
+    });
+  }});
+  const passage = {bookId: "NAM", chapter: 1, verseCount: 1};
+  const normalized = {
+    manifest: {
+      normalized_schema_version: "mhc-normalized/v1",
+      normalized_batch_sha256: "a".repeat(64),
+      source_unit_ids: ["fabricated:NAM:001:001"],
+      exception_count: 0
+    },
+    paths: {units: path.join(__dirname, "../private-commentary/mhc/fabricated-units.json")}
+  };
+  const outcome = controller.buildHenryFallbackPassageResult({passage, normalized, routed});
+  assert.equal(outcome.generation_status, "verified_link_required");
+  assert.equal(outcome.henry_fallback_required, true);
+  assert.deepEqual(outcome.model_attempts, ["gpt-5.3-codex-spark", "gpt-5.6-luna"]);
+  assert.equal(outcome.record_count, 0);
+  assert.equal(outcome.runtime, null);
+  assert.equal(outcome.runtime_path, null);
+  assert.equal("job_id" in outcome, false);
+
+  const scheduledResult = {
+    henryFallbackRequired: true,
+    audit: {reading_id: "CC-Y3Q4-D057", henry_link_fallback_required: true},
+    passageResults: [outcome]
+  };
+  assert.throws(() => controller.assertPortableStoreEligible([scheduledResult]), /cannot enter a portable store or durable catalog/);
+  assert.throws(() => controller.buildPortableWindowReading({plan: {planVersion: "fabricated-plan-v1"}, scheduledResult}),
+    /verified-link-required Henry outcome/);
+});
+
+test("verified-link schedule audits report failed attempts and never promote a null runtime", async () => {
+  const controller = await import("../scripts/mhc-pipeline.mjs");
+  const fallbackPassage = {
+    book_id: "NAM",
+    chapter: 1,
+    worker_models: ["gpt-5.3-codex-spark", "gpt-5.6-luna"],
+    henry_fallback_required: true,
+    henry_fallback: {
+      kind: "verified_full_commentary_link",
+      spark: {code: "SPARK_MODEL_GENERATION_FAILED", stage: "fact_chunk_generation"},
+      luna: {code: "LUNA_MODEL_GENERATION_FAILED", stage: "writer_chunk_generation"}
+    },
+    runtime: null,
+    runtime_path: null
+  };
+  const audit = {
+    reading_id: "CC-Y3Q4-D057",
+    schedule_date: "2026-08-11",
+    worker_model: "gpt-5.3-codex-spark",
+    review_status: "unreviewed",
+    henry_link_fallback_required: true,
+    human_review: {status: "required", findings: [], approval: null}
+  };
+  const report = controller.renderScheduleAuditReport(audit, [fallbackPassage]);
+  assert.match(report, /no condensation was generated or admitted/);
+  assert.match(report, /SPARK_MODEL_GENERATION_FAILED \(fact_chunk_generation\)/);
+  assert.match(report, /LUNA_MODEL_GENERATION_FAILED \(writer_chunk_generation\)/);
+  assert.match(report, /separately verified credential-free link/);
+  assert.doesNotMatch(report, /Spark independently extracted/);
+  assert.equal(controller.canPromoteScheduleReview({audit, passageResults: [fallbackPassage]}), false);
+  assert.equal(controller.canPromoteScheduleReview({
+    audit: {henry_link_fallback_required: false},
+    passageResults: [{runtime: {records: {}}, runtime_path: "runtime/NAM/001.json"}]
+  }), true);
 });
 
 test("Henry Codex invocation pins Luna low reasoning, disables internal agents, and forbids Sol", async () => {

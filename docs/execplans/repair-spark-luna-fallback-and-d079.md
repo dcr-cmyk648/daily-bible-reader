@@ -72,9 +72,16 @@ Make the Matthew Henry controller retry one low-reasoning Luna worker when the p
 - [x] Implement and validate the safety-constrained fallback boundary: one Spark model-execution/no-output failure routes once to Luna-low; the repository guard keeps generated-output schema/admission failures fail-closed rather than Luna-eligible or direct-link continuations.
 - [x] Add the explicit `scheduleReading` consumer for a double-model link fallback, including audit/report behavior and regression coverage that prevents portable-store/catalog claims for missing generated runtime data.
 - [x] Primary integration review completed: fallback reports name both typed attempts, review promotion rejects null-runtime outcomes, the canonical prompt contract test matches the new boundary, and `npm run check` passes all 263 tests plus builds and exact Pages verification.
-- [ ] Refresh, review, and publish D079.
-- [ ] Verify the refreshed live payload on the installed reader.
+- [x] Refresh, directly review, validate, and privately publish D079 as `CC-Y3Q4-D079-draft-v2`. The paired historical sections are distinct, all twelve included sources are registered, and no ESV or raw copyrighted commentary is stored.
+- [x] Verify exact content, metadata, corrected registry, and manifest Drive bytes; preserve owner-only payloads and the manifest's unchanged owner/reader permissions and parent; complete authenticated bootstrap and D079 payload reads through the live Pages bridge.
+
+## Discoveries
+
+- D079's historical omission was not a judgment that the chapter lacked relevant material. Its 2026-08-26 payload predated `daily-study-protocol/v1`, and the former atomic preparation job aborted the whole refresh when Henry generation failed.
+- The repaired controller's first real D079 run attempted Spark once and Luna-low once. Both failed during fact-chunk generation. The typed double-model outcome preserved the verified complete CCEL chapter link and admitted no runtime record, portable-store entry, or catalog readiness claim.
+- The independent study proceeded normally and added Tyre, Ashkelon, Achaemenid, and Persian-to-Greek context with explicit evidence/inference boundaries. The live payload reports `historicalContext: included` and contains both the concise and expanded layers.
+- Exact Drive readback matched every promoted byte. New versioned content/metadata/registry files remain owner-only; the manifest retains only its existing owner and reader grants with no broad permission. The authenticated live bootstrap returns the 1,263-entry active calendar and D079 v2, and the rolling evaluator now advances to D080/James 3.
 
 ## Exact next action
 
-Commit and push the validated controller/workflow repair so the scheduled checkout can use it, synchronize the existing saved automation prompt if its stored text is stale, then rerun the unchanged D079 work order through the repaired Henry lane and independently refresh/review/publish its protocol-current study.
+Confirm the installed phone replaces its retained D079 copy with v2 without clearing downloaded data. The next separate rolling work order is D080/James 3; do not fold that study into this completed repair milestone.

@@ -1340,10 +1340,17 @@ test("calendar uses a compact monthly selector with two-reader dots and a date-s
   assert.match(source, /function buildMonthCalendar\(/);
   assert.match(source, /function selectCalendarDate\(date, options\)/);
   assert.match(source, /completionSet\(day\.entry\.readingId\)/);
+  assert.match(source, /button\.dataset\.prepared = hasPreparedReading\(day\.entry\) \? "true" : "false"/);
+  assert.match(source, /prepared \? "Study prepared" : "Study preparation pending"/);
+  assert.match(source, /calendar-prepared-swatch[\s\S]*Sage background = study prepared/);
+  assert.match(source, /Filled dot = commented/);
   assert.match(source, /button\.dataset\.readingId = canOpen/);
   assert.match(source, /openReading\(readingId\)/);
   assert.doesNotMatch(source, /configureDevelopmentControls|openOverrideReading|readingOverride/);
   assert.match(css, /\.calendar-day\s*\{[^}]*min-height:\s*3\.15rem/s);
+  assert.match(css, /\.calendar-day\[data-prepared="true"\]\s*\{[^}]*background:/s);
+  assert.match(css, /\.calendar-prepared-swatch\s*\{[^}]*background:/s);
+  assert.ok(css.indexOf('.calendar-day[data-prepared="true"]') < css.indexOf('.calendar-day[data-selected="true"]'));
   assert.match(css, /\.participant-color-0/);
   assert.match(css, /\.participant-color-1/);
   assert.match(html, /id="previousMonth"/);

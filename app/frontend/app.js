@@ -3158,6 +3158,12 @@
   function renderCalendarLegend() {
     const legend = element("calendarParticipantLegend");
     legend.replaceChildren();
+    const prepared = root.document.createElement("span");
+    const swatch = root.document.createElement("span");
+    swatch.className = "calendar-prepared-swatch";
+    swatch.setAttribute("aria-hidden", "true");
+    prepared.append(swatch, root.document.createTextNode("Sage background = study prepared"));
+    legend.appendChild(prepared);
     state.calendarParticipants.forEach((participant, index) => {
       const item = root.document.createElement("span");
       const dot = root.document.createElement("span");
@@ -3462,7 +3468,7 @@
         const prepared = hasPreparedReading(day.entry);
         const descriptors = day.entry
           ? [fullCalendarDate(day.date), day.shortTitle,
-            !day.accessible ? "Reading locked" : prepared ? "Reading available" : "Study preparation pending"]
+            !day.accessible ? "Reading locked" : prepared ? "Study prepared" : "Study preparation pending"]
           : [fullCalendarDate(day.date), "No scheduled reading"];
         state.calendarParticipants.forEach((participant) => {
           descriptors.push(`${participant.displayName}: ${completedAuthors.has(participant.authorId) ? "completed" : "not completed"}`);

@@ -52,15 +52,19 @@ Remove the circular dependency that prevents the daily T+7 workflow from generat
 - [x] Implement and test the bounded complete-calendar lookup: ensure verifies the fixture plan as the exact ordered prepared prefix, resolves the complete active calendar, and permits only the single immediate next entry beyond that prefix.
 - [x] Add direct helper and isolated CLI regressions. The CLI test reaches `generate CC-Y3Q4-D082` with no private store and confirms the dry run performs no worker or write.
 - [x] Complete release validation: safety inspected 336 files; all validators, 265/265 tests, every build, and exact Pages verification passed. Public release bytes and Apps Script bundles are unchanged.
-- [ ] Commit and push the safe tracked repair, then verify GitHub CI.
-- [ ] Retry D082 through the end-to-end private-content lane.
+- [x] Commit and push the bounded controller repair as `4a28592`; GitHub safety/test run `33763752883` and Pages deployment `33763751841` passed.
+- [x] Repair the coupled prepared-plan/testing-allowlist extension path, add interrupted-run recovery coverage, advance both tracked files through D082, and release it as `2dc502d`; GitHub safety/test run `33767885176` and Pages deployment `33767883978` passed.
+- [x] Retry D082 through the end-to-end private-content lane. The reviewed Zechariah 11 package passed private validation, exact content-first/manifest-last Drive readback, unchanged narrow sharing, and authenticated bootstrap verification as the 29th prepared reading.
 
 ## Discoveries
 
 - The failure occurred before routing, so neither Spark nor Luna was attempted. It was unrelated to quotas and could not legitimately enter the model fallback path.
 - The exact active-calendar entries and private-prefix entries are byte-equivalent through D081. This permits a strict prefix proof without weakening the existing manifest/publication boundary.
 - A helper-only unit test would not prove that the CLI actually used the new plan. The isolated CLI regression provides a fabricated request and only symlinks tracked code/config/schema inputs into its temporary root, so it cannot see private storage or invoke a model during `--dry-run`.
+- The first repaired D082 preparation exposed a second deterministic boundary defect: prefix extension advanced `plan.json` without advancing `app-config.json`'s testing allowlist. The command now keeps those artifacts synchronized, rejects invalid divergence, and repairs only the exact shorter-allowlist interrupted state without consuming the next calendar entry.
+- Spark and the single permitted Luna-low retry both failed during D082 fact extraction. The workflow correctly admitted no partial/generated Henry artifact and retained the verified complete CCEL Chapter XI link while independently completing the rest of the study.
+- After manifest promotion, a real authenticated bootstrap returned the exact 29-entry prepared prefix and D082 membership. The next evaluator result is D083/Zechariah 12, proving the original gap is closed.
 
 ## Exact next action
 
-Stage only the controller, focused tests, synchronized documentation, ExecPlan, and project state; run the staged safety check, commit/push, and verify GitHub CI before beginning the separate D082 content milestone.
+Resume the ordinary one-reading-at-a-time T+7 recovery loop at D083/Zechariah 12. Do not skip that gap or broaden the completed controller milestone.

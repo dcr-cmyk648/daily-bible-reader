@@ -1296,57 +1296,67 @@ test("ensure resolves only the prepared prefix or its one exact next active-cale
     start_reading_id: startReadingId,
     reading_count: readingCount
   });
+  const prefixTail = preparedPlan.entries.at(-1);
+  const priorPrefixEntry = preparedPlan.entries.at(-2);
+  const exactNextEntry = activePlan.entries[preparedPlan.entries.length];
+  const skippedEntry = activePlan.entries[preparedPlan.entries.length + 1];
+  assert.ok(exactNextEntry);
+  assert.ok(skippedEntry);
 
   const inPrefix = controller.resolveEnsureScheduledBatch({
-    request: request("CC-Y3Q4-D081"), activePlan, preparedPlan, appConfig, today: "2026-09-03"
+    request: request(prefixTail.readingId), activePlan, preparedPlan, appConfig, today: "2026-09-03"
   });
-  assert.deepEqual(inPrefix.targets.map((target) => target.entry.readingId), ["CC-Y3Q4-D081"]);
+  assert.deepEqual(inPrefix.targets.map((target) => target.entry.readingId), [prefixTail.readingId]);
   const boundedPrefix = controller.resolveEnsureScheduledBatch({
-    request: request("CC-Y3Q4-D080", 2), activePlan, preparedPlan, appConfig, today: "2026-09-03"
+    request: request(priorPrefixEntry.readingId, 2), activePlan, preparedPlan, appConfig, today: "2026-09-03"
   });
-  assert.deepEqual(boundedPrefix.targets.map((target) => target.entry.readingId), ["CC-Y3Q4-D080", "CC-Y3Q4-D081"]);
+  assert.deepEqual(boundedPrefix.targets.map((target) => target.entry.readingId), [priorPrefixEntry.readingId, prefixTail.readingId]);
 
   const exactNext = controller.resolveEnsureScheduledBatch({
-    request: request("CC-Y3Q4-D082"), activePlan, preparedPlan, appConfig, today: "2026-09-03"
+    request: request(exactNextEntry.readingId), activePlan, preparedPlan, appConfig, today: "2026-09-03"
   });
   assert.deepEqual(exactNext.targets.map((target) => [target.entry.readingId, target.entry.bookId, target.entry.chapter]),
-    [["CC-Y3Q4-D082", "ZEC", 11]]);
+    [[exactNextEntry.readingId, exactNextEntry.bookId, exactNextEntry.chapter]]);
 
   assert.throws(() => controller.resolveEnsureScheduledBatch({
-    request: request("CC-Y3Q4-D083"), activePlan, preparedPlan, appConfig
-  }), /exact next active reading CC-Y3Q4-D082/);
+    request: request(skippedEntry.readingId), activePlan, preparedPlan, appConfig
+  }), new RegExp(`exact next active reading ${exactNextEntry.readingId}`));
   assert.throws(() => controller.resolveEnsureScheduledBatch({
-    request: request("CC-Y3Q4-D081", 2), activePlan, preparedPlan, appConfig
+    request: request(prefixTail.readingId, 2), activePlan, preparedPlan, appConfig
   }), /cannot cross the prepared-prefix boundary/);
   assert.throws(() => controller.resolveEnsureScheduledBatch({
-    request: request("CC-Y3Q4-D082", 2), activePlan, preparedPlan, appConfig
+    request: request(exactNextEntry.readingId, 2), activePlan, preparedPlan, appConfig
   }), /must name only the exact next active reading/);
   assert.throws(() => controller.resolveEnsureScheduledBatch({
     request: request("FAB-UNKNOWN"), activePlan, preparedPlan, appConfig
   }), /No unique active reading/);
   assert.throws(() => controller.resolveEnsureScheduledBatch({
-    request: request("CC-Y3Q4-D082", 1, "fabricated-plan-v1"), activePlan, preparedPlan, appConfig
+    request: request(exactNextEntry.readingId, 1, "fabricated-plan-v1"), activePlan, preparedPlan, appConfig
   }), /does not match both/);
   const mismatchedPrefix = {...preparedPlan, entries: preparedPlan.entries.map((entry) => ({...entry}))};
   mismatchedPrefix.entries[0].readingId = "FAB-MISMATCH";
   assert.throws(() => controller.resolveEnsureScheduledBatch({
-    request: request("CC-Y3Q4-D082"), activePlan, preparedPlan: mismatchedPrefix, appConfig
+    request: request(exactNextEntry.readingId), activePlan, preparedPlan: mismatchedPrefix, appConfig
   }), /does not exactly match/);
 });
 
-test("ensure CLI dry-run resolves D082 from an isolated repository root without private-store writes", () => {
+test("ensure CLI dry-run resolves the exact next active entry from an isolated repository root without private-store writes", () => {
   const repositoryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "dbr-mhc-ensure-d082-"));
   try {
     ["config", "fixtures", "schemas", "scripts"].forEach((name) => {
       fs.symlinkSync(path.join(__dirname, "..", name), path.join(repositoryRoot, name), "dir");
     });
+    const preparedPlan = json("fixtures/pilot-content/plan.json");
+    const activePlan = json("config/active-calendar/celebration-bridge-long-term-active.json");
+    const exactNextEntry = activePlan.entries[preparedPlan.entries.length];
+    assert.ok(exactNextEntry);
     const requestPath = path.join(repositoryRoot, "d082-ensure-request.json");
     fs.writeFileSync(requestPath, `${JSON.stringify({
       schema_version: "mhc-ensure-request/v1",
-      request_id: "fabricated-d082-cli-dry-run",
+      request_id: "fabricated-next-entry-cli-dry-run",
       plan_version: "celebration-y3q4-bridge-2026-v1",
       requested_by: "fabricated-cli-regression",
-      start_reading_id: "CC-Y3Q4-D082",
+      start_reading_id: exactNextEntry.readingId,
       reading_count: 1,
       worker_model: "gpt-5.3-codex-spark",
       generation_mode: "spark-autonomous-chunked-two-stage/v4",
@@ -1358,7 +1368,7 @@ test("ensure CLI dry-run resolves D082 from an isolated repository root without 
       encoding: "utf8"
     });
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /generate CC-Y3Q4-D082/);
+    assert.match(result.stdout, new RegExp(`generate ${exactNextEntry.readingId}`));
     assert.match(result.stdout, /Dry run only; no Spark invocation, audit, catalog, pointer, or ensure-result write occurred/);
     assert.equal(fs.existsSync(path.join(repositoryRoot, "private-commentary")), false);
   } finally {

@@ -49,6 +49,7 @@ const SOURCE_MANIFEST_PATH = path.join(PRIVATE_ROOT, "source-manifest.json");
 const PIPELINE_MANIFEST_PATH = path.join(PRIVATE_ROOT, "pipeline-manifest.json");
 const REVIEW_QUEUE_PATH = path.join(PRIVATE_ROOT, "review-queue.jsonl");
 const ACTIVE_PLAN_PATH = path.join(ROOT, "fixtures", "pilot-content", "plan.json");
+const COMPLETE_ACTIVE_CALENDAR_PATH = path.join(ROOT, "config", "active-calendar", "celebration-bridge-long-term-active.json");
 const ACTIVE_CONFIG_PATH = path.join(ROOT, "fixtures", "pilot-content", "app-config.json");
 const BOUNDARIES_PATH = path.join(ROOT, "config", "mhc-source-boundaries.json");
 const PROMPT_PATH = path.join(ROOT, "prompts", "mhc-autonomous-writer-v5.md");
@@ -3002,6 +3003,46 @@ async function readEnsureRequest(requestPath) {
   return {request, schema};
 }
 
+function assertPreparedPrefixMatchesActiveCalendar({request, activePlan, preparedPlan}) {
+  if (!activePlan || !preparedPlan || !Array.isArray(activePlan.entries) || !Array.isArray(preparedPlan.entries)) {
+    throw new Error("The complete active calendar and prepared prefix are required for ensure.");
+  }
+  if (request.plan_version !== activePlan.planVersion || request.plan_version !== preparedPlan.planVersion) {
+    throw new Error(`Ensure request plan ${request.plan_version} does not match both the active calendar and prepared prefix.`);
+  }
+  if (!preparedPlan.entries.length || preparedPlan.entries.length > activePlan.entries.length) {
+    throw new Error("Prepared prefix length is invalid for the active calendar.");
+  }
+  preparedPlan.entries.forEach((entry, index) => {
+    if (JSON.stringify(entry) !== JSON.stringify(activePlan.entries[index])) {
+      throw new Error(`Prepared prefix does not exactly match the active calendar at index ${index + 1}.`);
+    }
+  });
+}
+
+function resolveEnsureScheduledBatch({request, activePlan, preparedPlan, appConfig, now, today}) {
+  assertPreparedPrefixMatchesActiveCalendar({request, activePlan, preparedPlan});
+  const matches = activePlan.entries.filter((entry) => entry.readingId === request.start_reading_id);
+  if (matches.length !== 1) throw new Error(`No unique active reading matches ${request.start_reading_id}.`);
+  const startIndex = activePlan.entries.indexOf(matches[0]);
+  const prefixLength = preparedPlan.entries.length;
+  const endIndex = startIndex + request.reading_count - 1;
+  if (startIndex < prefixLength && endIndex >= prefixLength) {
+    throw new Error("Ensure request cannot cross the prepared-prefix boundary.");
+  }
+  if (startIndex >= prefixLength && (startIndex !== prefixLength || request.reading_count !== 1)) {
+    throw new Error(`Ensure request beyond the prepared prefix must name only the exact next active reading ${activePlan.entries[prefixLength].readingId}.`);
+  }
+  return resolveScheduledBatch({
+    plan: activePlan,
+    appConfig: {...appConfig, testingReadingIds: undefined},
+    startReadingId: request.start_reading_id,
+    readingCount: request.reading_count,
+    now,
+    today
+  });
+}
+
 function partitionTargetsByAvailability({targets, availableReadingIds}) {
   const available = new Set(availableReadingIds || []);
   return targets.reduce((partition, target) => {
@@ -3107,26 +3148,19 @@ function buildEnsureResult({request, completedAt, window, generatedReadingIds, r
 
 async function ensureSchedule(options) {
   assertEnsureOptions(options);
-  const [{request, schema}, plan, appConfig, activationSchema, storeSchema, runtimeSchema] = await Promise.all([
+  const [{request, schema}, activePlan, preparedPlan, appConfig, activationSchema, storeSchema, runtimeSchema] = await Promise.all([
     readEnsureRequest(options.request),
+    readJson(COMPLETE_ACTIVE_CALENDAR_PATH),
     readJson(ACTIVE_PLAN_PATH),
     readJson(ACTIVE_CONFIG_PATH),
     readJson(ACTIVATION_SCHEMA_PATH),
     readJson(WINDOW_STORE_SCHEMA_PATH),
     readJson(RUNTIME_SCHEMA_PATH)
   ]);
-  if (request.plan_version !== plan.planVersion) {
-    throw new Error(`Ensure request plan ${request.plan_version} does not match active plan ${plan.planVersion}.`);
-  }
-  const window = resolveScheduledBatch({
-    plan,
-    appConfig,
-    startReadingId: request.start_reading_id,
-    readingCount: request.reading_count
-  });
-  const library = await loadVerifiedLibraryCatalog({plan, activationSchema});
+  const window = resolveEnsureScheduledBatch({request, activePlan, preparedPlan, appConfig});
+  const library = await loadVerifiedLibraryCatalog({plan: activePlan, activationSchema});
   const availableReadingIds = await verifiedCatalogReadingIds({
-    plan,
+    plan: activePlan,
     targets: window.targets,
     catalog: library.catalog,
     storeSchema,
@@ -3144,10 +3178,10 @@ async function ensureSchedule(options) {
   const scheduledResults = [];
   const routing = routingState();
   for (const target of partition.missing) {
-    scheduledResults.push(await scheduleReading(options, {plan, target, routing}));
+    scheduledResults.push(await scheduleReading(options, {plan: activePlan, target, routing}));
   }
   const store = scheduledResults.length
-    ? await writePortableStores({plan, window, scheduledResults, writeWindow: false})
+    ? await writePortableStores({plan: activePlan, window, scheduledResults, writeWindow: false})
     : {
       catalog: library.catalog,
       catalogPath: library.catalogPath,
@@ -3163,7 +3197,7 @@ async function ensureSchedule(options) {
     throw new Error("Ensure could not produce or reuse a durable Henry library catalog.");
   }
   const finalAvailableIds = await verifiedCatalogReadingIds({
-    plan,
+    plan: activePlan,
     targets: window.targets,
     catalog: store.catalog,
     storeSchema,
@@ -3234,6 +3268,7 @@ export {
   buildActivationResult,
   buildAtomRestrictedFactChapterSpec,
   buildEnsureResult,
+  assertPreparedPrefixMatchesActiveCalendar,
   buildHenryFallbackPassageResult,
   buildFactChunks,
   buildWriterChunks,
@@ -3267,6 +3302,7 @@ export {
   preflight,
   resultMetrics,
   routeHenryGeneration,
+  resolveEnsureScheduledBatch,
   assertPortableStoreEligible,
   canPromoteScheduleReview,
   renderScheduleAuditReport,

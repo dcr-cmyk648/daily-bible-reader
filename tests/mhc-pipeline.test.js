@@ -1,6 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const {spawnSync} = require("node:child_process");
 const {EventEmitter} = require("node:events");
@@ -1283,6 +1284,86 @@ test("schedule resolution supports the interactive window and caller-selected ac
   assert.throws(() => resolveScheduledBatch({
     plan, appConfig, today: "2026-08-10", startReadingId: "CC-Y3Q4-D056", readingCount: 15
   }), /between 1 and 14/);
+});
+
+test("ensure resolves only the prepared prefix or its one exact next active-calendar reading", async () => {
+  const controller = await import("../scripts/mhc-pipeline.mjs");
+  const preparedPlan = json("fixtures/pilot-content/plan.json");
+  const activePlan = json("config/active-calendar/celebration-bridge-long-term-active.json");
+  const appConfig = json("fixtures/pilot-content/app-config.json");
+  const request = (startReadingId, readingCount = 1, planVersion = activePlan.planVersion) => ({
+    plan_version: planVersion,
+    start_reading_id: startReadingId,
+    reading_count: readingCount
+  });
+
+  const inPrefix = controller.resolveEnsureScheduledBatch({
+    request: request("CC-Y3Q4-D081"), activePlan, preparedPlan, appConfig, today: "2026-09-03"
+  });
+  assert.deepEqual(inPrefix.targets.map((target) => target.entry.readingId), ["CC-Y3Q4-D081"]);
+  const boundedPrefix = controller.resolveEnsureScheduledBatch({
+    request: request("CC-Y3Q4-D080", 2), activePlan, preparedPlan, appConfig, today: "2026-09-03"
+  });
+  assert.deepEqual(boundedPrefix.targets.map((target) => target.entry.readingId), ["CC-Y3Q4-D080", "CC-Y3Q4-D081"]);
+
+  const exactNext = controller.resolveEnsureScheduledBatch({
+    request: request("CC-Y3Q4-D082"), activePlan, preparedPlan, appConfig, today: "2026-09-03"
+  });
+  assert.deepEqual(exactNext.targets.map((target) => [target.entry.readingId, target.entry.bookId, target.entry.chapter]),
+    [["CC-Y3Q4-D082", "ZEC", 11]]);
+
+  assert.throws(() => controller.resolveEnsureScheduledBatch({
+    request: request("CC-Y3Q4-D083"), activePlan, preparedPlan, appConfig
+  }), /exact next active reading CC-Y3Q4-D082/);
+  assert.throws(() => controller.resolveEnsureScheduledBatch({
+    request: request("CC-Y3Q4-D081", 2), activePlan, preparedPlan, appConfig
+  }), /cannot cross the prepared-prefix boundary/);
+  assert.throws(() => controller.resolveEnsureScheduledBatch({
+    request: request("CC-Y3Q4-D082", 2), activePlan, preparedPlan, appConfig
+  }), /must name only the exact next active reading/);
+  assert.throws(() => controller.resolveEnsureScheduledBatch({
+    request: request("FAB-UNKNOWN"), activePlan, preparedPlan, appConfig
+  }), /No unique active reading/);
+  assert.throws(() => controller.resolveEnsureScheduledBatch({
+    request: request("CC-Y3Q4-D082", 1, "fabricated-plan-v1"), activePlan, preparedPlan, appConfig
+  }), /does not match both/);
+  const mismatchedPrefix = {...preparedPlan, entries: preparedPlan.entries.map((entry) => ({...entry}))};
+  mismatchedPrefix.entries[0].readingId = "FAB-MISMATCH";
+  assert.throws(() => controller.resolveEnsureScheduledBatch({
+    request: request("CC-Y3Q4-D082"), activePlan, preparedPlan: mismatchedPrefix, appConfig
+  }), /does not exactly match/);
+});
+
+test("ensure CLI dry-run resolves D082 from an isolated repository root without private-store writes", () => {
+  const repositoryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "dbr-mhc-ensure-d082-"));
+  try {
+    ["config", "fixtures", "schemas", "scripts"].forEach((name) => {
+      fs.symlinkSync(path.join(__dirname, "..", name), path.join(repositoryRoot, name), "dir");
+    });
+    const requestPath = path.join(repositoryRoot, "d082-ensure-request.json");
+    fs.writeFileSync(requestPath, `${JSON.stringify({
+      schema_version: "mhc-ensure-request/v1",
+      request_id: "fabricated-d082-cli-dry-run",
+      plan_version: "celebration-y3q4-bridge-2026-v1",
+      requested_by: "fabricated-cli-regression",
+      start_reading_id: "CC-Y3Q4-D082",
+      reading_count: 1,
+      worker_model: "gpt-5.3-codex-spark",
+      generation_mode: "spark-autonomous-chunked-two-stage/v4",
+      only_if_missing: true,
+      reason: "FABRICATED CLI DRY-RUN REQUEST ONLY"
+    }, null, 2)}\n`);
+    const result = spawnSync(process.execPath, ["--preserve-symlinks-main", "scripts/mhc-pipeline.mjs", "ensure", "--request", requestPath, "--dry-run"], {
+      cwd: repositoryRoot,
+      encoding: "utf8"
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /generate CC-Y3Q4-D082/);
+    assert.match(result.stdout, /Dry run only; no Spark invocation, audit, catalog, pointer, or ensure-result write occurred/);
+    assert.equal(fs.existsSync(path.join(repositoryRoot, "private-commentary")), false);
+  } finally {
+    fs.rmSync(repositoryRoot, {recursive: true, force: true});
+  }
 });
 
 test("portable window records are app-neutral, hashed, and explicitly unreviewed", async () => {

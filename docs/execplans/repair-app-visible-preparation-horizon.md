@@ -1,6 +1,6 @@
 # Repair app-visible preparation horizon
 
-Status: release candidate validated, 2026-09-04 (America/Detroit).
+Status: released; installed-iPhone confirmation pending, 2026-09-04 (America/Detroit).
 
 ## Goal
 
@@ -104,7 +104,7 @@ ordered plan/manifest-prefix equality, and authenticated bootstrap verification.
 - [x] Complete authoritative diagnosis (code path).
 - [x] Implement and validate the code-side repair.
 - [x] Reconcile live state and implement the recurring-task completion gate.
-- [ ] Publish the validated release and record live evidence.
+- [x] Publish the validated release and record live evidence.
 
 ## Discoveries
 
@@ -146,9 +146,15 @@ ordered plan/manifest-prefix equality, and authenticated bootstrap verification.
 - Repository safety passed, all private/content/source validators passed,
   270/270 tests passed, deterministic builds passed, and exact Pages verification
   passed for frontend `aa4ff7bbcd2dc4c1` and PWA `c34528a216b98fe9`.
+- Commit `283ec7c` is live on `main`; GitHub safety/test run `33871873624`
+  and Pages deployment `33871872401` passed. All 12 public files matched
+  committed bytes and expected MIME types over HTTPS, and a deployed mobile-width
+  browser smoke found no console issue or horizontal overflow.
+- The existing 3:00 a.m. automation remains active with its prompt synchronized
+  to require `study:live-health` before any successful horizon report.
 
 ## Exact next action
 
-Commit and push the code-only release, verify GitHub safety/Pages deployment and
-exact HTTPS artifacts, synchronize the existing scheduled task prompt, then ask
-for the installed-reader update/reopen warning check.
+Have Dustin update/reopen the installed reader and confirm that the false
+preparation warning does not return after the authenticated background window
+finishes.

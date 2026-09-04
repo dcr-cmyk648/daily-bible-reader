@@ -3904,10 +3904,7 @@
         }));
       const selectedDay = state.calendarWindow && state.calendarWindow.days
         .find((day) => day.date === state.selectedCalendarDate);
-      if (state.view === "home") {
-        renderContentReadiness(currentContentReadiness(state.privatePayloadByReadingId));
-        if (selectedDay) renderSelectedDayVerse(selectedDay);
-      }
+      if (state.view === "home" && selectedDay) renderSelectedDayVerse(selectedDay);
       await updateCacheInspector();
     };
     const promise = run();
@@ -3929,6 +3926,7 @@
     if (endIndex - startIndex < target) startIndex = Math.max(0, endIndex - target);
     const windowEntries = entries.slice(startIndex, endIndex);
     const preparedEntries = windowEntries.filter(hasPreparedReading);
+    let authenticatedPayloadWindow = false;
     let contentCount = 0;
     let scriptureCount = 0;
     let scriptureEligible = 0;
@@ -3965,9 +3963,14 @@
           payloadByReadingId.set(entry.readingId, payload);
           contentCount += 1;
         }
+        // Only this complete authenticated batch may drive the preparation
+        // warning. The priority warmer intentionally contains today and
+        // tomorrow only, and a retained cache is an offline display fallback,
+        // not publication-readiness authority.
+        authenticatedPayloadWindow = true;
       } catch {
-        // A stale or partial retained pack is preferable to delaying the active
-        // reading; the readiness banner remains honest about whatever is cached.
+        // A stale or partial retained pack is still available for offline reading,
+        // but it cannot establish the live preparation horizon.
       }
     }
 
@@ -4007,8 +4010,9 @@
       ? `${scriptureCount}/${scriptureEligible} priority passage${scriptureEligible === 1 ? "" : "s"} retained within ESV limits` +
         (scriptureRestrictedReadings ? ` · ${scriptureRestrictedReadings} multi-chapter reading${scriptureRestrictedReadings === 1 ? "" : "s"} keep the first chapter ready and stream later chapters` : "")
       : "ESV text stays network-only by provider policy";
-    const readiness = currentContentReadiness(payloadByReadingId);
-    renderContentReadiness(readiness);
+    if (authenticatedPayloadWindow) {
+      renderContentReadiness(currentContentReadiness(payloadByReadingId));
+    }
     const offlineStatus = element("offlinePackStatus");
     offlineStatus.dataset.state = contentCount === windowEntries.length && scriptureCount === scriptureEligible
       ? "ready"

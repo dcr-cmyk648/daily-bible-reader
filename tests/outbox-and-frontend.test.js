@@ -957,7 +957,7 @@ test("today and tomorrow are the only priority warm readings", () => {
   );
   assert.match(priorityWarmSource, /getReadingPayloads\(entries\.map\(\(entry\) => entry\.readingId\)\)/);
   assert.match(priorityWarmSource, /private-content revision cannot remain hidden behind the offline retention window/);
-  assert.match(priorityWarmSource, /renderContentReadiness\(currentContentReadiness\(state\.privatePayloadByReadingId\)\)/);
+  assert.doesNotMatch(priorityWarmSource, /renderContentReadiness\(/);
   assert.match(priorityWarmSource, /scripturePrefetchPassageIndex\(entry, state\.plan\.bookMetrics, state\.policy\)/);
   assert.match(priorityWarmSource, /retainFullPassage: false/);
   assert.match(priorityWarmSource, /persist: false/);
@@ -969,6 +969,9 @@ test("today and tomorrow are the only priority warm readings", () => {
   assert.match(offlineWarmSource, /getReadingPayloads\(readingIds\)/);
   assert.match(offlineWarmSource, /preparedEntries\.map\(\(entry\) => entry\.readingId\)/);
   assert.match(offlineWarmSource, /Revalidate the whole current-plus-seven window/);
+  assert.match(offlineWarmSource, /let authenticatedPayloadWindow = false/);
+  assert.match(offlineWarmSource, /authenticatedPayloadWindow = true/);
+  assert.match(offlineWarmSource, /if \(authenticatedPayloadWindow\) \{\s*renderContentReadiness\(currentContentReadiness\(payloadByReadingId\)\)/);
   assert.match(offlineWarmSource, /scriptureRetentionTargetCount/);
   assert.match(offlineWarmSource, /keep the first chapter ready and stream later chapters/);
   assert.doesNotMatch(offlineWarmSource, /missingEntries/);

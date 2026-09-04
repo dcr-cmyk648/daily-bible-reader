@@ -65,7 +65,9 @@ If tracked code/plan metadata changed, commit intentionally, push `main`, publis
 
 ## 4. Reevaluate and report
 
-After—and only after—exact Drive readback proves the named reading is live, rerun `npm run study:next`. If it returns another `prepare_publish`, repeat Sections 1–3 for only that new work order. The loop is bounded by the eight-reading horizon and stops immediately on the first generation, review, validation, upload, sharing, or readback failure. It must never skip a gap or move beyond T+7. When the result is `none` or `plan_complete`, the primary preparation lane is finished.
+After—and only after—exact Drive readback proves the named reading is live, run `npm run study:live-health`, then rerun `npm run study:next`. If it returns another `prepare_publish`, repeat Sections 1–3 for only that new work order. The loop is bounded by the eight-reading horizon and stops immediately on the first generation, review, validation, upload, sharing, readback, or live-health failure. It must never skip a gap or move beyond T+7. When the result is `none` or `plan_complete`, run the same command once more before declaring the primary preparation lane finished.
+
+`study:live-health` combines the public endpoint from tracked `config/pages-pwa-public.json` with Dustin's credential from the existing ignored `private-content/reader-codes.json`; it accepts no credential or token argument. It derives the Detroit current-through-T+7 IDs from authenticated bootstrap, fetches exactly that batch, and applies the reader's own component validator. It exits nonzero for a missing prepared-prefix member, payload, or required component. Its JSON report is intentionally limited to status, counts, date, reading IDs, and component IDs; never paste or log the reader-code file, payload, comments, ESV text, source text, or private IDs.
 
 Report every reading/date repaired in order, source categories and limitations, Henry generation/review status, tests/gates, Drive readback, resulting ready-through date, commit, Pages release, and any failure. Do not include private IDs, reader codes, comments, ESV wording, or copyrighted source text.
 
@@ -107,6 +109,7 @@ If the T+7 lane already observed a Spark model-execution failure, do not probe S
 - A Spark model-execution failure receives one Luna-low attempt; two failed model attempts use only the documented full-source-link fallback. Deterministic request, source, checksum, schema, security, repository, review, and publication failures leave the reading non-ready and retry the same work order.
 - Backfill is lower priority than the end-to-end T+7 lane, processes at most one separate reading per run, and retains its working fallback on every failure.
 - A Drive upload failure leaves the old manifest current.
+- A failed `study:live-health` check leaves the manifest current and prevents a success report, even when local evaluator, manifest, and bootstrap membership checks passed.
 - Missing local private storage or a dirty checkout stops publication.
 - A single work order never generates a second reading. A recovery run may obtain the next work order only after successful exact readback; it never skips a gap, reads comments, calls the ESV API, or weakens a gate.
 - If the Mac misses the run, the app's first-gap warning remains the independent alert.

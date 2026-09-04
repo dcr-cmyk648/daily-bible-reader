@@ -26,7 +26,7 @@ function syntheticPlan(count = 4) {
   };
 }
 
-function validatorHarness(today = "2026-09-01") {
+function validatorHarness(today) {
   const source = fs.readFileSync(path.join(__dirname, "../app/apps-script/Code.gs"), "utf8")
     .replace(/JSON\.parse\("\{\\"__dbr_active_calendar__\\":true\}"\)/, `(${JSON.stringify(activePlan)})`);
   const context = vm.createContext({
@@ -233,7 +233,11 @@ test("Apps Script names every active-calendar book and frontend cache requires c
 
 test("Apps Script private-config validator accepts the current active prefix and fails closed on active-calendar changes", () => {
   const privatePlan = JSON.parse(fs.readFileSync(path.join(__dirname, "../fixtures/pilot-content/plan.json"), "utf8"));
-  const validate = validatorHarness();
+  const earliestPermittedDate = new Date(`${config.sharedStartDate}T12:00:00Z`);
+  earliestPermittedDate.setUTCDate(
+    earliestPermittedDate.getUTCDate() + privatePlan.entries.at(-1).dayIndex - 1 - config.preparedAheadDays
+  );
+  const validate = validatorHarness(earliestPermittedDate.toISOString().slice(0, 10));
   const manifest = validManifestFor(privatePlan.entries);
   assert.doesNotThrow(() => validate(config, privatePlan, manifest));
 

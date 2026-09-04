@@ -115,6 +115,8 @@ test("active calendar transforms the locked v2 candidate without mutating it", a
   assert.equal(plan.entries[38].readingId, "CC-Y3Q4-D092");
   assert.equal(plan.entries[39].readingId, "LTP-0001-GEN-INTRO");
   assert.equal(plan.entries[39].dayIndex, 40);
+  assert.equal(plan.bookMetrics.PSA.versification, bridge.bookMetrics.PSA.versification);
+  assert.equal(plan.bookMetrics.GEN.versification, candidate.bookMetrics.GEN.versification);
   assert.equal(activation.activatedSourcePlanVersion, candidate.planVersion);
   assert.equal(activation.activatedSourceScheduleSha256, candidate.candidateMetadata.scheduleSha256);
   assert.equal(compactActiveCalendar(plan).entries[39].orderingRationale, undefined);

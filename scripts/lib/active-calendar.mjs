@@ -24,7 +24,7 @@ export function buildActiveCalendar({bridge, candidate}) {
     title: "Celebration bridge and four-stream Protestant canon",
     canonId: candidate.canonId, calendarRevision: activeScheduleSha256,
     entries: [...bridgeEntries, ...longTermEntries],
-    bookMetrics: {...bridge.bookMetrics, ...candidate.bookMetrics}
+    bookMetrics: {...candidate.bookMetrics, ...bridge.bookMetrics}
   };
   return {
     plan,

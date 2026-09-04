@@ -56709,66 +56709,6 @@
     }
   ],
   "bookMetrics": {
-    "MIC": {
-      "verseCount": 105,
-      "chapterCount": 7,
-      "versification": "Protestant chapter and verse numbering; factual structural metadata only"
-    },
-    "1PE": {
-      "verseCount": 105,
-      "chapterCount": 5,
-      "versification": "Protestant chapter and verse numbering; factual structural metadata only"
-    },
-    "NAM": {
-      "verseCount": 47,
-      "chapterCount": 3,
-      "versification": "Protestant chapter and verse numbering; factual structural metadata only"
-    },
-    "PRO": {
-      "verseCount": 915,
-      "chapterCount": 31,
-      "versification": "Protestant chapter and verse numbering; factual structural metadata only"
-    },
-    "HAB": {
-      "verseCount": 56,
-      "chapterCount": 3,
-      "versification": "Protestant chapter and verse numbering; factual structural metadata only"
-    },
-    "2PE": {
-      "verseCount": 61,
-      "chapterCount": 3,
-      "versification": "Protestant chapter and verse numbering; factual structural metadata only"
-    },
-    "ZEP": {
-      "verseCount": 53,
-      "chapterCount": 3,
-      "versification": "Protestant chapter and verse numbering; factual structural metadata only"
-    },
-    "HAG": {
-      "verseCount": 38,
-      "chapterCount": 2,
-      "versification": "Protestant chapter and verse numbering; factual structural metadata only"
-    },
-    "ZEC": {
-      "verseCount": 211,
-      "chapterCount": 14,
-      "versification": "Protestant chapter and verse numbering; factual structural metadata only"
-    },
-    "JAS": {
-      "verseCount": 108,
-      "chapterCount": 5,
-      "versification": "Protestant chapter and verse numbering; factual structural metadata only"
-    },
-    "PSA": {
-      "verseCount": 2461,
-      "chapterCount": 150,
-      "versification": "Protestant chapter and verse numbering; factual structural metadata only"
-    },
-    "MAL": {
-      "verseCount": 55,
-      "chapterCount": 4,
-      "versification": "Protestant chapter and verse numbering; factual structural metadata only"
-    },
     "GEN": {
       "verseCount": 1533,
       "chapterCount": 50,
@@ -56859,6 +56799,16 @@
       "chapterCount": 42,
       "versification": "Protestant chapter and verse numbering; factual structural metadata only"
     },
+    "PSA": {
+      "verseCount": 2461,
+      "chapterCount": 150,
+      "versification": "Factual Protestant chapter metrics for bridge policy calculations"
+    },
+    "PRO": {
+      "verseCount": 915,
+      "chapterCount": 31,
+      "versification": "ESV API metrics verified for bridge policy calculations"
+    },
     "ECC": {
       "verseCount": 222,
       "chapterCount": 12,
@@ -56918,6 +56868,41 @@
       "verseCount": 48,
       "chapterCount": 4,
       "versification": "Protestant chapter and verse numbering; factual structural metadata only"
+    },
+    "MIC": {
+      "verseCount": 105,
+      "chapterCount": 7,
+      "versification": "ESV API metrics verified for bridge policy calculations"
+    },
+    "NAM": {
+      "verseCount": 47,
+      "chapterCount": 3,
+      "versification": "ESV API metrics verified for bridge policy calculations"
+    },
+    "HAB": {
+      "verseCount": 56,
+      "chapterCount": 3,
+      "versification": "ESV API metrics verified for bridge policy calculations"
+    },
+    "ZEP": {
+      "verseCount": 53,
+      "chapterCount": 3,
+      "versification": "ESV API metrics verified for bridge policy calculations"
+    },
+    "HAG": {
+      "verseCount": 38,
+      "chapterCount": 2,
+      "versification": "Factual Protestant chapter metrics for bridge policy calculations"
+    },
+    "ZEC": {
+      "verseCount": 211,
+      "chapterCount": 14,
+      "versification": "Factual Protestant chapter metrics for bridge policy calculations"
+    },
+    "MAL": {
+      "verseCount": 55,
+      "chapterCount": 4,
+      "versification": "Factual Protestant chapter metrics for bridge policy calculations"
     },
     "MAT": {
       "verseCount": 1068,
@@ -57013,6 +56998,21 @@
       "verseCount": 303,
       "chapterCount": 13,
       "versification": "Protestant chapter and verse numbering; factual structural metadata only"
+    },
+    "JAS": {
+      "verseCount": 108,
+      "chapterCount": 5,
+      "versification": "Factual Protestant chapter metrics for bridge policy calculations"
+    },
+    "1PE": {
+      "verseCount": 105,
+      "chapterCount": 5,
+      "versification": "ESV API metrics verified for bridge policy calculations"
+    },
+    "2PE": {
+      "verseCount": 61,
+      "chapterCount": 3,
+      "versification": "ESV API metrics verified for bridge policy calculations"
     },
     "1JN": {
       "verseCount": 105,

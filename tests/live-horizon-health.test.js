@@ -57,7 +57,7 @@ function bootstrap() {
 }
 
 test("live horizon evaluation uses the reader validator for all Detroit current-through-T+7 payloads", async () => {
-  const {evaluateLiveHorizon} = await healthModule;
+  const {evaluateHenryLayerReadiness, evaluateLiveHorizon} = await healthModule;
   const boot = bootstrap();
   const horizon = boot.plan.entries.slice(0, 8);
   const batch = {planVersion: boot.plan.planVersion, payloads: Object.fromEntries(horizon.map((reading) => [reading.readingId, payload(reading)]))};
@@ -67,6 +67,22 @@ test("live horizon evaluation uses the reader validator for all Detroit current-
     readingIds: horizon.map((reading) => reading.readingId), preparedCount: 8,
     missingPreparedReadingIds: [], missingPayloadReadingIds: [], componentFailures: []
   });
+
+  const fallbackPayload = batch.payloads[horizon[2].readingId];
+  delete fallbackPayload.commentary.verseCommentary;
+  fallbackPayload.commentary.henrySourceLink = {
+    sourceId: "fabricated-source-one",
+    title: "Fabricated complete public-domain commentary",
+    url: "https://example.test/fabricated-henry",
+    note: "Fabricated test fallback preserves daily-study availability."
+  };
+  assert.equal(evaluateLiveHorizon(boot, batch, new Date("2026-09-04T16:00:00.000Z")).status, "ready");
+  assert.deepEqual(evaluateHenryLayerReadiness(boot, batch, new Date("2026-09-04T16:00:00.000Z")), {
+    status: "debt", target: 8, completeCount: 7, debtCount: 1,
+    completeReadingIds: horizon.filter((reading) => reading.readingId !== horizon[2].readingId).map((reading) => reading.readingId),
+    fallbackReadingIds: [horizon[2].readingId], unavailableReadingIds: []
+  });
+  batch.payloads[horizon[2].readingId] = payload(horizon[2]);
 
   boot.preparedReadingIds = boot.preparedReadingIds.slice(0, 7);
   const prefixGap = evaluateLiveHorizon(boot, batch, new Date("2026-09-04T16:00:00.000Z"));
@@ -112,6 +128,8 @@ test("live bridge keeps the stored credential in POST bodies and fetches exactly
   };
   const result = await verifyLiveHorizon(credentials, {fetchImpl, now: new Date("2026-09-04T16:00:00.000Z"), randomBytesFn: (length) => Buffer.alloc(length, 7)});
   assert.equal(result.status, "ready");
+  assert.equal(result.currentHorizonHenryLayer.scope, "current_through_t_plus_7_chapters");
+  assert.equal(result.currentHorizonHenryLayer.target, 8);
   assert.deepEqual(calls.map((call) => call.method), ["getBootstrapData", "getReadingPayloads"]);
   assert.deepEqual(JSON.parse(calls[1].args_json).slice(1)[0], horizon.map((reading) => reading.readingId));
   assert.equal(calls.every((call) => call.client_origin === "https://dcr-cmyk648.github.io"), true);

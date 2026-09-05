@@ -67,13 +67,23 @@ If tracked code/plan metadata changed, commit intentionally, push `main`, publis
 
 After—and only after—exact Drive readback proves the named reading is live, run `npm run study:live-health`, then rerun `npm run study:next`. If it returns another `prepare_publish`, repeat Sections 1–3 for only that new work order. The loop is bounded by the eight-reading horizon and stops immediately on the first generation, review, validation, upload, sharing, readback, or live-health failure. It must never skip a gap or move beyond T+7. When the result is `none` or `plan_complete`, run the same command once more before declaring the primary preparation lane finished.
 
-`study:live-health` combines the public endpoint from tracked `config/pages-pwa-public.json` with Dustin's credential from the existing ignored `private-content/reader-codes.json`; it accepts no credential or token argument. It derives the Detroit current-through-T+7 IDs from authenticated bootstrap, fetches exactly that batch, and applies the reader's own component validator. It exits nonzero for a missing prepared-prefix member, payload, or required component. Its JSON report is intentionally limited to status, counts, date, reading IDs, and component IDs; never paste or log the reader-code file, payload, comments, ESV text, source text, or private IDs.
+`study:live-health` combines the public endpoint from tracked `config/pages-pwa-public.json` with Dustin's credential from the existing ignored `private-content/reader-codes.json`; it accepts no credential or token argument. It derives the Detroit current-through-T+7 IDs from authenticated bootstrap, fetches exactly that batch, and applies the reader's own component validator. It exits nonzero for a missing prepared-prefix member, payload, or required component. Its safe JSON report separately includes `currentHorizonHenryLayer` completeness/debt counts and fallback reading IDs only for chapter entries in that same fetched horizon, so a green daily-study horizon cannot conceal a verified-link Henry debt without widening the live fetch; never paste or log the reader-code file, payload, comments, ESV text, source text, or private IDs.
 
 Report every reading/date repaired in order, source categories and limitations, Henry generation/review status, tests/gates, Drive readback, resulting ready-through date, commit, Pages release, and any failure. Do not include private IDs, reader codes, comments, ESV wording, or copyrighted source text.
 
-## 5. One-reading protocol refresh backfill
+## 5. One-reading Henry backfill before protocol refresh
 
-Only after the T+7 lane reports `none` or `plan_complete` and exact Drive readback is verified, run:
+Only after the T+7 lane reports `none` or `plan_complete` and exact Drive readback is verified, first inspect and attempt at most one Henry-only fallback repair:
+
+```sh
+npm run mhc:backfill:next
+```
+
+The daily study remains ready when a verified full-commentary link is present. Treat a selected Henry action as separate layer debt, not a T+7 failure. The permitted controller remains Spark once, then Luna once at low reasoning only after an eligible Spark model-execution failure; never use Sol, Terra, or another model. If both attempts fail, retain the fallback, report the debt, and still consider the one optional protocol refresh below.
+
+## 6. One-reading protocol refresh backfill
+
+After the one Henry inspection or attempt, run:
 
 ```sh
 npm run study:protocol-backfill:next
@@ -85,15 +95,9 @@ Validate the result against `schemas/protocol-backfill-work-order.schema.json`.
 - `none`: every already-read manifest-backed study is current under `daily-study-protocol/v1`.
 - `refresh_review_publish`: perform one complete primary-reviewed refresh of only the named prior reading, selected most-recent-first. It must preserve the stable reading ID and therefore existing comments/highlights; retain and revalidate the newest reviewed Henry artifact or verified fallback; preserve prior versions; and never store ESV wording. Reconsider the synthesis, sources, citations, and historical-context assessment rather than merely adding version metadata. Upload versioned content and metadata first, update the manifest last, then verify exact Drive bytes and unchanged narrow sharing.
 
-This lane is higher priority than Henry-only backfill. It may select one reading only and never alters backend authorization, sharing, comments, highlights, or plan placement.
+This lane may select one reading only and never alters backend authorization, sharing, comments, highlights, or plan placement.
 
-## 6. Opportunistic Henry backfill
-
-After—and only after—the T+7 lane is complete and verified and the protocol-refresh lane reports `none`, inspect the one-reading Henry-backfill queue:
-
-```sh
-npm run mhc:backfill:next
-```
+## 7. Henry backfill handling
 
 Validate the result against `schemas/mhc-backfill-work-order.schema.json`. The queue scans active-plan order and selects only the earliest manifest-published chapter whose metadata still contains a valid `henrySourceLink`. It verifies the checksum-bound private Henry library before reporting one of four actions:
 
@@ -106,8 +110,8 @@ If the T+7 lane already observed a Spark model-execution failure, do not probe S
 
 ## Failure rules
 
-- A Spark model-execution failure receives one Luna-low attempt; two failed model attempts use only the documented full-source-link fallback. Deterministic request, source, checksum, schema, security, repository, review, and publication failures leave the reading non-ready and retry the same work order.
-- Backfill is lower priority than the end-to-end T+7 lane, processes at most one separate reading per run, and retains its working fallback on every failure.
+- A Spark model-execution failure receives one Luna-low attempt; two failed model attempts retain the documented full-source-link fallback. Deterministic request, source, checksum, security, repository, review, and publication failures retain that fallback and report Henry debt without changing daily-study readiness.
+- Henry backfill is lower priority than the end-to-end T+7 lane, precedes the optional protocol refresh, processes at most one separate reading per run, and retains its working fallback on every failure.
 - A Drive upload failure leaves the old manifest current.
 - A failed `study:live-health` check leaves the manifest current and prevents a success report, even when local evaluator, manifest, and bootstrap membership checks passed.
 - Missing local private storage or a dirty checkout stops publication.

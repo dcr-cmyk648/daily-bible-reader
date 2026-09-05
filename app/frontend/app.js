@@ -2622,6 +2622,12 @@
     return readingPreparationReport(payload, entryInput).prepared;
   }
 
+  function hasCompleteHenryVerseLayer(payload, entryInput) {
+    const commentary = payload && (payload.commentary || payload.metadata);
+    const entry = preparationEntry(entryInput, commentary);
+    return Boolean(entry && entry.kind === "chapter" && verseCommentaryIsComplete(commentary, entry));
+  }
+
   function evaluateContentReadiness(entriesInput, payloadsInput, startIndexInput, targetInput) {
     const entries = Array.isArray(entriesInput) ? entriesInput : [];
     const payloads = payloadsInput instanceof Map
@@ -4963,6 +4969,7 @@
     retainedCalendarFailureStatus,
     retainedOutboxFailureStatus,
     readingContentIsPrepared,
+    hasCompleteHenryVerseLayer,
     readingRequiresPartitionedScripture,
     readingPreparationReport,
     readingHasActiveComment,

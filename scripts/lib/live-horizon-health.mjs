@@ -194,6 +194,41 @@ export function evaluateLiveHorizon(bootstrap, payloadBatch, now = new Date()) {
   }
 }
 
+export function evaluateHenryLayerReadiness(bootstrap, payloadBatch, now = new Date()) {
+  try {
+    const plan = bootstrap && bootstrap.plan;
+    const config = bootstrap && bootstrap.config;
+    const schedule = readerApp.calculateSchedule(plan, config, now);
+    const entries = plan && Array.isArray(plan.entries) ? plan.entries : [];
+    const startIndex = schedule.status === "before_start" ? 0 : schedule.status === "pilot_complete"
+      ? entries.length : Math.max(0, schedule.calendarDayIndex - 1);
+    const horizon = entries.slice(startIndex, startIndex + 8).filter((entry) => entry.kind === "chapter");
+    const payloads = payloadBatch && payloadBatch.payloads && typeof payloadBatch.payloads === "object"
+      ? payloadBatch.payloads : {};
+    const completeReadingIds = [];
+    const fallbackReadingIds = [];
+    const unavailableReadingIds = [];
+    horizon.forEach((entry) => {
+      const payload = payloads[entry.readingId];
+      const report = readerApp.readingPreparationReport(payload, entry);
+      if (readerApp.hasCompleteHenryVerseLayer(payload, entry)) completeReadingIds.push(entry.readingId);
+      else if (report.prepared && report.components.find((component) => component.id === "henry")?.ready) fallbackReadingIds.push(entry.readingId);
+      else unavailableReadingIds.push(entry.readingId);
+    });
+    return {
+      status: unavailableReadingIds.length ? "unavailable" : fallbackReadingIds.length ? "debt" : "complete",
+      target: horizon.length,
+      completeCount: completeReadingIds.length,
+      debtCount: fallbackReadingIds.length,
+      completeReadingIds,
+      fallbackReadingIds,
+      unavailableReadingIds
+    };
+  } catch (_) {
+    throw failure("LIVE_HEALTH_HENRY_STATUS_INVALID");
+  }
+}
+
 export async function verifyLiveHorizon(credentials, options = {}) {
   const bootstrap = await callLiveHealthBridge(credentials, "getBootstrapData", [credentials.readerCode], options);
   const schedule = readerApp.calculateSchedule(bootstrap.plan, bootstrap.config, options.now || new Date());
@@ -204,5 +239,12 @@ export async function verifyLiveHorizon(credentials, options = {}) {
   const payloadBatch = horizonIds.length
     ? await callLiveHealthBridge(credentials, "getReadingPayloads", [credentials.readerCode, horizonIds], options)
     : {planVersion: bootstrap.plan.planVersion, payloads: {}};
-  return evaluateLiveHorizon(bootstrap, payloadBatch, options.now || new Date());
+  const now = options.now || new Date();
+  return {
+    ...evaluateLiveHorizon(bootstrap, payloadBatch, now),
+    currentHorizonHenryLayer: {
+      scope: "current_through_t_plus_7_chapters",
+      ...evaluateHenryLayerReadiness(bootstrap, payloadBatch, now)
+    }
+  };
 }

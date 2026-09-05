@@ -71,7 +71,8 @@ Make Matthew Henry verse-layer completeness an independently tracked automation 
 - [x] Focused readiness, backfill-order, and contract tests; repository safety; and `git diff --check` passed after the scope/policy reconciliation.
 - [x] Primary diff and test review completed.
 - [x] Immutable code-only release candidate generated and the complete repository check passed.
-- [ ] Commit, push, live Pages verification, and release-state closeout.
+- [x] Commit, push, live Pages byte/MIME verification, and authenticated health verification completed.
+- [ ] Deployed browser smoke remains unavailable because this environment has no connected controllable browser.
 
 ## Discoveries
 
@@ -99,10 +100,22 @@ Make Matthew Henry verse-layer completeness an independently tracked automation 
   351 files, all content/source/private validators, every build, and exact
   verification of frontend release `c20dfa1a2c7392c9` and PWA client
   `c2681bc6c65b8220`.
+- Commits `836c69a` and `7207fb4` are on `main`. GitHub safety/test run
+  `33987317570` and Pages deployment `33987317194` passed. All eight changed
+  live files returned HTTPS 200 with expected MIME types and exact committed
+  bytes.
+- The authenticated live-health result reports the daily study horizon as 8/8
+  ready while `currentHorizonHenryLayer` independently reports eight fallback
+  debts and zero complete reviewed verse layers for D082–D089.
+- Browser-client discovery found no connected browser, so the deployed
+  mobile-width visual smoke could not be run. This release does not change UI
+  behavior, storage, authentication, transport, or Apps Script server bytes;
+  the remaining visual smoke is recorded rather than bypassed.
 
 ## Exact next action
 
-Commit and push the reviewed tracked changes and immutable code-only Pages
-release, then verify the published HTTPS bytes/MIME types and record the final
-release state. No Apps Script deployment is required because the generated
-server bundle is unchanged.
+At the next available browser session, run the routine deployed mobile-width
+smoke. The next scheduled preparation run can otherwise use the checked prompt:
+finish T+7, attempt one Henry fallback repair, then consider one protocol
+refresh. No Apps Script deployment is required because the generated server
+bundle is unchanged.

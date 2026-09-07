@@ -73,7 +73,7 @@ Make Matthew Henry debt an independently scheduled, durable lane so daily-study 
 - [x] Primary review, 273-test suite, repository safety, tracked commit `6d8c2cb`, and push to `main`.
 - [x] Saved daily automation updated; independent Henry automation and supervisory-thread heartbeat created and their on-disk records verified.
 - [x] First scheduled Henry run and supervisory heartbeat reported the normalized shared state-runtime failure without changing fallback or manifest.
-- [ ] Primary review and release of the SQLite-home controller repair.
+- [x] Primary review and release of the SQLite-home controller repair in commit `780363f` on `main`; 274 tests, safety, build, and diff checks passed.
 - [ ] Observe the next scheduled Henry run and subsequent heartbeat after the accepted release.
 
 ## Exact next action

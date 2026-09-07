@@ -120,7 +120,8 @@ test("an empty queue is a stable no-op", () => {
 
 test("the independent Henry scheduled task uses the strict Spark-to-Luna policy and safe reporting", () => {
   const prompt = readFileSync(new URL("../prompts/henry-backfill-scheduled-task.md", import.meta.url), "utf8");
-  assert.match(prompt, /For `generate_review_publish`[\s\S]*exact `gpt-5\.3-codex-spark` once[\s\S]*exact `gpt-5\.6-luna` once at low reasoning/);
+  assert.match(prompt, /For `generate_review_publish`[\s\S]*one actual Codex child process for exact `gpt-5\.3-codex-spark`[\s\S]*one exact `gpt-5\.6-luna` child at low reasoning/);
+  assert.match(prompt, /without `--max-retries`/);
   assert.match(prompt, /On every failure, retain the verified source link and the prior manifest/);
   assert.match(prompt, /never prepares a daily study/);
   assert.match(prompt, /Deterministic request, source, checksum, schema, security, repository, review, validation, or publication failure never switches models/);

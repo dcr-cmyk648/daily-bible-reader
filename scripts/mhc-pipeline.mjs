@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 
 import {spawn, spawnSync} from "node:child_process";
-import {access, appendFile, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile} from "node:fs/promises";
-import {tmpdir} from "node:os";
+import {access, appendFile, chmod, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile} from "node:fs/promises";
+import {homedir, tmpdir} from "node:os";
 import path from "node:path";
 import process from "node:process";
+import {DatabaseSync} from "node:sqlite";
 import {
   AUTONOMOUS_GENERATION_MODE,
   FACT_PROMPT_VERSION,
@@ -458,6 +459,106 @@ async function createControllerSqliteHome(createTempDir = mkdtemp) {
   return assertControllerSqliteHome(await createTempDir(path.join(tmpdir(), "dbr-mhc-codex-sqlite-")));
 }
 
+function quoteSqliteIdentifier(identifier) {
+  return `"${String(identifier).replaceAll('"', '""')}"`;
+}
+
+async function resolveCodexStateDatabase({environment = process.env, homeDirectory = homedir(), fileExists = exists} = {}) {
+  const configuredHome = String(environment.CODEX_SQLITE_HOME || "");
+  const configuredStatePath = configuredHome ? path.join(configuredHome, "state_5.sqlite") : null;
+  if (configuredStatePath && await fileExists(configuredStatePath)) return configuredStatePath;
+  return path.join(homeDirectory, ".codex", "state_5.sqlite");
+}
+
+function sqliteTableColumns(database, tableName) {
+  return database.prepare(`PRAGMA table_info(${quoteSqliteIdentifier(tableName)})`).all();
+}
+
+function createSchemaOnlyState(database, schemaRows) {
+  for (const row of schemaRows) database.exec(row.sql);
+}
+
+function copySqlxMigrations({source, target}) {
+  const columns = sqliteTableColumns(source, "_sqlx_migrations");
+  if (!columns.length) throw new Error("Codex state migrations table is unavailable.");
+  const names = columns.map((column) => column.name);
+  const quotedNames = names.map(quoteSqliteIdentifier).join(", ");
+  const rows = source.prepare(`SELECT ${quotedNames} FROM "_sqlx_migrations" ORDER BY "version"`).all();
+  const insert = target.prepare(`INSERT INTO "_sqlx_migrations" (${quotedNames}) VALUES (${names.map(() => "?").join(", ")})`);
+  for (const row of rows) insert.run(...names.map((name) => row[name]));
+}
+
+function markBackfillStateComplete(database) {
+  const columns = sqliteTableColumns(database, "backfill_state");
+  const names = columns.map((column) => column.name);
+  const textCompletionColumn = names.find((name) => ["state", "status", "phase"].includes(name));
+  const booleanCompletionColumn = names.find((name) => ["complete", "completed", "is_complete", "backfill_complete", "backfill_completed"].includes(name));
+  const completionColumn = textCompletionColumn || booleanCompletionColumn;
+  if (!completionColumn) throw new Error("Codex backfill state marker is incompatible.");
+  const values = new Map([[completionColumn, textCompletionColumn ? "complete" : 1]]);
+  if (names.includes("updated_at")) values.set("updated_at", Math.floor(Date.now() / 1000));
+  for (const column of columns) {
+    if (values.has(column.name) || !column.notnull || column.dflt_value !== null) continue;
+    if (column.pk && /int/i.test(column.type || "")) {
+      values.set(column.name, 1);
+      continue;
+    }
+    throw new Error("Codex backfill state marker is incompatible.");
+  }
+  const insertNames = [...values.keys()];
+  const quotedNames = insertNames.map(quoteSqliteIdentifier).join(", ");
+  database.prepare(`INSERT INTO "backfill_state" (${quotedNames}) VALUES (${insertNames.map(() => "?").join(", ")})`)
+    .run(...insertNames.map((name) => values.get(name)));
+  const marker = database.prepare(`SELECT ${quoteSqliteIdentifier(completionColumn)} AS marker FROM "backfill_state" LIMIT 1`).get();
+  const expected = textCompletionColumn ? "complete" : 1;
+  if (!marker || marker.marker !== expected) throw new Error("Codex backfill state marker was not completed.");
+}
+
+async function seedControllerSqliteState({
+  sqliteHome,
+  environment = process.env,
+  homeDirectory = homedir(),
+  fileExists = exists,
+  databaseFactory = (filePath, options) => new DatabaseSync(filePath, options)
+}) {
+  const targetHome = assertControllerSqliteHome(sqliteHome);
+  const sourcePath = await resolveCodexStateDatabase({environment, homeDirectory, fileExists});
+  const targetPath = path.join(targetHome, "state_5.sqlite");
+  let source = null;
+  let target = null;
+  try {
+    await chmod(targetHome, 0o700);
+    source = databaseFactory(sourcePath, {readOnly: true, allowExtension: false});
+    const schemaRows = source.prepare(
+      "SELECT type, name, sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY CASE type WHEN 'table' THEN 1 WHEN 'index' THEN 2 WHEN 'trigger' THEN 3 WHEN 'view' THEN 4 ELSE 5 END, name"
+    ).all();
+    if (!schemaRows.some((row) => row.name === "_sqlx_migrations") || !schemaRows.some((row) => row.name === "backfill_state")) {
+      throw new Error("Codex state schema is incompatible.");
+    }
+    target = databaseFactory(targetPath, {allowExtension: false});
+    target.exec("PRAGMA foreign_keys = OFF; BEGIN IMMEDIATE;");
+    createSchemaOnlyState(target, schemaRows);
+    copySqlxMigrations({source, target});
+    markBackfillStateComplete(target);
+    target.exec("COMMIT; PRAGMA foreign_keys = ON;");
+  } finally {
+    try {
+      if (target) target.close();
+    } finally {
+      if (source) source.close();
+    }
+  }
+  await chmod(targetPath, 0o600);
+  return targetPath;
+}
+
+function normalizeControllerStateSeedFailure() {
+  return codexRuntimeError({
+    code: "CODEX_STATE_RUNTIME_UNAVAILABLE",
+    message: "Codex local state bootstrap is unavailable."
+  });
+}
+
 function codexExecArgs({model, schemaPath, outputPath, cwd, sqliteHome}) {
   if (!HENRY_WORKER_MODELS.includes(model)) {
     throw new Error(`Matthew Henry generation forbids ${model}; only the exact Spark and Luna worker slugs are allowed.`);
@@ -619,11 +720,33 @@ function collectCodexChild({child, prompt, timeoutMs, setTimer = setTimeout, cle
   });
 }
 
-async function runCodex({model, schemaPath, outputPath, prompt, cwd, createTempDir = mkdtemp, removeTempDir = rm, spawnChild = spawn, collectChild = collectCodexChild}) {
+async function runCodex({
+  model,
+  schemaPath,
+  outputPath,
+  prompt,
+  cwd,
+  createTempDir = mkdtemp,
+  removeTempDir = rm,
+  spawnChild = spawn,
+  collectChild = collectCodexChild,
+  seedState = seedControllerSqliteState,
+  environment = process.env,
+  homeDirectory = homedir()
+}) {
   const sqliteHome = await createControllerSqliteHome(createTempDir);
   try {
+    try {
+      await seedState({sqliteHome, environment, homeDirectory});
+    } catch {
+      throw normalizeControllerStateSeedFailure();
+    }
     const args = codexExecArgs({model, schemaPath, outputPath, cwd, sqliteHome});
-    const child = spawnChild("codex", args, {cwd, stdio: ["pipe", "pipe", "pipe"]});
+    const child = spawnChild("codex", args, {
+      cwd,
+      stdio: ["pipe", "pipe", "pipe"],
+      env: {...environment, CODEX_SQLITE_HOME: sqliteHome}
+    });
     return await collectChild({child, prompt, timeoutMs: codexInvocationTimeoutMs()});
   } finally {
     await removeTempDir(sqliteHome, {recursive: true, force: true, maxRetries: 2});
@@ -3039,8 +3162,13 @@ function assertEnsureOptions(options) {
   if (!options.request) throw new Error("ensure requires --request PATH.");
   if (options.all || options.book || options.chapter || options.bookIntro || options.model || options.today ||
       options.daysAhead !== undefined || options.readingCount !== undefined) {
-    throw new Error("ensure accepts only --request, --dry-run, and optional --max-retries; the request owns the bounded missing-content selection.");
+    throw new Error("ensure accepts only --request and --dry-run; the request owns bounded missing-content selection and one process attempt per permitted model.");
   }
+  if (options.maxRetries !== undefined) throw new Error("ensure does not accept --max-retries; scheduled Henry routing permits one process attempt per model.");
+}
+
+function scheduledEnsureGenerationOptions(options) {
+  return {...options, maxRetries: 0};
 }
 
 async function readEnsureRequest(requestPath) {
@@ -3227,8 +3355,9 @@ async function ensureSchedule(options) {
 
   const scheduledResults = [];
   const routing = routingState();
+  const generationOptions = scheduledEnsureGenerationOptions(options);
   for (const target of partition.missing) {
-    scheduledResults.push(await scheduleReading(options, {plan: activePlan, target, routing}));
+    scheduledResults.push(await scheduleReading(generationOptions, {plan: activePlan, target, routing}));
   }
   const store = scheduledResults.length
     ? await writePortableStores({plan: activePlan, window, scheduledResults, writeWindow: false})
@@ -3330,6 +3459,8 @@ export {
   codexInvocationTimeoutMs,
   codexExecArgs,
   createControllerSqliteHome,
+  resolveCodexStateDatabase,
+  seedControllerSqliteState,
   codexPreflight,
   compare,
   buildPortableWindowReading,
@@ -3356,6 +3487,7 @@ export {
   routeHenryGeneration,
   runCodex,
   resolveEnsureScheduledBatch,
+  scheduledEnsureGenerationOptions,
   assertPortableStoreEligible,
   canPromoteScheduleReview,
   renderScheduleAuditReport,

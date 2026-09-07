@@ -5,6 +5,7 @@ const os = require("node:os");
 const path = require("node:path");
 const {spawnSync} = require("node:child_process");
 const {EventEmitter} = require("node:events");
+const {DatabaseSync} = require("node:sqlite");
 const {deflateSync} = require("node:zlib");
 
 function json(relativePath) {
@@ -1724,22 +1725,126 @@ test("Codex worker arguments are ephemeral, standard-speed, read-only, and singl
   assert.doesNotMatch(args.join("\n"), /CODEX_HOME|HOME=/);
 });
 
-test("each Codex child gets a controller temporary SQLite home that is removed after collection", async () => {
+test("each Codex child gets a controller temporary SQLite home in its inherited environment and is removed after collection", async () => {
   const {runCodex} = await import("../scripts/mhc-pipeline.mjs");
   const sqliteHome = path.join(os.tmpdir(), "dbr-mhc-codex-sqlite-fabricated-cleanup");
   const removed = [];
   let spawnArgs = null;
+  let spawnOptions = null;
+  let seeded = false;
   const result = await runCodex({
     model: "gpt-5.6-luna", schemaPath: "/tmp/fabricated-schema.json", outputPath: "/tmp/fabricated-output.json",
     prompt: "FABRICATED TEST PROMPT ONLY", cwd: "/tmp/fabricated-job",
     createTempDir: async (prefix) => { assert.equal(prefix, path.join(os.tmpdir(), "dbr-mhc-codex-sqlite-")); return sqliteHome; },
-    spawnChild: (_command, args) => { spawnArgs = args; return {}; },
+    seedState: async ({sqliteHome: targetHome}) => { seeded = true; assert.equal(targetHome, sqliteHome); },
+    spawnChild: (_command, args, options) => { assert.equal(seeded, true); spawnArgs = args; spawnOptions = options; return {}; },
     collectChild: async () => ({status: 0, stdout: "", stderr: "", error: null}),
     removeTempDir: async (target, options) => { removed.push({target, options}); }
   });
   assert.equal(result.status, 0);
   assert.ok(spawnArgs.includes(`sqlite_home=${sqliteHome}`));
+  assert.equal(spawnOptions.env.CODEX_SQLITE_HOME, sqliteHome);
+  assert.equal(spawnOptions.env.HOME, process.env.HOME);
+  assert.equal(spawnOptions.env.CODEX_HOME, process.env.CODEX_HOME);
+  assert.equal(spawnOptions.env.PATH, process.env.PATH);
   assert.deepEqual(removed, [{target: sqliteHome, options: {recursive: true, force: true, maxRetries: 2}}]);
+});
+
+test("controller SQLite bootstrap copies only schema, migrations, and a completed backfill marker before spawn", async () => {
+  const {resolveCodexStateDatabase, seedControllerSqliteState, runCodex} = await import("../scripts/mhc-pipeline.mjs");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "dbr-mhc-sqlite-bootstrap-fabricated-"));
+  const sourceHome = path.join(root, "fabricated-source-home");
+  const sqliteHome = path.join(root, "dbr-mhc-codex-sqlite-fabricated-target");
+  fs.mkdirSync(sourceHome, {recursive: true, mode: 0o700});
+  fs.mkdirSync(sqliteHome, {recursive: true, mode: 0o700});
+  const sourcePath = path.join(sourceHome, "state_5.sqlite");
+  const source = new DatabaseSync(sourcePath);
+  source.exec([
+    "CREATE TABLE _sqlx_migrations (version INTEGER PRIMARY KEY, description TEXT NOT NULL);",
+    "CREATE TABLE backfill_state (id INTEGER PRIMARY KEY, status TEXT NOT NULL, last_watermark TEXT, last_success_at INTEGER, updated_at INTEGER NOT NULL);",
+    "CREATE TABLE threads (id INTEGER PRIMARY KEY, body TEXT NOT NULL);",
+    "CREATE INDEX threads_body ON threads(body);"
+  ].join("\n"));
+  source.prepare("INSERT INTO _sqlx_migrations (version, description) VALUES (?, ?)").run(1, "fabricated migration only");
+  source.prepare("INSERT INTO threads (id, body) VALUES (?, ?)").run(7, "FABRICATED THREAD SENTINEL: MUST NOT COPY");
+  source.close();
+  try {
+    assert.equal(await resolveCodexStateDatabase({
+      environment: {CODEX_SQLITE_HOME: sourceHome},
+      homeDirectory: path.join(root, "unused-home")
+    }), sourcePath);
+    assert.equal(await resolveCodexStateDatabase({
+      environment: {CODEX_SQLITE_HOME: path.join(root, "missing-home")},
+      homeDirectory: path.join(root, "fallback-home")
+    }), path.join(root, "fallback-home", ".codex", "state_5.sqlite"));
+    const targetPath = await seedControllerSqliteState({
+      sqliteHome,
+      environment: {CODEX_SQLITE_HOME: sourceHome},
+      homeDirectory: path.join(root, "unused-home")
+    });
+    assert.equal(targetPath, path.join(sqliteHome, "state_5.sqlite"));
+    const target = new DatabaseSync(targetPath, {readOnly: true});
+    assert.equal(target.prepare("SELECT COUNT(*) AS count FROM _sqlx_migrations").get().count, 1);
+    const marker = target.prepare("SELECT id, status, last_watermark, last_success_at, updated_at FROM backfill_state").get();
+    assert.equal(marker.id, 1);
+    assert.equal(marker.status, "complete");
+    assert.equal(marker.last_watermark, null);
+    assert.equal(marker.last_success_at, null);
+    assert.ok(Number.isInteger(marker.updated_at) && marker.updated_at > 0);
+    assert.equal(target.prepare("SELECT COUNT(*) AS count FROM threads").get().count, 0);
+    assert.equal(target.prepare("SELECT COUNT(*) AS count FROM threads WHERE body LIKE ?").get("%SENTINEL%").count, 0);
+    assert.equal(target.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'index' AND name = 'threads_body'").get().count, 1);
+    target.close();
+    assert.equal(fs.statSync(targetPath).mode & 0o777, 0o600);
+
+    let seededBeforeSpawn = false;
+    await runCodex({
+      model: "gpt-5.6-luna", schemaPath: "/tmp/fabricated-schema.json", outputPath: "/tmp/fabricated-output.json",
+      prompt: "FABRICATED TEST PROMPT ONLY", cwd: "/tmp/fabricated-job",
+      createTempDir: async () => sqliteHome,
+      seedState: async () => { seededBeforeSpawn = true; },
+      spawnChild: () => { assert.equal(seededBeforeSpawn, true); return {}; },
+      collectChild: async () => ({status: 0, stdout: "", stderr: "", error: null}),
+      removeTempDir: async () => {}
+    });
+  } finally {
+    fs.rmSync(root, {recursive: true, force: true});
+  }
+});
+
+test("a controller SQLite bootstrap failure is normalized and cannot route from Spark to Luna", async () => {
+  const {routeHenryGeneration, runCodex} = await import("../scripts/mhc-pipeline.mjs");
+  const calls = [];
+  const sqliteHome = path.join(os.tmpdir(), "dbr-mhc-codex-sqlite-fabricated-seed-failure");
+  const removed = [];
+  await assert.rejects(() => routeHenryGeneration({invoke: async (model) => {
+    calls.push(model);
+    return runCodex({
+      model, schemaPath: "/tmp/fabricated-schema.json", outputPath: "/tmp/fabricated-output.json",
+      prompt: "FABRICATED TEST PROMPT ONLY", cwd: "/tmp/fabricated-job",
+      createTempDir: async () => sqliteHome,
+      seedState: async () => { throw new Error("fabricated bootstrap incompatibility"); },
+      removeTempDir: async (target, options) => { removed.push({target, options}); }
+    });
+  }}), /CODEX_STATE_RUNTIME_UNAVAILABLE/);
+  assert.deepEqual(calls, ["gpt-5.3-codex-spark"]);
+  assert.deepEqual(removed, [{target: sqliteHome, options: {recursive: true, force: true, maxRetries: 2}}]);
+});
+
+test("scheduled ensure forces one process attempt per permitted model before routing", async () => {
+  const {routeHenryGeneration, scheduledEnsureGenerationOptions} = await import("../scripts/mhc-pipeline.mjs");
+  assert.equal(scheduledEnsureGenerationOptions({maxRetries: 4}).maxRetries, 0);
+  const calls = [];
+  const routed = await routeHenryGeneration({invoke: async (model) => {
+    calls.push(model);
+    if (model === "gpt-5.3-codex-spark") {
+      throw Object.assign(new Error("Codex worker invocation timed out"), {code: "SPARK_MODEL_GENERATION_FAILED", stage: "fact_chunk_generation"});
+    }
+    return "fabricated-luna-result";
+  }});
+  assert.deepEqual(calls, ["gpt-5.3-codex-spark", "gpt-5.6-luna"]);
+  assert.equal(routed.model, "gpt-5.6-luna");
+  assert.deepEqual(routed.attempts, ["gpt-5.3-codex-spark", "gpt-5.6-luna"]);
 });
 
 test("a silent Codex child times out once, terminates safely, and remains a transient retry failure", async () => {

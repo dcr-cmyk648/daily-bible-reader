@@ -74,11 +74,15 @@ Make Matthew Henry debt an independently scheduled, durable lane so daily-study 
 - [x] Saved daily automation updated; independent Henry automation and supervisory-thread heartbeat created and their on-disk records verified.
 - [x] First scheduled Henry run and supervisory heartbeat reported the normalized shared state-runtime failure without changing fallback or manifest.
 - [x] Primary review and release of the SQLite-home controller repair in commit `780363f` on `main`; 274 tests, safety, build, and diff checks passed.
-- [ ] Observe the next scheduled Henry run and subsequent heartbeat after the accepted release.
+- [x] Observed the next scheduled Henry run: D080 remained safely on its verified fallback, but the worker controller still failed before producing a reviewed layer.
+- [x] Repair the reproduced `--ignore-user-config`/SQLite-path interaction and enforce one process attempt per model in scheduled Henry work; focused and full deterministic suites pass.
+- [x] Prevent each ephemeral child from rebuilding the host's complete rollout index by seeding only the current Codex database schema, migration metadata, and a completed backfill marker into its isolated temporary state database.
+- [x] Run fabricated isolated Spark and Luna controller probes through the final controller; both returned schema-valid output in under five seconds without the read-only-state failure.
+- [ ] Release the accepted controller and retry one real backfill candidate, verifying reviewed publication or an accurately classified model failure.
 
 ## Exact next action
 
-Complete primary review and release of the SQLite-home controller repair, then observe the next scheduled Henry run and following supervisory heartbeat for end-to-end delivery.
+Commit and push the accepted controller repair, then retry one eligible backfill candidate and verify reviewed publication or an accurately classified model failure.
 
 ## Discoveries
 
@@ -106,3 +110,9 @@ Complete primary review and release of the SQLite-home controller repair, then o
 
 - `--ephemeral` does not avoid the Codex state database. The supported `sqlite_home` config isolates only that writable state while preserving normal authentication/config reads from the existing Codex home.
 - A state-runtime failure is environmental rather than a model execution or quota signal, so treating it as a model failure would incorrectly consume the only Luna retry.
+- The 17:15 run fetched the repaired `origin/main`, selected D080, and still failed. Its private logs show four Spark child timeouts followed by Luna attempting `/Users/dustinrowland/.codex/state_5.sqlite` and receiving the read-only-database error.
+- An exact local reproduction proved that this Codex CLI build discards the command-line `-c sqlite_home=...` override when `exec --ignore-user-config` is present. The same isolated invocation starts successfully when the temporary path is also supplied through `CODEX_SQLITE_HOME`; no `HOME` or `CODEX_HOME` override is needed.
+- The four Spark timeouts exposed a separate policy bug: the autonomous generator's default `maxRetries=3` means four process invocations before routing to Luna, despite the scheduled lane's exact-once rule.
+- Explicit `CODEX_SQLITE_HOME` fixed the read-only-database crash, but a controller-level fabricated Luna probe still reached the 120-second timeout. The supposedly empty SQLite home had grown to about 30 MB and indexed 685 of 1,682 host rollouts before termination; the normal Codex rollout store is roughly 24 GB, so a unique blank database forces an expensive historical backfill before every model call.
+- A native Luna-low subagent returned the fabricated probe immediately, proving the Luna model itself is available.
+- A second fabricated CLI probe used an isolated database created from only `sqlite_master` schema definitions, the non-content `_sqlx_migrations` rows, and `backfill_state=complete`; it contained no thread rows or conversation data and returned valid Luna JSON in about 6.5 seconds. This is the safe controller bootstrap to automate. The controller must query no thread, rollout, project, prompt, or user-content rows and must delete the isolated database after the child closes.

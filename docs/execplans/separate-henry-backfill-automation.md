@@ -70,12 +70,13 @@ Make Matthew Henry debt an independently scheduled, durable lane so daily-study 
 - [x] Identified saved-prompt drift and daily-lane coupling.
 - [x] Confirmed the current plan-order selector can head-of-line block the backlog.
 - [x] Tracked implementation and focused tests: independent Henry prompt, ignored schema-validated attempt state, 24-hour cooldown/least-recent rotation, and safe work-order diagnostics.
-- [ ] Primary review and release.
-- [ ] Live automation updates and verification.
+- [x] Primary review, 273-test suite, repository safety, tracked commit `6d8c2cb`, and push to `main`.
+- [x] Saved daily automation updated; independent Henry automation and supervisory-thread heartbeat created and their on-disk records verified.
+- [ ] Observe the first scheduled Henry run and subsequent heartbeat as the live end-to-end reporting check.
 
 ## Exact next action
 
-Run the broader validation ladder and primary diff review, then update the saved daily/Henry automation records and supervisory heartbeat from the accepted tracked prompts.
+Let the next Henry run and following supervisory heartbeat verify delivery; diagnose any reported normalized failure here without waiting for the user to discover it in the app.
 
 ## Discoveries
 

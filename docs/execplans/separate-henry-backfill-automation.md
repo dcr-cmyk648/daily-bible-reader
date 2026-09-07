@@ -72,14 +72,37 @@ Make Matthew Henry debt an independently scheduled, durable lane so daily-study 
 - [x] Tracked implementation and focused tests: independent Henry prompt, ignored schema-validated attempt state, 24-hour cooldown/least-recent rotation, and safe work-order diagnostics.
 - [x] Primary review, 273-test suite, repository safety, tracked commit `6d8c2cb`, and push to `main`.
 - [x] Saved daily automation updated; independent Henry automation and supervisory-thread heartbeat created and their on-disk records verified.
-- [ ] Observe the first scheduled Henry run and subsequent heartbeat as the live end-to-end reporting check.
+- [x] First scheduled Henry run and supervisory heartbeat reported the normalized shared state-runtime failure without changing fallback or manifest.
+- [ ] Primary review and release of the SQLite-home controller repair.
+- [ ] Observe the next scheduled Henry run and subsequent heartbeat after the accepted release.
 
 ## Exact next action
 
-Let the next Henry run and following supervisory heartbeat verify delivery; diagnose any reported normalized failure here without waiting for the user to discover it in the app.
+Complete primary review and release of the SQLite-home controller repair, then observe the next scheduled Henry run and following supervisory heartbeat for end-to-end delivery.
 
 ## Discoveries
 
 - The existing `mhc:backfill:next` command already validated the private Henry catalog and produced a one-reading order, but its plan-order selector would retry the same first fallback forever.
 - The new private attempt state is ignored at `private-content/automation/mhc-backfill-attempt-state.json`; it contains only reading IDs, timestamps, normalized outcome/stage/code, and the invariant that the prior manifest remains live.
 - The daily T+7 prompt no longer inspects historical Henry debt. Its own failure report and the independent Henry prompt's failure report use safe lane, reading/date, normalized stage/code, manifest, and retry fields for later supervision.
+- The first live independent run selected D079 and correctly preserved its fallback/manifest and rotated the queue, but both permitted child invocations failed for the same host reason: the scheduled task's workspace-write sandbox could not initialize Codex's SQLite state under the read-only user Codex directory. This was misreported as a model-generation failure rather than a worker-runtime/bootstrap failure.
+- `codex exec --ephemeral` still initializes SQLite. A safe local probe with the documented/configured `sqlite_home` override created the state databases under an explicit writable temporary directory and passed initialization, so the controller should supply a unique per-run writable SQLite home without changing `HOME` or `CODEX_HOME`.
+
+## Live failure repair milestone
+
+- Give every child `codex exec` invocation a unique, controller-created writable temporary `sqlite_home`, remove only that exact temporary directory after completion, and keep authentication/config reads in the normal Codex home.
+- Add a regression that reproduces the scheduled-task permission boundary and proves the worker arguments never target the user Codex directory.
+- Normalize SQLite/state-runtime initialization failures as controller/runtime failures. They must not masquerade as Spark quota/model failures or waste the Luna retry when the shared execution environment is unusable.
+- Re-run the smallest real isolated worker probe plus focused/full tests, safety, build, and diff checks before publication.
+
+### Progress
+
+- [x] Controller repair: every `codex exec` child receives a unique controller-created SQLite home under the system temporary directory through `-c sqlite_home=…`; cleanup is limited to that exact directory after child collection completes.
+- [x] SQLite/state-runtime initialization errors normalize to `CODEX_STATE_RUNTIME_UNAVAILABLE` with controller/runtime classification and stop routing before a Luna retry.
+- [x] Focused regression coverage verifies temporary-home arguments, no HOME/CODEX_HOME override, cleanup, timeout-close ordering, and no Luna retry for state-runtime failures.
+- [ ] A primary-authorized isolated fabricated Luna probe remains optional acceptance evidence. It was not run in this implementation milestone because it is an external authenticated model invocation; the supplied successful local probe and deterministic controller regressions cover the non-private SQLite-home boundary.
+
+### Discoveries
+
+- `--ephemeral` does not avoid the Codex state database. The supported `sqlite_home` config isolates only that writable state while preserving normal authentication/config reads from the existing Codex home.
+- A state-runtime failure is environmental rather than a model execution or quota signal, so treating it as a model failure would incorrectly consume the only Luna retry.

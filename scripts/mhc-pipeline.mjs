@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 import {spawn, spawnSync} from "node:child_process";
-import {access, appendFile, mkdir, readFile, readdir, rename, stat, writeFile} from "node:fs/promises";
+import {access, appendFile, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile} from "node:fs/promises";
+import {tmpdir} from "node:os";
 import path from "node:path";
 import process from "node:process";
 import {
@@ -397,6 +398,25 @@ function classifySparkAvailabilityFailure({model, text}) {
   return null;
 }
 
+function classifyCodexRuntimeFailure({text}) {
+  const failureText = String(text || "");
+  if (/(?:failed to open state db|attempt to write a readonly database|failed to initialize in-process app-server client|sqlite(?:\s+state)?[^\n]{0,120}(?:readonly|read-only|initiali[sz]ation failed))/i.test(failureText)) {
+    return {
+      code: "CODEX_STATE_RUNTIME_UNAVAILABLE",
+      message: "Codex could not initialize its local state runtime."
+    };
+  }
+  return null;
+}
+
+function codexRuntimeError(classification) {
+  const error = new Error(`${classification.code}: ${classification.message}`);
+  error.code = classification.code;
+  error.failureClassification = "controller_runtime_environment";
+  error.stage = "codex_state_initialization";
+  return error;
+}
+
 function sparkAvailabilityError(classification) {
   const error = new Error(`${classification.code}: ${classification.message}`);
   error.code = classification.code;
@@ -424,12 +444,26 @@ function shouldRetryCodexFailure({model, text}) {
   return !classifySparkAvailabilityFailure({model, text}) && transientFailure(text);
 }
 
-function codexExecArgs({model, schemaPath, outputPath, cwd}) {
+function assertControllerSqliteHome(sqliteHome) {
+  const root = path.resolve(tmpdir());
+  const resolved = path.resolve(String(sqliteHome || ""));
+  if (!path.isAbsolute(String(sqliteHome || "")) || !resolved.startsWith(`${root}${path.sep}`) ||
+      !path.basename(resolved).startsWith("dbr-mhc-codex-sqlite-")) {
+    throw new Error("Codex SQLite home must be a controller-created temporary directory.");
+  }
+  return resolved;
+}
+
+async function createControllerSqliteHome(createTempDir = mkdtemp) {
+  return assertControllerSqliteHome(await createTempDir(path.join(tmpdir(), "dbr-mhc-codex-sqlite-")));
+}
+
+function codexExecArgs({model, schemaPath, outputPath, cwd, sqliteHome}) {
   if (!HENRY_WORKER_MODELS.includes(model)) {
     throw new Error(`Matthew Henry generation forbids ${model}; only the exact Spark and Luna worker slugs are allowed.`);
   }
   const args = [
-    "--ask-for-approval", "never", "exec", "--ephemeral", "--ignore-user-config", "--disable", "fast_mode",
+    "--ask-for-approval", "never", "-c", `sqlite_home=${assertControllerSqliteHome(sqliteHome)}`, "exec", "--ephemeral", "--ignore-user-config", "--disable", "fast_mode",
     "--disable", "multi_agent", "--disable", "multi_agent_v2",
     "--skip-git-repo-check", "--sandbox", "read-only", "--cd", cwd, "--model", model
   ];
@@ -449,11 +483,15 @@ async function routeHenryGeneration({routing = routingState(), invoke}) {
   try {
     return {model: SPARK_MODEL, result: await invoke(SPARK_MODEL), routing, attempts: [SPARK_MODEL]};
   } catch (sparkError) {
+    const runtimeFailure = classifyCodexRuntimeFailure({text: sparkError && sparkError.message});
+    if (runtimeFailure) throw codexRuntimeError(runtimeFailure);
     if (!isModelAttemptFailure(sparkError, SPARK_MODEL)) throw sparkError;
     routing.sparkFailure = {code: sparkError.code, stage: sparkError.stage || null};
     try {
       return {model: LUNA_MODEL, result: await invoke(LUNA_MODEL), routing, attempts: [SPARK_MODEL, LUNA_MODEL]};
     } catch (lunaError) {
+      const runtimeFailure = classifyCodexRuntimeFailure({text: lunaError && lunaError.message});
+      if (runtimeFailure) throw codexRuntimeError(runtimeFailure);
       if (!isModelAttemptFailure(lunaError, LUNA_MODEL)) throw lunaError;
       routing.lunaFailure = {code: lunaError.code, stage: lunaError.stage || null};
       return {
@@ -522,6 +560,7 @@ function collectCodexChild({child, prompt, timeoutMs, setTimer = setTimeout, cle
     let stderr = "";
     let settled = false;
     let closed = false;
+    let terminalError = null;
     let timeoutId = null;
     let forceKillId = null;
     const clearPrimaryTimeout = () => {
@@ -558,18 +597,18 @@ function collectCodexChild({child, prompt, timeoutMs, setTimer = setTimeout, cle
     child.on("close", (status) => {
       closed = true;
       clearAllTimers();
-      finish({status, stdout, stderr, error: null});
+      finish({status, stdout, stderr, error: terminalError});
     });
     timeoutId = setTimer(() => {
       const error = new Error(`Codex worker invocation timed out after ${timeoutMs}ms.`);
       error.code = "CODEX_INVOCATION_TIMEOUT";
       stderr += `\n${error.code}: ${error.message}`;
+      terminalError = error;
       terminate("SIGTERM");
       forceKillId = setTimer(() => {
         if (!closed) terminate("SIGKILL");
       }, CODEX_TERMINATION_GRACE_MS);
       if (forceKillId && typeof forceKillId.unref === "function") forceKillId.unref();
-      finish({status: null, stdout, stderr, error});
     }, timeoutMs);
     try {
       child.stdin.end(prompt);
@@ -580,10 +619,15 @@ function collectCodexChild({child, prompt, timeoutMs, setTimer = setTimeout, cle
   });
 }
 
-function runCodex({model, schemaPath, outputPath, prompt, cwd}) {
-  const args = codexExecArgs({model, schemaPath, outputPath, cwd});
-  const child = spawn("codex", args, {cwd, stdio: ["pipe", "pipe", "pipe"]});
-  return collectCodexChild({child, prompt, timeoutMs: codexInvocationTimeoutMs()});
+async function runCodex({model, schemaPath, outputPath, prompt, cwd, createTempDir = mkdtemp, removeTempDir = rm, spawnChild = spawn, collectChild = collectCodexChild}) {
+  const sqliteHome = await createControllerSqliteHome(createTempDir);
+  try {
+    const args = codexExecArgs({model, schemaPath, outputPath, cwd, sqliteHome});
+    const child = spawnChild("codex", args, {cwd, stdio: ["pipe", "pipe", "pipe"]});
+    return await collectChild({child, prompt, timeoutMs: codexInvocationTimeoutMs()});
+  } finally {
+    await removeTempDir(sqliteHome, {recursive: true, force: true, maxRetries: 2});
+  }
 }
 
 const GENERATED_PROSE_ARCHAIC_INFLECTIONS = /\b(?:upbraideth|bridleth|knowest|whosoever)\b/iu;
@@ -785,6 +829,7 @@ async function generateLegacyOne(options) {
   if (!checked) {
     let processResult = null;
     let availabilityFailure = null;
+    let runtimeFailure = null;
     for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
       processResult = await runCodex({model, schemaPath, outputPath, prompt, cwd: jobDir});
       await writeFile(path.join(jobDir, `process-attempt-${attempt + 1}.log`),
@@ -792,6 +837,8 @@ async function generateLegacyOne(options) {
         {encoding: "utf8", mode: 0o600});
       if (!processResult.error && processResult.status === 0 && await exists(outputPath)) break;
       const failureText = `${processResult.error && processResult.error.message || ""}\n${processResult.stderr}\n${processResult.stdout}`;
+      runtimeFailure = classifyCodexRuntimeFailure({text: failureText});
+      if (runtimeFailure) break;
       availabilityFailure = classifySparkAvailabilityFailure({model, text: failureText});
       if (availabilityFailure || attempt >= maxRetries || !shouldRetryCodexFailure({model, text: failureText})) break;
       await new Promise((resolve) => setTimeout(resolve, Math.min(8000, 2000 * (2 ** attempt))));
@@ -802,15 +849,16 @@ async function generateLegacyOne(options) {
         job_id: jobSpec.metadata.job_id,
         worker_model: model,
         fingerprint,
-        status: availabilityFailure ? "unavailable" : "failed",
-        error_code: availabilityFailure ? availabilityFailure.code : model === SPARK_MODEL ? "SPARK_MODEL_GENERATION_FAILED" : null,
+        status: availabilityFailure ? "unavailable" : runtimeFailure ? "controller_runtime_failure" : "failed",
+        error_code: availabilityFailure ? availabilityFailure.code : runtimeFailure ? runtimeFailure.code : model === SPARK_MODEL ? "SPARK_MODEL_GENERATION_FAILED" : null,
         output_path: path.relative(PRIVATE_ROOT, outputPath),
-        error: (availabilityFailure ? `${availabilityFailure.code}: ${availabilityFailure.message}` :
+        error: (availabilityFailure ? `${availabilityFailure.code}: ${availabilityFailure.message}` : runtimeFailure ? `${runtimeFailure.code}: ${runtimeFailure.message}` :
           processResult.error && processResult.error.message || processResult.stderr || "Codex exited without a result").slice(0, 2000)
       };
       await savePipelineJob(failure);
-      await queueReview({...failure, reason: availabilityFailure ? "worker_availability" : "worker_failure"});
+      await queueReview({...failure, reason: availabilityFailure ? "worker_availability" : runtimeFailure ? "controller_runtime_environment" : "worker_failure"});
       if (availabilityFailure) throw sparkAvailabilityError(availabilityFailure);
+      if (runtimeFailure) throw codexRuntimeError(runtimeFailure);
       throw modelAttemptError({model, stage: "legacy_generation", message: `${model} generation failed. See ${path.relative(ROOT, jobDir)}.`});
     }
 
@@ -907,6 +955,8 @@ async function invokeCodexStage({model, schemaPath, outputPath, prompt, cwd, log
       {encoding: "utf8", mode: 0o600});
     if (!processResult.error && processResult.status === 0 && await exists(outputPath)) break;
     const failureText = `${processResult.error && processResult.error.message || ""}\n${processResult.stderr}\n${processResult.stdout}`;
+    const runtimeFailure = classifyCodexRuntimeFailure({text: failureText});
+    if (runtimeFailure) throw codexRuntimeError(runtimeFailure);
     availabilityFailure = classifySparkAvailabilityFailure({model, text: failureText});
     if (availabilityFailure || attempt >= maxRetries || !shouldRetryCodexFailure({model, text: failureText})) break;
     await new Promise((resolve) => setTimeout(resolve, Math.min(8000, 2000 * (2 ** attempt))));
@@ -3275,9 +3325,11 @@ export {
   buildLibraryCatalog,
   buildLibraryPointer,
   classifySparkAvailabilityFailure,
+  classifyCodexRuntimeFailure,
   collectCodexChild,
   codexInvocationTimeoutMs,
   codexExecArgs,
+  createControllerSqliteHome,
   codexPreflight,
   compare,
   buildPortableWindowReading,
@@ -3302,6 +3354,7 @@ export {
   preflight,
   resultMetrics,
   routeHenryGeneration,
+  runCodex,
   resolveEnsureScheduledBatch,
   assertPortableStoreEligible,
   canPromoteScheduleReview,

@@ -116,7 +116,7 @@ test("OSIS references map deterministically to canonical app IDs and bounded ran
 });
 
 test("Henry routing is Spark-first, permits one Luna retry for model execution failure, and preserves a verified-link continuation after both workers fail", async () => {
-  const {routeHenryGeneration} = await import("../scripts/mhc-pipeline.mjs");
+  const {classifyCodexRuntimeFailure, routeHenryGeneration} = await import("../scripts/mhc-pipeline.mjs");
   const calls = [];
   const success = await routeHenryGeneration({invoke: async (model) => { calls.push(model); return "ok"; }});
   assert.equal(success.model, "gpt-5.3-codex-spark");
@@ -151,6 +151,16 @@ test("Henry routing is Spark-first, permits one Luna retry for model execution f
   }}), /schema admission rejected Spark output/);
   assert.deepEqual(rejectedOutputCalls, ["gpt-5.3-codex-spark"]);
   await assert.rejects(() => routeHenryGeneration({invoke: async () => { throw new Error("source checksum failed"); }}), /source checksum failed/);
+  const runtimeCalls = [];
+  await assert.rejects(() => routeHenryGeneration({invoke: async (model) => {
+    runtimeCalls.push(model);
+    throw Object.assign(new Error("failed to open state db: attempt to write a readonly database"), {
+      code: "CODEX_STATE_RUNTIME_UNAVAILABLE", failureClassification: "controller_runtime_environment", stage: "codex_state_initialization"
+    });
+  }}), /CODEX_STATE_RUNTIME_UNAVAILABLE/);
+  assert.deepEqual(runtimeCalls, ["gpt-5.3-codex-spark"]);
+  assert.equal(classifyCodexRuntimeFailure({text: "failed to initialize in-process app-server client"}).code, "CODEX_STATE_RUNTIME_UNAVAILABLE");
+  assert.equal(classifyCodexRuntimeFailure({text: "usage limit exhausted"}), null);
 });
 
 test("schedule consumer records a double-model verified-link outcome without creating a runtime, portable store, or catalog claim", async () => {
@@ -228,10 +238,11 @@ test("verified-link schedule audits report failed attempts and never promote a n
 
 test("Henry Codex invocation pins Luna low reasoning, disables internal agents, and forbids Sol", async () => {
   const {codexExecArgs} = await import("../scripts/mhc-pipeline.mjs");
-  const luna = codexExecArgs({model: "gpt-5.6-luna", schemaPath: "/tmp/schema.json", outputPath: "/tmp/out.json", cwd: "/tmp"});
+  const sqliteHome = path.join(os.tmpdir(), "dbr-mhc-codex-sqlite-fabricated-luna");
+  const luna = codexExecArgs({model: "gpt-5.6-luna", schemaPath: "/tmp/schema.json", outputPath: "/tmp/out.json", cwd: "/tmp", sqliteHome});
   assert.deepEqual(luna.slice(luna.indexOf("--model"), luna.indexOf("--output-schema")), ["--model", "gpt-5.6-luna", "--config", "model_reasoning_effort=low"]);
   assert.ok(luna.includes("multi_agent") && luna.includes("multi_agent_v2"));
-  assert.throws(() => codexExecArgs({model: "gpt-5.6-sol", schemaPath: "/tmp/schema.json", outputPath: "/tmp/out.json", cwd: "/tmp"}), /forbids/);
+  assert.throws(() => codexExecArgs({model: "gpt-5.6-sol", schemaPath: "/tmp/schema.json", outputPath: "/tmp/out.json", cwd: "/tmp", sqliteHome}), /forbids/);
 });
 
 test("both permitted chapter workers use the autonomous two-stage path while book introductions remain legacy", async () => {
@@ -1697,9 +1708,10 @@ test("Codex worker arguments are ephemeral, standard-speed, read-only, and singl
     model: "gpt-5.3-codex-spark",
     schemaPath: "/tmp/fabricated-schema.json",
     outputPath: "/tmp/fabricated-output.json",
-    cwd: "/tmp/fabricated-job"
+    cwd: "/tmp/fabricated-job",
+    sqliteHome: path.join(os.tmpdir(), "dbr-mhc-codex-sqlite-fabricated")
   });
-  assert.deepEqual(args.slice(0, 3), ["--ask-for-approval", "never", "exec"]);
+  assert.deepEqual(args.slice(0, 5), ["--ask-for-approval", "never", "-c", `sqlite_home=${path.join(os.tmpdir(), "dbr-mhc-codex-sqlite-fabricated")}`, "exec"]);
   assert.ok(args.includes("--ephemeral"));
   assert.ok(args.includes("--ignore-user-config"));
   assert.ok(args.includes("read-only"));
@@ -1709,6 +1721,25 @@ test("Codex worker arguments are ephemeral, standard-speed, read-only, and singl
   assert.ok(args.includes("--output-schema"));
   assert.ok(args.includes("--output-last-message"));
   assert.equal(args.at(-1), "-");
+  assert.doesNotMatch(args.join("\n"), /CODEX_HOME|HOME=/);
+});
+
+test("each Codex child gets a controller temporary SQLite home that is removed after collection", async () => {
+  const {runCodex} = await import("../scripts/mhc-pipeline.mjs");
+  const sqliteHome = path.join(os.tmpdir(), "dbr-mhc-codex-sqlite-fabricated-cleanup");
+  const removed = [];
+  let spawnArgs = null;
+  const result = await runCodex({
+    model: "gpt-5.6-luna", schemaPath: "/tmp/fabricated-schema.json", outputPath: "/tmp/fabricated-output.json",
+    prompt: "FABRICATED TEST PROMPT ONLY", cwd: "/tmp/fabricated-job",
+    createTempDir: async (prefix) => { assert.equal(prefix, path.join(os.tmpdir(), "dbr-mhc-codex-sqlite-")); return sqliteHome; },
+    spawnChild: (_command, args) => { spawnArgs = args; return {}; },
+    collectChild: async () => ({status: 0, stdout: "", stderr: "", error: null}),
+    removeTempDir: async (target, options) => { removed.push({target, options}); }
+  });
+  assert.equal(result.status, 0);
+  assert.ok(spawnArgs.includes(`sqlite_home=${sqliteHome}`));
+  assert.deepEqual(removed, [{target: sqliteHome, options: {recursive: true, force: true, maxRetries: 2}}]);
 });
 
 test("a silent Codex child times out once, terminates safely, and remains a transient retry failure", async () => {
@@ -1736,13 +1767,13 @@ test("a silent Codex child times out once, terminates safely, and remains a tran
   assert.equal(child.prompt, "FABRICATED TEST PROMPT ONLY");
   assert.equal(timers.length, 1);
   timers[0].callback();
+  assert.equal(timers.length, 2);
+  child.emit("close", 0);
   const result = await resultPromise;
   assert.equal(result.error.code, "CODEX_INVOCATION_TIMEOUT");
   assert.match(result.stderr, /CODEX_INVOCATION_TIMEOUT/);
   assert.deepEqual(signals, ["SIGTERM"]);
   assert.equal(shouldRetryCodexFailure({model: "gpt-5.6-luna", text: result.error.message}), true);
-  assert.equal(timers.length, 2);
-  child.emit("close", 0);
   assert.ok(cleared.includes(timers[1]));
 });
 

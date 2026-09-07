@@ -3,14 +3,14 @@
   "$id": "https://daily-bible-reader.local/schemas/mhc-backfill-work-order.schema.json",
   "title": "One-reading opportunistic Matthew Henry backfill work order",
   "type": "object",
-  "required": ["schemaVersion", "workOrderId", "issuedAt", "planVersion", "action", "reasonCode", "reading", "metadataPath", "manifestEntryPresent", "libraryState", "sparkRequest", "guards"],
+  "required": ["schemaVersion", "workOrderId", "issuedAt", "planVersion", "action", "reasonCode", "reading", "metadataPath", "manifestEntryPresent", "libraryState", "sparkRequest", "queue", "diagnostic", "guards"],
   "properties": {
     "schemaVersion": {"const": "mhc-backfill-work-order/v1"},
     "workOrderId": {"type": "string", "pattern": "^MHBWO-[a-f0-9]{24}$"},
     "issuedAt": {"type": "string", "format": "date-time"},
     "planVersion": {"type": "string", "minLength": 1, "maxLength": 200},
     "action": {"enum": ["none", "generate_review_publish", "review_attach_publish", "attach_publish"]},
-    "reasonCode": {"enum": ["no_published_henry_fallbacks", "spark_generation_required", "generated_artifact_requires_review", "reviewed_artifact_requires_approval", "approved_artifact_ready_to_attach"]},
+    "reasonCode": {"enum": ["no_published_henry_fallbacks", "published_henry_fallbacks_cooling_down", "spark_generation_required", "generated_artifact_requires_review", "reviewed_artifact_requires_approval", "approved_artifact_ready_to_attach"]},
     "reading": {"type": ["object", "null"]},
     "metadataPath": {
       "type": ["string", "null"],
@@ -40,12 +40,39 @@
         }
       ]
     },
+    "queue": {
+      "type": "object",
+      "required": ["eligibleFallbackCount", "selectableCount", "coolingDownCount", "cooldownSeconds", "selectionPolicy", "nextEligibleAt"],
+      "properties": {
+        "eligibleFallbackCount": {"type": "integer", "minimum": 0},
+        "selectableCount": {"type": "integer", "minimum": 0},
+        "coolingDownCount": {"type": "integer", "minimum": 0},
+        "cooldownSeconds": {"const": 86400},
+        "selectionPolicy": {"const": "least_recent_attempt_then_plan_order"},
+        "nextEligibleAt": {"type": ["string", "null"], "format": "date-time"}
+      },
+      "additionalProperties": false
+    },
+    "diagnostic": {
+      "type": "object",
+      "required": ["lane", "status", "priorManifestRemainsLive", "retryAction"],
+      "properties": {
+        "lane": {"const": "henry_backfill"},
+        "status": {"enum": ["selected", "cooldown", "empty"]},
+        "priorManifestRemainsLive": {"const": true},
+        "retryAction": {"enum": ["process_one_selected_reading", "wait_for_next_eligible_attempt", "no_historical_henry_action"]},
+        "lastAttemptedAt": {"type": ["string", "null"], "format": "date-time"},
+        "failedStage": {"type": ["string", "null"], "enum": ["generation", "review", "validation", "publication", "controller", null]},
+        "failureCode": {"type": ["string", "null"], "pattern": "^[A-Z][A-Z0-9_:-]{2,79}$"}
+      },
+      "additionalProperties": false
+    },
     "guards": {
       "type": "object",
-      "required": ["maxReadings", "tPlus7PreparationFirst", "publishedFallbackOnly", "sparkModel", "sparkAvailabilityFallback", "solOrOtherModelAllowed", "primaryReviewRequired", "contentFirstManifestLast", "scriptureTextStored", "runtimeAiAllowed", "commentsReadable"],
+      "required": ["maxReadings", "independentHistoricalLane", "publishedFallbackOnly", "sparkModel", "sparkAvailabilityFallback", "solOrOtherModelAllowed", "primaryReviewRequired", "contentFirstManifestLast", "scriptureTextStored", "runtimeAiAllowed", "commentsReadable"],
       "properties": {
         "maxReadings": {"const": 1},
-        "tPlus7PreparationFirst": {"const": true},
+        "independentHistoricalLane": {"const": true},
         "publishedFallbackOnly": {"const": true},
         "sparkModel": {"const": "gpt-5.3-codex-spark"},
         "sparkAvailabilityFallback": {"const": "gpt-5.6-luna-low-only"},

@@ -108,13 +108,13 @@ test("prior-study protocol backfill waits for the horizon then selects one most-
   assert.equal(order.guards.contentFirstManifestLast, true);
 });
 
-test("scheduled workflow makes one Henry-only backfill precede optional protocol refresh", () => {
+test("daily scheduled workflow leaves historical Henry debt to the independent lane", () => {
   const prompt = readFileSync(new URL("../prompts/daily-study-scheduled-task.md", import.meta.url), "utf8");
   const workflow = readFileSync(new URL("../docs/COMMENTARY_WORKFLOW.md", import.meta.url), "utf8");
   assert.match(prompt, /generation\.contentProtocolVersion: daily-study-protocol\/v1/);
   assert.match(prompt, /componentAssessments\.historicalContext/);
-  assert.ok(prompt.indexOf("11. Only after the complete current-through-T+7 horizon") <
-    prompt.indexOf("12. After that one Henry inspection or attempt"));
+  assert.match(prompt, /Historical Henry fallback debt belongs only to the independent Henry-backfill task/);
+  assert.doesNotMatch(prompt, /mhc:backfill:next/);
   assert.match(workflow, /most-recent-first/);
   assert.match(workflow, /metadata-only bump/);
 });

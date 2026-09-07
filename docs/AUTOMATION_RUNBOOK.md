@@ -71,19 +71,19 @@ After—and only after—exact Drive readback proves the named reading is live, 
 
 Report every reading/date repaired in order, source categories and limitations, Henry generation/review status, tests/gates, Drive readback, resulting ready-through date, commit, Pages release, and any failure. Do not include private IDs, reader codes, comments, ESV wording, or copyrighted source text.
 
-## 5. One-reading Henry backfill before protocol refresh
+## 5. Independent one-reading Henry backfill
 
-Only after the T+7 lane reports `none` or `plan_complete` and exact Drive readback is verified, first inspect and attempt at most one Henry-only fallback repair:
+The separate Henry scheduled task, not the daily T+7 task, inspects and attempts at most one manifest-backed fallback repair:
 
 ```sh
 npm run mhc:backfill:next
 ```
 
-The daily study remains ready when a verified full-commentary link is present. Treat a selected Henry action as separate layer debt, not a T+7 failure. The permitted controller remains Spark once, then Luna once at low reasoning only after an eligible Spark model-execution failure; never use Sol, Terra, or another model. If both attempts fail, retain the fallback, report the debt, and still consider the one optional protocol refresh below.
+The daily study remains ready when a verified full-commentary link is present. Treat a selected Henry action as separate layer debt, not a T+7 failure. The ignored private attempt ledger applies a 24-hour cooldown and selects the least-recent eligible fallback before plan order, so one repeated failure cannot starve later debt. The permitted controller remains Spark once, then Luna once at low reasoning only after an eligible Spark model-execution failure; never use Sol, Terra, or another model. If both attempts fail, retain the fallback and prior manifest, record only safe stage/code diagnostics, and let the next independent run rotate.
 
 ## 6. One-reading protocol refresh backfill
 
-After the one Henry inspection or attempt, run:
+The daily T+7 task may run this lane after its own horizon is ready; it does not wait for or inspect the independent Henry lane:
 
 ```sh
 npm run study:protocol-backfill:next
@@ -99,19 +99,19 @@ This lane may select one reading only and never alters backend authorization, sh
 
 ## 7. Henry backfill handling
 
-Validate the result against `schemas/mhc-backfill-work-order.schema.json`. The queue scans active-plan order and selects only the earliest manifest-published chapter whose metadata still contains a valid `henrySourceLink`. It verifies the checksum-bound private Henry library before reporting one of four actions:
+Validate the result against `schemas/mhc-backfill-work-order.schema.json`. The queue reads its ignored schema-validated attempt state and selects the least-recent eligible manifest-published chapter whose metadata still contains a valid `henrySourceLink`; a 24-hour cooldown applies after each attempt. It verifies the checksum-bound private Henry library before reporting one of four actions:
 
 - `none`: no published fallback remains;
 - `generate_review_publish`: the artifact is missing, so persist the embedded one-reading ensure request in ignored private storage and invoke `npm run mhc:ensure`;
 - `review_attach_publish`: a generated artifact exists but still needs complete atom-by-atom primary review and approval;
 - `attach_publish`: a previously approved artifact needs only checksum revalidation, attachment, validation, and atomic private republication.
 
-If the T+7 lane already observed a Spark model-execution failure, do not probe Spark again in the backfill lane. A backfill failure after the controller has exhausted its narrow Spark→Luna route is a safe deferral: retain the full-source link, leave the library and live manifest unchanged, and let the next daily task select the same reading. A successful generation still requires the same hash-bound review process described above. `npm run mhc:sync-latest` removes the fallback only while attaching the verified reviewed runtime. Upload versioned metadata first and replace the private manifest last. This lane never rewrites the orientation, multi-source synthesis, takeaway, or Scripture reference.
+The Henry lane is independent of daily T+7 failures and gets its own Spark attempt. A backfill failure after the controller has exhausted its narrow Spark→Luna route is a safe deferral: retain the full-source link, leave the library and live manifest unchanged, record a normalized safe failure with `npm run mhc:backfill:record`, and let the next Henry task select the least-recent eligible reading. A successful generation still requires the same hash-bound review process described above. `npm run mhc:sync-latest` removes the fallback only while attaching the verified reviewed runtime. Upload versioned metadata first and replace the private manifest last. This lane never rewrites the orientation, multi-source synthesis, takeaway, or Scripture reference.
 
 ## Failure rules
 
 - A Spark model-execution failure receives one Luna-low attempt; two failed model attempts retain the documented full-source-link fallback. Deterministic request, source, checksum, security, repository, review, and publication failures retain that fallback and report Henry debt without changing daily-study readiness.
-- Henry backfill is lower priority than the end-to-end T+7 lane, precedes the optional protocol refresh, processes at most one separate reading per run, and retains its working fallback on every failure.
+- Henry backfill is an independent scheduled lane, processes at most one separate reading per run, retains its working fallback on every failure, and neither waits for nor changes daily T+7 or protocol-refresh work.
 - A Drive upload failure leaves the old manifest current.
 - A failed `study:live-health` check leaves the manifest current and prevents a success report, even when local evaluator, manifest, and bootstrap membership checks passed.
 - Missing local private storage or a dirty checkout stops publication.

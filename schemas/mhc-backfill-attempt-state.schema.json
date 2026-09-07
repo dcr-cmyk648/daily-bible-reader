@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daily-bible-reader.local/schemas/mhc-backfill-attempt-state.schema.json",
+  "title": "Private Matthew Henry backfill attempt state",
+  "type": "object",
+  "required": ["schemaVersion", "planVersion", "attempts"],
+  "properties": {
+    "schemaVersion": {"const": "mhc-backfill-attempt-state/v1"},
+    "planVersion": {"type": "string", "minLength": 1, "maxLength": 200},
+    "attempts": {
+      "type": "object",
+      "propertyNames": {"pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,159}$"},
+      "additionalProperties": {
+        "type": "object",
+        "required": ["attemptedAt", "outcome", "stage", "code", "priorManifestRemainsLive"],
+        "properties": {
+          "attemptedAt": {"type": "string", "format": "date-time"},
+          "outcome": {"enum": ["published", "model_failure", "blocked"]},
+          "stage": {"enum": ["generation", "review", "validation", "publication", "controller"]},
+          "code": {"type": "string", "pattern": "^[A-Z][A-Z0-9_:-]{2,79}$"},
+          "priorManifestRemainsLive": {"const": true}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -32,6 +32,7 @@
     "mhc:activate": "node scripts/mhc-pipeline.mjs activate",
     "mhc:ensure": "node scripts/mhc-pipeline.mjs ensure",
     "mhc:backfill:next": "node scripts/mhc-backfill-work-order.mjs",
+    "mhc:backfill:record": "node scripts/mhc-backfill-attempt-state.mjs",
     "bridge:extend": "node scripts/extend-celebration-bridge.mjs",
     "prefix:extend": "node scripts/extend-active-prefix.mjs",
     "calendar:active:build": "node scripts/build-active-calendar.mjs",

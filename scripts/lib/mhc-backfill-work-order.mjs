@@ -1,4 +1,5 @@
 import {createHash} from "node:crypto";
+import {MHC_BACKFILL_COOLDOWN_MS, normalizedAttemptState} from "./mhc-backfill-attempt-state.mjs";
 
 const ACTIONS_BY_LIBRARY_STATE = Object.freeze({
   missing: "generate_review_publish",
@@ -16,7 +17,7 @@ const REASONS_BY_LIBRARY_STATE = Object.freeze({
 
 const GUARDS = Object.freeze({
   maxReadings: 1,
-  tPlus7PreparationFirst: true,
+  independentHistoricalLane: true,
   publishedFallbackOnly: true,
   sparkModel: "gpt-5.3-codex-spark",
   sparkAvailabilityFallback: "gpt-5.6-luna-low-only",
@@ -66,16 +67,39 @@ function metadataFor(metadataByReadingId, readingId) {
   return metadataByReadingId && metadataByReadingId[readingId] || null;
 }
 
-export function selectMhcBackfillCandidate({plan, metadataByReadingId, manifestReadingIds}) {
+export function selectMhcBackfillCandidate({plan, metadataByReadingId, manifestReadingIds, attemptState = null, now = new Date(), cooldownMs = MHC_BACKFILL_COOLDOWN_MS}) {
   const entries = orderedEntries(plan);
   const manifest = manifestReadingIds instanceof Set ? manifestReadingIds : new Set(manifestReadingIds || []);
-  for (const entry of entries) {
-    if (entry.kind !== "chapter" || !manifest.has(entry.readingId)) continue;
-    const metadata = metadataFor(metadataByReadingId, entry.readingId);
-    if (!metadata || metadata.readingId !== entry.readingId || !isVerifiedHenryFallback(metadata.henrySourceLink)) continue;
-    return {entry, metadata};
+  const state = normalizedAttemptState(attemptState, plan.planVersion);
+  const currentMs = new Date(now).getTime();
+  if (!Number.isFinite(currentMs) || !Number.isSafeInteger(cooldownMs) || cooldownMs < 0) {
+    throw new Error("A valid current time and nonnegative Matthew Henry cooldown are required.");
   }
-  return null;
+  const candidates = entries.flatMap((entry) => {
+    if (entry.kind !== "chapter" || !manifest.has(entry.readingId)) return [];
+    const metadata = metadataFor(metadataByReadingId, entry.readingId);
+    if (!metadata || metadata.readingId !== entry.readingId || !isVerifiedHenryFallback(metadata.henrySourceLink)) return [];
+    const attempt = state.attempts[entry.readingId] || null;
+    const attemptedAtMs = attempt ? Date.parse(attempt.attemptedAt) : null;
+    const nextEligibleAt = attemptedAtMs === null ? null : new Date(attemptedAtMs + cooldownMs).toISOString();
+    return [{entry, metadata, attempt, attemptedAtMs, nextEligibleAt, coolingDown: attemptedAtMs !== null && currentMs < attemptedAtMs + cooldownMs}];
+  });
+  const eligible = candidates.filter((candidate) => !candidate.coolingDown)
+    .sort((left, right) => (left.attemptedAtMs ?? -Infinity) - (right.attemptedAtMs ?? -Infinity) || left.entry.dayIndex - right.entry.dayIndex);
+  const cooling = candidates.filter((candidate) => candidate.coolingDown)
+    .sort((left, right) => left.attemptedAtMs - right.attemptedAtMs || left.entry.dayIndex - right.entry.dayIndex);
+  const selected = eligible[0] || null;
+  return {
+    candidate: selected,
+    queue: {
+      eligibleFallbackCount: candidates.length,
+      selectableCount: eligible.length,
+      coolingDownCount: cooling.length,
+      cooldownSeconds: cooldownMs / 1000,
+      selectionPolicy: "least_recent_attempt_then_plan_order",
+      nextEligibleAt: cooling[0]?.nextEligibleAt || null
+    }
+  };
 }
 
 function buildEnsureRequest(planVersion, readingId) {
@@ -93,21 +117,25 @@ function buildEnsureRequest(planVersion, readingId) {
   };
 }
 
-export function buildMhcBackfillWorkOrder({plan, candidate, libraryState = null, issuedAt}) {
+export function buildMhcBackfillWorkOrder({plan, candidate, queue, libraryState = null, issuedAt}) {
   orderedEntries(plan);
+  const emptyQueue = queue || {eligibleFallbackCount: 0, selectableCount: 0, coolingDownCount: 0, cooldownSeconds: MHC_BACKFILL_COOLDOWN_MS / 1000, selectionPolicy: "least_recent_attempt_then_plan_order", nextEligibleAt: null};
   if (!candidate) {
+    const coolingDown = emptyQueue.eligibleFallbackCount > 0 && emptyQueue.selectableCount === 0;
     return {
       schemaVersion: "mhc-backfill-work-order/v1",
-      workOrderId: `MHBWO-${sha256(JSON.stringify({plan: plan.planVersion, reason: "no_published_henry_fallbacks"})).slice(0, 24)}`,
+      workOrderId: `MHBWO-${sha256(JSON.stringify({plan: plan.planVersion, reason: coolingDown ? "published_henry_fallbacks_cooling_down" : "no_published_henry_fallbacks"})).slice(0, 24)}`,
       issuedAt,
       planVersion: plan.planVersion,
       action: "none",
-      reasonCode: "no_published_henry_fallbacks",
+      reasonCode: coolingDown ? "published_henry_fallbacks_cooling_down" : "no_published_henry_fallbacks",
       reading: null,
       metadataPath: null,
       manifestEntryPresent: false,
       libraryState: null,
       sparkRequest: null,
+      queue: emptyQueue,
+      diagnostic: {lane: "henry_backfill", status: coolingDown ? "cooldown" : "empty", priorManifestRemainsLive: true, retryAction: coolingDown ? "wait_for_next_eligible_attempt" : "no_historical_henry_action"},
       guards: GUARDS
     };
   }
@@ -130,6 +158,8 @@ export function buildMhcBackfillWorkOrder({plan, candidate, libraryState = null,
     manifestEntryPresent: true,
     libraryState,
     sparkRequest: libraryState === "missing" ? buildEnsureRequest(plan.planVersion, entry.readingId) : null,
+    queue: emptyQueue,
+    diagnostic: {lane: "henry_backfill", status: "selected", priorManifestRemainsLive: true, retryAction: "process_one_selected_reading", lastAttemptedAt: candidate.attempt?.attemptedAt || null, failedStage: candidate.attempt?.stage || null, failureCode: candidate.attempt?.code || null},
     guards: GUARDS
   };
 }

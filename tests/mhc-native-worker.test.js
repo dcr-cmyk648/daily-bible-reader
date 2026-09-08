@@ -521,3 +521,23 @@ test("tracked native automation prompts preserve exact model, timing, review, an
   assert.match(review, /approved all-assertions-true/); assert.match(review, /mhc:sync-latest/); assert.match(review, /Never let generation attach or publish/);
   for (const text of [spark, luna, review]) assert.match(text, /private prose, source atoms, IDs, or secrets|private prose, atoms, IDs, credentials, or secrets|private prose, source atoms, Scripture/);
 });
+
+test("assigned Luna-low worker writes directly and cannot launch a nested or substitute worker", () => {
+  const scheduled = readFileSync(new URL("../prompts/mhc-native-luna-scheduled-task-v1.md", import.meta.url), "utf8");
+  const worker = readFileSync(new URL("../prompts/mhc-native-luna-worker-v1.md", import.meta.url), "utf8");
+  const nestedProhibition = /Do not run `codex exec` or any (?:other )?command that launches a nested Codex\/model process\./;
+  for (const text of [scheduled, worker]) {
+    assert.match(text, /exact `gpt-5\.6-luna` at low reasoning/);
+    assert.match(text, /existing repository file-(?:reading and file-editing|editing) capability/);
+    assert.match(text, nestedProhibition);
+    assert.match(text, /Do not spawn, delegate to, or hand (?:the|this) work item to another child agent/);
+    assert.match(text, /Never substitute Terra, Sol, Spark, or any other model/);
+    assert.doesNotMatch(text.replace(nestedProhibition, ""), /codex exec|nested Codex\/model process/i);
+    assert.match(text, /same lease/);
+    assert.match(text, /at most two repairs \(three submit attempts total\)/);
+  }
+  assert.match(scheduled, /durable pair selected for that primary Spark slot/);
+  assert.match(scheduled, /same one work item/);
+  assert.match(worker, /write exactly one `mhc-native-candidate\/v1` JSON object directly/);
+  assert.match(worker, /The deterministic controller performs validation and creates the separate review handoff/);
+});

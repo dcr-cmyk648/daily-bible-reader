@@ -54,6 +54,15 @@ export function deriveChapterDecision({events, orderedChunkIds, now, slotGraceMs
   return {owner:SPARK,restart:false,blocked:false,reason:"primary_pending",nextChunkId,primary_slot:slot};
 }
 export function makeLedgerEvent(fields) { const event={...fields}; event.event_id ||= `MHNLE-${sha256(stableJson({...fields, event_id:undefined})).slice(0,32)}`; return event; }
+const LEASE_TERMINAL_OUTCOMES = new Set(["validated", "model_failure", "deterministic_failure", "source_failure", "schema_failure", "review_failure", "missed_primary", "stale_primary"]);
+export function hasActiveMatchingLease({events, lease}) {
+  const index = (events || []).findIndex((event) => event.event_id === lease.event_id);
+  if (index < 0 || lease.outcome !== "leased") return false;
+  return !(events || []).slice(index + 1).some((event) => event.work_item_id === lease.work_item_id &&
+    event.model === lease.model && event.automation_id === lease.automation_id && event.plan_version === lease.plan_version &&
+    event.reading_id === lease.reading_id && event.chapter === lease.chapter && event.chunk_id === lease.chunk_id &&
+    LEASE_TERMINAL_OUTCOMES.has(event.outcome));
+}
 export async function appendLedgerEvent({root, readingId, event, ledgerSchema, now = () => new Date(), lockStaleMs = LOCK_STALE_MS}) {
   const base=path.resolve(root), ledgerDir=path.join(base,"ledger"), target=path.join(ledgerDir,`${readingId}.json`), lock=path.join(ledgerDir,`${readingId}.lock`);
   if (path.dirname(target)!==ledgerDir || !/^[A-Za-z0-9][A-Za-z0-9._:-]{2,159}$/.test(readingId)) throw new Error("Invalid ledger reading ID.");
@@ -63,7 +72,7 @@ export async function appendLedgerEvent({root, readingId, event, ledgerSchema, n
     assertSchemaValid(ledger,ledgerSchema,{label:"Native ledger"});
     if (event.reading_id !== readingId) throw new Error("Ledger event reading ID mismatch.");
     if (ledger.events.some(x=>x.event_id===event.event_id)) return {ledger, appended:false};
-    if (event.outcome === "leased" && ledger.events.some(x => x.outcome === "leased" && x.model === event.model && x.reading_id === event.reading_id && x.chapter === event.chapter && x.chunk_id === event.chunk_id && x.primary_slot === event.primary_slot)) throw new Error("Native ledger already has a lease for this chunk, model, and slot.");
+    if (event.outcome === "leased" && ledger.events.some((prior) => prior.outcome === "leased" && prior.model === event.model && prior.reading_id === event.reading_id && prior.chapter === event.chapter && prior.chunk_id === event.chunk_id && prior.primary_slot === event.primary_slot && hasActiveMatchingLease({events:ledger.events,lease:prior}))) throw new Error("Native ledger already has a lease for this chunk, model, and slot.");
     ledger.events.push(event); assertSchemaValid(ledger,ledgerSchema,{label:"Native ledger"});
     const temp=path.join(ledgerDir,`.${readingId}.${process.pid}.${Date.now()}.tmp`); await writeFile(temp,`${JSON.stringify(ledger,null,2)}\n`,{mode:0o600,flag:"wx"}); await rename(temp,target); return {ledger,appended:true};
   } finally { await rm(lock,{recursive:true,force:true}); }

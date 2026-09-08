@@ -6,9 +6,10 @@ import {spawnSync} from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import {fileURLToPath} from "node:url";
-import {assertNativeHandoffBinding, buildNativeWorkItem, nativeCandidateValidationDiagnostics, nativeWorkItemPath, normalizeNativeCandidate, safeNativeReport, scheduleDateForEntry, validateNativeCandidate, SPARK, LUNA} from "../scripts/lib/mhc-native-worker.mjs";
+import {assertNativeHandoffBinding, buildNativeWorkerView, buildNativeWorkItem, hasValidNativeWorkerView, isCompatibleLegacyNativeWorkItem, nativeCandidateValidationDiagnostics, nativeControllerTransitionIdentityCandidates, nativeWorkItemId, nativeWorkItemLeaseId, nativeWorkItemPath, normalizeHydratedFactAnchors, normalizeNativeCandidate, safeNativeReport, scheduleDateForEntry, validateNativeCandidate, workItemDigest, MAX_WORKER_VIEW_SNIPPETS, SPARK, LUNA} from "../scripts/lib/mhc-native-worker.mjs";
+import {buildFactBriefJobSpec} from "../scripts/lib/mhc-pipeline.mjs";
 import {applyNativeTransaction} from "../scripts/lib/mhc-native-transaction.mjs";
-import {authenticatesControllerTransition, incompleteAssemblyReport, requiresInitialControllerTransfer} from "../scripts/mhc-native-worker.mjs";
+import {activeNativeLeaseWorkItem, assertCurrentLease, authenticatesControllerTransition, incompleteAssemblyReport, isCurrentTerminalFailureWorkItem, requiresInitialControllerTransfer, terminalNativeFailureEvent} from "../scripts/mhc-native-worker.mjs";
 
 const workSchema = JSON.parse(readFileSync(new URL("../schemas/mhc-native-work-item.schema.json", import.meta.url), "utf8"));
 const candidateSchema = JSON.parse(readFileSync(new URL("../schemas/mhc-native-candidate.schema.json", import.meta.url), "utf8"));
@@ -54,6 +55,57 @@ test("native work items hash the bound selection and source view", () => {
   assert.ok(result.errors.includes("work item hash is invalid"));
 });
 
+test("native work items expose and bind the exact canonical fact-brief snippets", () => {
+  const spec = {metadata: item.source_view.metadata, requestedRecords: item.source_view.requested_records, sourceUnits: [{...unit}]};
+  const expected = buildFactBriefJobSpec({chapterJobSpec: spec, generatedAt: item.created_at});
+  assert.deepEqual(item.source_view.source_units, expected.sourceUnits);
+  const snippet = item.source_view.source_units[0].source_atoms[0].evidence_snippets[0];
+  assert.match(snippet.source_snippet_id, /^fab\.atom:/);
+  assert.equal(snippet.text, "FABRICATED test material only.");
+  const tampered = structuredClone(item);
+  tampered.source_view.source_units[0].source_atoms[0].evidence_snippets[0].text = "FABRICATED altered source.";
+  assert.notEqual(workItemDigest(tampered), item.work_item_sha256);
+  const candidate = {schema_version: "mhc-native-candidate/v1", work_item_id: item.work_item_id, fact_brief: {verse_briefs: []}, verse_drafts: []};
+  assert.ok(validateNativeCandidate({candidate, item: tampered, candidateSchema, factSchema, chapterSchema}).errors.includes("work item hash is invalid"));
+});
+
+test("native worker views are compact, exact, bound, and use a deterministic no-target fallback", async () => {
+  const worker = item.worker_view;
+  assert.ok(Buffer.byteLength(JSON.stringify(worker)) < Buffer.byteLength(JSON.stringify(item.source_view)));
+  assert.deepEqual(worker.requested_verses[0].target_marked_source_atom_ids, ["fab.atom"]);
+  const atom = worker.requested_verses[0].source_units[0].source_atoms[0];
+  assert.equal(atom.source_atom_id, "fab.atom");
+  assert.equal(Object.hasOwn(atom, "text"), false);
+  assert.deepEqual(atom.evidence_snippets, item.source_view.source_units[0].source_atoms[0].evidence_snippets);
+  assert.equal(hasValidNativeWorkerView(item), true);
+  const tampered = structuredClone(item); tampered.worker_view.requested_verses[0].source_units[0].source_atoms[0].evidence_snippets = [];
+  assert.equal(hasValidNativeWorkerView(tampered), false);
+  const fallback = structuredClone(item.source_view); fallback.requested_records[0].target_marked_source_atom_ids = [];
+  assert.equal(buildNativeWorkerView(fallback).workerView.requested_verses[0].source_units[0].source_atoms[0].source_atom_id, "fab.atom");
+  const oversized = structuredClone(item.source_view); oversized.source_units[0].source_atoms[0].text = Array.from({length: MAX_WORKER_VIEW_SNIPPETS + 1}, () => "FABRICATED evidence sentence has enough words for a bounded snippet.").join(" ");
+  oversized.source_units[0].source_atoms[0].evidence_snippets = (await import("../scripts/lib/mhc-pipeline.mjs")).evidenceSnippetsForAtom(oversized.source_units[0].source_atoms[0]);
+  assert.throws(() => buildNativeWorkerView(oversized), /ceiling/);
+});
+
+test("only a complete authenticated raw legacy item remains ledger-compatible after snippet binding", () => {
+  const legacy = structuredClone(item);
+  for (const atom of legacy.source_view.source_units[0].source_atoms) delete atom.evidence_snippets;
+  legacy.work_item_id = nativeWorkItemId(legacy);
+  legacy.lease_id = nativeWorkItemLeaseId(legacy);
+  legacy.work_item_sha256 = workItemDigest(legacy);
+  assert.equal(isCompatibleLegacyNativeWorkItem({item: legacy, expected: item}), true);
+  const sourceViewTampered = structuredClone(legacy);
+  sourceViewTampered.source_view.source_units[0].source_atoms[0].text = "FABRICATED altered source.";
+  sourceViewTampered.work_item_id = nativeWorkItemId(sourceViewTampered);
+  sourceViewTampered.lease_id = nativeWorkItemLeaseId(sourceViewTampered);
+  sourceViewTampered.work_item_sha256 = workItemDigest(sourceViewTampered);
+  assert.equal(isCompatibleLegacyNativeWorkItem({item: sourceViewTampered, expected: item}), false);
+  legacy.source_hash = "d".repeat(64);
+  legacy.work_item_sha256 = workItemDigest(legacy);
+  assert.equal(isCompatibleLegacyNativeWorkItem({item: legacy, expected: item}), false);
+  assert.equal(isCompatibleLegacyNativeWorkItem({item: item, expected: item}), false);
+});
+
 test("native candidates reject model provenance and reports return only the deterministic relative work-item path", () => {
   const invalid = {schema_version: "mhc-native-candidate/v1", work_item_id: item.work_item_id, fact_brief: {verse_briefs: []}, verse_drafts: [], worker_model: SPARK};
   const result = validateNativeCandidate({candidate: invalid, item, candidateSchema, factSchema, chapterSchema});
@@ -88,8 +140,13 @@ test("controller-only Spark transitions require the exact reconstructed work-ite
   const transition = event({outcome: "missed_primary", automation_id: item.automation_id, work_item_id: item.work_item_id});
   const binding = {event: transition, expectedItem: item, sourceHash: item.source_hash, normalizedHash: item.normalized_hash, verseIds: item.verse_ids};
   assert.equal(authenticatesControllerTransition(binding), true);
+  const identities = nativeControllerTransitionIdentityCandidates(item);
+  assert.equal(identities.length, 3);
+  for (const identity of identities) assert.equal(authenticatesControllerTransition({...binding, event: {...transition, work_item_id: identity.work_item_id}}), true);
   assert.equal(authenticatesControllerTransition({...binding, event: {...transition, work_item_id: "MHNWI-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}), false);
   assert.equal(authenticatesControllerTransition({...binding, event: {...transition, model: LUNA}}), false);
+  const altered = structuredClone(item); altered.source_view.source_units[0].source_atoms[0].text = "FABRICATED altered source."; altered.work_item_sha256 = workItemDigest(altered);
+  assert.equal(authenticatesControllerTransition({...binding, expectedItem: altered}), false);
   const partial = state.deriveChapterDecision({events: [transition, event({event_id: "MHNLE-luna-validated", model: LUNA, outcome: "validated", work_item_id: "MHNWI-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", automation_id: "fabricated-luna"})], orderedChunkIds: ["001-001", "002-002"], now: "2026-11-01T05:12:00.000Z"});
   assert.equal(partial.owner, LUNA);
   assert.notEqual(partial.complete, true);
@@ -132,6 +189,14 @@ test("native candidate normalization may derive an evidence anchor already retai
   assert.deepEqual(normalized.fact_brief.verse_briefs[0].facts[0].must_include_terms, ["FABRICATED test material"]);
   assert.equal(normalized.fact_brief.verse_briefs[0].facts[0].statement, candidate.fact_brief.verse_briefs[0].facts[0].statement);
   assert.equal(normalized.verse_drafts[0].blurb, candidate.verse_drafts[0].blurb);
+});
+
+test("post-hydration normalization recovers only exact trusted-evidence anchors retained by the final blurb", () => {
+  const factBrief = {verse_briefs: [{verse_id: "TST.1.1", facts: [{evidence_quote: "FABRICATED trusted evidence phrase.", must_include_terms: []}]}, {verse_id: "TST.1.2", facts: [{evidence_quote: "FABRICATED trusted evidence phrase.", must_include_terms: []}]}]};
+  const output = {records: [{verse_id: "TST.1.1", blurb: "A FABRICATED trusted evidence phrase remains."}, {verse_id: "TST.1.2", blurb: "No overlapping anchor appears here."}]};
+  normalizeHydratedFactAnchors({factBrief, output});
+  assert.deepEqual(factBrief.verse_briefs[0].facts[0].must_include_terms, ["FABRICATED trusted evidence"]);
+  assert.deepEqual(factBrief.verse_briefs[1].facts[0].must_include_terms, []);
 });
 
 test("handoff bindings reject tampered staged/event fields", async () => {
@@ -194,6 +259,44 @@ test("a Luna lease may follow a stale Spark lease but duplicate owner leases fai
   } finally { await rm(root,{recursive:true,force:true}); }
 });
 
+test("terminalized same-slot leases may be replaced while active leases and false paths fail closed", async () => {
+  const first = event({automation_id:item.automation_id}), terminal = terminalNativeFailureEvent({item,lease:first,code:"NATIVE_CANDIDATE_UNRESOLVED"});
+  const replacement = event({event_id:"MHNLE-replacement",automation_id:item.automation_id,work_item_id:"MHNWI-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",outcome:"leased"});
+  const root=await mkdtemp(path.join(os.tmpdir(),"mhc-native-release-"));
+  try {
+    await state.appendLedgerEvent({root,readingId:"FAB-001",event:first,ledgerSchema});
+    await assert.rejects(state.appendLedgerEvent({root,readingId:"FAB-001",event:event({event_id:"MHNLE-active-duplicate",automation_id:item.automation_id,outcome:"leased"}),ledgerSchema}),/already has a lease/);
+    await state.appendLedgerEvent({root,readingId:"FAB-001",event:terminal,ledgerSchema});
+    assert.equal((await state.appendLedgerEvent({root,readingId:"FAB-001",event:replacement,ledgerSchema})).appended,true);
+  } finally { await rm(root,{recursive:true,force:true}); }
+  assert.equal(activeNativeLeaseWorkItem({events:[first],items:[{item}],defs:[{item}],planVersion:"fabricated"}).item.work_item_id,item.work_item_id);
+  const changed=structuredClone(item); changed.work_item_id="MHNWI-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+  assert.equal(activeNativeLeaseWorkItem({events:[replacement],items:[{item}],defs:[{item:changed}],planVersion:"fabricated"}),null);
+});
+
+test("terminal native failure authenticates one current lease and leaves a later Luna lease eligible", async () => {
+  const lease = event({automation_id: item.automation_id});
+  assert.equal(isCurrentTerminalFailureWorkItem({item, defs: [{item}], planVersion: "fabricated"}), true);
+  assert.equal(isCurrentTerminalFailureWorkItem({item: null, defs: [{item}], planVersion: "fabricated"}), false);
+  const forged = structuredClone(item); forged.source_hash = "d".repeat(64);
+  assert.equal(isCurrentTerminalFailureWorkItem({item: forged, defs: [{item}], planVersion: "fabricated"}), false);
+  assert.equal(isCurrentTerminalFailureWorkItem({item, defs: [{item}], planVersion: "stale"}), false);
+  const terminal = terminalNativeFailureEvent({item, lease, code: "NATIVE_CANDIDATE_UNRESOLVED"});
+  assert.equal(terminal.outcome, "model_failure");
+  assert.throws(() => terminalNativeFailureEvent({item, lease, code: "ARBITRARY"}), /not permitted/);
+  assert.throws(() => assertCurrentLease({item, events: [lease, terminal], planVersion: "fabricated"}), /superseded/);
+  const root = await mkdtemp(path.join(os.tmpdir(), "mhc-native-failure-"));
+  try {
+    assert.equal((await state.appendLedgerEvent({root, readingId: "FAB-001", event: lease, ledgerSchema})).appended, true);
+    assert.equal((await state.appendLedgerEvent({root, readingId: "FAB-001", event: terminal, ledgerSchema})).appended, true);
+    assert.equal((await state.appendLedgerEvent({root, readingId: "FAB-001", event: terminal, ledgerSchema})).appended, false);
+    const lunaLease = event({event_id: "MHNLE-luna-after-terminal", model: LUNA, automation_id: "fabricated-luna", work_item_id: "MHNWI-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", outcome: "leased", at: "2026-11-01T05:03:00.000Z"});
+    const decision = state.deriveChapterDecision({events: [lease, terminal, lunaLease], orderedChunkIds: ["001-001"], now: "2026-11-01T05:12:00.000Z"});
+    assert.equal(decision.owner, LUNA);
+    assert.equal(decision.nextChunkId, "001-001");
+  } finally { await rm(root, {recursive: true, force: true}); }
+});
+
 test("native transaction resumes exact staged bytes and fails closed after applied tampering", async () => {
   const root=await mkdtemp(path.join(os.tmpdir(),"mhc-native-tx-")), canonical=path.join(root,"canonical"), bytes={x:"FABRICATED ONLY"}, digest=(await import("../scripts/lib/mhc-pipeline.mjs")).sha256(Buffer.from(`${JSON.stringify(bytes,null,2)}\n`));
   const manifest={schema_version:"mhc-native-review-transaction/v1",reading_id:"FAB-001",plan_version:"fabricated",review_sha256:"c".repeat(64),state:"staged",destinations:[{destination:"runtime/TST/001.json",staged_file:"staged/0.json",sha256:digest}]};
@@ -214,7 +317,9 @@ test("tracked native automation prompts preserve exact model, timing, review, an
     assert.match(text, /at most two repairs/);
   }
   assert.match(spark, /do not record historical cooldown/);
+  assert.match(spark, /mhc:native:fail/);
   assert.match(luna, /mhc:backfill:record/); assert.match(luna, /NATIVE_CANDIDATE_UNRESOLVED/);
+  assert.match(luna, /mhc:native:fail/);
   for (const text of [spark, luna]) assert.match(text, /reading_incomplete/);
   assert.match(review, /approved all-assertions-true/); assert.match(review, /mhc:sync-latest/); assert.match(review, /Never let generation attach or publish/);
   for (const text of [spark, luna, review]) assert.match(text, /private prose, source atoms, IDs, or secrets|private prose, atoms, IDs, credentials, or secrets/);

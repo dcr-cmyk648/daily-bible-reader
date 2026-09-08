@@ -35,6 +35,7 @@
     "mhc:backfill:record": "node scripts/mhc-backfill-attempt-state.mjs",
     "mhc:native:prepare": "node scripts/mhc-native-worker.mjs prepare",
     "mhc:native:submit": "node scripts/mhc-native-worker.mjs submit",
+    "mhc:native:fail": "node scripts/mhc-native-worker.mjs fail",
     "mhc:native:assemble": "node scripts/mhc-native-worker.mjs assemble",
     "mhc:native:review:prepare": "node scripts/mhc-native-worker.mjs review-prepare",
     "mhc:native:review:apply": "node scripts/mhc-native-worker.mjs review-apply",

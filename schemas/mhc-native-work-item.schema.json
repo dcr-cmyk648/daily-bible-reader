@@ -25,7 +25,10 @@
     "automation_id": {"type": "string", "minLength": 1, "maxLength": 200},
     "lease_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
     "created_at": {"type": "string", "format": "date-time"},
-    "source_view": {"type": "object"}
+    "source_view": {"type": "object"},
+    "worker_view_version": {"const": "mhc-native-worker-view/v1"},
+    "worker_view_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "worker_view": {"type": "object"}
   },
   "additionalProperties": false
 }

@@ -6,7 +6,7 @@ import {spawnSync} from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import {fileURLToPath} from "node:url";
-import {assertNativeHandoffBinding, buildNativeWorkItem, nativeCandidateValidationDiagnostics, nativeWorkItemPath, safeNativeReport, scheduleDateForEntry, validateNativeCandidate, SPARK, LUNA} from "../scripts/lib/mhc-native-worker.mjs";
+import {assertNativeHandoffBinding, buildNativeWorkItem, nativeCandidateValidationDiagnostics, nativeWorkItemPath, normalizeNativeCandidate, safeNativeReport, scheduleDateForEntry, validateNativeCandidate, SPARK, LUNA} from "../scripts/lib/mhc-native-worker.mjs";
 import {applyNativeTransaction} from "../scripts/lib/mhc-native-transaction.mjs";
 
 const workSchema = JSON.parse(readFileSync(new URL("../schemas/mhc-native-work-item.schema.json", import.meta.url), "utf8"));
@@ -19,7 +19,7 @@ const progressSchema = JSON.parse(readFileSync(new URL("../schemas/mhc-native-re
 const state = await import("../scripts/lib/mhc-native-state.mjs");
 const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
 const record = {verse_id: "TST.1.1", required_coverage_type: "direct", allowed_source_unit_ids: ["fab.unit"], allowed_source_atom_ids: ["fab.atom"], target_marked_source_atom_ids: ["fab.atom"], required_explicit_identity_terms: [], required_explicit_relations: [], verse_anchor_terms: [], source_reference_labels: ["Fabricated 1:1"]};
-const unit = {source_unit_id: "fab.unit", source_atoms: [{source_atom_id: "fab.atom", text: "FABRICATED test material only.", text_sha256: "a".repeat(64)}]};
+const unit = {source_unit_id: "fab.unit", reference_label: "Fabricated 1:1", source_atoms: [{source_atom_id: "fab.atom", text: "FABRICATED test material only.", text_sha256: "a".repeat(64)}]};
 const item = buildNativeWorkItem({reading: {readingId: "FAB-001", verseCount: 1}, planVersion: "fabricated", scheduleDate: "2026-09-07", chunk: {chunkId: "001-001", chapterJobSpec: {metadata: {book_id: "TST", chapter: 1, source_hash: "b".repeat(64)}, requestedRecords: [record], sourceUnits: [unit]}}, normalizedUnits: [unit], sourceManifest: {}, automationId: "fabricated-spark", createdAt: "2026-09-07T00:00:00.000Z"});
 
 test("native worker CLI resolves every module export before command dispatch", () => {
@@ -75,6 +75,28 @@ test("retryable candidate diagnostics are bounded and do not become a terminal m
   assert.equal(diagnostics.errors.length, 24);
   assert.ok(diagnostics.errors.every((error) => error.length <= 320));
   assert.equal(Object.hasOwn(diagnostics, "outcome"), false);
+});
+
+test("native candidate normalization repairs only uniquely bound labels and exact shared anchors", () => {
+  const candidate = {schema_version: "mhc-native-candidate/v1", work_item_id: item.work_item_id, fact_brief: {verse_briefs: [{verse_id: "TST.1.1", source_unit_ids: ["fab.unit"], source_reference_label: "wrong", facts: [{statement: "FABRICATED test material only.", evidence_quote: "FABRICATED test material only.", must_include_terms: []}]}]}, verse_drafts: [{verse_id: "TST.1.1", source_unit_ids: ["fab.unit"], source_reference_label: "wrong", blurb: "FABRICATED prose remains unchanged."}]};
+  const normalized = normalizeNativeCandidate({candidate, item});
+  assert.equal(normalized.fact_brief.verse_briefs[0].source_reference_label, "Fabricated 1:1");
+  assert.equal(normalized.verse_drafts[0].source_reference_label, "Fabricated 1:1");
+  assert.deepEqual(normalized.fact_brief.verse_briefs[0].facts[0].must_include_terms, ["FABRICATED test material"]);
+  assert.equal(normalized.fact_brief.verse_briefs[0].facts[0].statement, candidate.fact_brief.verse_briefs[0].facts[0].statement);
+  assert.equal(normalized.fact_brief.verse_briefs[0].facts[0].evidence_quote, candidate.fact_brief.verse_briefs[0].facts[0].evidence_quote);
+  assert.equal(normalized.verse_drafts[0].blurb, candidate.verse_drafts[0].blurb);
+});
+
+test("native candidate normalization leaves non-derivable labels and anchors invalid", () => {
+  const candidate = {schema_version: "mhc-native-candidate/v1", work_item_id: item.work_item_id, fact_brief: {verse_briefs: [{verse_id: "TST.1.1", source_unit_ids: ["unknown.unit"], source_reference_label: "wrong", facts: [{statement: "statement-only", evidence_quote: "evidence-only", must_include_terms: []}]}]}, verse_drafts: [{verse_id: "TST.1.1", source_unit_ids: ["unknown.unit"], source_reference_label: "wrong"}]};
+  const normalized = normalizeNativeCandidate({candidate, item});
+  assert.equal(normalized.fact_brief.verse_briefs[0].source_reference_label, "wrong");
+  assert.deepEqual(normalized.fact_brief.verse_briefs[0].facts[0].must_include_terms, []);
+  assert.equal(normalized.verse_drafts[0].source_reference_label, "wrong");
+  const checked = validateNativeCandidate({candidate, item, candidateSchema, factSchema, chapterSchema});
+  assert.equal(checked.valid, false);
+  assert.equal(checked.candidate.fact_brief.verse_briefs[0].source_reference_label, "wrong");
 });
 
 test("handoff bindings reject tampered staged/event fields", async () => {

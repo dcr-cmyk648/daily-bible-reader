@@ -53,20 +53,68 @@ function metadataFor(item) {
   return {...item.source_view.metadata, worker_model: item.required_model, prompt_version: PROMPT_VERSION, generation_timestamp: item.created_at, validation_status: "unvalidated", review_status: "unreviewed"};
 }
 
+const WORD_TOKEN = /[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu;
+const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function exactPhraseAppears(value, phrase) {
+  const words = String(phrase).split(" ").filter(Boolean);
+  if (!words.length) return false;
+  return new RegExp(`(^|[^\\p{L}\\p{N}])${words.map(escapeRegExp).join("\\s+")}(?=$|[^\\p{L}\\p{N}])`, "iu").test(String(value || ""));
+}
+function derivedAnchor(statement, evidenceQuote) {
+  const words = String(evidenceQuote || "").match(WORD_TOKEN) || [];
+  for (let length = 3; length >= 1; length -= 1) {
+    for (let start = 0; start + length <= words.length; start += 1) {
+      const phrase = words.slice(start, start + length).join(" ");
+      if (exactPhraseAppears(statement, phrase) && exactPhraseAppears(evidenceQuote, phrase)) return phrase;
+    }
+  }
+  return null;
+}
+function derivedSourceReferenceLabel(value, request, sourceUnits) {
+  if (!value || !request || !Array.isArray(value.source_unit_ids) || !value.source_unit_ids.length) return null;
+  const allowed = new Set(request.allowed_source_unit_ids || []);
+  if (new Set(value.source_unit_ids).size !== value.source_unit_ids.length || !value.source_unit_ids.every((id) => allowed.has(id))) return null;
+  const byId = new Map((sourceUnits || []).map((unit) => [unit.source_unit_id, unit]));
+  const labels = [...new Set(value.source_unit_ids.map((id) => byId.get(id)?.reference_label)
+    .filter((label) => request.source_reference_labels?.includes(label)))];
+  return labels.length === 1 ? labels[0] : null;
+}
+
+export function normalizeNativeCandidate({candidate, item}) {
+  if (!candidate || typeof candidate !== "object" || !item || typeof item !== "object") return candidate;
+  const normalized = structuredClone(candidate);
+  const requests = new Map((item.source_view?.requested_records || []).map((record) => [record.verse_id, record]));
+  const normalizeRecord = (value, facts = false) => {
+    if (!value || typeof value !== "object") return;
+    const label = derivedSourceReferenceLabel(value, requests.get(value.verse_id), item.source_view?.source_units);
+    if (label) value.source_reference_label = label;
+    if (!facts || !Array.isArray(value.facts)) return;
+    for (const fact of value.facts) {
+      if (!fact || !Array.isArray(fact.must_include_terms) || fact.must_include_terms.length !== 0) continue;
+      const anchor = derivedAnchor(fact.statement, fact.evidence_quote);
+      if (anchor) fact.must_include_terms = [anchor];
+    }
+  };
+  for (const brief of normalized.fact_brief?.verse_briefs || []) normalizeRecord(brief, true);
+  for (const draft of normalized.verse_drafts || []) normalizeRecord(draft);
+  return normalized;
+}
+
 export function validateNativeCandidate({candidate, item, candidateSchema, factSchema, chapterSchema}) {
-  const errors = validateAgainstSchema(candidate, candidateSchema);
-  if (candidate && candidate.work_item_id !== item.work_item_id) errors.push("$.work_item_id: does not bind the selected work item");
+  const normalizedCandidate = normalizeNativeCandidate({candidate, item});
+  const errors = validateAgainstSchema(normalizedCandidate, candidateSchema);
+  if (normalizedCandidate && normalizedCandidate.work_item_id !== item.work_item_id) errors.push("$.work_item_id: does not bind the selected work item");
   if (workItemDigest(item) !== item.work_item_sha256) errors.push("work item hash is invalid");
-  if (errors.length) return {valid: false, errors, warnings: []};
+  if (errors.length) return {valid: false, errors, warnings: [], candidate: normalizedCandidate};
   const chapterJobSpec = {metadata: metadataFor(item), requestedRecords: item.source_view.requested_records, sourceUnits: item.source_view.source_units};
   const factMetadata = buildFactBriefJobSpec({chapterJobSpec, generatedAt: item.created_at}).metadata;
-  const factBrief = hydrateFactBriefEvidence({...factMetadata, verse_briefs: candidate.fact_brief.verse_briefs}, {chapterJobSpec});
+  const factBrief = hydrateFactBriefEvidence({...factMetadata, verse_briefs: normalizedCandidate.fact_brief.verse_briefs}, {chapterJobSpec});
   const factValidation = validateFactBrief(factBrief, {schema: factSchema, chapterJobSpec});
-  const output = {...metadataFor(item), records: candidate.verse_drafts};
+  const output = {...metadataFor(item), records: normalizedCandidate.verse_drafts};
   const base = validateChapterOutput(output, {schema: chapterSchema, units: chapterJobSpec.sourceUnits, bookId: output.book_id, chapter: output.chapter, verseCount: item.chapter.verse_count, expectedMetadata: metadataFor(item), expectedVerseIdsOverride: item.verse_ids});
   const bound = validateFactBoundChapterOutput(output, {factBrief, baseValidation: base});
   const admission = requireAutonomousAdmission(bound);
-  return {valid: factValidation.valid && admission.valid, errors: [...factValidation.errors, ...admission.errors], warnings: [], factBrief, output, admission};
+  return {valid: factValidation.valid && admission.valid, errors: [...factValidation.errors, ...admission.errors], warnings: [], candidate: normalizedCandidate, factBrief, output, admission};
 }
 
 export function safeNativeReport({item = null, action, state, code = null}) {

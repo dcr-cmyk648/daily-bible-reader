@@ -39,10 +39,11 @@ Make the scheduled Luna fallback complete its one bounded Matthew Henry work ite
 - [x] Diagnosed the 11:25 failure from the automation record and isolated it from model capacity, pair selection, review, and publication.
 - [x] Implemented and validated the direct-generation contract: the assigned exact Luna-low worker writes one candidate directly with its existing file-editing capability, may not launch nested Codex/model work or delegate further, and may not substitute Terra, Sol, Spark, or another model.
 - [x] Primary review accepted the prompt/test diff. Aggregate validation passed repository safety, every schema/content/source check, 323/323 tests, all builds, exact Pages verification, `npm run publish:pages`, and `git diff --check`.
-- [ ] Release and observe the next paired run.
+- [x] Released commit `2a0a757` to `main`; GitHub repository safety/test run `34250985497` and Pages deployment `34250984078` passed.
+- [ ] Observe the next paired run.
 
 Milestones 1–2 changed only the tracked Luna scheduled/worker prompts and their narrow automation-contract regression. Same-pair selection, one prepared work item, the same lease, at most two repairs/three submits, terminal typed failure plus cooldown, and all no-review/no-publication boundaries remain explicit. The regression removes the one permitted prohibition sentence and then rejects any remaining `codex exec` or nested-model guidance, so an affirmative nested-worker instruction cannot coexist unnoticed. Focused native-worker tests passed 35/35; no live model, ignored private artifact, review, publication, deployment, or external resource was touched.
 
 ## Exact next action
 
-Release the reviewed tracked contract to `main`, confirm GitHub checks, and observe the next Spark/Luna pair. Success means the paired Luna worker either submits a valid candidate for the same reading or reports a genuine candidate-validation failure; nested-process `WORKER_UNAVAILABLE` is no longer acceptable.
+Observe the next Spark/Luna pair. Success means the paired Luna worker either submits a valid candidate for the same reading or reports a genuine candidate-validation failure; nested-process `WORKER_UNAVAILABLE` is no longer acceptable.

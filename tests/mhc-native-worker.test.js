@@ -31,6 +31,15 @@ test("native worker CLI resolves every module export before command dispatch", (
   assert.doesNotMatch(result.stderr, /does not provide an export/);
 });
 
+test("native review apply finalizes the durable library only after its canonical transaction", () => {
+  const source = readFileSync(new URL("../scripts/mhc-native-worker.mjs", import.meta.url), "utf8");
+  const apply = source.slice(source.indexOf("async function reviewApplyV2"), source.indexOf("export function incompleteAssemblyReport"));
+  assert.match(apply, /await applyNativeTransaction\(/);
+  assert.match(apply, /await finalizeLibrary\(item\.reading_id\)/);
+  assert.ok(apply.indexOf("await applyNativeTransaction(") < apply.indexOf("await finalizeLibrary(item.reading_id)"));
+  assert.match(apply, /state:"reviewed_library"/);
+});
+
 test("Luna transfer records the bound Spark work item rather than its controller wrapper", () => {
   const source = readFileSync(new URL("../scripts/mhc-native-worker.mjs", import.meta.url), "utf8");
   assert.match(source, /await event\(primary\.item,/);

@@ -229,6 +229,53 @@ export function evaluateHenryLayerReadiness(bootstrap, payloadBatch, now = new D
   }
 }
 
+export function evaluateLiveReading(bootstrap, payloadBatch, readingId) {
+  try {
+    if (typeof readingId !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{2,159}$/.test(readingId)) {
+      throw failure("LIVE_HEALTH_READING_ID_INVALID");
+    }
+    const plan = bootstrap && bootstrap.plan;
+    const entries = Array.isArray(plan?.entries) ? plan.entries : [];
+    const matches = entries.filter((entry) => entry && entry.readingId === readingId);
+    if (matches.length !== 1) throw failure("LIVE_HEALTH_READING_ID_INVALID");
+    const prepared = readerApp.preparedReadingIdSet(bootstrap, plan);
+    if (!prepared.has(readingId)) throw failure("LIVE_HEALTH_READING_NOT_PREPARED");
+    if (!payloadBatch || payloadBatch.planVersion !== plan.planVersion || !payloadBatch.payloads || typeof payloadBatch.payloads !== "object") {
+      throw failure("LIVE_HEALTH_PAYLOAD_BATCH_INVALID");
+    }
+    const payloadIds = Object.keys(payloadBatch.payloads);
+    if (payloadIds.some((id) => id !== readingId)) throw failure("LIVE_HEALTH_PAYLOAD_BATCH_INVALID");
+    const payload = payloadBatch.payloads[readingId];
+    if (!payload) {
+      return {status:"not_ready",readingId,prepared:true,missingPayload:true,missingComponentIds:[],henryLayerStatus:"unavailable"};
+    }
+    const report = readerApp.readingPreparationReport(payload, matches[0]);
+    const henryLayerStatus = readerApp.hasCompleteHenryVerseLayer(payload, matches[0]) ? "complete" :
+      report.components.find((component) => component.id === "henry")?.ready ? "fallback" : "unavailable";
+    return {status:report.prepared ? "ready" : "not_ready",readingId,prepared:true,missingPayload:false,missingComponentIds:report.missingComponentIds,henryLayerStatus};
+  } catch (error) {
+    if (error?.code && String(error.code).startsWith("LIVE_HEALTH_")) throw error;
+    throw failure("LIVE_HEALTH_BOOTSTRAP_INVALID");
+  }
+}
+
+export async function verifyLiveReading(credentials, readingId, options = {}) {
+  const bootstrap = await callLiveHealthBridge(credentials, "getBootstrapData", [credentials.readerCode], options);
+  let plan, matches, prepared;
+  try {
+    plan = bootstrap && bootstrap.plan;
+    matches = Array.isArray(plan?.entries) ? plan.entries.filter((entry) => entry && entry.readingId === readingId) : [];
+    prepared = readerApp.preparedReadingIdSet(bootstrap, plan);
+  } catch (_) {
+    throw failure("LIVE_HEALTH_BOOTSTRAP_INVALID");
+  }
+  if (matches.length !== 1 || !prepared.has(readingId)) {
+    return evaluateLiveReading(bootstrap, {planVersion: plan?.planVersion, payloads:{}}, readingId);
+  }
+  const payloadBatch = await callLiveHealthBridge(credentials, "getReadingPayloads", [credentials.readerCode, [readingId]], options);
+  return evaluateLiveReading(bootstrap, payloadBatch, readingId);
+}
+
 export async function verifyLiveHorizon(credentials, options = {}) {
   const bootstrap = await callLiveHealthBridge(credentials, "getBootstrapData", [credentials.readerCode], options);
   const schedule = readerApp.calculateSchedule(bootstrap.plan, bootstrap.config, options.now || new Date());

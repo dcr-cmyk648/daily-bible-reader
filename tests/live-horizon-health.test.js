@@ -165,3 +165,50 @@ test("live bridge rejects an inner backend failure instead of treating it as boo
     (error) => error && error.code === "LIVE_HEALTH_BACKEND_REJECTED" && !error.message.includes("Private details")
   );
 });
+
+test("single-reading live health validates only the promoted reading while a later horizon reading is absent", async () => {
+  const {verifyLiveReading, liveHealthCredentialsFromStores} = await healthModule;
+  const credentials = liveHealthCredentialsFromStores({schemaVersion:"dbr-pages-public-config/v2",enabled:true,backendWebAppUrl:FABRICATED_ENDPOINT}, [{authorId:"dustin",readerCode:"DBR-DUSTIN-fabricated_reader_code_123456789"}]);
+  const boot = bootstrap();
+  const reading = boot.plan.entries[6];
+  const calls = [];
+  const fetchImpl = async (_url, request) => {
+    const fields = Object.fromEntries(request.body.entries()); calls.push(fields);
+    const data = fields.method === "getBootstrapData" ? boot : {planVersion:boot.plan.planVersion,payloads:{[reading.readingId]:payload(reading)}};
+    const response = {channel:"dbr-rpc-response/v1",requestId:fields.request_id,responseNonce:fields.response_nonce,ok:true,result:{ok:true,data}};
+    return {ok:true,url:"https://script.googleusercontent.com/macros/echo",text:async()=>`<script>window.top.postMessage(${JSON.stringify(response)},"https://dcr-cmyk648.github.io");</script>`};
+  };
+  const result = await verifyLiveReading(credentials, reading.readingId, {fetchImpl,randomBytesFn:(length)=>Buffer.alloc(length, 2)});
+  assert.deepEqual(result, {status:"ready",readingId:reading.readingId,prepared:true,missingPayload:false,missingComponentIds:[],henryLayerStatus:"complete"});
+  assert.deepEqual(calls.map((call) => call.method), ["getBootstrapData", "getReadingPayloads"]);
+  assert.deepEqual(JSON.parse(calls[1].args_json).slice(1)[0], [reading.readingId]);
+});
+
+test("single-reading live health rejects unknown or duplicate plan IDs and reports a missing named payload", async () => {
+  const {evaluateLiveReading} = await healthModule;
+  const boot = bootstrap();
+  await assert.throws(() => evaluateLiveReading(boot, {planVersion:boot.plan.planVersion,payloads:{}}, "TST-999"), {code:"LIVE_HEALTH_READING_ID_INVALID"});
+  boot.plan.entries.push({...boot.plan.entries[0]});
+  await assert.throws(() => evaluateLiveReading(boot, {planVersion:boot.plan.planVersion,payloads:{}}, "TST-001"), {code:"LIVE_HEALTH_READING_ID_INVALID"});
+  const clean = bootstrap();
+  assert.deepEqual(evaluateLiveReading(clean, {planVersion:clean.plan.planVersion,payloads:{}}, "TST-001"), {status:"not_ready",readingId:"TST-001",prepared:true,missingPayload:true,missingComponentIds:[],henryLayerStatus:"unavailable"});
+});
+
+test("single-reading live health does not fetch inaccessible readings and preserves backend rejection", async () => {
+  const {verifyLiveReading, liveHealthCredentialsFromStores} = await healthModule;
+  const credentials = liveHealthCredentialsFromStores({schemaVersion:"dbr-pages-public-config/v2",enabled:true,backendWebAppUrl:FABRICATED_ENDPOINT}, [{authorId:"dustin",readerCode:"DBR-DUSTIN-fabricated_reader_code_123456789"}]);
+  const boot = bootstrap(); boot.preparedReadingIds = boot.preparedReadingIds.filter((id) => id !== "TST-010");
+  let calls = 0;
+  const bootstrapOnly = async (_url, request) => {
+    calls += 1; const fields = Object.fromEntries(request.body.entries()); const response = {channel:"dbr-rpc-response/v1",requestId:fields.request_id,responseNonce:fields.response_nonce,ok:true,result:{ok:true,data:boot}};
+    return {ok:true,url:"https://script.googleusercontent.com/macros/echo",text:async()=>`<script>window.top.postMessage(${JSON.stringify(response)},"https://dcr-cmyk648.github.io");</script>`};
+  };
+  await assert.rejects(() => verifyLiveReading(credentials, "TST-010", {fetchImpl:bootstrapOnly,randomBytesFn:(length)=>Buffer.alloc(length, 4)}), {code:"LIVE_HEALTH_READING_NOT_PREPARED"});
+  assert.equal(calls, 1);
+  const backendReject = async (_url, request) => {
+    const fields = Object.fromEntries(request.body.entries()); const data = fields.method === "getBootstrapData" ? boot : null;
+    const response = data ? {channel:"dbr-rpc-response/v1",requestId:fields.request_id,responseNonce:fields.response_nonce,ok:true,result:{ok:true,data:bootstrap()}} : {channel:"dbr-rpc-response/v1",requestId:fields.request_id,responseNonce:fields.response_nonce,ok:true,result:{ok:false}};
+    return {ok:true,url:"https://script.googleusercontent.com/macros/echo",text:async()=>`<script>window.top.postMessage(${JSON.stringify(response)},"https://dcr-cmyk648.github.io");</script>`};
+  };
+  await assert.rejects(() => verifyLiveReading(credentials, "TST-001", {fetchImpl:backendReject,randomBytesFn:(length)=>Buffer.alloc(length, 5)}), {code:"LIVE_HEALTH_BACKEND_REJECTED"});
+});

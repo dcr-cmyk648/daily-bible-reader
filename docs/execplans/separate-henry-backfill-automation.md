@@ -159,3 +159,35 @@ Implement and test this native work-item/staging/admission boundary, update trac
 - [x] Added tracked Spark, Luna, Terra-review, and supervisor prompts. Generation and review preparation remain ignored staging; only an explicitly approved review can apply canonical Henry artifacts, before a later explicit sync/metadata/content/Drive publication step.
 - [ ] Install the four revised saved automation prompts and supervise one private end-to-end candidate. This remains an external automation mutation and is not part of the tracked implementation.
 - [x] Retired dormant per-work-item attempt routing helpers and legacy prepare/submit/assemble implementations. Native CLI dispatch retains only ledger-driven prepare, submit, and event-ID assembly paths; immutable work-item files remain artifacts rather than state.
+
+## 2026-09-07 live Luna handoff incident
+
+### Goal
+
+Finish the first native Luna fallback end to end and close the deterministic gap between reviewed canonical Henry data and the durable library consumed by `mhc:sync-latest`.
+
+### Evidence and decisions
+
+- Luna itself is available. The native route produced all chapter chunks for `CC-Y3Q4-D084`; an independent Terra review directly checked all 17 records and admitted six Luna-authored corrections.
+- The hash-bound review transaction committed the approved canonical runtime and audit successfully. The live failure is downstream: `mhc:sync-latest` cannot find a current durable-library artifact for that reading.
+- `review-apply` currently commits only `runtime/...` and `schedule/.../audit.json`, despite this plan's existing requirement that reviewed apply also commit the portable reading and library pointer. That implementation omission is the root cause of the remaining app-visible fallback.
+- Keep model generation, human review, durable-library admission, metadata attachment, and Drive publication as distinct auditable states. A model success must not be reported as app-visible success until all downstream states complete.
+
+### Repair milestone
+
+- Add a deterministic, idempotent reviewed-library finalization path that validates the approved canonical audit/runtime and materializes the checksum-addressed no-Scripture portable reading, merged catalog, and pointer without invoking any model.
+- Make native `review-apply` invoke that finalization for new reviews; support safe recovery of already-committed legacy canonical transactions such as D084 without deleting or rewriting their immutable transaction records.
+- Add fabricated regression coverage for first admission, recovery after canonical-only admission, catalog preservation, idempotent retry, tamper rejection, and `mhc:sync-latest` visibility.
+- Update the native reviewer/automation contract so a run cannot report completion before reviewed-library finalization, metadata attachment, validation, manifest-last publication, exact readback, and live-health checks all succeed.
+
+### Acceptance criteria
+
+- The reviewed D084 runtime becomes discoverable through the current durable-library pointer without regeneration.
+- `mhc:sync-latest --check` passes after attachment.
+- An interrupted or old canonical-only review can be resumed without weakening review hashes or modifying its committed transaction.
+- Existing catalog entries remain present and content-addressed bytes remain immutable.
+- No private prose, source atoms, Scripture, secrets, comments, reader identities, URLs, or Google resource identifiers enter Git or diagnostic output.
+
+### Exact next action
+
+Implement and test reviewed-library finalization in the clean incident worktree, then use it to complete D084 locally before the separately authorized private metadata/manifest publication and exact live readback.

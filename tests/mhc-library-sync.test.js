@@ -78,8 +78,15 @@ async function fixture(reviewStatus = "in_review") {
   await fs.writeFile(path.join(root, relativeReading), portableBytes);
   const catalog = {
     schema_version: "mhc-library-catalog/v1",
+    catalog_id: "fabricated-plan-v1:mhc-library",
     plan_version: "fabricated-plan-v1",
-    readings: [{reading_id: "CC-Y3Q4-D058", file: relativeReading, sha256: portableHash}]
+    updated_at: "2026-08-12T13:18:26.238Z",
+    worker_model: "gpt-5.3-codex-spark",
+    worker_models: ["gpt-5.3-codex-spark"],
+    prompt_version: latest.prompt_version,
+    publication_status: "not_published",
+    contains_scripture: false,
+    readings: [{reading_id: "CC-Y3Q4-D058", schedule_date:"2026-08-12",day_index:5,source_plan_day:58,file: relativeReading,sha256: portableHash,passage_count:1,worker_model:"gpt-5.3-codex-spark",worker_models:["gpt-5.3-codex-spark"],prompt_version:latest.prompt_version,review_status:reviewStatus, human_review_status:reviewStatus, first_stored_at:"2026-08-12T13:18:26.238Z",last_stored_at:"2026-08-12T13:18:26.238Z"}]
   };
   const catalogBytes = Buffer.from(`${JSON.stringify(catalog, null, 2)}\n`);
   const relativeCatalog = "plans/fabricated-plan/catalog.json";
@@ -103,6 +110,89 @@ async function fixture(reviewStatus = "in_review") {
   }, null, 2)}\n`);
   return {root, metadataPath, latest};
 }
+
+async function reviewedCanonicalFixture() {
+  const data = await fixture();
+  const canonicalRoot = path.join(data.root, "canonical");
+  const readingId = "CC-Y3Q4-D059";
+  const approved = runtime("mhc-worker/v100", "2026-08-12T13:18:26.238Z", "approved");
+  await fs.mkdir(path.join(canonicalRoot, "runtime", "NAM"), {recursive: true});
+  await fs.mkdir(path.join(canonicalRoot, "schedule", readingId), {recursive: true});
+  await fs.writeFile(path.join(canonicalRoot, "runtime", "NAM", "002.json"), `${JSON.stringify(approved, null, 2)}\n`);
+  const plan = {planVersion: "fabricated-plan-v1", entries: [{readingId, dayIndex: 6, sourcePlanDay: 59, passages: [{bookId: "NAM", chapter: 2, verseCount: 1}]}]};
+  const audit = {schema_version:"mhc-schedule-audit/v1",reading_id:readingId,plan_version:plan.planVersion,source_plan_day:59,schedule_date:"2026-08-13",timezone:"America/Detroit",worker_model:"gpt-5.3-codex-spark",worker_models:["gpt-5.3-codex-spark"],prompt_version:"mhc-worker/v100",audit_status:"approved",review_status:"approved",publication_status:"not_published",human_review:{status:"approved",approval:"approved",reviewed_at:"2026-08-12T13:18:26.238Z"},passages:[{book_id:"NAM",chapter:2,verse_count:1,runtime_path:"runtime/NAM/002.json"}]};
+  await fs.writeFile(path.join(canonicalRoot, "schedule", readingId, "audit.json"), `${JSON.stringify(audit, null, 2)}\n`);
+  const runtimeSchema = JSON.parse(await fs.readFile(path.join(__dirname, "../schemas/mhc-runtime.schema.json"), "utf8"));
+  const readingSchema = JSON.parse(await fs.readFile(path.join(__dirname, "../schemas/mhc-window-store.schema.json"), "utf8"));
+  const activation = JSON.parse(await fs.readFile(path.join(__dirname, "../schemas/mhc-activation.schema.json"), "utf8"));
+  const transactionSchema = JSON.parse(await fs.readFile(path.join(__dirname, "../schemas/mhc-native-review-transaction.schema.json"), "utf8"));
+  const transactionRoot = path.join(data.root, "transactions");
+  const destinations = ["runtime/NAM/002.json", `schedule/${readingId}/audit.json`];
+  const values = await Promise.all(destinations.map((destination) => fs.readFile(path.join(canonicalRoot, destination))));
+  const manifest = {schema_version:"mhc-native-review-transaction/v1",reading_id:readingId,plan_version:plan.planVersion,review_sha256:"c".repeat(64),state:"staged",destinations:destinations.map((destination, index) => ({destination,staged_file:`staged/${index}.json`,sha256:digest(values[index])}))};
+  const transaction = path.join(transactionRoot, `${readingId}-${manifest.review_sha256.slice(0,16)}`);
+  await fs.mkdir(path.join(transaction, "staged"), {recursive:true});
+  await fs.writeFile(path.join(transaction, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+  await fs.writeFile(path.join(transaction, "committed.json"), `${JSON.stringify({...manifest, state:"committed"}, null, 2)}\n`);
+  await Promise.all(values.map((value, index) => fs.writeFile(path.join(transaction, "staged", `${index}.json`), value)));
+  return {...data, canonicalRoot, transactionRoot, transaction, manifest, readingId, approved, plan, appConfig:{sharedStartDate:"2026-08-08"}, runtimeSchema, readingSchema, catalogSchema:{...activation, $ref:"#/$defs/catalog"}, transactionSchema};
+}
+
+test("reviewed-library finalization admits a canonical-only review, preserves catalog entries, retries idempotently, and becomes sync-visible", async () => {
+  const {finalizeReviewedLibrary} = await import("../scripts/lib/mhc-reviewed-library-finalize.mjs");
+  const {syncLatestHenryRuntime} = await import("../scripts/lib/mhc-library-sync.mjs");
+  const data = await reviewedCanonicalFixture();
+  const options = {canonicalRoot:data.canonicalRoot, libraryRoot:data.root, transactionRoot:data.transactionRoot, readingId:data.readingId, plan:data.plan, appConfig:data.appConfig, runtimeSchema:data.runtimeSchema, readingSchema:data.readingSchema, catalogSchema:data.catalogSchema, transactionSchema:data.transactionSchema};
+  const first = await finalizeReviewedLibrary(options);
+  assert.equal(first.changed, true);
+  const pointer = JSON.parse(await fs.readFile(path.join(data.root, "current.json"), "utf8"));
+  const catalog = JSON.parse(await fs.readFile(path.join(data.root, pointer.catalog_file), "utf8"));
+  assert.deepEqual(catalog.readings.map((reading) => reading.reading_id), ["CC-Y3Q4-D058", data.readingId]);
+  const retry = await finalizeReviewedLibrary(options);
+  assert.equal(retry.changed, false);
+  const metadataPath = path.join(data.root, "recovered-metadata.json");
+  await fs.writeFile(metadataPath, JSON.stringify({readingId:data.readingId, henrySourceLink:{sourceId:"fabricated-source",title:"Fabricated",url:"https://example.test/fabricated",note:"FABRICATED"}}, null, 2));
+  const attached = await syncLatestHenryRuntime({libraryRoot:data.root,readingId:data.readingId,metadataPath,runtimeSchemaPath:path.join(__dirname,"../schemas/mhc-runtime.schema.json")});
+  assert.equal(attached.changed, true);
+  await assert.doesNotReject(() => syncLatestHenryRuntime({libraryRoot:data.root,readingId:data.readingId,metadataPath,runtimeSchemaPath:path.join(__dirname,"../schemas/mhc-runtime.schema.json"),checkOnly:true}));
+});
+
+test("reviewed-library finalization rejects tampered canonical bindings before changing the library", async () => {
+  const {finalizeReviewedLibrary} = await import("../scripts/lib/mhc-reviewed-library-finalize.mjs");
+  const data = await reviewedCanonicalFixture();
+  const auditPath = path.join(data.canonicalRoot, "schedule", data.readingId, "audit.json");
+  const audit = JSON.parse(await fs.readFile(auditPath, "utf8"));
+  audit.passages[0].runtime_path = "runtime/NAM/003.json";
+  await fs.writeFile(auditPath, `${JSON.stringify(audit, null, 2)}\n`);
+  await assert.rejects(() => finalizeReviewedLibrary({canonicalRoot:data.canonicalRoot, libraryRoot:data.root, transactionRoot:data.transactionRoot, readingId:data.readingId, plan:data.plan, appConfig:data.appConfig, runtimeSchema:data.runtimeSchema, readingSchema:data.readingSchema, catalogSchema:data.catalogSchema, transactionSchema:data.transactionSchema}), /stale or tampered/);
+  const pointer = JSON.parse(await fs.readFile(path.join(data.root, "current.json"), "utf8"));
+  const catalog = JSON.parse(await fs.readFile(path.join(data.root, pointer.catalog_file), "utf8"));
+  assert.deepEqual(catalog.readings.map((reading) => reading.reading_id), ["CC-Y3Q4-D058"]);
+});
+
+test("reviewed-library finalization requires exactly one matching committed transaction and detects schema-valid canonical tampering", async () => {
+  const {finalizeReviewedLibrary} = await import("../scripts/lib/mhc-reviewed-library-finalize.mjs");
+  const data = await reviewedCanonicalFixture();
+  const options = {canonicalRoot:data.canonicalRoot, libraryRoot:data.root, transactionRoot:data.transactionRoot, readingId:data.readingId, plan:data.plan, appConfig:data.appConfig, runtimeSchema:data.runtimeSchema, readingSchema:data.readingSchema, catalogSchema:data.catalogSchema, transactionSchema:data.transactionSchema};
+  await fs.rm(path.join(data.transaction, "committed.json"));
+  await assert.rejects(() => finalizeReviewedLibrary(options), /unavailable/);
+  await fs.writeFile(path.join(data.transaction, "committed.json"), `${JSON.stringify({...data.manifest, state:"staged"}, null, 2)}\n`);
+  await assert.rejects(() => finalizeReviewedLibrary(options), /exact committed binding/);
+  await fs.writeFile(path.join(data.transaction, "committed.json"), `${JSON.stringify({...data.manifest, state:"committed"}, null, 2)}\n`);
+  const runtimePath = path.join(data.canonicalRoot, "runtime", "NAM", "002.json");
+  const canonical = JSON.parse(await fs.readFile(runtimePath, "utf8"));
+  canonical.records["NAM.2.1"].blurb = "Fabricated but schema-valid canonical tampering.";
+  await fs.writeFile(runtimePath, `${JSON.stringify(canonical, null, 2)}\n`);
+  await assert.rejects(() => finalizeReviewedLibrary(options), /Committed transaction destinations/);
+});
+
+test("reviewed-library finalization fails closed when the existing pointer is unreadable", async () => {
+  const {finalizeReviewedLibrary} = await import("../scripts/lib/mhc-reviewed-library-finalize.mjs");
+  const data = await reviewedCanonicalFixture();
+  await fs.rm(path.join(data.root, "current.json"));
+  await fs.mkdir(path.join(data.root, "current.json"));
+  await assert.rejects(() => finalizeReviewedLibrary({canonicalRoot:data.canonicalRoot, libraryRoot:data.root, transactionRoot:data.transactionRoot, readingId:data.readingId, plan:data.plan, appConfig:data.appConfig, runtimeSchema:data.runtimeSchema, readingSchema:data.readingSchema, catalogSchema:data.catalogSchema, transactionSchema:data.transactionSchema}), /Henry library pointer is unavailable/);
+});
 
 test("Henry handoff follows the checksum-bound current catalog and replaces a stale attachment", async () => {
   const {syncLatestHenryRuntime} = await import("../scripts/lib/mhc-library-sync.mjs");

@@ -6,7 +6,7 @@ import {spawnSync} from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import {fileURLToPath} from "node:url";
-import {assertNativeHandoffBinding, buildNativeWorkItem, safeNativeReport, validateNativeCandidate, SPARK, LUNA} from "../scripts/lib/mhc-native-worker.mjs";
+import {assertNativeHandoffBinding, buildNativeWorkItem, safeNativeReport, scheduleDateForEntry, validateNativeCandidate, SPARK, LUNA} from "../scripts/lib/mhc-native-worker.mjs";
 import {applyNativeTransaction} from "../scripts/lib/mhc-native-transaction.mjs";
 
 const workSchema = JSON.parse(readFileSync(new URL("../schemas/mhc-native-work-item.schema.json", import.meta.url), "utf8"));
@@ -27,6 +27,17 @@ test("native worker CLI resolves every module export before command dispatch", (
   assert.equal(result.status, 1);
   assert.match(result.stderr, /Usage: node scripts\/mhc-native-worker\.mjs/);
   assert.doesNotMatch(result.stderr, /does not provide an export/);
+});
+
+test("Luna transfer records the bound Spark work item rather than its controller wrapper", () => {
+  const source = readFileSync(new URL("../scripts/mhc-native-worker.mjs", import.meta.url), "utf8");
+  assert.match(source, /await event\(primary\.item,/);
+  assert.doesNotMatch(source, /await event\(primary,/);
+});
+
+test("native work-item dates come from app configuration rather than the plan document", () => {
+  assert.equal(scheduleDateForEntry({sharedStartDate: "2026-08-08"}, {dayIndex: 28}), "2026-09-04");
+  assert.throws(() => scheduleDateForEntry({}, {dayIndex: 28}), /fixed shared start date/);
 });
 
 test("native work items hash the bound selection and source view", () => {

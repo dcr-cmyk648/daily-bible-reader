@@ -6,6 +6,15 @@ export const NATIVE_CANDIDATE_VERSION = "mhc-native-candidate/v1";
 export const SPARK = "gpt-5.3-codex-spark";
 export const LUNA = "gpt-5.6-luna";
 
+export function scheduleDateForEntry(appConfig, entry) {
+  const startDate = appConfig && appConfig.sharedStartDate;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(startDate || "")) || !Number.isInteger(entry && entry.dayIndex) || entry.dayIndex < 1) {
+    throw new Error("Native work items require a fixed shared start date and positive day index.");
+  }
+  const [year, month, day] = startDate.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day + entry.dayIndex - 1)).toISOString().slice(0, 10);
+}
+
 export function workItemDigest(item) {
   const {work_item_id: _id, work_item_sha256: _hash, lease_id: _lease, created_at: _created, ...identity} = item;
   return sha256(stableJson(identity));

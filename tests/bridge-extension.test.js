@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from "node:fs";
+import {cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from "node:fs";
 import {spawnSync} from "node:child_process";
+import {createHash} from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 
@@ -117,4 +118,47 @@ test("active-prefix CLI repairs an exact stale allowlist prefix without extendin
   } finally {
     rmSync(root, {recursive: true, force: true});
   }
+});
+
+test("manifest-prefix CLI repairs D090-live/D089-tracked only from fabricated hash-valid local artifacts", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "dbr-prefix-reconcile-"));
+  try {
+    cpSync(new URL("../scripts/reconcile-manifest-prefix.mjs", import.meta.url), path.join(root, "scripts", "reconcile-manifest-prefix.mjs"));
+    cpSync(new URL("../scripts/lib/active-calendar.mjs", import.meta.url), path.join(root, "scripts", "lib", "active-calendar.mjs"));
+    cpSync(new URL("../fixtures/pilot-content", import.meta.url), path.join(root, "fixtures", "pilot-content"), {recursive:true});
+    cpSync(new URL("../config/active-calendar", import.meta.url), path.join(root, "config", "active-calendar"), {recursive:true});
+    const active = JSON.parse(readFileSync(path.join(root, "config/active-calendar/celebration-bridge-long-term-active.json"), "utf8"));
+    const currentTracked = JSON.parse(readFileSync(path.join(root, "fixtures/pilot-content/plan.json"), "utf8"));
+    const staleLength = active.entries.findIndex((entry) => entry.readingId === "CC-Y3Q4-D090");
+    assert.ok(staleLength > 0);
+    const tracked = {...currentTracked, entries: active.entries.slice(0, staleLength)};
+    const trackedConfig = JSON.parse(readFileSync(path.join(root, "fixtures/pilot-content/app-config.json"), "utf8"));
+    trackedConfig.testingReadingIds = tracked.entries.map((entry) => entry.readingId);
+    writeFileSync(path.join(root, "fixtures/pilot-content/plan.json"), `${JSON.stringify(tracked, null, 2)}\n`);
+    writeFileSync(path.join(root, "fixtures/pilot-content/app-config.json"), `${JSON.stringify(trackedConfig, null, 2)}\n`);
+    assert.equal(tracked.entries.at(-1).readingId, "CC-Y3Q4-D089");
+    const liveEntries = active.entries.slice(0, tracked.entries.length + 1);
+    const manifest = {schemaVersion:"private-manifest/v1",readings:Object.fromEntries(liveEntries.map((entry)=>[entry.readingId,{contentFileId:"FABRICATED",metadataFileId:"FABRICATED"}]))};
+    mkdirSync(path.join(root,"private-content/bridge/celebration-y3q4"),{recursive:true});
+    writeFileSync(path.join(root, "private-content/private-manifest.json"), `${JSON.stringify(manifest)}\n`);
+    for (const entry of liveEntries) {
+      const markdown=Buffer.from(`FABRICATED PRIVATE COMMENTARY FOR ${entry.readingId}`),hash=createHash("sha256").update(markdown).digest("hex"),base=path.join(root,"private-content/bridge/celebration-y3q4",entry.readingId);
+      writeFileSync(`${base}.md`,markdown);
+      writeFileSync(`${base}.metadata.json`,`${JSON.stringify({readingId:entry.readingId,generation:{contentHash:hash}})}\n`);
+    }
+    const first=spawnSync(process.execPath,["scripts/reconcile-manifest-prefix.mjs"],{cwd:root,encoding:"utf8"});
+    assert.equal(first.status,0,first.stderr);
+    assert.equal(JSON.parse(first.stdout).action,"reconciled");
+    const repaired=JSON.parse(readFileSync(path.join(root,"fixtures/pilot-content/plan.json"),"utf8"));
+    const config=JSON.parse(readFileSync(path.join(root,"fixtures/pilot-content/app-config.json"),"utf8"));
+    assert.equal(repaired.entries.at(-1).readingId,"CC-Y3Q4-D090");
+    assert.equal(config.testingReadingIds.at(-1),"CC-Y3Q4-D090");
+    const second=spawnSync(process.execPath,["scripts/reconcile-manifest-prefix.mjs"],{cwd:root,encoding:"utf8"});
+    assert.equal(second.status,0,second.stderr);
+    assert.equal(JSON.parse(second.stdout).state,"already_current");
+    writeFileSync(path.join(root,"private-content/bridge/celebration-y3q4/CC-Y3Q4-D090.md"),"FABRICATED TAMPERED BYTES");
+    const tampered=spawnSync(process.execPath,["scripts/reconcile-manifest-prefix.mjs"],{cwd:root,encoding:"utf8"});
+    assert.notEqual(tampered.status,0);
+    assert.match(tampered.stderr,/Local private-content validation failed/);
+  } finally { rmSync(root,{recursive:true,force:true}); }
 });

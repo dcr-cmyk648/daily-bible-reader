@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {mkdir, mkdtemp, rm, writeFile} from "node:fs/promises";
+import {mkdir, mkdtemp, rm, utimes, writeFile} from "node:fs/promises";
 import {readFileSync} from "node:fs";
 import {spawnSync} from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import {fileURLToPath} from "node:url";
-import {assertNativeHandoffBinding, buildNativeWorkerView, buildNativeWorkItem, hasValidNativeWorkerView, isCompatibleLegacyNativeWorkItem, nativeCandidateValidationDiagnostics, nativeControllerTransitionIdentityCandidates, nativeWorkItemId, nativeWorkItemLeaseId, nativeWorkItemPath, normalizeHydratedFactAnchors, normalizeNativeCandidate, safeNativeReport, scheduleDateForEntry, validateNativeCandidate, workItemDigest, MAX_WORKER_VIEW_SNIPPETS, SPARK, LUNA} from "../scripts/lib/mhc-native-worker.mjs";
+import {assertNativeHandoffBinding, buildNativeWorkerView, buildNativeWorkItem, hasValidNativeWorkerView, isCompatibleLegacyNativeWorkItem, nativeCandidateValidationDiagnostics, nativeControllerTransitionIdentityCandidates, nativeWorkItemId, nativeWorkItemLeaseId, nativeWorkItemPath, normalizeHydratedFactAnchors, normalizeNativeCandidate, safeNativeReport, scheduleDateForEntry, validateNativeCandidate, validateNativeCandidateWorkerExposure, workItemDigest, MAX_WORKER_VIEW_SNIPPETS, MAX_WORKER_VIEW_VERSE_BYTES, SPARK, LUNA} from "../scripts/lib/mhc-native-worker.mjs";
 import {buildFactBriefJobSpec} from "../scripts/lib/mhc-pipeline.mjs";
 import {applyNativeTransaction} from "../scripts/lib/mhc-native-transaction.mjs";
-import {activeNativeLeaseWorkItem, assertCurrentLease, authenticatesControllerTransition, incompleteAssemblyReport, isCurrentTerminalFailureWorkItem, requiresInitialControllerTransfer, terminalNativeFailureEvent} from "../scripts/mhc-native-worker.mjs";
+import {activeNativeLeaseWorkItem, assertCurrentLease, authenticatesControllerTransition, incompleteAssemblyReport, isCurrentTerminalFailureWorkItem, nativePairMatchesDefinitions, nativePairSourceState, requiresInitialControllerTransfer, terminalNativeFailureEvent} from "../scripts/mhc-native-worker.mjs";
 import {classifyNativeReviewState, nativeReviewWorkOrder} from "../scripts/lib/mhc-native-review-work-order.mjs";
 
 const workSchema = JSON.parse(readFileSync(new URL("../schemas/mhc-native-work-item.schema.json", import.meta.url), "utf8"));
@@ -19,11 +19,18 @@ const chapterSchema = JSON.parse(readFileSync(new URL("../schemas/mhc-commentary
 const ledgerSchema = JSON.parse(readFileSync(new URL("../schemas/mhc-native-ledger.schema.json", import.meta.url), "utf8"));
 const transactionSchema = JSON.parse(readFileSync(new URL("../schemas/mhc-native-review-transaction.schema.json", import.meta.url), "utf8"));
 const progressSchema = JSON.parse(readFileSync(new URL("../schemas/mhc-native-review-progress.schema.json", import.meta.url), "utf8"));
+const pairSchema = JSON.parse(readFileSync(new URL("../schemas/mhc-native-pair.schema.json", import.meta.url), "utf8"));
 const state = await import("../scripts/lib/mhc-native-state.mjs");
 const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
 const record = {verse_id: "TST.1.1", required_coverage_type: "direct", allowed_source_unit_ids: ["fab.unit"], allowed_source_atom_ids: ["fab.atom"], target_marked_source_atom_ids: ["fab.atom"], required_explicit_identity_terms: [], required_explicit_relations: [], verse_anchor_terms: [], source_reference_labels: ["Fabricated 1:1"]};
 const unit = {source_unit_id: "fab.unit", reference_label: "Fabricated 1:1", source_atoms: [{source_atom_id: "fab.atom", text: "FABRICATED test material only.", text_sha256: "a".repeat(64)}]};
 const item = buildNativeWorkItem({reading: {readingId: "FAB-001", verseCount: 1}, planVersion: "fabricated", scheduleDate: "2026-09-07", chunk: {chunkId: "001-001", chapterJobSpec: {metadata: {book_id: "TST", chapter: 1, source_hash: "b".repeat(64)}, requestedRecords: [record], sourceUnits: [unit]}}, normalizedUnits: [unit], sourceManifest: {}, automationId: "fabricated-spark", createdAt: "2026-09-07T00:00:00.000Z"});
+
+function fabricatedNativeCandidate(workItem,{atomId,snippetId,evidenceQuote}={}) {
+  const verse=workItem.worker_view.requested_verses[0],visibleUnit=verse.source_units[0],visibleAtom=visibleUnit.source_atoms[0],visibleSnippet=visibleAtom.evidence_snippets[0];
+  const sourceAtomId=atomId||visibleAtom.source_atom_id,sourceSnippetId=snippetId||visibleSnippet.source_snippet_id,evidence=evidenceQuote||visibleSnippet.text;
+  return {schema_version:"mhc-native-candidate/v1",work_item_id:workItem.work_item_id,fact_brief:{verse_briefs:[{verse_id:verse.verse_id,coverage_type:verse.required_coverage_type,source_unit_ids:[visibleUnit.source_unit_id],source_reference_label:visibleUnit.reference_label,facts:[{fact_id:`${verse.verse_id}:f01`,importance:"required",category:"action_or_event",statement:"FABRICATED material remains bounded for the test.",source_atom_id:sourceAtomId,source_snippet_id:sourceSnippetId,evidence_quote:evidence,must_include_terms:["FABRICATED"],qualification:"none",verse_relevance:"target_marker"}]}]},verse_drafts:[{verse_id:verse.verse_id,blurb:"This FABRICATED material remains bounded for validation.",coverage_type:verse.required_coverage_type,scope_note:"Fabricated direct test coverage.",source_unit_ids:[visibleUnit.source_unit_id],source_atom_ids:[sourceAtomId],source_reference_label:visibleUnit.reference_label}]};
+}
 
 test("native worker CLI resolves every module export before command dispatch", () => {
   const result = spawnSync(process.execPath, ["scripts/mhc-native-worker.mjs"], {cwd: repositoryRoot, encoding: "utf8"});
@@ -164,7 +171,7 @@ test("native work items expose and bind the exact canonical fact-brief snippets"
   assert.ok(validateNativeCandidate({candidate, item: tampered, candidateSchema, factSchema, chapterSchema}).errors.includes("work item hash is invalid"));
 });
 
-test("native worker views are compact, exact, bound, and use a deterministic no-target fallback", async () => {
+test("native worker views compact large shared ranges while preserving required evidence deterministically", async () => {
   const worker = item.worker_view;
   assert.ok(Buffer.byteLength(JSON.stringify(worker)) < Buffer.byteLength(JSON.stringify(item.source_view)));
   assert.deepEqual(worker.requested_verses[0].target_marked_source_atom_ids, ["fab.atom"]);
@@ -177,9 +184,67 @@ test("native worker views are compact, exact, bound, and use a deterministic no-
   assert.equal(hasValidNativeWorkerView(tampered), false);
   const fallback = structuredClone(item.source_view); fallback.requested_records[0].target_marked_source_atom_ids = [];
   assert.equal(buildNativeWorkerView(fallback).workerView.requested_verses[0].source_units[0].source_atoms[0].source_atom_id, "fab.atom");
-  const oversized = structuredClone(item.source_view); oversized.source_units[0].source_atoms[0].text = Array.from({length: MAX_WORKER_VIEW_SNIPPETS + 1}, () => "FABRICATED evidence sentence has enough words for a bounded snippet.").join(" ");
+  const oversized = structuredClone(item.source_view);
+  oversized.source_units[0].source_atoms[0].text = [
+    ...Array.from({length: MAX_WORKER_VIEW_SNIPPETS + 1}, (_, index) => `FABRICATED shared range evidence sentence number ${index} has enough words for a bounded snippet.`),
+    "RequiredName is the FabricatedRole for this test relationship.",
+    "The AnchorPhrase is retained for this fabricated verse."
+  ].join(" ");
   oversized.source_units[0].source_atoms[0].evidence_snippets = (await import("../scripts/lib/mhc-pipeline.mjs")).evidenceSnippetsForAtom(oversized.source_units[0].source_atoms[0]);
-  assert.throws(() => buildNativeWorkerView(oversized), /ceiling/);
+  oversized.requested_records[0].required_explicit_identity_terms = ["RequiredName"];
+  oversized.requested_records[0].required_explicit_relations = [{term:"RequiredName",relation:"FabricatedRole"}];
+  oversized.requested_records[0].verse_anchor_terms = ["AnchorPhrase"];
+  const compacted = buildNativeWorkerView(oversized);
+  const compactedAgain = buildNativeWorkerView(structuredClone(oversized));
+  assert.equal(compacted.workerViewSha256, compactedAgain.workerViewSha256);
+  assert.ok(compacted.snippetCount < oversized.source_units[0].source_atoms[0].evidence_snippets.length);
+  assert.ok(compacted.snippetCount <= MAX_WORKER_VIEW_SNIPPETS);
+  assert.ok(compacted.bytes <= MAX_WORKER_VIEW_VERSE_BYTES);
+  const evidence = compacted.workerView.requested_verses[0].source_units.flatMap((sourceUnit) => sourceUnit.source_atoms).flatMap((atomValue) => atomValue.evidence_snippets).map((snippetValue) => snippetValue.text).join(" ");
+  assert.match(evidence, /RequiredName/);
+  assert.match(evidence, /FabricatedRole/);
+  assert.match(evidence, /AnchorPhrase/);
+
+  const uncovered = structuredClone(oversized);
+  uncovered.requested_records[0].required_explicit_identity_terms = ["AbsentRequiredTerm"];
+  assert.throws(() => buildNativeWorkerView(uncovered), (error) => error.code === "NATIVE_WORKER_VIEW_REQUIRED_COVERAGE");
+  const cannotFit = structuredClone(item.source_view);
+  cannotFit.requested_records[0].source_reference_labels = ["F".repeat(MAX_WORKER_VIEW_VERSE_BYTES + 1)];
+  assert.throws(() => buildNativeWorkerView(cannotFit), (error) => error.code === "NATIVE_WORKER_VIEW_VERSE_CEILING");
+  const chunkCannotFit = structuredClone(item.source_view);
+  chunkCannotFit.requested_records = Array.from({length:6},(_,index)=>({...structuredClone(record),verse_id:`TST.1.${index+1}`,source_reference_labels:["F".repeat(18*1024)]}));
+  assert.throws(() => buildNativeWorkerView(chunkCannotFit), (error) => error.code === "NATIVE_WORKER_VIEW_CHUNK_CEILING");
+  const snippetTamper = structuredClone(oversized);
+  snippetTamper.source_units[0].source_atoms[0].evidence_snippets[0].text += " altered";
+  assert.throws(() => buildNativeWorkerView(snippetTamper), (error) => error.code === "NATIVE_WORKER_VIEW_EVIDENCE_TAMPERED");
+});
+
+test("candidate validation admits only atoms and exact snippets exposed for that compact verse view", async () => {
+  const visibleCandidate=fabricatedNativeCandidate(item);
+  assert.deepEqual(validateNativeCandidateWorkerExposure({candidate:visibleCandidate,item}),[]);
+
+  const sourceUnit={...unit,source_atoms:[
+    {source_atom_id:"fab.visible",text:"FABRICATED visible evidence remains bounded for this test only.",text_sha256:"b".repeat(64)},
+    {source_atom_id:"fab.hidden",text:"FABRICATED hidden evidence must not be admitted by validation.",text_sha256:"c".repeat(64)}
+  ]};
+  const twoAtomRecord={...record,allowed_source_atom_ids:["fab.visible","fab.hidden"],target_marked_source_atom_ids:["fab.visible"]};
+  const twoAtomItem=buildNativeWorkItem({reading:{readingId:"FAB-001",verseCount:1},planVersion:"fabricated",scheduleDate:"2026-09-07",chunk:{chunkId:"001-001",chapterJobSpec:{metadata:{book_id:"TST",chapter:1,source_hash:"d".repeat(64)},requestedRecords:[twoAtomRecord],sourceUnits:[sourceUnit]}},normalizedUnits:[sourceUnit],sourceManifest:{},automationId:"fabricated-spark",createdAt:"2026-09-07T00:00:00.000Z"});
+  const hiddenAtom=twoAtomItem.source_view.source_units[0].source_atoms.find((atomValue)=>atomValue.source_atom_id==="fab.hidden"),hiddenAtomSnippet=hiddenAtom.evidence_snippets[0];
+  const hiddenAtomCandidate=fabricatedNativeCandidate(twoAtomItem,{atomId:hiddenAtom.source_atom_id,snippetId:hiddenAtomSnippet.source_snippet_id,evidenceQuote:hiddenAtomSnippet.text});
+  const hiddenAtomResult=validateNativeCandidate({candidate:hiddenAtomCandidate,item:twoAtomItem,candidateSchema,factSchema,chapterSchema});
+  assert.equal(hiddenAtomResult.valid,false);
+  assert.ok(hiddenAtomResult.errors.some((error)=>/atom hidden/.test(error)));
+
+  const multiSnippetUnit={...unit,source_atoms:[{source_atom_id:"fab.multi",text:"FABRICATED visible evidence sentence has enough words for one bounded snippet. FABRICATED hidden evidence sentence has enough words for another bounded snippet.",text_sha256:"e".repeat(64)}]};
+  const multiSnippetRecord={...record,allowed_source_atom_ids:["fab.multi"],target_marked_source_atom_ids:["fab.multi"]};
+  const multiSnippetItem=buildNativeWorkItem({reading:{readingId:"FAB-001",verseCount:1},planVersion:"fabricated",scheduleDate:"2026-09-07",chunk:{chunkId:"001-001",chapterJobSpec:{metadata:{book_id:"TST",chapter:1,source_hash:"f".repeat(64)},requestedRecords:[multiSnippetRecord],sourceUnits:[multiSnippetUnit]}},normalizedUnits:[multiSnippetUnit],sourceManifest:{},automationId:"fabricated-spark",createdAt:"2026-09-07T00:00:00.000Z"});
+  const visibleSnippetId=multiSnippetItem.worker_view.requested_verses[0].source_units[0].source_atoms[0].evidence_snippets[0].source_snippet_id;
+  const hiddenSnippet=multiSnippetItem.source_view.source_units[0].source_atoms[0].evidence_snippets.find((snippet)=>snippet.source_snippet_id!==visibleSnippetId);
+  assert.ok(hiddenSnippet);
+  const hiddenSnippetCandidate=fabricatedNativeCandidate(multiSnippetItem,{atomId:"fab.multi",snippetId:hiddenSnippet.source_snippet_id,evidenceQuote:hiddenSnippet.text});
+  const hiddenSnippetResult=validateNativeCandidate({candidate:hiddenSnippetCandidate,item:multiSnippetItem,candidateSchema,factSchema,chapterSchema});
+  assert.equal(hiddenSnippetResult.valid,false);
+  assert.ok(hiddenSnippetResult.errors.some((error)=>/snippet hidden/.test(error)));
 });
 
 test("only a complete authenticated raw legacy item remains ledger-compatible after snippet binding", () => {
@@ -340,6 +405,43 @@ test("controller ledger is append-only/idempotent, rejects concurrent locks, and
     await assert.rejects(state.appendLedgerEvent({root,readingId:"FAB-001",event:event({event_id:"MHNLE-conflict"}),ledgerSchema,lockStaleMs:999999}), /lock is active/);
     await rm(path.join(root,"ledger","FAB-001.lock"),{recursive:true,force:true});
     await assert.rejects(state.appendLedgerEvent({root,readingId:"../../escape",event:first,ledgerSchema}), /Invalid ledger reading ID/);
+  } finally { await rm(root,{recursive:true,force:true}); }
+});
+
+test("paired slots durably retain one reading/source selection and deterministic pre-work blocks", async () => {
+  const root=await mkdtemp(path.join(os.tmpdir(),"mhc-native-pair-"));
+  try {
+    const selected=state.makeNativePairSelection({planVersion:"fabricated",readingId:"FAB-001",scheduleDate:"2026-09-07",primaryAutomationId:"fabricated-spark",primarySlot:"2026-09-07T09:15:00.000Z",selectedAt:"2026-09-07T09:15:01.000Z"});
+    assert.equal((await state.writeNativePair({root,pair:selected,pairSchema})).written,true);
+    assert.equal((await state.writeNativePair({root,pair:selected,pairSchema})).written,false);
+    const sourceState=nativePairSourceState([{item}]);
+    const ready=state.transitionNativePair(selected,{state:"ready",sourceState});
+    assert.equal((await state.writeNativePair({root,pair:ready,pairSchema})).written,true);
+    const loaded=await state.readNativePair({root,pairId:selected.pair_id,pairSchema});
+    assert.equal(loaded.reading_id,"FAB-001");
+    assert.equal(nativePairMatchesDefinitions(loaded,[{item}]),true);
+    const lunaItem=buildNativeWorkItem({reading:{readingId:"FAB-001",verseCount:1},planVersion:"fabricated",scheduleDate:"2026-09-07",chunk:{chunkId:"001-001",chapterJobSpec:{metadata:{book_id:"TST",chapter:1,source_hash:"b".repeat(64)},requestedRecords:[record],sourceUnits:[unit]}},normalizedUnits:[unit],sourceManifest:{},model:LUNA,automationId:"fabricated-luna",createdAt:"2026-09-07T00:00:00.000Z"});
+    assert.equal(nativePairMatchesDefinitions(loaded,[{item:lunaItem}]),true);
+    const drifted=structuredClone(lunaItem); drifted.normalized_hash="d".repeat(64);
+    assert.equal(nativePairMatchesDefinitions(loaded,[{item:drifted}]),false);
+    await assert.rejects(state.writeNativePair({root,pair:{...loaded,reading_id:"FAB-002"},pairSchema}),/hash|identity/);
+
+    const other=state.makeNativePairSelection({planVersion:"fabricated",readingId:"FAB-002",scheduleDate:"2026-09-08",primaryAutomationId:"fabricated-spark",primarySlot:"2026-09-07T15:15:00.000Z",selectedAt:"2026-09-07T15:15:01.000Z"});
+    const blocked=state.transitionNativePair(other,{state:"blocked",code:"NATIVE_WORKER_VIEW_VERSE_CEILING"});
+    await state.writeNativePair({root,pair:blocked,pairSchema});
+    const retained=await state.readNativePair({root,pairId:other.pair_id,pairSchema});
+    assert.equal(retained.reading_id,"FAB-002");
+    assert.equal(retained.state,"blocked");
+    assert.equal(retained.code,"NATIVE_WORKER_VIEW_VERSE_CEILING");
+    await assert.rejects(state.writeNativePair({root,pair:state.transitionNativePair(other,{state:"ready",sourceState}),pairSchema}),/reinterpreted/);
+
+    const recoverable=state.makeNativePairSelection({planVersion:"fabricated",readingId:"FAB-003",scheduleDate:"2026-09-09",primaryAutomationId:"fabricated-spark",primarySlot:"2026-09-07T21:15:00.000Z",selectedAt:"2026-09-07T21:15:01.000Z"});
+    const lock=path.join(root,"pairs",`${recoverable.pair_id}.json.lock`);
+    await mkdir(lock,{recursive:true});
+    await assert.rejects(state.writeNativePair({root,pair:recoverable,pairSchema,lockStaleMs:60_000}),/lock is active/);
+    const old=new Date(Date.now()-120_000);
+    await utimes(lock,old,old);
+    assert.equal((await state.writeNativePair({root,pair:recoverable,pairSchema,lockStaleMs:60_000})).written,true);
   } finally { await rm(root,{recursive:true,force:true}); }
 });
 

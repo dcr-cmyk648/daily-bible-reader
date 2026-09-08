@@ -4,7 +4,7 @@ import {readFile} from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import {candidateMetrics, buildLongTermCandidate, renderLongTermDailySchedule, validateLongTermCandidate} from "../scripts/lib/long-term-schedule.mjs";
-import {ACTIVE_PLAN_VERSION, buildActiveCalendar, compactActiveCalendar, extendActivePrefix} from "../scripts/lib/active-calendar.mjs";
+import {ACTIVE_PLAN_VERSION, buildActiveCalendar, compactActiveCalendar, extendActivePrefix, reconcileManifestBackedPrefix} from "../scripts/lib/active-calendar.mjs";
 import {validateAgainstSchema} from "../scripts/lib/schema-validator.mjs";
 
 const ROOT = process.cwd();
@@ -153,4 +153,33 @@ test("active calendar transforms the locked v2 candidate without mutating it", a
   const malformedCli = spawnSync(process.execPath, ["scripts/extend-active-prefix.mjs", "--unknown"], {cwd: ROOT, encoding: "utf8"});
   assert.notEqual(malformedCli.status, 0);
   assert.match(malformedCli.stderr, /Usage/);
+});
+
+test("manifest reconciliation advances tracked admission exactly once and fails closed on drift", async () => {
+  const [activePlan, trackedPlan, appConfig] = await Promise.all([
+    load(path.join(ROOT, "config", "active-calendar", "celebration-bridge-long-term-active.json")),
+    load(path.join(ROOT, "fixtures", "pilot-content", "plan.json")),
+    load(path.join(ROOT, "fixtures", "pilot-content", "app-config.json"))
+  ]);
+  const liveThrough = trackedPlan.entries.length + 1;
+  const manifestIds = activePlan.entries.slice(0, liveThrough).map((entry) => entry.readingId);
+  const repaired = reconcileManifestBackedPrefix({privatePlan: trackedPlan, activePlan, appConfig, manifestReadingIds: manifestIds});
+  assert.equal(repaired.changed, true);
+  assert.equal(repaired.plan.entries.length, liveThrough);
+  assert.equal(repaired.readyThroughReadingId, activePlan.entries[liveThrough - 1].readingId);
+  assert.deepEqual(repaired.appConfig.testingReadingIds, manifestIds);
+  const noOp = reconcileManifestBackedPrefix({privatePlan: repaired.plan, activePlan, appConfig: repaired.appConfig, manifestReadingIds: manifestIds});
+  assert.equal(noOp.changed, false);
+  assert.deepEqual(noOp.plan, repaired.plan);
+
+  const gap = [...manifestIds.slice(0, -2), manifestIds.at(-1)];
+  assert.throws(() => reconcileManifestBackedPrefix({privatePlan: trackedPlan, activePlan, appConfig, manifestReadingIds: gap}), /gap, unknown ID, or out-of-prefix/);
+  assert.throws(() => reconcileManifestBackedPrefix({privatePlan: trackedPlan, activePlan, appConfig, manifestReadingIds: [...manifestIds, "FABRICATED-UNKNOWN"]}), /gap, unknown ID, or out-of-prefix/);
+  assert.throws(() => reconcileManifestBackedPrefix({privatePlan: trackedPlan, activePlan, appConfig, manifestReadingIds: manifestIds.slice(0, -2)}), /shorter prefix/);
+  const tampered = structuredClone(trackedPlan);
+  tampered.entries[0].bookId = "BAD";
+  assert.throws(() => reconcileManifestBackedPrefix({privatePlan: tampered, activePlan, appConfig, manifestReadingIds: manifestIds}), /tampered/);
+  const mismatched = structuredClone(trackedPlan);
+  mismatched.planVersion = "fabricated-mismatch";
+  assert.throws(() => reconcileManifestBackedPrefix({privatePlan: mismatched, activePlan, appConfig, manifestReadingIds: manifestIds}), /versions or shapes/);
 });

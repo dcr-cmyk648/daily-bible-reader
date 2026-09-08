@@ -5,6 +5,7 @@ import {assertSchemaValid} from "./schema-validator.mjs";
 import {SPARK, LUNA} from "./mhc-native-worker.mjs";
 
 export const LEDGER_VERSION = "mhc-native-ledger/v1";
+export const PAIR_VERSION = "mhc-native-pair/v1";
 export const DETROIT = "America/Detroit";
 export const SLOT_GRACE_MS = 10 * 60 * 1000;
 export const LOCK_STALE_MS = 2 * 60 * 1000;
@@ -54,6 +55,70 @@ export function deriveChapterDecision({events, orderedChunkIds, now, slotGraceMs
   return {owner:SPARK,restart:false,blocked:false,reason:"primary_pending",nextChunkId,primary_slot:slot};
 }
 export function makeLedgerEvent(fields) { const event={...fields}; event.event_id ||= `MHNLE-${sha256(stableJson({...fields, event_id:undefined})).slice(0,32)}`; return event; }
+export function nativePairDigest(pair) {
+  const {pair_sha256: _digest, ...identity} = pair || {};
+  return sha256(stableJson(identity));
+}
+export function nativePairId({planVersion, primaryAutomationId, primarySlot}) {
+  return `MHNP-${sha256(stableJson({planVersion, primaryAutomationId, primarySlot})).slice(0,32)}`;
+}
+export function makeNativePairSelection({planVersion, readingId, scheduleDate, primaryAutomationId, primarySlot, selectedAt}) {
+  const pair={schema_version:PAIR_VERSION,pair_id:nativePairId({planVersion,primaryAutomationId,primarySlot}),pair_sha256:"",plan_version:planVersion,reading_id:readingId,schedule_date:scheduleDate,primary_automation_id:primaryAutomationId,primary_slot:primarySlot,selected_at:selectedAt,state:"selected",source_state:[],code:null};
+  pair.pair_sha256=nativePairDigest(pair);
+  return pair;
+}
+export function transitionNativePair(pair, {state, sourceState = [], code = null}) {
+  if (!pair || pair.pair_sha256 !== nativePairDigest(pair) || pair.state !== "selected" || !["ready","blocked"].includes(state)) {
+    throw new Error("Native pair transition is stale or invalid.");
+  }
+  if (state === "ready" && (!Array.isArray(sourceState) || !sourceState.length || code !== null)) throw new Error("Ready native pair requires exact source state.");
+  if (state === "blocked" && (!/^[A-Z0-9_:-]{1,120}$/.test(String(code || "")) || sourceState.length)) throw new Error("Blocked native pair requires one safe code.");
+  const next={...pair,state,source_state:structuredClone(sourceState),code};
+  next.pair_sha256=nativePairDigest(next);
+  return next;
+}
+export function assertNativePair(pair, pairSchema) {
+  assertSchemaValid(pair,pairSchema,{label:"Native pair state"});
+  if (pair.pair_id !== nativePairId({planVersion:pair.plan_version,primaryAutomationId:pair.primary_automation_id,primarySlot:pair.primary_slot}) || pair.pair_sha256 !== nativePairDigest(pair)) throw new Error("Native pair state hash or identity is invalid.");
+  if ((pair.state==="selected"&&(pair.source_state.length||pair.code!==null)) ||
+      (pair.state==="ready"&&(!pair.source_state.length||pair.code!==null)) ||
+      (pair.state==="blocked"&&(pair.source_state.length||typeof pair.code!=="string"))) throw new Error("Native pair state payload is invalid.");
+  const chapters=new Set();
+  for(const chapter of pair.source_state){if(chapters.has(chapter.chapter))throw new Error("Native pair source state contains a duplicate chapter.");chapters.add(chapter.chapter);const chunks=new Set();for(const chunk of chapter.chunks){if(chunks.has(chunk.chunk_id))throw new Error("Native pair source state contains a duplicate chunk.");chunks.add(chunk.chunk_id);}}
+  return pair;
+}
+export async function readNativePair({root, pairId, pairSchema}) {
+  if (!/^MHNP-[a-f0-9]{32}$/.test(String(pairId || ""))) throw new Error("Invalid native pair ID.");
+  const target=path.join(path.resolve(root),"pairs",`${pairId}.json`);
+  try { return assertNativePair(JSON.parse(await readFile(target,"utf8")),pairSchema); }
+  catch (error) { if (error.code === "ENOENT") return null; throw error; }
+}
+export async function writeNativePair({root, pair, pairSchema, lockStaleMs = LOCK_STALE_MS}) {
+  assertNativePair(pair,pairSchema);
+  if (!Number.isSafeInteger(lockStaleMs) || lockStaleMs < 0) throw new Error("Native pair lock stale interval is invalid.");
+  const pairDir=path.join(path.resolve(root),"pairs"),target=path.join(pairDir,`${pair.pair_id}.json`),lock=`${target}.lock`;
+  await mkdir(pairDir,{recursive:true,mode:0o700});
+  try { await mkdir(lock,{mode:0o700}); } catch (error) {
+    if (error.code !== "EEXIST") throw error;
+    const age=Date.now()-(await stat(lock)).mtimeMs;
+    if (age <= lockStaleMs) throw new Error("Native pair lock is active.");
+    await rm(lock,{recursive:true,force:true});
+    await mkdir(lock,{mode:0o700});
+  }
+  try {
+    const current=await readNativePair({root,pairId:pair.pair_id,pairSchema});
+    if (current) {
+      const identityKeys=["pair_id","plan_version","reading_id","schedule_date","primary_automation_id","primary_slot","selected_at"];
+      if (identityKeys.some((key)=>current[key]!==pair[key])) throw new Error("Native pair selection is mismatched.");
+      if (current.pair_sha256===pair.pair_sha256) return {pair:current,written:false};
+      if (current.state!=="selected"||!["ready","blocked"].includes(pair.state)) throw new Error("Native pair state cannot be reinterpreted.");
+    }
+    const temp=path.join(pairDir,`.${pair.pair_id}.${process.pid}.${Date.now()}.tmp`);
+    await writeFile(temp,`${JSON.stringify(pair,null,2)}\n`,{mode:0o600,flag:"wx"});
+    await rename(temp,target);
+    return {pair,written:true};
+  } finally { await rm(lock,{recursive:true,force:true}); }
+}
 const LEASE_TERMINAL_OUTCOMES = new Set(["validated", "model_failure", "deterministic_failure", "source_failure", "schema_failure", "review_failure", "missed_primary", "stale_primary"]);
 export function hasActiveMatchingLease({events, lease}) {
   const index = (events || []).findIndex((event) => event.event_id === lease.event_id);

@@ -59,6 +59,63 @@ export function extendActivePrefix({privatePlan, activePlan, appConfig, today, l
   return result;
 }
 
+function exactPrefixLength(activePlan, readingIds, label) {
+  if (!activePlan || !Array.isArray(activePlan.entries) || !activePlan.entries.length) {
+    throw new Error("A nonempty active calendar is required for prefix reconciliation.");
+  }
+  if (!Array.isArray(readingIds) || new Set(readingIds).size !== readingIds.length) {
+    throw new Error(`${label} reading IDs must be unique.`);
+  }
+  const activeIds = activePlan.entries.map((entry) => entry.readingId);
+  const supplied = new Set(readingIds);
+  let length = 0;
+  while (length < activeIds.length && supplied.has(activeIds[length])) length += 1;
+  if (readingIds.length !== length) {
+    throw new Error(`${label} readings must be the exact contiguous active-calendar prefix; a gap, unknown ID, or out-of-prefix reading is present.`);
+  }
+  return length;
+}
+
+export function reconcileManifestBackedPrefix({privatePlan, activePlan, appConfig, manifestReadingIds}) {
+  if (!privatePlan || privatePlan.planVersion !== activePlan?.planVersion || !Array.isArray(privatePlan.entries)) {
+    throw new Error("Tracked and active plan versions or shapes do not match.");
+  }
+  const trackedIds = privatePlan.entries.map((entry) => entry.readingId);
+  const trackedLength = exactPrefixLength(activePlan, trackedIds, "Tracked plan");
+  privatePlan.entries.forEach((entry, index) => {
+    if (JSON.stringify(entry) !== JSON.stringify(activePlan.entries[index])) {
+      throw new Error(`Tracked plan entry ${index + 1} is tampered or does not exactly match the active calendar.`);
+    }
+  });
+  const configuredIds = appConfig?.testingReadingIds;
+  const configuredLength = exactPrefixLength(activePlan, configuredIds, "Tracked testing allowlist");
+  if (configuredLength > trackedLength || configuredIds.some((readingId, index) => readingId !== trackedIds[index])) {
+    throw new Error("Tracked testing allowlist must be an exact prefix of the tracked plan.");
+  }
+  const manifestIds = manifestReadingIds instanceof Set ? [...manifestReadingIds] : manifestReadingIds;
+  const manifestLength = exactPrefixLength(activePlan, manifestIds, "Private manifest");
+  if (manifestLength < trackedLength) {
+    throw new Error("Private manifest cannot reconcile a shorter prefix than the tracked plan.");
+  }
+  const nextPlan = structuredClone(privatePlan);
+  nextPlan.entries = activePlan.entries.slice(0, manifestLength).map((entry) => structuredClone(entry));
+  nextPlan.bookMetrics ||= {};
+  for (const entry of nextPlan.entries) for (const passage of entry.passages || []) {
+    if (!nextPlan.bookMetrics[passage.bookId] && activePlan.bookMetrics?.[passage.bookId]) {
+      nextPlan.bookMetrics[passage.bookId] = structuredClone(activePlan.bookMetrics[passage.bookId]);
+    }
+  }
+  const nextConfig = {...appConfig, testingReadingIds: nextPlan.entries.map((entry) => entry.readingId)};
+  return {
+    plan: nextPlan,
+    appConfig: nextConfig,
+    changed: trackedLength !== manifestLength || configuredLength !== manifestLength,
+    priorLength: trackedLength,
+    manifestLength,
+    readyThroughReadingId: nextPlan.entries.at(-1)?.readingId || null
+  };
+}
+
 export function compactActiveCalendar(plan) {
   return {
     schemaVersion: "compact-plan/v1", planVersion: plan.planVersion, title: plan.title, canonId: plan.canonId, calendarRevision: plan.calendarRevision,

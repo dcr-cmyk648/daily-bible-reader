@@ -907,6 +907,29 @@
       "sourceIds": [
         "youversion_celebration_y3q4_plan_3805"
       ]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 37,
+      "sourcePlanDay": 90,
+      "readingId": "CC-Y3Q4-D090",
+      "kind": "chapter",
+      "bookId": "JAS",
+      "chapter": 5,
+      "passages": [
+        {
+          "bookId": "JAS",
+          "chapter": 5,
+          "verseCount": 20
+        }
+      ],
+      "orderingRationale": "Temporary bridge preserves Day 90 of Celebration Church's published Year 3, Quarter 4 sequence.",
+      "chronologyBasis": "pragmatic",
+      "confidence": "high",
+      "notes": "One chapter appears on the Scripture page.",
+      "sourceIds": [
+        "youversion_celebration_y3q4_plan_3805"
+      ]
     }
   ],
   "bookMetrics": {

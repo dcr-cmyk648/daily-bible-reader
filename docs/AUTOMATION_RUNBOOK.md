@@ -5,8 +5,12 @@ This runbook operates the authorized current-through-T+7 lane. Every work order 
 ## 1. Resolve the exact work order
 
 ```sh
+npm run prefix:reconcile
+npm run validate:private -- --require
 npm run study:next
 ```
+
+Reconciliation runs before evaluation and before any Henry ensure request. It derives readiness only from the private manifest's exact contiguous active-calendar prefix, verifies the matching local Markdown/metadata hashes, and idempotently advances the tracked prepared plan plus testing allowlist to that prefix. The complete private-content validator runs immediately afterward and must pass before evaluation. A manifest gap, unknown or out-of-prefix ID, tracked tamper, missing or invalid local artifact, or attempted contraction stops the lane; the private manifest is never changed.
 
 Validate the result against `schemas/rolling-study-work-order.schema.json`.
 
@@ -81,7 +85,7 @@ npm run mhc:backfill:next
 
 The daily study remains ready when a verified full-commentary link is present. Treat a selected Henry action as separate layer debt, not a T+7 failure. The ignored private attempt ledger applies a 24-hour cooldown and selects the least-recent eligible fallback before plan order, so one repeated failure cannot starve later debt. The permitted controller remains Spark once, then Luna once at low reasoning only after an eligible Spark model-execution failure; never use Sol, Terra, or another model. If both attempts fail, retain the fallback and prior manifest, record only safe stage/code diagnostics, and let the next independent run rotate.
 
-Native replacement: the quarter-hour Spark automation runs `npm run mhc:native:prepare -- --model gpt-5.3-codex-spark --automation-id <installed-id>`, processes only resulting private work items with `prompts/mhc-native-spark-worker-v1.md`, then submits each candidate. Ten minutes later Luna uses the same command with exact `gpt-5.6-luna`, its fallback prompt, and `--primary-automation-id <spark-id>`; prepare releases only a recorded eligible Spark failure or stale primary lease. Submit never updates a live manifest. Assemble produces a non-generating schema-validated review handoff. Terra review creates an explicitly approved all-assertions-true staged review before `review-apply`; that command commits canonical artifacts and finalizes the reviewed library, but does not attach metadata or publish. A legacy canonical-only review may be safely recovered with `npm run mhc:native:review:finalize -- --reading <readingId>`. Only after finalization may the separate reviewer run `mhc:sync-latest`, metadata/content validation, and manifest-last private publication.
+Native replacement: the quarter-hour Spark automation runs `npm run mhc:native:prepare -- --model gpt-5.3-codex-spark --automation-id <installed-id>`, which first durably binds that Spark/Luna pair to one cooldown-selected reading and exact source/chunk state, then processes only resulting private work items with `prompts/mhc-native-spark-worker-v1.md` and submits each candidate. Ten minutes later Luna uses the same command with exact `gpt-5.6-luna`, its fallback prompt, and `--primary-automation-id <spark-id>`; it consumes that pair instead of rerunning the queue selector, and prepare releases only a recorded eligible Spark model failure or authenticated missed/stale primary lease for the same reading. A deterministic pre-work-item evidence/source failure is stored as a pair block and is never Luna-eligible. Submit never updates a live manifest. Assemble produces a non-generating schema-validated review handoff. Terra review creates an explicitly approved all-assertions-true staged review before `review-apply`; that command commits canonical artifacts and finalizes the reviewed library, but does not attach metadata or publish. A legacy canonical-only review may be safely recovered with `npm run mhc:native:review:finalize -- --reading <readingId>`. Only after finalization may the separate reviewer run `mhc:sync-latest`, metadata/content validation, and manifest-last private publication.
 
 ## 6. One-reading protocol refresh backfill
 

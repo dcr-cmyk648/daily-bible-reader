@@ -54,22 +54,84 @@ export function nativeWorkItemLeaseId(item) {
   return sha256(`${nativeWorkItemFingerprint(item)}:lease`);
 }
 
+function nativeViewError(code, message) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
+
+function evidenceContainsTerm(value, term) {
+  const haystack = String(value || "").normalize("NFKC").toLowerCase();
+  const needle = String(term || "").normalize("NFKC").trim().toLowerCase();
+  if (!needle) return true;
+  return new RegExp(`(?:^|[^\\p{L}\\p{N}])${escapeRegExp(needle)}(?:$|[^\\p{L}\\p{N}])`, "iu").test(haystack);
+}
+
 function boundedWorkerVerse({request, sourceUnits}) {
   const atoms = new Map(sourceUnits.flatMap((unit) => (unit.source_atoms || []).map((atom) => [atom.source_atom_id, {unit, atom}])));
   const selectedIds = request.target_marked_source_atom_ids?.length ? request.target_marked_source_atom_ids : request.allowed_source_atom_ids?.slice(0, 1);
-  if (!selectedIds?.length) throw new Error(`Native worker view cannot select bounded evidence for ${request.verse_id}.`);
-  const units = new Map();
+  if (!selectedIds?.length) throw nativeViewError("NATIVE_WORKER_VIEW_EVIDENCE_UNBOUND", `Native worker view cannot select bounded evidence for ${request.verse_id}.`);
+  const allowedIds = new Set(request.allowed_source_atom_ids || []);
+  const candidates = [];
+  for (const [atomId, selected] of atoms) {
+    if (!allowedIds.has(atomId)) continue;
+    for (const snippet of selected.atom.evidence_snippets || []) {
+      if (snippet.source_atom_id !== atomId || !snippet.source_snippet_id || !snippet.text ||
+          snippet.text_sha256 !== sha256(snippet.text)) {
+        throw nativeViewError("NATIVE_WORKER_VIEW_EVIDENCE_TAMPERED", `Native worker view evidence binding is invalid for ${request.verse_id}.`);
+      }
+      candidates.push({atomId, unit:selected.unit, snippet, bytes:Buffer.byteLength(stableJson(snippet))});
+    }
+  }
   for (const atomId of selectedIds) {
     const selected = atoms.get(atomId);
-    if (!selected || !request.allowed_source_atom_ids?.includes(atomId)) throw new Error(`Native worker view has an unbound selected atom for ${request.verse_id}.`);
-    const entry = units.get(selected.unit.source_unit_id) || {source_unit_id:selected.unit.source_unit_id,reference_label:selected.unit.reference_label,source_atoms:[]};
-    entry.source_atoms.push({source_atom_id:atomId,evidence_snippets:selected.atom.evidence_snippets || []});
-    units.set(entry.source_unit_id, entry);
+    if (!selected || !allowedIds.has(atomId)) throw nativeViewError("NATIVE_WORKER_VIEW_EVIDENCE_UNBOUND", `Native worker view has an unbound selected atom for ${request.verse_id}.`);
+  }
+  const requirements = [
+    ...(request.required_explicit_identity_terms || []).map((term) => ({key:`identity:${term.toLowerCase()}`, terms:[term]})),
+    ...(request.required_explicit_relations || []).map(({term, relation}, index) => ({key:`relation:${index}:${term.toLowerCase()}:${relation.toLowerCase()}`, terms:[term, relation]}))
+  ].filter((requirement, index, values) => values.findIndex((candidate) => candidate.key === requirement.key) === index);
+  const covers = (candidate, requirement) => requirement.terms.every((term) => evidenceContainsTerm(candidate.snippet.text, term));
+  for (const requirement of requirements) if (!candidates.some((candidate) => covers(candidate, requirement))) {
+    throw nativeViewError("NATIVE_WORKER_VIEW_REQUIRED_COVERAGE", `Native worker view cannot preserve required evidence for ${request.verse_id}.`);
+  }
+  // Verse anchors are deterministic relevance hints rather than hard source
+  // assertions. Preserve every anchor that resolves to a complete canonical
+  // snippet, but do not turn a stale/inflected hint into a fabricated defect.
+  const preferredRequirements = (request.verse_anchor_terms || [])
+    .map((term) => ({key:`anchor:${term.toLowerCase()}`,terms:[term]}))
+    .filter((requirement,index,values)=>values.findIndex((candidate)=>candidate.key===requirement.key)===index)
+    .filter((requirement)=>candidates.some((candidate)=>covers(candidate,requirement)));
+  const coverageRequirements=[...requirements,...preferredRequirements];
+  const chosen = [];
+  const choose = (pool, pending) => [...pool].sort((left, right) => {
+    const leftCoverage = pending.filter((requirement) => covers(left, requirement)).length;
+    const rightCoverage = pending.filter((requirement) => covers(right, requirement)).length;
+    return rightCoverage - leftCoverage || left.bytes - right.bytes || left.snippet.source_snippet_id.localeCompare(right.snippet.source_snippet_id);
+  })[0];
+  for (const atomId of selectedIds) {
+    const candidate = choose(candidates.filter((item) => item.atomId === atomId), coverageRequirements.filter((requirement) => !chosen.some((item) => covers(item, requirement))));
+    if (!candidate) throw nativeViewError("NATIVE_WORKER_VIEW_EVIDENCE_UNBOUND", `Native worker view has no bounded snippet for ${request.verse_id}.`);
+    if (!chosen.includes(candidate)) chosen.push(candidate);
+  }
+  while (coverageRequirements.some((requirement) => !chosen.some((candidate) => covers(candidate, requirement)))) {
+    const pending = coverageRequirements.filter((requirement) => !chosen.some((candidate) => covers(candidate, requirement)));
+    const candidate = choose(candidates.filter((item) => !chosen.includes(item) && pending.some((requirement) => covers(item, requirement))), pending);
+    if (!candidate) throw nativeViewError("NATIVE_WORKER_VIEW_REQUIRED_COVERAGE", `Native worker view cannot preserve required evidence for ${request.verse_id}.`);
+    chosen.push(candidate);
+  }
+  const units = new Map();
+  for (const candidate of chosen.sort((left, right) => left.snippet.source_snippet_id.localeCompare(right.snippet.source_snippet_id))) {
+    const entry = units.get(candidate.unit.source_unit_id) || {source_unit_id:candidate.unit.source_unit_id,reference_label:candidate.unit.reference_label,source_atoms:[]};
+    let atom = entry.source_atoms.find((value) => value.source_atom_id === candidate.atomId);
+    if (!atom) { atom = {source_atom_id:candidate.atomId,evidence_snippets:[]}; entry.source_atoms.push(atom); }
+    atom.evidence_snippets.push(candidate.snippet);
+    units.set(candidate.unit.source_unit_id, entry);
   }
   const view = {verse_id:request.verse_id,required_coverage_type:request.required_coverage_type,allowed_source_unit_ids:request.allowed_source_unit_ids,allowed_source_atom_ids:request.allowed_source_atom_ids,target_marked_source_atom_ids:request.target_marked_source_atom_ids,required_explicit_identity_terms:request.required_explicit_identity_terms,required_explicit_relations:request.required_explicit_relations,verse_anchor_terms:request.verse_anchor_terms,source_reference_labels:request.source_reference_labels,source_units:[...units.values()]};
   const snippetCount = view.source_units.flatMap((unit) => unit.source_atoms).reduce((count, atom) => count + atom.evidence_snippets.length, 0);
   const bytes = Buffer.byteLength(stableJson(view));
-  if (snippetCount > MAX_WORKER_VIEW_VERSE_SNIPPETS || bytes > MAX_WORKER_VIEW_VERSE_BYTES) throw new Error(`Native worker view required evidence exceeds its per-verse ceiling for ${request.verse_id}.`);
+  if (snippetCount > MAX_WORKER_VIEW_VERSE_SNIPPETS || bytes > MAX_WORKER_VIEW_VERSE_BYTES) throw nativeViewError("NATIVE_WORKER_VIEW_VERSE_CEILING", `Native worker view required evidence exceeds its per-verse ceiling for ${request.verse_id}.`);
   return {view,snippetCount,bytes};
 }
 
@@ -78,7 +140,7 @@ export function buildNativeWorkerView(sourceView) {
   const workerView = {schema_version:NATIVE_WORKER_VIEW_VERSION,metadata:{job_id:sourceView?.metadata?.job_id,book_id:sourceView?.metadata?.book_id,chapter:sourceView?.metadata?.chapter},requested_verses:verses.map((verse) => verse.view)};
   const snippetCount = verses.reduce((count, verse) => count + verse.snippetCount, 0);
   const bytes = Buffer.byteLength(stableJson(workerView));
-  if (snippetCount > MAX_WORKER_VIEW_SNIPPETS || bytes > MAX_WORKER_VIEW_BYTES) throw new Error("Native worker view required evidence exceeds its chunk ceiling.");
+  if (snippetCount > MAX_WORKER_VIEW_SNIPPETS || bytes > MAX_WORKER_VIEW_BYTES) throw nativeViewError("NATIVE_WORKER_VIEW_CHUNK_CEILING", "Native worker view required evidence exceeds its chunk ceiling.");
   return {workerView,workerViewSha256:sha256(stableJson(workerView)),snippetCount,bytes};
 }
 
@@ -232,12 +294,38 @@ export function normalizeHydratedFactAnchors({factBrief, output}) {
   return factBrief;
 }
 
+export function validateNativeCandidateWorkerExposure({candidate, item}) {
+  if (!item?.worker_view || !Array.isArray(item.worker_view.requested_verses)) return [];
+  const errors=[];
+  const visibleByVerse=new Map(item.worker_view.requested_verses.map((verse)=>{
+    const units=new Set(),atoms=new Set(),snippets=new Map();
+    for(const unit of verse.source_units||[]){units.add(unit.source_unit_id);for(const atom of unit.source_atoms||[]){atoms.add(atom.source_atom_id);for(const snippet of atom.evidence_snippets||[])snippets.set(snippet.source_snippet_id,{atomId:atom.source_atom_id,text:snippet.text});}}
+    return [verse.verse_id,{units,atoms,snippets}];
+  }));
+  for(const [kind,records] of [["fact_brief",candidate?.fact_brief?.verse_briefs],["verse_drafts",candidate?.verse_drafts]]){
+    for(const [index,record] of (records||[]).entries()){
+      const visible=visibleByVerse.get(record?.verse_id),base=`$.${kind}${kind==="fact_brief"?".verse_briefs":""}[${index}]`;
+      if(!visible){errors.push(`${base}.verse_id: verse is not exposed in the compact worker view`);continue;}
+      for(const unitId of record.source_unit_ids||[])if(!visible.units.has(unitId))errors.push(`${base}.source_unit_ids: cites a source unit hidden from this verse's compact worker view`);
+      if(kind==="verse_drafts")for(const atomId of record.source_atom_ids||[])if(!visible.atoms.has(atomId))errors.push(`${base}.source_atom_ids: cites an atom hidden from this verse's compact worker view`);
+      if(kind==="fact_brief")for(const [factIndex,fact] of (record.facts||[]).entries()){
+        const factBase=`${base}.facts[${factIndex}]`,snippet=visible.snippets.get(fact.source_snippet_id);
+        if(!visible.atoms.has(fact.source_atom_id))errors.push(`${factBase}.source_atom_id: cites an atom hidden from this verse's compact worker view`);
+        if(!snippet||snippet.atomId!==fact.source_atom_id)errors.push(`${factBase}.source_snippet_id: cites a snippet hidden from this verse's compact worker view`);
+        else if(fact.evidence_quote!==snippet.text)errors.push(`${factBase}.evidence_quote: does not exactly match the exposed compact-worker snippet`);
+      }
+    }
+  }
+  return errors;
+}
+
 export function validateNativeCandidate({candidate, item, candidateSchema, factSchema, chapterSchema}) {
   const normalizedCandidate = normalizeNativeCandidate({candidate, item});
   const errors = validateAgainstSchema(normalizedCandidate, candidateSchema);
   if (normalizedCandidate && normalizedCandidate.work_item_id !== item.work_item_id) errors.push("$.work_item_id: does not bind the selected work item");
   if (workItemDigest(item) !== item.work_item_sha256) errors.push("work item hash is invalid");
   if (!hasValidNativeWorkerView(item)) errors.push("native worker view is invalid");
+  errors.push(...validateNativeCandidateWorkerExposure({candidate: normalizedCandidate,item}));
   if (errors.length) return {valid: false, errors, warnings: [], candidate: normalizedCandidate};
   const chapterJobSpec = {metadata: metadataFor(item), requestedRecords: item.source_view.requested_records, sourceUnits: item.source_view.source_units};
   const factMetadata = buildFactBriefJobSpec({chapterJobSpec, generatedAt: item.created_at}).metadata;

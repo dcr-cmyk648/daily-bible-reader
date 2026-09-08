@@ -44,6 +44,7 @@
     "mhc:native:review": "node scripts/mhc-native-worker.mjs review-prepare",
     "bridge:extend": "node scripts/extend-celebration-bridge.mjs",
     "prefix:extend": "node scripts/extend-active-prefix.mjs",
+    "prefix:reconcile": "node scripts/reconcile-manifest-prefix.mjs",
     "calendar:active:build": "node scripts/build-active-calendar.mjs",
     "calendar:active:check": "node scripts/build-active-calendar.mjs --check",
     "plan:long-term:generate": "node scripts/generate-long-term-schedule.mjs",

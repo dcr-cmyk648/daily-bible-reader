@@ -223,7 +223,7 @@ Continue the independent lane with its next eligible fallback candidate. Every r
 
 ### Exact next action
 
-Release the validated deterministic review work-order boundary to `main`, then confirm the next scheduled 05:45 Detroit reviewer run classifies the retained D084 handoff as completed/no-op before inspecting private review material.
+Confirm the next scheduled 05:45 Detroit reviewer run pulls commit `fbcf239` and classifies the retained D084 handoff as completed/no-op before inspecting private review material.
 
 ### Progress
 
@@ -234,3 +234,4 @@ Release the validated deterministic review work-order boundary to `main`, then c
 - [x] An exact approved-but-uncommitted handoff now returns `resume_apply`, permitting deterministic transaction resumption without regeneration or repeated editorial review.
 - [x] `resume_apply` has highest deterministic recovery priority across multiple retained handoffs; an audit-absent transaction directory is explicitly fail-closed as an orphaned transaction rather than reconsidered as pending review.
 - [x] The real retained D084 state returns `action=none`, `state=completed`, and `priorManifestState=manifest_backed`; focused native/library tests pass 40/40 and repository safety passes over 380 tracked/public files.
+- [x] Released commit `fbcf239` to `main`; GitHub repository safety/test run `34186433542` and Pages deployment `34186433053` passed.

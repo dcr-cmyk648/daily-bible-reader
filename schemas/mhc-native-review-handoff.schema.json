@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daily-bible-reader.local/schemas/mhc-native-review-handoff.schema.json",
+  "title": "Native Matthew Henry review handoff",
+  "type": "object",
+  "required": ["schema_version", "reading_id", "plan_version", "prompt_version", "status", "publication_status", "chapters", "review_instruction"],
+  "properties": {
+    "schema_version": {"const": "mhc-native-review-handoff/v1"},
+    "reading_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,159}$"},
+    "plan_version": {"type": "string", "minLength": 1}, "prompt_version": {"type": "string", "minLength": 1},
+    "status": {"const": "unreviewed"}, "publication_status": {"const": "not_published"}, "review_instruction": {"type": "string", "minLength": 1},
+    "chapters": {"type": "array", "minItems": 1, "items": {"type": "object", "required": ["book_id", "chapter", "verse_count", "model", "automation_id", "chunks"], "properties": {"book_id": {"type": "string", "pattern": "^[A-Z0-9]{2,8}$"}, "chapter": {"type": "integer", "minimum": 1}, "verse_count": {"type": "integer", "minimum": 1}, "model": {"enum": ["gpt-5.3-codex-spark", "gpt-5.6-luna"]}, "automation_id": {"type": "string", "minLength": 1}, "chunks": {"type": "array", "minItems": 1, "items": {"type": "object", "required": ["work_item_id", "work_item_sha256", "lease_id", "model", "automation_id", "source_hash", "normalized_hash", "job_id", "fingerprint", "records", "ledger_event_id"], "properties": {"work_item_id": {"type": "string", "pattern": "^MHNWI-[a-f0-9]{32}$"}, "work_item_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "lease_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "model": {"enum": ["gpt-5.3-codex-spark", "gpt-5.6-luna"]}, "automation_id": {"type": "string", "minLength": 1}, "source_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "normalized_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "job_id": {"type": "string", "minLength": 1}, "fingerprint": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "records": {"type": "array", "minItems": 1}, "ledger_event_id": {"type": "string", "minLength": 1}}, "additionalProperties": false}}}, "additionalProperties": false}}
+  }, "additionalProperties": false
+}

@@ -1,0 +1,70 @@
+import {mkdir, readFile, rename, rm, stat, writeFile} from "node:fs/promises";
+import path from "node:path";
+import {sha256, stableJson} from "./mhc-pipeline.mjs";
+import {assertSchemaValid} from "./schema-validator.mjs";
+import {SPARK, LUNA} from "./mhc-native-worker.mjs";
+
+export const LEDGER_VERSION = "mhc-native-ledger/v1";
+export const DETROIT = "America/Detroit";
+export const SLOT_GRACE_MS = 10 * 60 * 1000;
+export const LOCK_STALE_MS = 2 * 60 * 1000;
+
+const parts = (date) => Object.fromEntries(new Intl.DateTimeFormat("en-US", {timeZone: DETROIT, year:"numeric", month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit", second:"2-digit", hourCycle:"h23"}).formatToParts(new Date(date)).filter(x => x.type !== "literal").map(x => [x.type, x.value]));
+const utcForDetroit = (year, month, day, hour, minute) => {
+  // Iterating the offset is bounded and delegates DST to the platform zone database.
+  const target = Date.UTC(year, Number(month)-1, Number(day), hour, minute);
+  let ms = target;
+  for (let tries=0; tries<4; tries+=1) {
+    const p=parts(ms), local=Date.UTC(+p.year,+p.month-1,+p.day,+p.hour,+p.minute);
+    const delta=target-local;
+    if (delta===0) return new Date(ms).toISOString();
+    ms+=delta;
+  }
+  return null; // Spring-forward local wall times do not exist.
+};
+export const SPARK_SLOT_MINUTES = [5 * 60 + 15, 11 * 60 + 15, 17 * 60 + 15, 23 * 60 + 15];
+export function currentLedgerEvents({events, planVersion, workItemIds}) {
+  const allowed = new Set(workItemIds);
+  return (events || []).filter((event) => event.plan_version === planVersion && allowed.has(event.work_item_id));
+}
+export function latestDetroitSparkSlot(now, slotMinutes = SPARK_SLOT_MINUTES) {
+  const p = parts(now), candidates = [];
+  for (const delta of [-1,0]) { const d = new Date(Date.UTC(+p.year, +p.month - 1, +p.day + delta)); const y=d.getUTCFullYear(), m=String(d.getUTCMonth()+1).padStart(2,"0"), day=String(d.getUTCDate()).padStart(2,"0"); for (const total of slotMinutes) { const slot=utcForDetroit(y,m,day,Math.floor(total / 60),total % 60); if(slot)candidates.push(slot); } }
+  return candidates.filter(x => Date.parse(x) <= Date.parse(now)).sort().at(-1);
+}
+export function deriveChapterDecision({events, orderedChunkIds, now, slotGraceMs = SLOT_GRACE_MS}) {
+  const ordered=[...events].sort((a,b)=>Date.parse(a.at)-Date.parse(b.at));
+  const blocking=ordered.find(e=>["deterministic_failure","source_failure","schema_failure","review_failure"].includes(e.outcome));
+  if (blocking) return {owner:null,blocked:true,reason:blocking.outcome};
+  const transfer=ordered.find(e=>e.model===SPARK && ["model_failure","missed_primary","stale_primary"].includes(e.outcome));
+  if (transfer) {
+    const lunaValidated=new Set(ordered.filter(e=>e.model===LUNA&&e.outcome==="validated").map(e=>e.chunk_id));
+    const nextLuna=orderedChunkIds.find(id=>!lunaValidated.has(id));
+    if (!nextLuna) return {owner:LUNA,complete:true,blocked:false,reason:"complete"};
+    return {owner:LUNA,restart:true,blocked:false,reason:transfer.outcome,nextChunkId:nextLuna};
+  }
+  const validated=new Set(ordered.filter(e=>e.model===SPARK&&e.outcome==="validated").map(e=>e.chunk_id));
+  const nextChunkId=orderedChunkIds.find(id=>!validated.has(id));
+  if (!nextChunkId) return {owner:SPARK,complete:true,blocked:false,reason:"complete"};
+  const slot=latestDetroitSparkSlot(now);
+  const sparkForSlot=ordered.filter(e=>e.model===SPARK&&e.chunk_id===nextChunkId&&e.primary_slot===slot);
+  const active=sparkForSlot.at(-1);
+  if (active?.outcome==="leased" && Date.parse(now)>=Date.parse(slot)+slotGraceMs) return {owner:LUNA,restart:true,blocked:false,reason:"stale_primary",nextChunkId:orderedChunkIds[0],transferChunkId:nextChunkId,primary_slot:slot};
+  if (!active && Date.parse(now)>=Date.parse(slot)+slotGraceMs) return {owner:LUNA,restart:true,blocked:false,reason:"missed_primary",nextChunkId:orderedChunkIds[0],transferChunkId:nextChunkId,primary_slot:slot};
+  return {owner:SPARK,restart:false,blocked:false,reason:"primary_pending",nextChunkId,primary_slot:slot};
+}
+export function makeLedgerEvent(fields) { const event={...fields}; event.event_id ||= `MHNLE-${sha256(stableJson({...fields, event_id:undefined})).slice(0,32)}`; return event; }
+export async function appendLedgerEvent({root, readingId, event, ledgerSchema, now = () => new Date(), lockStaleMs = LOCK_STALE_MS}) {
+  const base=path.resolve(root), ledgerDir=path.join(base,"ledger"), target=path.join(ledgerDir,`${readingId}.json`), lock=path.join(ledgerDir,`${readingId}.lock`);
+  if (path.dirname(target)!==ledgerDir || !/^[A-Za-z0-9][A-Za-z0-9._:-]{2,159}$/.test(readingId)) throw new Error("Invalid ledger reading ID.");
+  await mkdir(ledgerDir,{recursive:true,mode:0o700});
+  try { await mkdir(lock,{mode:0o700}); } catch (error) { if (error.code !== "EEXIST") throw error; const age=Date.now()-(await stat(lock)).mtimeMs; if (age <= lockStaleMs) throw new Error("Native ledger lock is active."); await rm(lock,{recursive:true,force:true}); await mkdir(lock,{mode:0o700}); }
+  try { let ledger={schema_version:LEDGER_VERSION,reading_id:readingId,events:[]}; try { ledger=JSON.parse(await readFile(target,"utf8")); } catch (error) { if (error.code !== "ENOENT") throw error; }
+    assertSchemaValid(ledger,ledgerSchema,{label:"Native ledger"});
+    if (event.reading_id !== readingId) throw new Error("Ledger event reading ID mismatch.");
+    if (ledger.events.some(x=>x.event_id===event.event_id)) return {ledger, appended:false};
+    if (event.outcome === "leased" && ledger.events.some(x => x.outcome === "leased" && x.model === event.model && x.reading_id === event.reading_id && x.chapter === event.chapter && x.chunk_id === event.chunk_id && x.primary_slot === event.primary_slot)) throw new Error("Native ledger already has a lease for this chunk, model, and slot.");
+    ledger.events.push(event); assertSchemaValid(ledger,ledgerSchema,{label:"Native ledger"});
+    const temp=path.join(ledgerDir,`.${readingId}.${process.pid}.${Date.now()}.tmp`); await writeFile(temp,`${JSON.stringify(ledger,null,2)}\n`,{mode:0o600,flag:"wx"}); await rename(temp,target); return {ledger,appended:true};
+  } finally { await rm(lock,{recursive:true,force:true}); }
+}

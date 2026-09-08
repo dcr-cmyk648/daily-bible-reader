@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daily-bible-reader.local/schemas/mhc-native-review-candidate.schema.json",
+  "title": "Native Matthew Henry in-review candidate",
+  "type": "object",
+  "required": ["schema_version", "reading_id", "plan_version", "handoff_sha256", "status", "required_assertions"],
+  "properties": {"schema_version": {"const": "mhc-native-review-candidate/v1"}, "reading_id": {"type": "string", "minLength": 3}, "plan_version": {"type": "string", "minLength": 1}, "handoff_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "status": {"const": "in_review"}, "required_assertions": {"type": "array", "minItems": 7, "items": {"type": "string", "minLength": 1}, "uniqueItems": true}}, "additionalProperties": false
+}

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daily-bible-reader.local/schemas/mhc-native-candidate.schema.json",
+  "title": "Native Matthew Henry scheduled candidate",
+  "type": "object",
+  "required": ["schema_version", "work_item_id", "fact_brief", "verse_drafts"],
+  "properties": {
+    "schema_version": {"const": "mhc-native-candidate/v1"},
+    "work_item_id": {"type": "string", "pattern": "^MHNWI-[a-f0-9]{32}$"},
+    "fact_brief": {"type": "object", "required": ["verse_briefs"], "properties": {"verse_briefs": {"type": "array", "minItems": 1}}, "additionalProperties": false},
+    "verse_drafts": {"type": "array", "minItems": 1}
+  },
+  "additionalProperties": false
+}

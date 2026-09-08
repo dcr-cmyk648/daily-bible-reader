@@ -81,6 +81,8 @@ npm run mhc:backfill:next
 
 The daily study remains ready when a verified full-commentary link is present. Treat a selected Henry action as separate layer debt, not a T+7 failure. The ignored private attempt ledger applies a 24-hour cooldown and selects the least-recent eligible fallback before plan order, so one repeated failure cannot starve later debt. The permitted controller remains Spark once, then Luna once at low reasoning only after an eligible Spark model-execution failure; never use Sol, Terra, or another model. If both attempts fail, retain the fallback and prior manifest, record only safe stage/code diagnostics, and let the next independent run rotate.
 
+Native replacement: the quarter-hour Spark automation runs `npm run mhc:native:prepare -- --model gpt-5.3-codex-spark --automation-id <installed-id>`, processes only resulting private work items with `prompts/mhc-native-spark-worker-v1.md`, then submits each candidate. Ten minutes later Luna uses the same command with exact `gpt-5.6-luna`, its fallback prompt, and `--primary-automation-id <spark-id>`; prepare releases only a recorded eligible Spark failure or stale primary lease. Submit never updates a live manifest. Assemble produces a non-generating schema-validated review handoff. Terra review creates an explicitly approved all-assertions-true staged review before `review-apply`; only then may the separate reviewer run `mhc:sync-latest`, metadata/content validation, and manifest-last private publication.
+
 ## 6. One-reading protocol refresh backfill
 
 The daily T+7 task may run this lane after its own horizon is ready; it does not wait for or inspect the independent Henry lane:

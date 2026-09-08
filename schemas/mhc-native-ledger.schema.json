@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daily-bible-reader.local/schemas/mhc-native-ledger.schema.json",
+  "title": "Private native Matthew Henry append-only ledger",
+  "type": "object",
+  "required": ["schema_version", "reading_id", "events"],
+  "properties": {
+    "schema_version": {"const": "mhc-native-ledger/v1"},
+    "reading_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,159}$"},
+    "events": {"type": "array", "items": {"type": "object", "required": ["event_id", "at", "plan_version", "reading_id", "chapter", "chunk_id", "work_item_id", "model", "automation_id", "primary_slot", "outcome", "code"], "properties": {"event_id": {"type": "string", "minLength": 8, "maxLength": 200}, "at": {"type": "string", "format": "date-time"}, "plan_version": {"type": "string", "minLength": 1}, "reading_id": {"type": "string"}, "chapter": {"type": "string", "pattern": "^[A-Z0-9]{2,8}:[1-9][0-9]{0,2}$"}, "chunk_id": {"type": "string", "pattern": "^[0-9]{3}-[0-9]{3}$"}, "work_item_id": {"type": "string", "pattern": "^MHNWI-[a-f0-9]{32}$"}, "model": {"enum": ["gpt-5.3-codex-spark", "gpt-5.6-luna"]}, "automation_id": {"type": "string", "minLength": 1, "maxLength": 200}, "primary_slot": {"type": "string", "format": "date-time"}, "outcome": {"enum": ["leased", "validated", "model_failure", "deterministic_failure", "source_failure", "schema_failure", "review_failure", "missed_primary", "stale_primary"]}, "code": {"type": "string", "pattern": "^[A-Z0-9_:-]{1,120}$"}}, "additionalProperties": false}}
+  },
+  "additionalProperties": false
+}

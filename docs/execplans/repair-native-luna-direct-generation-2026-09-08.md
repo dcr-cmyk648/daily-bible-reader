@@ -46,7 +46,8 @@ Make the scheduled Luna fallback complete its one bounded Matthew Henry work ite
 - [x] Observed the next paired run: direct Luna execution recovered, but the candidate was empty and the lane incorrectly skipped its two repair attempts.
 - [x] Implemented deterministic submit-attempt accounting and terminal-failure admission with exact work-item, deterministic lease, and current ledger-lease bindings; content-free candidate/diagnostics fingerprints; distinct-byte enforcement; a hard three-failure terminal gate; later-cycle reset only after an authenticated prior terminal; and cross-slot resumption of an interrupted active lease before any new selection or lease.
 - [x] Primary review accepted the retry/resumption diff. Aggregate validation passed repository safety, all 38 schemas and private/source/content validators, 328/328 tests, every build, exact Pages verification, Pages publication preparation, post-publication safety, and `git diff --check`.
-- [ ] Release and observe a later paired run.
+- [x] Released commit `7a0db26` to `main`; GitHub repository safety/test run `34287979753` and Pages deployment `34287978883` passed.
+- [ ] Observe a later paired run.
 
 Milestones 1–2 changed only the tracked Luna scheduled/worker prompts and their narrow automation-contract regression. Same-pair selection, one prepared work item, the same lease, at most two repairs/three submits, terminal typed failure plus cooldown, and all no-review/no-publication boundaries remain explicit. The regression removes the one permitted prohibition sentence and then rejects any remaining `codex exec` or nested-model guidance, so an affirmative nested-worker instruction cannot coexist unnoticed. Focused native-worker tests passed 35/35; no live model, ignored private artifact, review, publication, deployment, or external resource was touched.
 
@@ -54,4 +55,4 @@ Milestone 5 adds an ignored work-item-local `mhc-native-submit-attempts/v1` reco
 
 ## Exact next action
 
-Release the validated retry/resumption change to `main`, confirm the repository safety/test and Pages workflows, then observe a later paired run. Do not perform a live generation attempt from this implementation worktree.
+Observe the next scheduled Spark/Luna pair. It must resume any still-active authenticated lease, reject empty output, require up to three materially distinct submit attempts, and retain the prior manifest/fallback unless the separate reviewer later admits a complete candidate.

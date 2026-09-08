@@ -6,6 +6,7 @@ import {SPARK, LUNA} from "./mhc-native-worker.mjs";
 
 export const LEDGER_VERSION = "mhc-native-ledger/v1";
 export const PAIR_VERSION = "mhc-native-pair/v1";
+export const SUBMIT_ATTEMPTS_VERSION = "mhc-native-submit-attempts/v1";
 export const DETROIT = "America/Detroit";
 export const SLOT_GRACE_MS = 10 * 60 * 1000;
 export const LOCK_STALE_MS = 2 * 60 * 1000;
@@ -118,6 +119,108 @@ export async function writeNativePair({root, pair, pairSchema, lockStaleMs = LOC
     await rename(temp,target);
     return {pair,written:true};
   } finally { await rm(lock,{recursive:true,force:true}); }
+}
+
+function isMatchingSubmitLease(item, lease) {
+  return Boolean(lease && lease.outcome==="leased" && lease.plan_version===item.plan_version && lease.reading_id===item.reading_id &&
+    lease.chapter===`${item.chapter.book_id}:${item.chapter.chapter}` && lease.chunk_id===item.chunk_id &&
+    lease.work_item_id===item.work_item_id && lease.model===item.required_model && lease.automation_id===item.automation_id);
+}
+
+function initialNativeSubmitAttempts({item, lease}) {
+  if(!isMatchingSubmitLease(item,lease)) throw new Error("Native submit attempt has no matching ledger lease.");
+  return {
+    schema_version: SUBMIT_ATTEMPTS_VERSION,
+    work_item_id: item.work_item_id,
+    work_item_sha256: item.work_item_sha256,
+    plan_version: item.plan_version,
+    lease_id: item.lease_id,
+    ledger_lease_event_id: lease.event_id,
+    attempts: []
+  };
+}
+
+function assertNativeSubmitAttemptsShape(value, attemptsSchema) {
+  assertSchemaValid(value, attemptsSchema, {label:"Native submit attempts"});
+  if(value.attempts.some((attempt,index)=>attempt.ordinal!==index+1) || new Set(value.attempts.map((attempt)=>attempt.candidate_sha256)).size!==value.attempts.length) {
+    throw new Error("Native submit attempts are disordered or reuse candidate bytes.");
+  }
+  return value;
+}
+
+export function assertNativeSubmitAttempts({value, item, lease, attemptsSchema}) {
+  assertNativeSubmitAttemptsShape(value,attemptsSchema);
+  const expected=initialNativeSubmitAttempts({item,lease});
+  for(const key of ["schema_version","work_item_id","work_item_sha256","plan_version","lease_id","ledger_lease_event_id"]) {
+    if(value[key]!==expected[key]) throw new Error("Native submit attempts do not match the current work-item lease.");
+  }
+  return value;
+}
+
+export function assertNativeSubmitAttemptReset({value, item, lease, ledgerEvents, attemptsSchema}) {
+  assertNativeSubmitAttemptsShape(value,attemptsSchema);
+  if(!isMatchingSubmitLease(item,lease)) throw new Error("Native submit-attempt reset has no matching current lease.");
+  for(const key of ["schema_version","work_item_id","work_item_sha256","plan_version","lease_id"]) {
+    if(value[key]!==initialNativeSubmitAttempts({item,lease})[key]) throw new Error("Native submit-attempt reset crosses a work-item binding.");
+  }
+  if(value.ledger_lease_event_id===lease.event_id || value.attempts.length!==3 || !Array.isArray(ledgerEvents)) throw new Error("Native submit-attempt reset has no completed prior lease cycle.");
+  const priorMatches=ledgerEvents.map((event,index)=>({event,index})).filter(({event})=>event.event_id===value.ledger_lease_event_id);
+  const currentMatches=ledgerEvents.map((event,index)=>({event,index})).filter(({event})=>event.event_id===lease.event_id);
+  if(priorMatches.length!==1||currentMatches.length!==1||!isMatchingSubmitLease(item,priorMatches[0].event)||!isMatchingSubmitLease(item,currentMatches[0].event)) throw new Error("Native submit-attempt reset lease history is missing, forged, or ambiguous.");
+  const prior=priorMatches[0],current=currentMatches[0];
+  const priorSlot=Date.parse(prior.event.primary_slot),currentSlot=Date.parse(current.event.primary_slot);
+  if(prior.index>=current.index||!Number.isFinite(priorSlot)||!Number.isFinite(currentSlot)||currentSlot<=priorSlot||!hasActiveMatchingLease({events:ledgerEvents,lease:current.event})) throw new Error("Native submit-attempt reset current lease is not a later active lease.");
+  const between=ledgerEvents.slice(prior.index+1,current.index),terminals=between.filter((event)=>event.outcome==="model_failure"&&event.code==="NATIVE_CANDIDATE_UNRESOLVED"&&event.plan_version===item.plan_version&&event.reading_id===item.reading_id&&event.chapter===`${item.chapter.book_id}:${item.chapter.chapter}`&&event.chunk_id===item.chunk_id&&event.work_item_id===item.work_item_id&&event.model===item.required_model&&event.automation_id===item.automation_id&&event.primary_slot===prior.event.primary_slot);
+  const interveningLeases=between.filter((event)=>event.outcome==="leased"&&event.work_item_id===item.work_item_id&&event.model===item.required_model&&event.automation_id===item.automation_id);
+  if(terminals.length!==1||interveningLeases.length||hasActiveMatchingLease({events:ledgerEvents,lease:prior.event})) throw new Error("Native submit-attempt reset prior lease is active, unterminated, or ambiguous.");
+  return true;
+}
+
+export async function readNativeSubmitAttempts({workItemDir, item, lease, attemptsSchema}) {
+  const target=path.join(path.resolve(workItemDir),"submit-attempts.json");
+  let value;
+  try { value=JSON.parse(await readFile(target,"utf8")); }
+  catch(error) { if(error.code!=="ENOENT") throw error; value=initialNativeSubmitAttempts({item,lease}); }
+  return assertNativeSubmitAttempts({value,item,lease,attemptsSchema});
+}
+
+export async function recordNativeSubmitFailure({workItemDir, item, lease, candidateSha256, validationCode, diagnosticsSha256, attemptsSchema, ledgerEvents = null, lockStaleMs = LOCK_STALE_MS}) {
+  if(!/^[a-f0-9]{64}$/.test(String(candidateSha256||"")) || !/^[a-f0-9]{64}$/.test(String(diagnosticsSha256||""))) throw new Error("Native submit attempt fingerprints are invalid.");
+  const base=path.resolve(workItemDir),target=path.join(base,"submit-attempts.json"),lock=path.join(base,"submit-attempts.lock");
+  if(!Number.isSafeInteger(lockStaleMs)||lockStaleMs<0)throw new Error("Native submit-attempt lock stale interval is invalid.");
+  try { await mkdir(lock,{mode:0o700}); } catch(error) {
+    if(error.code!=="EEXIST")throw error;
+    const age=Date.now()-(await stat(lock)).mtimeMs;
+    if(age<=lockStaleMs)throw new Error("Native submit-attempt lock is active.");
+    await rm(lock,{recursive:true,force:true});
+    await mkdir(lock,{mode:0o700});
+  }
+  try {
+    let value;
+    try {
+      const stored=JSON.parse(await readFile(target,"utf8"));
+      assertNativeSubmitAttemptsShape(stored,attemptsSchema);
+      if(stored.ledger_lease_event_id===lease.event_id) value=assertNativeSubmitAttempts({value:stored,item,lease,attemptsSchema});
+      else { assertNativeSubmitAttemptReset({value:stored,item,lease,ledgerEvents,attemptsSchema}); value=initialNativeSubmitAttempts({item,lease}); }
+    } catch(error) {
+      if(error.code!=="ENOENT")throw error;
+      value=initialNativeSubmitAttempts({item,lease});
+    }
+    if(value.attempts.some((attempt)=>attempt.candidate_sha256===candidateSha256)) throw new Error("Native submit retry must change candidate bytes.");
+    if(value.attempts.length>=3) throw new Error("Native submit retry budget is exhausted.");
+    value.attempts.push({ordinal:value.attempts.length+1,candidate_sha256:candidateSha256,validation_code:validationCode,diagnostics_sha256:diagnosticsSha256});
+    assertNativeSubmitAttempts({value,item,lease,attemptsSchema});
+    const temp=path.join(base,`.submit-attempts.${process.pid}.${Date.now()}.tmp`);
+    await writeFile(temp,`${JSON.stringify(value,null,2)}\n`,{mode:0o600,flag:"wx"});
+    await rename(temp,target);
+    return value;
+  } finally { await rm(lock,{recursive:true,force:true}); }
+}
+
+export function assertNativeTerminalFailureAttempts({value, item, lease, attemptsSchema}) {
+  const checked=assertNativeSubmitAttempts({value,item,lease,attemptsSchema});
+  if(checked.attempts.length!==3) throw new Error("Native terminal failure requires three distinct failed submit attempts for the current lease.");
+  return checked;
 }
 const LEASE_TERMINAL_OUTCOMES = new Set(["validated", "model_failure", "deterministic_failure", "source_failure", "schema_failure", "review_failure", "missed_primary", "stale_primary"]);
 export function hasActiveMatchingLease({events, lease}) {

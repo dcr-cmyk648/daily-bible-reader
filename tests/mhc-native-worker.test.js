@@ -9,7 +9,7 @@ import {fileURLToPath} from "node:url";
 import {assertNativeHandoffBinding, buildNativeWorkerView, buildNativeWorkItem, hasValidNativeWorkerView, isCompatibleLegacyNativeWorkItem, nativeCandidateValidationDiagnostics, nativeControllerTransitionIdentityCandidates, nativeWorkItemId, nativeWorkItemLeaseId, nativeWorkItemPath, normalizeHydratedFactAnchors, normalizeNativeCandidate, safeNativeReport, scheduleDateForEntry, validateNativeCandidate, validateNativeCandidateWorkerExposure, workItemDigest, MAX_WORKER_VIEW_SNIPPETS, MAX_WORKER_VIEW_VERSE_BYTES, SPARK, LUNA} from "../scripts/lib/mhc-native-worker.mjs";
 import {buildFactBriefJobSpec} from "../scripts/lib/mhc-pipeline.mjs";
 import {applyNativeTransaction} from "../scripts/lib/mhc-native-transaction.mjs";
-import {activeNativeLeaseWorkItem, assertCurrentLease, authenticatesControllerTransition, incompleteAssemblyReport, isCurrentTerminalFailureWorkItem, nativePairMatchesDefinitions, nativePairSourceState, requiresInitialControllerTransfer, terminalNativeFailureEvent} from "../scripts/mhc-native-worker.mjs";
+import {activeNativeLeaseWorkItem, assertCurrentLease, authenticatesControllerTransition, incompleteAssemblyReport, isCurrentTerminalFailureWorkItem, nativePairMatchesDefinitions, nativePairSourceState, requiresInitialControllerTransfer, resumableNativeLeaseWorkItem, terminalNativeFailureEvent} from "../scripts/mhc-native-worker.mjs";
 import {classifyNativeReviewState, nativeReviewWorkOrder} from "../scripts/lib/mhc-native-review-work-order.mjs";
 
 const workSchema = JSON.parse(readFileSync(new URL("../schemas/mhc-native-work-item.schema.json", import.meta.url), "utf8"));
@@ -20,6 +20,7 @@ const ledgerSchema = JSON.parse(readFileSync(new URL("../schemas/mhc-native-ledg
 const transactionSchema = JSON.parse(readFileSync(new URL("../schemas/mhc-native-review-transaction.schema.json", import.meta.url), "utf8"));
 const progressSchema = JSON.parse(readFileSync(new URL("../schemas/mhc-native-review-progress.schema.json", import.meta.url), "utf8"));
 const pairSchema = JSON.parse(readFileSync(new URL("../schemas/mhc-native-pair.schema.json", import.meta.url), "utf8"));
+const submitAttemptsSchema = JSON.parse(readFileSync(new URL("../schemas/mhc-native-submit-attempts.schema.json", import.meta.url), "utf8"));
 const state = await import("../scripts/lib/mhc-native-state.mjs");
 const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
 const record = {verse_id: "TST.1.1", required_coverage_type: "direct", allowed_source_unit_ids: ["fab.unit"], allowed_source_atom_ids: ["fab.atom"], target_marked_source_atom_ids: ["fab.atom"], required_explicit_identity_terms: [], required_explicit_relations: [], verse_anchor_terms: [], source_reference_labels: ["Fabricated 1:1"]};
@@ -445,6 +446,94 @@ test("paired slots durably retain one reading/source selection and deterministic
   } finally { await rm(root,{recursive:true,force:true}); }
 });
 
+test("failed submits require three distinct checksum-bound attempts before terminal failure", async () => {
+  const root=await mkdtemp(path.join(os.tmpdir(),"mhc-native-submit-attempts-"));
+  const lease=event({automation_id:item.automation_id});
+  const attempt=(candidate,diagnostics,code="NATIVE_CANDIDATE_INVALID")=>state.recordNativeSubmitFailure({
+    workItemDir:root,item,lease,candidateSha256:candidate.repeat(64),validationCode:code,
+    diagnosticsSha256:diagnostics.repeat(64),attemptsSchema:submitAttemptsSchema
+  });
+  try {
+    const first=await attempt("1","a");
+    assert.deepEqual(first.attempts,[{ordinal:1,candidate_sha256:"1".repeat(64),validation_code:"NATIVE_CANDIDATE_INVALID",diagnostics_sha256:"a".repeat(64)}]);
+    assert.equal(JSON.stringify(first).includes("FABRICATED test material"),false);
+    await assert.rejects(attempt("1","b"),/must change candidate bytes/);
+    await assert.rejects(async()=>state.assertNativeTerminalFailureAttempts({value:await state.readNativeSubmitAttempts({workItemDir:root,item,lease,attemptsSchema:submitAttemptsSchema}),item,lease,attemptsSchema:submitAttemptsSchema}),/requires three distinct/);
+    const lock=path.join(root,"submit-attempts.lock");
+    await mkdir(lock);
+    await assert.rejects(state.recordNativeSubmitFailure({workItemDir:root,item,lease,candidateSha256:"2".repeat(64),validationCode:"NATIVE_CANDIDATE_JSON_INVALID",diagnosticsSha256:"b".repeat(64),attemptsSchema:submitAttemptsSchema,lockStaleMs:60_000}),/lock is active/);
+    const stale=new Date(Date.now()-120_000);
+    await utimes(lock,stale,stale);
+    await state.recordNativeSubmitFailure({workItemDir:root,item,lease,candidateSha256:"2".repeat(64),validationCode:"NATIVE_CANDIDATE_JSON_INVALID",diagnosticsSha256:"b".repeat(64),attemptsSchema:submitAttemptsSchema,lockStaleMs:60_000});
+    const third=await attempt("3","c","NATIVE_CANDIDATE_MISSING");
+    assert.deepEqual(third.attempts.map((entry)=>entry.ordinal),[1,2,3]);
+    assert.equal(state.assertNativeTerminalFailureAttempts({value:third,item,lease,attemptsSchema:submitAttemptsSchema}),third);
+    await assert.rejects(attempt("4","d"),/budget is exhausted/);
+    await assert.rejects(state.readNativeSubmitAttempts({workItemDir:root,item,lease:{...lease,event_id:"MHNLE-other-lease"},attemptsSchema:submitAttemptsSchema}),/do not match the current work-item lease/);
+    await assert.rejects(state.readNativeSubmitAttempts({workItemDir:root,item,lease:{...lease,work_item_id:"MHNWI-"+"f".repeat(32)},attemptsSchema:submitAttemptsSchema}),/no matching ledger lease/);
+    const changedItem={...item,lease_id:"f".repeat(64)};
+    await assert.rejects(state.readNativeSubmitAttempts({workItemDir:root,item:changedItem,lease,attemptsSchema:submitAttemptsSchema}),/do not match the current work-item lease/);
+    assert.throws(()=>assertCurrentLease({item,events:[lease,event({event_id:"MHNLE-validated-after-attempts",automation_id:item.automation_id,outcome:"validated",at:"2026-11-01T05:02:00.000Z"})],planVersion:item.plan_version}),/superseded/);
+    const source=readFileSync(new URL("../scripts/mhc-native-worker.mjs",import.meta.url),"utf8"),failBody=source.slice(source.indexOf("async function failLedger"),source.indexOf("async function guard"));
+    assert.match(failBody,/readNativeSubmitAttempts/);
+    assert.match(failBody,/assertNativeTerminalFailureAttempts/);
+  } finally {await rm(root,{recursive:true,force:true});}
+});
+
+test("a terminalized prior lease permits one fresh same-work-item attempt cycle", async () => {
+  const root=await mkdtemp(path.join(os.tmpdir(),"mhc-native-submit-reset-"));
+  const prior=event({automation_id:item.automation_id,primary_slot:"2026-11-01T05:00:00.000Z"});
+  const terminal=terminalNativeFailureEvent({item,lease:prior,code:"NATIVE_CANDIDATE_UNRESOLVED"});
+  const current=event({event_id:"MHNLE-current-later-slot",automation_id:item.automation_id,primary_slot:"2026-11-01T11:00:00.000Z",at:"2026-11-01T11:01:00.000Z"});
+  const seed=async(dir)=>{await mkdir(dir);for(let index=1;index<=3;index+=1)await state.recordNativeSubmitFailure({workItemDir:dir,item,lease:prior,candidateSha256:String(index).repeat(64),validationCode:"NATIVE_CANDIDATE_INVALID",diagnosticsSha256:String.fromCharCode(96+index).repeat(64),attemptsSchema:submitAttemptsSchema});};
+  const reset=async(dir,ledgerEvents)=>state.recordNativeSubmitFailure({workItemDir:dir,item,lease:current,ledgerEvents,candidateSha256:"4".repeat(64),validationCode:"NATIVE_CANDIDATE_INVALID",diagnosticsSha256:"d".repeat(64),attemptsSchema:submitAttemptsSchema});
+  try {
+    const valid=path.join(root,"valid");await seed(valid);
+    const fresh=await reset(valid,[prior,terminal,current]);
+    assert.equal(fresh.ledger_lease_event_id,current.event_id);
+    assert.deepEqual(fresh.attempts.map((attempt)=>[attempt.ordinal,attempt.candidate_sha256]),[[1,"4".repeat(64)]]);
+
+    const active=path.join(root,"active");await seed(active);
+    await assert.rejects(reset(active,[prior,current]),/active, unterminated, or ambiguous/);
+
+    const missing=path.join(root,"missing");await seed(missing);
+    await assert.rejects(reset(missing,[{...prior,event_id:"MHNLE-forged-prior"},terminal,current]),/missing, forged, or ambiguous/);
+
+    const ambiguous=path.join(root,"ambiguous");await seed(ambiguous);
+    await assert.rejects(reset(ambiguous,[prior,terminal,{...terminal,event_id:"MHNLE-duplicate-terminal"},current]),/active, unterminated, or ambiguous/);
+    await assert.rejects(reset(ambiguous,[prior,{...prior},terminal,current]),/missing, forged, or ambiguous/);
+  } finally {await rm(root,{recursive:true,force:true});}
+});
+
+test("scheduled prepare resumes partial failed-submit accounting on the exact active lease", async () => {
+  const root=await mkdtemp(path.join(os.tmpdir(),"mhc-native-partial-resume-")),lease=event({automation_id:item.automation_id}),defs=[{item}],work={b:"FABRICATED-WORK-DIR",item};
+  try {
+    for(const count of [1,2]){
+      const dir=path.join(root,String(count));await mkdir(dir);
+      for(let ordinal=1;ordinal<=count;ordinal+=1)await state.recordNativeSubmitFailure({workItemDir:dir,item,lease,candidateSha256:String(ordinal).repeat(64),validationCode:"NATIVE_CANDIDATE_INVALID",diagnosticsSha256:String.fromCharCode(96+ordinal).repeat(64),attemptsSchema:submitAttemptsSchema});
+      const events=[lease],resumed=resumableNativeLeaseWorkItem({events,items:[work],defs,planVersion:item.plan_version,model:item.required_model,automationId:item.automation_id});
+      assert.equal(resumed.item,item);assert.equal(resumed.lease,lease);assert.equal(events.length,1);
+      for(let ordinal=count+1;ordinal<=3;ordinal+=1)await state.recordNativeSubmitFailure({workItemDir:dir,item,lease,candidateSha256:String(ordinal).repeat(64),validationCode:"NATIVE_CANDIDATE_INVALID",diagnosticsSha256:String.fromCharCode(96+ordinal).repeat(64),attemptsSchema:submitAttemptsSchema});
+      assert.equal((await state.readNativeSubmitAttempts({workItemDir:dir,item,lease,attemptsSchema:submitAttemptsSchema})).attempts.length,3);
+    }
+    const source=readFileSync(new URL("../scripts/mhc-native-worker.mjs",import.meta.url),"utf8"),prepare=source.slice(source.indexOf("async function prepareLedger"),source.indexOf("function matchingNativeLeases"));
+    assert.ok(prepare.indexOf("findResumableNativeLease")<prepare.indexOf("selectionContext(true)"));
+    assert.match(prepare,/if\(resumed\)return[\s\S]*active_lease_resumed/);
+  } finally {await rm(root,{recursive:true,force:true});}
+});
+
+test("scheduled prepare never resumes stale, terminal, superseded, forged, or ambiguous active work", () => {
+  const lease=event({automation_id:item.automation_id}),input=(events,items=[{b:"FABRICATED",item}],defs=[{item}])=>resumableNativeLeaseWorkItem({events,items,defs,planVersion:item.plan_version,model:item.required_model,automationId:item.automation_id});
+  const stale=structuredClone(item);stale.source_hash="d".repeat(64);stale.work_item_sha256=workItemDigest(stale);
+  assert.equal(input([lease],[{b:"FABRICATED",item:stale}]),null);
+  assert.equal(input([lease,terminalNativeFailureEvent({item,lease,code:"NATIVE_CANDIDATE_UNRESOLVED"})]),null);
+  assert.equal(input([lease,event({event_id:"MHNLE-stale-transfer",automation_id:item.automation_id,outcome:"stale_primary",at:"2026-11-01T05:02:00.000Z"})]),null);
+  assert.equal(input([{...lease,work_item_id:"MHNWI-"+"f".repeat(32)}]),null);
+  const otherModel={...item,required_model:LUNA};
+  assert.equal(input([lease],[{b:"FABRICATED",item:otherModel}],[{item:otherModel}]),null);
+  assert.throws(()=>input([lease,event({event_id:"MHNLE-later-active",automation_id:item.automation_id,primary_slot:"2026-11-01T11:00:00.000Z",at:"2026-11-01T11:01:00.000Z"})]),/ambiguous active leases/);
+});
+
 test("a Luna lease may follow a stale Spark lease but duplicate owner leases fail closed", async () => {
   const root=await mkdtemp(path.join(os.tmpdir(),"mhc-native-fabricated-"));
   try {
@@ -535,9 +624,27 @@ test("assigned Luna-low worker writes directly and cannot launch a nested or sub
     assert.doesNotMatch(text.replace(nestedProhibition, ""), /codex exec|nested Codex\/model process/i);
     assert.match(text, /same lease/);
     assert.match(text, /at most two repairs \(three submit attempts total\)/);
+    assert.match(text, /zero fact briefs, zero verse drafts/);
+    assert.match(text, /MUST read only/);
+    assert.match(text, /materially different bytes/);
+    assert.match(text, /rejects unchanged candidate bytes/);
+    assert.match(text, /refuses (?:terminal failure before three distinct failed submits|early terminal failure)/);
   }
   assert.match(scheduled, /durable pair selected for that primary Spark slot/);
   assert.match(scheduled, /same one work item/);
   assert.match(worker, /write exactly one `mhc-native-candidate\/v1` JSON object directly/);
   assert.match(worker, /The deterministic controller performs validation and creates the separate review handoff/);
+});
+
+test("native Spark and Luna contracts require complete candidates and every distinct repair attempt", () => {
+  const names=["mhc-native-spark-scheduled-task-v1.md","mhc-native-spark-worker-v1.md","mhc-native-luna-scheduled-task-v1.md","mhc-native-luna-worker-v1.md"];
+  for(const name of names){
+    const text=readFileSync(new URL(`../prompts/${name}`,import.meta.url),"utf8");
+    assert.match(text,/zero fact briefs, zero verse drafts/);
+    assert.match(text,/MUST read only/);
+    assert.match(text,/materially different bytes/);
+    assert.match(text,/at most two repairs \(three submit attempts total\)/);
+    assert.match(text,/rejects unchanged candidate bytes/);
+    assert.match(text,/three distinct failed submit/);
+  }
 });

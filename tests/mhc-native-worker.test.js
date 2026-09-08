@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {mkdir, mkdtemp, rm} from "node:fs/promises";
 import {readFileSync} from "node:fs";
+import {spawnSync} from "node:child_process";
 import os from "node:os";
 import path from "node:path";
+import {fileURLToPath} from "node:url";
 import {assertNativeHandoffBinding, buildNativeWorkItem, safeNativeReport, validateNativeCandidate, SPARK, LUNA} from "../scripts/lib/mhc-native-worker.mjs";
 import {applyNativeTransaction} from "../scripts/lib/mhc-native-transaction.mjs";
 
@@ -15,9 +17,17 @@ const ledgerSchema = JSON.parse(readFileSync(new URL("../schemas/mhc-native-ledg
 const transactionSchema = JSON.parse(readFileSync(new URL("../schemas/mhc-native-review-transaction.schema.json", import.meta.url), "utf8"));
 const progressSchema = JSON.parse(readFileSync(new URL("../schemas/mhc-native-review-progress.schema.json", import.meta.url), "utf8"));
 const state = await import("../scripts/lib/mhc-native-state.mjs");
+const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
 const record = {verse_id: "TST.1.1", required_coverage_type: "direct", allowed_source_unit_ids: ["fab.unit"], allowed_source_atom_ids: ["fab.atom"], target_marked_source_atom_ids: ["fab.atom"], required_explicit_identity_terms: [], required_explicit_relations: [], verse_anchor_terms: [], source_reference_labels: ["Fabricated 1:1"]};
 const unit = {source_unit_id: "fab.unit", source_atoms: [{source_atom_id: "fab.atom", text: "FABRICATED test material only.", text_sha256: "a".repeat(64)}]};
 const item = buildNativeWorkItem({reading: {readingId: "FAB-001", verseCount: 1}, planVersion: "fabricated", scheduleDate: "2026-09-07", chunk: {chunkId: "001-001", chapterJobSpec: {metadata: {book_id: "TST", chapter: 1, source_hash: "b".repeat(64)}, requestedRecords: [record], sourceUnits: [unit]}}, normalizedUnits: [unit], sourceManifest: {}, automationId: "fabricated-spark", createdAt: "2026-09-07T00:00:00.000Z"});
+
+test("native worker CLI resolves every module export before command dispatch", () => {
+  const result = spawnSync(process.execPath, ["scripts/mhc-native-worker.mjs"], {cwd: repositoryRoot, encoding: "utf8"});
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Usage: node scripts\/mhc-native-worker\.mjs/);
+  assert.doesNotMatch(result.stderr, /does not provide an export/);
+});
 
 test("native work items hash the bound selection and source view", () => {
   assert.equal(item.schema_version, "mhc-native-work-item/v1");

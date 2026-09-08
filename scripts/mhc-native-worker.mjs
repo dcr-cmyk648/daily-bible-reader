@@ -3,7 +3,8 @@ import {lstat, mkdir, readFile, readdir, realpath, rename, writeFile} from "node
 import path from "node:path";
 import process from "node:process";
 import {assertSchemaValid} from "./lib/schema-validator.mjs";
-import {buildChapterJobSpec, buildFactChunks, exportChapterRuntime, jobFingerprint, sha256, stableJson, validateChapterOutput, writeScheduleAuditReport} from "./lib/mhc-pipeline.mjs";
+import {buildChapterJobSpec, exportChapterRuntime, jobFingerprint, sha256, stableJson, validateChapterOutput} from "./lib/mhc-pipeline.mjs";
+import {buildFactChunks, writeScheduleAuditReport} from "./mhc-pipeline.mjs";
 import {applyScheduleReviewToResults} from "./lib/mhc-review.mjs";
 import {assertNativeHandoffBinding,buildNativeWorkItem,safeNativeReport,SPARK,LUNA,validateNativeCandidate,workItemDigest} from "./lib/mhc-native-worker.mjs";
 import {normalizedAttemptState} from "./lib/mhc-backfill-attempt-state.mjs";

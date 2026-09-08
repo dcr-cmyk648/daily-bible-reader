@@ -8,7 +8,7 @@ import path from "node:path";
 import {fileURLToPath} from "node:url";
 import {assertNativeHandoffBinding, buildNativeWorkItem, nativeCandidateValidationDiagnostics, nativeWorkItemPath, normalizeNativeCandidate, safeNativeReport, scheduleDateForEntry, validateNativeCandidate, SPARK, LUNA} from "../scripts/lib/mhc-native-worker.mjs";
 import {applyNativeTransaction} from "../scripts/lib/mhc-native-transaction.mjs";
-import {authenticatesControllerTransition, incompleteAssemblyReport} from "../scripts/mhc-native-worker.mjs";
+import {authenticatesControllerTransition, incompleteAssemblyReport, requiresInitialControllerTransfer} from "../scripts/mhc-native-worker.mjs";
 
 const workSchema = JSON.parse(readFileSync(new URL("../schemas/mhc-native-work-item.schema.json", import.meta.url), "utf8"));
 const candidateSchema = JSON.parse(readFileSync(new URL("../schemas/mhc-native-candidate.schema.json", import.meta.url), "utf8"));
@@ -94,6 +94,14 @@ test("controller-only Spark transitions require the exact reconstructed work-ite
   assert.equal(partial.owner, LUNA);
   assert.notEqual(partial.complete, true);
   assert.deepEqual(incompleteAssemblyReport(item, partial), safeNativeReport({item, action: "none", state: "reading_incomplete"}));
+});
+
+test("a partially complete Luna chapter leases its next chunk without repeating the Spark transition", () => {
+  assert.equal(requiresInitialControllerTransfer(LUNA, {reason: "missed_primary", transferChunkId: "001-004"}), true);
+  const existingTransfer = state.deriveChapterDecision({events: [event({outcome: "missed_primary", chunk_id: "001-004"}), event({event_id: "MHNLE-luna-first", model: LUNA, outcome: "validated", chunk_id: "001-004", work_item_id: "MHNWI-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", automation_id: "fabricated-luna"})], orderedChunkIds: ["001-004", "005-008"], now: "2026-11-01T05:12:00.000Z"});
+  assert.equal(existingTransfer.owner, LUNA);
+  assert.equal(existingTransfer.nextChunkId, "005-008");
+  assert.equal(requiresInitialControllerTransfer(LUNA, existingTransfer), false);
 });
 
 test("native candidate normalization repairs only uniquely bound labels and exact shared anchors", () => {

@@ -84,6 +84,7 @@ export function normalizeNativeCandidate({candidate, item}) {
   if (!candidate || typeof candidate !== "object" || !item || typeof item !== "object") return candidate;
   const normalized = structuredClone(candidate);
   const requests = new Map((item.source_view?.requested_records || []).map((record) => [record.verse_id, record]));
+  const drafts = new Map((normalized.verse_drafts || []).map((draft) => [draft.verse_id, draft]));
   const normalizeRecord = (value, facts = false) => {
     if (!value || typeof value !== "object") return;
     const label = derivedSourceReferenceLabel(value, requests.get(value.verse_id), item.source_view?.source_units);
@@ -91,7 +92,8 @@ export function normalizeNativeCandidate({candidate, item}) {
     if (!facts || !Array.isArray(value.facts)) return;
     for (const fact of value.facts) {
       if (!fact || !Array.isArray(fact.must_include_terms) || fact.must_include_terms.length !== 0) continue;
-      const anchor = derivedAnchor(fact.statement, fact.evidence_quote);
+      const anchor = derivedAnchor(fact.statement, fact.evidence_quote) ||
+        derivedAnchor(drafts.get(value.verse_id)?.blurb, fact.evidence_quote);
       if (anchor) fact.must_include_terms = [anchor];
     }
   };

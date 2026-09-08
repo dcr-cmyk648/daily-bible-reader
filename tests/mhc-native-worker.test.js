@@ -8,6 +8,7 @@ import path from "node:path";
 import {fileURLToPath} from "node:url";
 import {assertNativeHandoffBinding, buildNativeWorkItem, nativeCandidateValidationDiagnostics, nativeWorkItemPath, normalizeNativeCandidate, safeNativeReport, scheduleDateForEntry, validateNativeCandidate, SPARK, LUNA} from "../scripts/lib/mhc-native-worker.mjs";
 import {applyNativeTransaction} from "../scripts/lib/mhc-native-transaction.mjs";
+import {authenticatesControllerTransition, incompleteAssemblyReport} from "../scripts/mhc-native-worker.mjs";
 
 const workSchema = JSON.parse(readFileSync(new URL("../schemas/mhc-native-work-item.schema.json", import.meta.url), "utf8"));
 const candidateSchema = JSON.parse(readFileSync(new URL("../schemas/mhc-native-candidate.schema.json", import.meta.url), "utf8"));
@@ -77,6 +78,24 @@ test("retryable candidate diagnostics are bounded and do not become a terminal m
   assert.equal(Object.hasOwn(diagnostics, "outcome"), false);
 });
 
+test("incomplete authenticated assembly is a safe normal-progress no-op", () => {
+  assert.deepEqual(incompleteAssemblyReport(item, {complete: false}), safeNativeReport({item, action: "none", state: "reading_incomplete"}));
+  assert.equal(incompleteAssemblyReport(item, {complete: true}), null);
+  assert.equal(incompleteAssemblyReport(item, {complete: false, blocked: true}), null);
+});
+
+test("controller-only Spark transitions require the exact reconstructed work-item identity", () => {
+  const transition = event({outcome: "missed_primary", automation_id: item.automation_id, work_item_id: item.work_item_id});
+  const binding = {event: transition, expectedItem: item, sourceHash: item.source_hash, normalizedHash: item.normalized_hash, verseIds: item.verse_ids};
+  assert.equal(authenticatesControllerTransition(binding), true);
+  assert.equal(authenticatesControllerTransition({...binding, event: {...transition, work_item_id: "MHNWI-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}), false);
+  assert.equal(authenticatesControllerTransition({...binding, event: {...transition, model: LUNA}}), false);
+  const partial = state.deriveChapterDecision({events: [transition, event({event_id: "MHNLE-luna-validated", model: LUNA, outcome: "validated", work_item_id: "MHNWI-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", automation_id: "fabricated-luna"})], orderedChunkIds: ["001-001", "002-002"], now: "2026-11-01T05:12:00.000Z"});
+  assert.equal(partial.owner, LUNA);
+  assert.notEqual(partial.complete, true);
+  assert.deepEqual(incompleteAssemblyReport(item, partial), safeNativeReport({item, action: "none", state: "reading_incomplete"}));
+});
+
 test("native candidate normalization repairs only uniquely bound labels and exact shared anchors", () => {
   const candidate = {schema_version: "mhc-native-candidate/v1", work_item_id: item.work_item_id, fact_brief: {verse_briefs: [{verse_id: "TST.1.1", source_unit_ids: ["fab.unit"], source_reference_label: "wrong", facts: [{statement: "FABRICATED test material only.", evidence_quote: "FABRICATED test material only.", must_include_terms: []}]}]}, verse_drafts: [{verse_id: "TST.1.1", source_unit_ids: ["fab.unit"], source_reference_label: "wrong", blurb: "FABRICATED prose remains unchanged."}]};
   const normalized = normalizeNativeCandidate({candidate, item});
@@ -97,6 +116,14 @@ test("native candidate normalization leaves non-derivable labels and anchors inv
   const checked = validateNativeCandidate({candidate, item, candidateSchema, factSchema, chapterSchema});
   assert.equal(checked.valid, false);
   assert.equal(checked.candidate.fact_brief.verse_briefs[0].source_reference_label, "wrong");
+});
+
+test("native candidate normalization may derive an evidence anchor already retained by the final blurb", () => {
+  const candidate = {schema_version: "mhc-native-candidate/v1", work_item_id: item.work_item_id, fact_brief: {verse_briefs: [{verse_id: "TST.1.1", source_unit_ids: ["fab.unit"], source_reference_label: "Fabricated 1:1", facts: [{statement: "A wholly paraphrased fact.", evidence_quote: "FABRICATED test material only.", must_include_terms: []}]}]}, verse_drafts: [{verse_id: "TST.1.1", source_unit_ids: ["fab.unit"], source_reference_label: "Fabricated 1:1", blurb: "The FABRICATED test material remains explicit."}]};
+  const normalized = normalizeNativeCandidate({candidate, item});
+  assert.deepEqual(normalized.fact_brief.verse_briefs[0].facts[0].must_include_terms, ["FABRICATED test material"]);
+  assert.equal(normalized.fact_brief.verse_briefs[0].facts[0].statement, candidate.fact_brief.verse_briefs[0].facts[0].statement);
+  assert.equal(normalized.verse_drafts[0].blurb, candidate.verse_drafts[0].blurb);
 });
 
 test("handoff bindings reject tampered staged/event fields", async () => {
@@ -180,6 +207,7 @@ test("tracked native automation prompts preserve exact model, timing, review, an
   }
   assert.match(spark, /do not record historical cooldown/);
   assert.match(luna, /mhc:backfill:record/); assert.match(luna, /NATIVE_CANDIDATE_UNRESOLVED/);
+  for (const text of [spark, luna]) assert.match(text, /reading_incomplete/);
   assert.match(review, /approved all-assertions-true/); assert.match(review, /mhc:sync-latest/); assert.match(review, /Never let generation attach or publish/);
   for (const text of [spark, luna, review]) assert.match(text, /private prose, source atoms, IDs, or secrets|private prose, atoms, IDs, credentials, or secrets/);
 });

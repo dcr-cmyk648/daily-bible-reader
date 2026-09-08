@@ -170,7 +170,7 @@ Finish the first native Luna fallback end to end and close the deterministic gap
 
 - Luna itself is available. The native route produced all chapter chunks for `CC-Y3Q4-D084`; an independent Terra review directly checked all 17 records and admitted six Luna-authored corrections.
 - The hash-bound review transaction committed the approved canonical runtime and audit successfully. The live failure is downstream: `mhc:sync-latest` cannot find a current durable-library artifact for that reading.
-- `review-apply` currently commits only `runtime/...` and `schedule/.../audit.json`, despite this plan's existing requirement that reviewed apply also commit the portable reading and library pointer. That implementation omission is the root cause of the remaining app-visible fallback.
+- Before the repair, `review-apply` committed only `runtime/...` and `schedule/.../audit.json`, despite this plan's existing requirement that reviewed apply also commit the portable reading and library pointer. That implementation omission caused the app-visible fallback.
 - Keep model generation, human review, durable-library admission, metadata attachment, and Drive publication as distinct auditable states. A model success must not be reported as app-visible success until all downstream states complete.
 
 ### Repair milestone
@@ -190,4 +190,11 @@ Finish the first native Luna fallback end to end and close the deterministic gap
 
 ### Exact next action
 
-Implement and test reviewed-library finalization in the clean incident worktree, then use it to complete D084 locally before the separately authorized private metadata/manifest publication and exact live readback.
+Continue the independent lane with its next eligible fallback candidate. Every reviewed apply must finish durable-library finalization, metadata attachment, private publication, exact readback, and exact-reading live health before the lane reports app-visible success.
+
+### Resolution
+
+- [x] Released deterministic reviewed-library finalization in `39d7828`, with canonical-transaction, tamper, catalog-preservation, idempotency, and sync-visibility regressions.
+- [x] Recovered D084 from its already committed canonical transaction without regeneration, attached its newest reviewed layer, and replaced only its existing restricted Drive metadata file.
+- [x] Exact Drive bytes, owner-only payload access, and the reading's private parent binding passed; authenticated live health reports the D084 Henry layer complete.
+- [x] Confirmed that the reported Luna issue was a post-generation storage handoff defect, not a Luna availability or output failure.

@@ -40,8 +40,10 @@ Stop the daily T+7 automation from rolling back a valid one-reading publication 
 - [x] Reproduced the live failure and safely identified backend code `READING_NOT_FOUND` on the batch payload request.
 - [x] Identified the workflow ordering defect; no private data or sharing state was changed.
 - [x] Implemented and validated the single-reading live-health gate and workflow changes; final horizon health remains the completion gate.
-- [ ] Release the tracked fix, retry the D090 recovery loop, and verify the final live horizon.
+- [x] Released the tracked fix in `39d7828`; both GitHub safety/test and Pages workflows passed.
+- [x] Restored D090 manifest-last after exact payload/ACL checks; its exact-reading live gate reports ready and the prior rollback state was not needed.
+- [ ] Prepare D091, the newly exposed September 14 T+7 gap, through the same atomic gate; run the final full-horizon check only after no gap remains.
 
 ## Exact next action
 
-Delegate the bounded implementation to the existing Terra worker, then review and release the resulting code before retrying private publication.
+Prepare and review only D091, publish it content-first and manifest-last, pass `study:live-reading-health -- CC-Y3Q4-D091`, then reevaluate. Run `study:live-health` only when the bounded work order reports no remaining gap.

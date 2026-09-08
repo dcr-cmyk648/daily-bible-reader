@@ -68,6 +68,7 @@ Restore deterministic agreement between the daily T+7 publication lane, the trac
 - [x] Implemented milestones 1–3 with fabricated regression coverage: exact manifest-prefix reconciliation plus scheduled-task ordering; checksum-bound pair selection/block state shared by Spark/Luna; and deterministic evidence-preserving worker-view compaction with strict ceilings.
 - [x] Reconciled the tracked plan and testing allowlist through manifest-backed D090, required full private validation, confirmed exact D054–D090 prefix equality, admitted D091 as the next daily work order, and proved D091 passes the Henry ensure admission boundary in a no-write dry run.
 - [x] Completed milestone 5 validation: aggregate `npm run check` passed repository safety, every validator, 322/322 tests, all builds, and exact Pages verification. The fresh authenticated D090-ready probe remains the external evidence owner; no private content or live manifest was changed by this repair.
+- [x] Released commit `dbb0895` to `main`; GitHub repository safety/test run `34218908909` and Pages deployment `34218907916` both passed.
 
 Implementation validation so far: the original focused prefix/work-order/native tests passed 56/56; after the primary-review corrections, the focused native-worker suite passed 34/34 and full `npm test` passed 322/322. Repository safety passed over 383 files, content/schema validation passed with 37 schemas, source validation passed, all three builds passed, and `git diff --check` passed. The aggregate `npm run check` stopped at the expected pre-existing milestone-4 boundary because the ignored private bridge contains D090 while the tracked 36-reading plan still expects exactly 72 D054–D089 files; the gate was not weakened. No private manifest, ignored content, model worker, deployment, or external resource was changed.
 
@@ -81,4 +82,4 @@ Milestone 4 completed locally without model execution or private-state mutation.
 
 ## Exact next action
 
-Release the reviewed tracked repair to `main`, confirm the GitHub safety/test and Pages workflows, then let the next scheduled daily run retry D091 and require the next Spark/Luna pair to report one shared reading selection. The supervisory lane must report either confirmation or the next normalized failure; it must not infer success from elapsed time.
+Let the next scheduled daily run retry D091 and require the next Spark/Luna pair to report one shared reading selection. The supervisory lane must report either confirmation or the next normalized failure; it must not infer success from elapsed time.

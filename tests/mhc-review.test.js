@@ -76,6 +76,28 @@ test("a correction for an unknown verse fails closed", () => {
   assert.throws(() => applyScheduleReviewToResults(state), /unknown verses/);
 });
 
+test("review apply rechecks replacement blurbs against the corrected record's cited source atoms", () => {
+  const rejected = fixture();
+  rejected.passageResults[0].runtime.source_atoms["atom-1"].text = "FABRICATED alpha beta gamma delta epsilon zeta eta theta source wording.";
+  rejected.review.passages = buildScheduleReviewPassages({audit: rejected.audit, passageResults: rejected.passageResults});
+  rejected.review.corrections = [{
+    verse_id: "NAM.1.1",
+    replacement_blurb: "alpha beta gamma delta epsilon zeta eta theta reader-facing wording.",
+    reason: "FABRICATED correction"
+  }];
+  assert.throws(() => applyScheduleReviewToResults(rejected), /source-copy overlap words=8/);
+
+  const accepted = fixture();
+  accepted.passageResults[0].runtime.source_atoms["atom-1"].text = "FABRICATED alpha beta gamma delta epsilon zeta eta theta source wording.";
+  accepted.review.passages = buildScheduleReviewPassages({audit: accepted.audit, passageResults: accepted.passageResults});
+  accepted.review.corrections = [{
+    verse_id: "NAM.1.1",
+    replacement_blurb: "FABRICATED alpha beta gamma delta reader-facing paraphrase adds distinct framing.",
+    reason: "FABRICATED correction"
+  }];
+  assert.equal(applyScheduleReviewToResults(accepted).passageResults[0].runtime.records["NAM.1.1"].blurb, accepted.review.corrections[0].replacement_blurb);
+});
+
 test("a stale or reordered review fails closed", () => {
   const state = fixture();
   const stale = structuredClone(state.review);

@@ -373,6 +373,27 @@ test("current worker validation rejects source-reporting prose instead of merely
   assert.ok(archaicValidation.errors.some((error) => error.includes('archaic term "thereof"')));
 });
 
+test("source-copy risk gates only material contiguous source overlap and emits safe metrics", async () => {
+  const {sourceCopyOverlapRisk, validateSourceCopyRisk} = await import("../scripts/lib/mhc-pipeline.mjs");
+  const source = "FABRICATED alpha beta gamma delta epsilon zeta eta theta iota kappa lambda.";
+  const absolute = sourceCopyOverlapRisk({blurb: "alpha beta gamma delta epsilon zeta eta theta reader-facing paraphrase.", sourceTexts: [source]});
+  assert.equal(absolute.longestContiguousWords, 8);
+  assert.equal(absolute.risky, true);
+  const ratio = sourceCopyOverlapRisk({blurb: "alpha beta gamma delta epsilon zeta new framing words.", sourceTexts: [source]});
+  assert.equal(ratio.longestContiguousWords, 6);
+  assert.equal(ratio.risky, true);
+  assert.equal(sourceCopyOverlapRisk({blurb: "alpha beta gamma delta new framing words remain distinct.", sourceTexts: [source]}).risky, false);
+  assert.equal(sourceCopyOverlapRisk({blurb: "alpha beta gamma delta epsilon zeta distinctly paraphrased reader language adds enough separate words to keep this longer fabricated condensation below the ratio threshold.", sourceTexts: [source]}).risky, false);
+  const validation = validateSourceCopyRisk({
+    records: [{source_atom_ids: ["fab.atom"], blurb: "alpha beta gamma delta epsilon zeta eta theta"}],
+    sourceAtoms: {"fab.atom": {text: source}},
+    requireCitedSource: true
+  });
+  assert.equal(validation.valid, false);
+  assert.match(validation.errors[0], /words=8 blurb_tokens=8 ratio=1\.000/);
+  assert.doesNotMatch(validation.errors[0], /alpha beta gamma/);
+});
+
 test("generated-prose lexicon rejects fabricated malformed archaic inflections", async () => {
   const {validateGeneratedProseLexicon} = await import("../scripts/mhc-pipeline.mjs");
   for (const term of ["upbraideth", "bridleth", "knowest", "whosoever"]) {

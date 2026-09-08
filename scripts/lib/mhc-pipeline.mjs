@@ -838,6 +838,64 @@ export function validateChapterOutput(output, {
   return {valid: errors.length === 0, errors, warnings};
 }
 
+function sourceCopyTokens(value) {
+  return String(value || "").normalize("NFKC").toLocaleLowerCase("en-US")
+    .match(/[\p{L}\p{N}]+(?:[’'][\p{L}\p{N}]+)*/gu) || [];
+}
+
+function sourceCopyTextForAtom(sourceAtoms, atomId) {
+  if (Array.isArray(sourceAtoms)) {
+    for (const unit of sourceAtoms) {
+      const atom = (unit.source_atoms || []).find((candidate) => candidate.source_atom_id === atomId);
+      if (atom) return atom.text;
+    }
+    return null;
+  }
+  const atom = sourceAtoms && sourceAtoms[atomId];
+  return atom && typeof atom === "object" ? atom.text : null;
+}
+
+export function sourceCopyOverlapRisk({blurb, sourceTexts}) {
+  const blurbTokens = sourceCopyTokens(blurb);
+  let longestContiguousWords = 0;
+  for (const sourceText of sourceTexts || []) {
+    const sourceTokens = sourceCopyTokens(sourceText);
+    for (let blurbIndex = 0; blurbIndex < blurbTokens.length; blurbIndex += 1) {
+      for (let sourceIndex = 0; sourceIndex < sourceTokens.length; sourceIndex += 1) {
+        if (blurbTokens[blurbIndex] !== sourceTokens[sourceIndex]) continue;
+        let length = 0;
+        while (blurbTokens[blurbIndex + length] && blurbTokens[blurbIndex + length] === sourceTokens[sourceIndex + length]) length += 1;
+        longestContiguousWords = Math.max(longestContiguousWords, length);
+      }
+    }
+  }
+  const ratio = blurbTokens.length ? longestContiguousWords / blurbTokens.length : 0;
+  return {
+    longestContiguousWords,
+    blurbTokenCount: blurbTokens.length,
+    ratio,
+    risky: longestContiguousWords >= 8 || (longestContiguousWords >= 6 && ratio >= 0.35)
+  };
+}
+
+export function validateSourceCopyRisk({records, sourceAtoms, pathPrefix = "$.records", requireCitedSource = false}) {
+  const errors = [];
+  (records || []).forEach((record, index) => {
+    const path = `${pathPrefix}[${index}]`;
+    const citedAtomIds = Array.isArray(record.source_atom_ids) ? record.source_atom_ids : [];
+    const sourceTexts = citedAtomIds.map((atomId) => sourceCopyTextForAtom(sourceAtoms, atomId));
+    if (requireCitedSource && (!citedAtomIds.length || sourceTexts.some((text) => typeof text !== "string"))) {
+      errors.push(`${path}.source_atom_ids: cited source material is unavailable for overlap validation`);
+      return;
+    }
+    const risk = sourceCopyOverlapRisk({blurb: record.blurb, sourceTexts: sourceTexts.filter((text) => typeof text === "string")});
+    if (risk.risky) {
+      errors.push(`${path}.blurb: source-copy overlap words=${risk.longestContiguousWords} blurb_tokens=${risk.blurbTokenCount} ratio=${risk.ratio.toFixed(3)}`);
+    }
+  });
+  return {valid: errors.length === 0, errors};
+}
+
 export function validateBookIntroOutput(output, {schema, units, bookId, expectedMetadata = {}}) {
   const errors = validateAgainstSchema(output, schema, {instancePath: "$"});
   const warnings = [];

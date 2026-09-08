@@ -1,4 +1,5 @@
 import {createHash} from "node:crypto";
+import {validateSourceCopyRisk} from "./mhc-pipeline.mjs";
 
 function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
@@ -59,11 +60,21 @@ export function applyScheduleReviewToResults({review, audit, passageResults}) {
     if (corrections.has(correction.verse_id)) throw new Error(`Duplicate schedule-review correction for ${correction.verse_id}.`);
     corrections.set(correction.verse_id, correction);
   }
+  const availableVerseIds = new Set(passageResults.flatMap((result) => Object.keys(result.runtime.records || {})));
+  const unknownVerseIds = [...corrections.keys()].filter((verseId) => !availableVerseIds.has(verseId));
+  if (unknownVerseIds.length) throw new Error(`Schedule-review corrections name unknown verses: ${unknownVerseIds.join(", ")}.`);
   const promotedResults = passageResults.map((result) => {
     const runtime = structuredClone(result.runtime);
     runtime.review_status = review.status;
     for (const [verseId, correction] of corrections) {
       if (!Object.hasOwn(runtime.records || {}, verseId)) continue;
+      const sourceCopy = validateSourceCopyRisk({
+        records: [{...runtime.records[verseId], blurb: correction.replacement_blurb}],
+        sourceAtoms: runtime.source_atoms,
+        pathPrefix: "$.corrections",
+        requireCitedSource: true
+      });
+      if (!sourceCopy.valid) throw new Error(`Schedule-review correction source-copy risk: ${sourceCopy.errors.join("; ")}`);
       runtime.records[verseId].blurb = correction.replacement_blurb;
       correctedVerseIds.push(verseId);
       corrections.delete(verseId);

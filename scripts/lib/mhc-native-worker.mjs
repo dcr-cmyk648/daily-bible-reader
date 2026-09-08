@@ -1,4 +1,4 @@
-import {FACT_PROMPT_VERSION, PROMPT_VERSION, AUTONOMOUS_GENERATION_MODE, buildFactBriefJobSpec, hydrateFactBriefEvidence, jobFingerprint, sha256, stableJson, validateChapterOutput, validateFactBrief, validateFactBoundChapterOutput, requireAutonomousAdmission} from "./mhc-pipeline.mjs";
+import {FACT_PROMPT_VERSION, PROMPT_VERSION, AUTONOMOUS_GENERATION_MODE, buildFactBriefJobSpec, hydrateFactBriefEvidence, jobFingerprint, sha256, stableJson, validateChapterOutput, validateFactBrief, validateFactBoundChapterOutput, validateSourceCopyRisk, requireAutonomousAdmission} from "./mhc-pipeline.mjs";
 import {validateAgainstSchema} from "./schema-validator.mjs";
 
 export const NATIVE_WORK_ITEM_VERSION = "mhc-native-work-item/v1";
@@ -248,7 +248,8 @@ export function validateNativeCandidate({candidate, item, candidateSchema, factS
   const base = validateChapterOutput(output, {schema: chapterSchema, units: chapterJobSpec.sourceUnits, bookId: output.book_id, chapter: output.chapter, verseCount: item.chapter.verse_count, expectedMetadata: metadataFor(item), expectedVerseIdsOverride: item.verse_ids});
   const bound = validateFactBoundChapterOutput(output, {factBrief, baseValidation: base});
   const admission = requireAutonomousAdmission(bound);
-  return {valid: factValidation.valid && admission.valid, errors: [...factValidation.errors, ...admission.errors], warnings: [], candidate: normalizedCandidate, factBrief, output, admission};
+  const sourceCopy = validateSourceCopyRisk({records: output.records, sourceAtoms: chapterJobSpec.sourceUnits, requireCitedSource: true});
+  return {valid: factValidation.valid && admission.valid && sourceCopy.valid, errors: [...factValidation.errors, ...admission.errors, ...sourceCopy.errors], warnings: [], candidate: normalizedCandidate, factBrief, output, admission};
 }
 
 export function safeNativeReport({item = null, action, state, code = null}) {

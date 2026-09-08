@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {mkdir, mkdtemp, rm} from "node:fs/promises";
+import {mkdir, mkdtemp, rm, writeFile} from "node:fs/promises";
 import {readFileSync} from "node:fs";
 import {spawnSync} from "node:child_process";
 import os from "node:os";
@@ -10,6 +10,7 @@ import {assertNativeHandoffBinding, buildNativeWorkerView, buildNativeWorkItem, 
 import {buildFactBriefJobSpec} from "../scripts/lib/mhc-pipeline.mjs";
 import {applyNativeTransaction} from "../scripts/lib/mhc-native-transaction.mjs";
 import {activeNativeLeaseWorkItem, assertCurrentLease, authenticatesControllerTransition, incompleteAssemblyReport, isCurrentTerminalFailureWorkItem, requiresInitialControllerTransfer, terminalNativeFailureEvent} from "../scripts/mhc-native-worker.mjs";
+import {classifyNativeReviewState, nativeReviewWorkOrder} from "../scripts/lib/mhc-native-review-work-order.mjs";
 
 const workSchema = JSON.parse(readFileSync(new URL("../schemas/mhc-native-work-item.schema.json", import.meta.url), "utf8"));
 const candidateSchema = JSON.parse(readFileSync(new URL("../schemas/mhc-native-candidate.schema.json", import.meta.url), "utf8"));
@@ -38,6 +39,91 @@ test("native review apply finalizes the durable library only after its canonical
   assert.match(apply, /await finalizeLibrary\(item\.reading_id\)/);
   assert.ok(apply.indexOf("await applyNativeTransaction(") < apply.indexOf("await finalizeLibrary(item.reading_id)"));
   assert.match(apply, /state:"reviewed_library"/);
+});
+
+test("native review work orders classify retained handoffs from trusted completion state", () => {
+  const handoff = {valid:true, approvalState:"absent"};
+  const common = {handoff, library:{current:true}, attached:{current:true}, manifestBacked:true};
+  assert.deepEqual(classifyNativeReviewState({...common, canonical:{state:"committed"}}), {action:"none",state:"completed",stage:"completion",code:null,priorManifestState:"manifest_backed"});
+  assert.deepEqual(classifyNativeReviewState({handoff,canonical:{state:"absent"},library:{current:false},attached:{current:false},manifestBacked:false}), {action:"review",state:"pending_review",stage:"review",code:null,priorManifestState:"manifest_unpublished"});
+  assert.deepEqual(classifyNativeReviewState({handoff:{valid:true,approvalState:"valid"},canonical:{state:"absent"},library:{current:false},attached:{current:false},manifestBacked:false}), {action:"resume_apply",state:"approved_uncommitted",stage:"admission",code:null,priorManifestState:"manifest_unpublished"});
+  assert.deepEqual(classifyNativeReviewState({...common, canonical:{state:"committed"},library:{current:false}}), {action:"recover_finalize",state:"committed_library_debt",stage:"finalization",code:null,priorManifestState:"manifest_backed"});
+  assert.deepEqual(classifyNativeReviewState({...common, canonical:{state:"committed"},attached:{current:false}}), {action:"recover_attach",state:"committed_attachment_debt",stage:"attachment",code:null,priorManifestState:"manifest_backed"});
+  assert.deepEqual(classifyNativeReviewState({...common, canonical:{state:"committed"},manifestBacked:false}), {action:"recover_publish",state:"committed_publication_debt",stage:"publication",code:null,priorManifestState:"manifest_unpublished"});
+  assert.deepEqual(classifyNativeReviewState({...common, canonical:{state:"committed"},library:{current:false,invalid:true}}), {action:"none",state:"blocked",stage:"classification",code:"REVIEW_LIBRARY_INVALID",priorManifestState:"manifest_backed"});
+  assert.deepEqual(classifyNativeReviewState({handoff:{valid:false,code:"REVIEW_HANDOFF_INVALID"},canonical:{state:"absent"},library:{current:false},attached:{current:false},manifestBacked:false}), {action:"none",state:"blocked",stage:"classification",code:"REVIEW_HANDOFF_INVALID",priorManifestState:"manifest_unpublished"});
+  assert.deepEqual(classifyNativeReviewState({...common, canonical:{state:"invalid",code:"REVIEW_TRANSACTION_AMBIGUOUS"}}), {action:"none",state:"blocked",stage:"classification",code:"REVIEW_TRANSACTION_AMBIGUOUS",priorManifestState:"manifest_backed"});
+});
+
+test("native review work orders treat both absent and empty staging as safe no-ops", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "mhc-native-review-order-"));
+  try {
+    const input = {root,workRoot:path.join(root,"work"),privateRoot:path.join(root,"private"),canonicalRoot:path.join(root,"canonical"),libraryRoot:path.join(root,"library"),transactionRoot:path.join(root,"transactions"),plan:{planVersion:"fabricated",entries:[]},appConfig:{sharedStartDate:"2026-08-08"},handoffSchema:{},transactionSchema:{},runtimeSchemaPath:path.join(root,"runtime.json")};
+    const expected = {lane:"henry_backfill",readingId:null,scheduleDate:null,action:"none",state:"no_review_handoffs",stage:"classification",priorManifestState:"manifest_unchanged"};
+    assert.deepEqual(await nativeReviewWorkOrder(input), expected);
+    await mkdir(path.join(input.workRoot,"review-staging"),{recursive:true});
+    assert.deepEqual(await nativeReviewWorkOrder(input), expected);
+  } finally { await rm(root,{recursive:true,force:true}); }
+});
+
+test("native work order routes a committed reading absent from a valid catalog to finalization recovery", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "mhc-native-review-library-gap-"));
+  try {
+    const readingId = "FAB-001", plan = {planVersion:"fabricated",entries:[{readingId,dayIndex:2,passages:[{bookId:"TST",chapter:1,verseCount:1}]}]}, workRoot = path.join(root,"work"), privateRoot = path.join(root,"private"), canonicalRoot = path.join(root,"canonical"), libraryRoot = path.join(root,"library"), transactionRoot = path.join(root,"transactions");
+    const writeJson = async (file, value) => { await mkdir(path.dirname(file),{recursive:true}); await writeFile(file,`${JSON.stringify(value,null,2)}\n`); };
+    await writeJson(path.join(workRoot,"review-staging",readingId,"review-handoff.json"),{reading_id:readingId,plan_version:"fabricated",status:"unreviewed",publication_status:"not_published",chapters:[{}]});
+    const audit = {schema_version:"mhc-schedule-audit/v1",reading_id:readingId,plan_version:"fabricated",audit_status:"approved",review_status:"approved",human_review:{status:"approved",approval:"approved"},passages:[{book_id:"TST",chapter:1,verse_count:1,runtime_path:"runtime/TST/001.json"}]};
+    const runtime = {fabricated:true};
+    await writeJson(path.join(canonicalRoot,"schedule",readingId,"audit.json"),audit);
+    await writeJson(path.join(canonicalRoot,"runtime/TST/001.json"),runtime);
+    const bytes = file => readFileSync(file);
+    const destinations = [
+      {destination:`schedule/${readingId}/audit.json`,staged_file:"staged/0.json",sha256:(await import("../scripts/lib/mhc-pipeline.mjs")).sha256(bytes(path.join(canonicalRoot,"schedule",readingId,"audit.json")))},
+      {destination:"runtime/TST/001.json",staged_file:"staged/1.json",sha256:(await import("../scripts/lib/mhc-pipeline.mjs")).sha256(bytes(path.join(canonicalRoot,"runtime/TST/001.json")))}
+    ];
+    const tx = {schema_version:"mhc-native-review-transaction/v1",reading_id:readingId,plan_version:"fabricated",review_sha256:"a".repeat(64),state:"staged",destinations};
+    await writeJson(path.join(transactionRoot, `${readingId}-fab`, "manifest.json"), tx);
+    await writeJson(path.join(transactionRoot, `${readingId}-fab`, "committed.json"), {...tx,state:"committed"});
+    await mkdir(path.join(transactionRoot, `${readingId}-fab`, "staged"), {recursive:true});
+    await writeFile(path.join(transactionRoot, `${readingId}-fab`, "staged/0.json"), bytes(path.join(canonicalRoot,"schedule",readingId,"audit.json")));
+    await writeFile(path.join(transactionRoot, `${readingId}-fab`, "staged/1.json"), bytes(path.join(canonicalRoot,"runtime/TST/001.json")));
+    const catalog = {schema_version:"mhc-library-catalog/v1",plan_version:"fabricated",readings:[]};
+    const catalogBytes = Buffer.from(`${JSON.stringify(catalog,null,2)}\n`);
+    const {sha256} = await import("../scripts/lib/mhc-pipeline.mjs");
+    await writeFile(path.join(libraryRoot,"plans/fabricated/catalog.json"),catalogBytes,{flag:"w"}).catch(async () => { await mkdir(path.join(libraryRoot,"plans/fabricated"),{recursive:true}); await writeFile(path.join(libraryRoot,"plans/fabricated/catalog.json"),catalogBytes); });
+    await writeJson(path.join(libraryRoot,"current.json"),{schema_version:"mhc-library-pointer/v1",plan_version:"fabricated",catalog_file:"plans/fabricated/catalog.json",catalog_sha256:sha256(catalogBytes)});
+    await writeJson(path.join(privateRoot,"private-manifest.json"),{readings:{[readingId]:{}}});
+    const report = await nativeReviewWorkOrder({root,workRoot,privateRoot,canonicalRoot,libraryRoot,transactionRoot,plan,appConfig:{sharedStartDate:"2026-08-08"},handoffSchema:{},transactionSchema:{},runtimeSchemaPath:path.join(root,"runtime.json")});
+    assert.deepEqual(report,{lane:"henry_backfill",readingId,scheduleDate:"2026-08-09",action:"recover_finalize",state:"committed_library_debt",stage:"finalization",priorManifestState:"manifest_backed"});
+  } finally { await rm(root,{recursive:true,force:true}); }
+});
+
+test("native work order validates an exact approved uncommitted binding for apply resumption", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "mhc-native-review-resume-"));
+  try {
+    const readingId = "FAB-001", workRoot = path.join(root,"work"), base = path.join(workRoot,"review-staging",readingId), writeJson = async (file,value) => { await mkdir(path.dirname(file),{recursive:true}); await writeFile(file,`${JSON.stringify(value,null,2)}\n`); };
+    const {sha256,stableJson} = await import("../scripts/lib/mhc-pipeline.mjs");
+    const handoff = {reading_id:readingId,plan_version:"fabricated",status:"unreviewed",publication_status:"not_published",chapters:[{}]};
+    const candidate = {reading_id:readingId,plan_version:"fabricated",handoff_sha256:sha256(stableJson(handoff))};
+    const review = {reading_id:readingId,plan_version:"fabricated",status:"approved",assertions:{fabricated:true}};
+    const approval = {reading_id:readingId,plan_version:"fabricated",handoff_sha256:sha256(stableJson(handoff)),review_candidate_sha256:sha256(stableJson(candidate)),schedule_review_sha256:sha256(stableJson(review))};
+    await Promise.all([writeJson(path.join(base,"review-handoff.json"),handoff),writeJson(path.join(base,"review-candidate.json"),candidate),writeJson(path.join(base,"review-approved.json"),review),writeJson(path.join(base,"review-approval.json"),approval)]);
+    const pendingId = "FAB-002";
+    await writeJson(path.join(workRoot,"review-staging",pendingId,"review-handoff.json"),{reading_id:pendingId,plan_version:"fabricated",status:"unreviewed",publication_status:"not_published",chapters:[{}]});
+    const report = await nativeReviewWorkOrder({root,workRoot,privateRoot:path.join(root,"private"),canonicalRoot:path.join(root,"canonical"),libraryRoot:path.join(root,"library"),transactionRoot:path.join(root,"transactions"),plan:{planVersion:"fabricated",entries:[{readingId,dayIndex:2,passages:[{bookId:"TST",chapter:1,verseCount:1}]},{readingId:pendingId,dayIndex:1,passages:[{bookId:"TST",chapter:1,verseCount:1}]}]},appConfig:{sharedStartDate:"2026-08-08"},handoffSchema:{},transactionSchema:{},approvalSchema:{},candidateSchema:{},reviewSchema:{},runtimeSchemaPath:path.join(root,"runtime.json")});
+    assert.deepEqual(report,{lane:"henry_backfill",readingId,scheduleDate:"2026-08-09",action:"resume_apply",state:"approved_uncommitted",stage:"admission",priorManifestState:"manifest_unpublished"});
+  } finally { await rm(root,{recursive:true,force:true}); }
+});
+
+test("native work order fails closed when an orphaned transaction exists without its canonical audit", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "mhc-native-review-orphan-"));
+  try {
+    const readingId = "FAB-001", workRoot = path.join(root,"work"), transactionRoot = path.join(root,"transactions"), writeJson = async (file,value) => { await mkdir(path.dirname(file),{recursive:true}); await writeFile(file,`${JSON.stringify(value)}\n`); };
+    await writeJson(path.join(workRoot,"review-staging",readingId,"review-handoff.json"),{reading_id:readingId,plan_version:"fabricated",status:"unreviewed",publication_status:"not_published",chapters:[{}]});
+    await mkdir(path.join(transactionRoot,`${readingId}-orphan`),{recursive:true});
+    const report = await nativeReviewWorkOrder({root,workRoot,privateRoot:path.join(root,"private"),canonicalRoot:path.join(root,"canonical"),libraryRoot:path.join(root,"library"),transactionRoot,plan:{planVersion:"fabricated",entries:[{readingId,dayIndex:1,passages:[{bookId:"TST",chapter:1,verseCount:1}]}]},appConfig:{sharedStartDate:"2026-08-08"},handoffSchema:{},transactionSchema:{},runtimeSchemaPath:path.join(root,"runtime.json")});
+    assert.deepEqual(report,{lane:"henry_backfill",readingId,scheduleDate:"2026-08-08",action:"none",state:"blocked",stage:"classification",code:"REVIEW_TRANSACTION_ORPHANED",priorManifestState:"manifest_unpublished"});
+  } finally { await rm(root,{recursive:true,force:true}); }
 });
 
 test("Luna transfer records the bound Spark work item rather than its controller wrapper", () => {
@@ -331,5 +417,5 @@ test("tracked native automation prompts preserve exact model, timing, review, an
   assert.match(luna, /mhc:native:fail/);
   for (const text of [spark, luna]) assert.match(text, /reading_incomplete/);
   assert.match(review, /approved all-assertions-true/); assert.match(review, /mhc:sync-latest/); assert.match(review, /Never let generation attach or publish/);
-  for (const text of [spark, luna, review]) assert.match(text, /private prose, source atoms, IDs, or secrets|private prose, atoms, IDs, credentials, or secrets/);
+  for (const text of [spark, luna, review]) assert.match(text, /private prose, source atoms, IDs, or secrets|private prose, atoms, IDs, credentials, or secrets|private prose, source atoms, Scripture/);
 });

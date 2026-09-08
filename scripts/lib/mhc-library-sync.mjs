@@ -53,7 +53,11 @@ export async function loadLatestHenryReading({libraryRoot, readingId, runtimeSch
     throw new Error("Henry library catalog is unsupported or does not match its pointer.");
   }
   const descriptor = catalog.readings.find((candidate) => candidate.reading_id === readingId);
-  if (!descriptor) throw new Error(`The Henry library has no current artifact for ${readingId}.`);
+  if (!descriptor) {
+    const error = new Error(`The Henry library has no current artifact for ${readingId}.`);
+    error.code = "MHC_READING_ABSENT";
+    throw error;
+  }
   if (!/^[a-f0-9]{64}$/.test(String(descriptor.sha256 || ""))) {
     throw new Error(`${readingId} has no valid content checksum in the Henry catalog.`);
   }

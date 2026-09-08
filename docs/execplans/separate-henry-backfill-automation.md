@@ -198,3 +198,39 @@ Continue the independent lane with its next eligible fallback candidate. Every r
 - [x] Recovered D084 from its already committed canonical transaction without regeneration, attached its newest reviewed layer, and replaced only its existing restricted Drive metadata file.
 - [x] Exact Drive bytes, owner-only payload access, and the reading's private parent binding passed; authenticated live health reports the D084 Henry layer complete.
 - [x] Confirmed that the reported Luna issue was a post-generation storage handoff defect, not a Luna availability or output failure.
+
+## Review completion-detection repair
+
+### Evidence
+
+- The 2026-09-07 23:45 Detroit review run fetched the released finalization code but rediscovered the retained D084 review handoff after D084 was already finalized, attached, privately published, and live-health verified.
+- It attempted deterministic reconstruction again, encountered source-copy validation plus stale approval bindings, and reported no committed transaction in its isolated view. The live D084 layer and manifest remained unchanged.
+- Generation/review staging is intentionally immutable and retained for audit, so filesystem presence alone cannot mean “pending review.”
+
+### Milestone
+
+- Add a deterministic, read-only review work-order command that classifies retained handoffs from trusted state before any reviewer reads private atoms or attempts review.
+- Treat a handoff as complete only when its exact approved canonical transaction, durable-library entry, attached local metadata, and live manifest-backed reading are all present; otherwise distinguish recoverable finalization/publication debt from a genuinely pending review.
+- Select at most one genuine pending review deterministically and emit only safe reading/action/state data.
+- Update the scheduled reviewer prompt to use the work order rather than discovering handoffs by directory scan, with fabricated regression coverage for completed, pending, committed-but-not-finalized, stale/tampered, and ambiguous states.
+
+### Acceptance criteria
+
+- D084 returns a safe completed/no-op state and is never re-reviewed merely because its immutable handoff remains on disk.
+- A new assembled handoff is still selected exactly once for direct review.
+- A committed but incompletely finalized/published review routes to deterministic recovery without regeneration or a second editorial review.
+- No generation lane can claim review/publication, and no private content or identifiers enter tracked code or diagnostics.
+
+### Exact next action
+
+Release the validated deterministic review work-order boundary to `main`, then confirm the next scheduled 05:45 Detroit reviewer run classifies the retained D084 handoff as completed/no-op before inspecting private review material.
+
+### Progress
+
+- [x] Added the read-only `mhc:native:review:work-order` boundary. It deterministically classifies retained plan-bound handoffs from canonical transaction, durable-library, local-attachment, and private-manifest state before a reviewer opens source atoms.
+- [x] Completed handoffs return a safe no-op; committed finalization/attachment/publication debt routes to recovery without regeneration or a second review; structurally stale, tampered, or ambiguous handoffs fail closed; at most one valid action is selected.
+- [x] Updated the Terra scheduled-review contract and fabricated regression coverage for completed, pending, recovery, invalid, and ambiguous classification states.
+- [x] Corrected recovery classification so a valid current catalog that simply lacks the committed reading returns `recover_finalize`, while unreadable/tampered catalog data remains fail-closed; an empty staging root is the same safe no-op as an absent root.
+- [x] An exact approved-but-uncommitted handoff now returns `resume_apply`, permitting deterministic transaction resumption without regeneration or repeated editorial review.
+- [x] `resume_apply` has highest deterministic recovery priority across multiple retained handoffs; an audit-absent transaction directory is explicitly fail-closed as an orphaned transaction rather than reconsidered as pending review.
+- [x] The real retained D084 state returns `action=none`, `state=completed`, and `priorManifestState=manifest_backed`; focused native/library tests pass 40/40 and repository safety passes over 380 tracked/public files.

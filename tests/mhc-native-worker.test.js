@@ -6,7 +6,7 @@ import {spawnSync} from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import {fileURLToPath} from "node:url";
-import {assertNativeHandoffBinding, buildNativeWorkItem, safeNativeReport, scheduleDateForEntry, validateNativeCandidate, SPARK, LUNA} from "../scripts/lib/mhc-native-worker.mjs";
+import {assertNativeHandoffBinding, buildNativeWorkItem, nativeCandidateValidationDiagnostics, nativeWorkItemPath, safeNativeReport, scheduleDateForEntry, validateNativeCandidate, SPARK, LUNA} from "../scripts/lib/mhc-native-worker.mjs";
 import {applyNativeTransaction} from "../scripts/lib/mhc-native-transaction.mjs";
 
 const workSchema = JSON.parse(readFileSync(new URL("../schemas/mhc-native-work-item.schema.json", import.meta.url), "utf8"));
@@ -53,12 +53,28 @@ test("native work items hash the bound selection and source view", () => {
   assert.ok(result.errors.includes("work item hash is invalid"));
 });
 
-test("native candidates reject model provenance and reports remain safe", () => {
+test("native candidates reject model provenance and reports return only the deterministic relative work-item path", () => {
   const invalid = {schema_version: "mhc-native-candidate/v1", work_item_id: item.work_item_id, fact_brief: {verse_briefs: []}, verse_drafts: [], worker_model: SPARK};
   const result = validateNativeCandidate({candidate: invalid, item, candidateSchema, factSchema, chapterSchema});
   assert.equal(result.valid, false);
   assert.ok(result.errors.some((error) => error.includes("additional property")));
-  assert.deepEqual(safeNativeReport({item, action: "prepared", state: "leased"}), {lane: "henry_backfill", readingId: "FAB-001", scheduleDate: "2026-09-07", chunkOrdinal: "001-001", action: "prepared", state: "leased"});
+  const workItemPath = `private-content/automation/mhc-native-work-items/${item.work_item_id}/work-item.json`;
+  assert.equal(nativeWorkItemPath(item), workItemPath);
+  assert.deepEqual(safeNativeReport({item, action: "prepared", state: "leased"}), {lane: "henry_backfill", readingId: "FAB-001", scheduleDate: "2026-09-07", chunkOrdinal: "001-001", workItemPath, action: "prepared", state: "leased"});
+  assert.deepEqual(safeNativeReport({action: "none", state: "no_eligible_reading"}), {lane: "henry_backfill", readingId: null, scheduleDate: null, chunkOrdinal: null, workItemPath: null, action: "none", state: "no_eligible_reading"});
+});
+
+test("retryable candidate diagnostics are bounded and do not become a terminal model failure", () => {
+  const diagnostics = nativeCandidateValidationDiagnostics({
+    code: "NATIVE_CANDIDATE_INVALID",
+    errors: ["first\nerror", "first\nerror", "x".repeat(500), ...Array.from({length: 30}, (_, index) => `error-${index}`)]
+  });
+  assert.equal(diagnostics.valid, false);
+  assert.equal(diagnostics.code, "NATIVE_CANDIDATE_INVALID");
+  assert.equal(diagnostics.errors[0], "first error");
+  assert.equal(diagnostics.errors.length, 24);
+  assert.ok(diagnostics.errors.every((error) => error.length <= 320));
+  assert.equal(Object.hasOwn(diagnostics, "outcome"), false);
 });
 
 test("handoff bindings reject tampered staged/event fields", async () => {
@@ -134,6 +150,14 @@ test("tracked native automation prompts preserve exact model, timing, review, an
   const review = readPrompt("mhc-native-review-scheduled-task-v1.md");
   assert.match(spark, /05:15, 11:15, 17:15, and 23:15/); assert.match(spark, /gpt-5\.3-codex-spark/); assert.match(spark, /medium/);
   assert.match(luna, /05:25, 11:25, 17:25, and 23:25/); assert.match(luna, /gpt-5\.6-luna/); assert.match(luna, /--primary-automation-id/);
+  for (const text of [spark, luna]) {
+    assert.match(text, /workItemPath/);
+    assert.match(text, /actually generate `candidate\.json`/);
+    assert.match(text, /read only that work item's `validation\.json`/);
+    assert.match(text, /at most two repairs/);
+  }
+  assert.match(spark, /do not record historical cooldown/);
+  assert.match(luna, /mhc:backfill:record/); assert.match(luna, /NATIVE_CANDIDATE_UNRESOLVED/);
   assert.match(review, /approved all-assertions-true/); assert.match(review, /mhc:sync-latest/); assert.match(review, /Never let generation attach or publish/);
   for (const text of [spark, luna, review]) assert.match(text, /private prose, source atoms, IDs, or secrets|private prose, atoms, IDs, credentials, or secrets/);
 });

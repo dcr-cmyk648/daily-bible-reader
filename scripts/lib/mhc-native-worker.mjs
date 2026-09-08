@@ -5,6 +5,22 @@ export const NATIVE_WORK_ITEM_VERSION = "mhc-native-work-item/v1";
 export const NATIVE_CANDIDATE_VERSION = "mhc-native-candidate/v1";
 export const SPARK = "gpt-5.3-codex-spark";
 export const LUNA = "gpt-5.6-luna";
+const MAX_VALIDATION_ERRORS = 24;
+const MAX_VALIDATION_ERROR_LENGTH = 320;
+
+export function nativeWorkItemPath(item) {
+  if (!item || !/^MHNWI-[a-f0-9]{32}$/.test(String(item.work_item_id || ""))) return null;
+  return `private-content/automation/mhc-native-work-items/${item.work_item_id}/work-item.json`;
+}
+
+export function nativeCandidateValidationDiagnostics({code, errors = []}) {
+  const normalized = [...new Set(errors.map((error) => String(error).replace(/[\r\n\t]+/g, " ").slice(0, MAX_VALIDATION_ERROR_LENGTH)).filter(Boolean))].slice(0, MAX_VALIDATION_ERRORS);
+  return {
+    valid: false,
+    code,
+    errors: normalized.length ? normalized : [code]
+  };
+}
 
 export function scheduleDateForEntry(appConfig, entry) {
   const startDate = appConfig && appConfig.sharedStartDate;
@@ -54,7 +70,7 @@ export function validateNativeCandidate({candidate, item, candidateSchema, factS
 }
 
 export function safeNativeReport({item = null, action, state, code = null}) {
-  return {lane: "henry_backfill", readingId: item && item.reading_id || null, scheduleDate: item && item.schedule_date || null, chunkOrdinal: item && item.chunk_id || null, action, state, ...(code ? {code} : {})};
+  return {lane: "henry_backfill", readingId: item && item.reading_id || null, scheduleDate: item && item.schedule_date || null, chunkOrdinal: item && item.chunk_id || null, workItemPath: nativeWorkItemPath(item), action, state, ...(code ? {code} : {})};
 }
 
 export function assertNativeHandoffBinding({binding, item, staged, event}) {

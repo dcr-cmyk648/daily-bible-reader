@@ -1,16 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {mkdir, mkdtemp, rm, utimes, writeFile} from "node:fs/promises";
+import {mkdir, mkdtemp, readFile, realpath, rm, symlink, utimes, writeFile} from "node:fs/promises";
 import {readFileSync} from "node:fs";
 import {spawnSync} from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import {fileURLToPath} from "node:url";
 import {assertNativeHandoffBinding, buildNativeWorkerView, buildNativeWorkItem, hasValidNativeWorkerView, isCompatibleLegacyNativeWorkItem, nativeCandidateValidationDiagnostics, nativeControllerTransitionIdentityCandidates, nativeWorkItemId, nativeWorkItemLeaseId, nativeWorkItemPath, normalizeHydratedFactAnchors, normalizeNativeCandidate, safeNativeReport, scheduleDateForEntry, validateNativeCandidate, validateNativeCandidateWorkerExposure, workItemDigest, MAX_WORKER_VIEW_SNIPPETS, MAX_WORKER_VIEW_VERSE_BYTES, SPARK, LUNA} from "../scripts/lib/mhc-native-worker.mjs";
-import {buildFactBriefJobSpec} from "../scripts/lib/mhc-pipeline.mjs";
+import {buildChapterJobSpec, buildFactBriefJobSpec, sha256, stableJson} from "../scripts/lib/mhc-pipeline.mjs";
 import {applyNativeTransaction} from "../scripts/lib/mhc-native-transaction.mjs";
-import {activeNativeLeaseWorkItem, assertCurrentLease, authenticatesControllerTransition, incompleteAssemblyReport, isCurrentTerminalFailureWorkItem, nativePairMatchesDefinitions, nativePairSourceState, requiresInitialControllerTransfer, resumableNativeLeaseWorkItem, terminalNativeFailureEvent} from "../scripts/mhc-native-worker.mjs";
+import {activeNativeLeaseWorkItem, assertCurrentLease, authenticatesControllerTransition, incompleteAssemblyReport, isCurrentTerminalFailureWorkItem, nativeAuthoringPaths, nativePairMatchesDefinitions, nativePairSourceState, requiresInitialControllerTransfer, resumableNativeLeaseWorkItem, terminalNativeFailureEvent} from "../scripts/mhc-native-worker.mjs";
 import {classifyNativeReviewState, nativeReviewWorkOrder} from "../scripts/lib/mhc-native-review-work-order.mjs";
+import {validateAgainstSchema} from "../scripts/lib/schema-validator.mjs";
 
 const workSchema = JSON.parse(readFileSync(new URL("../schemas/mhc-native-work-item.schema.json", import.meta.url), "utf8"));
 const candidateSchema = JSON.parse(readFileSync(new URL("../schemas/mhc-native-candidate.schema.json", import.meta.url), "utf8"));
@@ -158,6 +159,26 @@ test("native work items hash the bound selection and source view", () => {
   assert.ok(result.errors.includes("work item hash is invalid"));
 });
 
+test("native candidate packet exposes the exact nested fact and draft schemas", () => {
+  const expectedBrief=structuredClone(factSchema.properties.verse_briefs.items);
+  expectedBrief.properties.facts.items={"$ref":"#/$defs/fact"};
+  assert.deepEqual(candidateSchema.$defs.verseBrief, expectedBrief);
+  assert.deepEqual(candidateSchema.$defs.fact, factSchema.properties.verse_briefs.items.properties.facts.items);
+  assert.deepEqual(candidateSchema.$defs.verseDraft, chapterSchema.properties.records.items);
+  const example = JSON.parse(readFileSync(new URL("../prompts/mhc-native-candidate-example-v2.json", import.meta.url), "utf8"));
+  assert.deepEqual(validateAgainstSchema(example, candidateSchema), []);
+  const missingCategory = structuredClone(example);
+  delete missingCategory.fact_brief.verse_briefs[0].facts[0].category;
+  assert.ok(validateAgainstSchema(missingCategory, candidateSchema).some((error) => error.includes(".category: required")));
+  const obsoleteField = structuredClone(example);
+  obsoleteField.fact_brief.verse_briefs[0].facts[0].target_marker = true;
+  assert.ok(validateAgainstSchema(obsoleteField, candidateSchema).some((error) => error.includes("target_marker: additional")));
+  const incomplete = {schema_version:"mhc-native-candidate/v1",work_item_id:"MHNWI-"+"a".repeat(32),fact_brief:{verse_briefs:[]},verse_drafts:[]};
+  const incompleteErrors = validateAgainstSchema(incomplete,candidateSchema);
+  assert.ok(incompleteErrors.some((error)=>error.includes("verse_briefs: fewer than 1")));
+  assert.ok(incompleteErrors.some((error)=>error.includes("verse_drafts: fewer than 1")));
+});
+
 test("native work items expose and bind the exact canonical fact-brief snippets", () => {
   const spec = {metadata: item.source_view.metadata, requestedRecords: item.source_view.requested_records, sourceUnits: [{...unit}]};
   const expected = buildFactBriefJobSpec({chapterJobSpec: spec, generatedAt: item.created_at});
@@ -278,6 +299,70 @@ test("native candidates reject model provenance and reports return only the dete
   assert.deepEqual(safeNativeReport({action: "none", state: "no_eligible_reading"}), {lane: "henry_backfill", readingId: null, scheduleDate: null, chunkOrdinal: null, workItemPath: null, action: "none", state: "no_eligible_reading"});
 });
 
+test("native authoring paths resolve a private-store symlink and reject escapes or child symlinks", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "mhc-native-authoring-path-"));
+  const canonicalRoot = path.join(root, "canonical-work"), aliasRoot = path.join(root, "isolated", "private-content", "automation", "mhc-native-work-items");
+  const workItemDir = path.join(canonicalRoot, item.work_item_id);
+  try {
+    await mkdir(workItemDir, {recursive:true});
+    await mkdir(path.dirname(aliasRoot), {recursive:true});
+    await symlink(canonicalRoot, aliasRoot, "dir");
+    const paths = await nativeAuthoringPaths({workRoot:aliasRoot, workItemDir:path.join(aliasRoot,item.work_item_id), item});
+    assert.equal(paths.candidatePath, path.join(await realpath(workItemDir), "candidate.json"));
+    assert.equal(paths.validationPath, path.join(await realpath(workItemDir), "validation.json"));
+    await mkdir(path.join(root,"outside"));
+    await assert.rejects(nativeAuthoringPaths({workRoot:aliasRoot,workItemDir:path.join(root,"outside"),item}),/outside the expected/);
+    await symlink(path.join(root,"outside-candidate.json"), paths.candidatePath);
+    await assert.rejects(nativeAuthoringPaths({workRoot:aliasRoot,workItemDir:path.join(aliasRoot,item.work_item_id),item}),/absent or a regular file/);
+  } finally { await rm(root,{recursive:true,force:true}); }
+});
+
+test("actual submit CLI stages a complete four-verse candidate saved through its advertised canonical path", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "mhc-native-cli-submit-"));
+  const isolated = path.join(root,"isolated"), canonicalPrivate = path.join(root,"canonical-private"), canonicalCommentary = path.join(root,"canonical-commentary"), workRoot = path.join(canonicalPrivate,"automation","mhc-native-work-items");
+  const now = new Date().toISOString(), planVersion="fabricated-cli-plan", readingId="FAB-CLI", automationId="fabricated-cli-spark";
+  const sourceText = "vv. 1-4. A FABRICATED actor completes one bounded test action with clear agency and no outside material.";
+  const atom = {source_atom_id:"fabricated.atom.cli",atom_type:"commentary",text:sourceText,text_sha256:sha256(sourceText)};
+  const normalizedUnit = {schema_version:"mhc-normalized-source/v3",source_id:"fabricated-source",source_unit_id:"fabricated.unit.cli",work_title:"FABRICATED TEST WORK",book_id:"TST",chapter:1,verse_start:1,verse_end:4,reference_label:"Fabricated 1:1–4",unit_type:"verse_range",worker_source_sha256:"a".repeat(64),verse_anchors:[],source_atoms:[atom]};
+  const sourceManifest={source_id:"fabricated-source",module_version:"1.0"};
+  const spec=buildChapterJobSpec({units:[normalizedUnit],sourceManifest,model:SPARK,bookId:"TST",chapter:1,verseCount:4,generatedAt:"1970-01-01T00:00:00.000Z"});
+  const cliItem=buildNativeWorkItem({reading:{readingId,verseCount:4},planVersion,scheduleDate:"2026-09-08",chunk:{chunkId:"001-004",chapterJobSpec:spec},normalizedUnits:[normalizedUnit],sourceManifest,model:SPARK,automationId,createdAt:now});
+  const workItemDir=path.join(workRoot,cliItem.work_item_id),aliasWorkRoot=path.join(isolated,"private-content","automation","mhc-native-work-items"),relativeWorkItem=path.join("private-content","automation","mhc-native-work-items",cliItem.work_item_id,"work-item.json");
+  try {
+    await Promise.all([mkdir(workItemDir,{recursive:true}),mkdir(path.join(canonicalCommentary,"mhc","normalized","TST"),{recursive:true}),mkdir(path.join(isolated,"fixtures","pilot-content"),{recursive:true})]);
+    await symlink(canonicalPrivate,path.join(isolated,"private-content"),"dir");
+    await symlink(canonicalCommentary,path.join(isolated,"private-commentary"),"dir");
+    await symlink(path.join(repositoryRoot,"schemas"),path.join(isolated,"schemas"),"dir");
+    await Promise.all([
+      writeFile(path.join(isolated,"fixtures","pilot-content","plan.json"),`${JSON.stringify({planVersion,entries:[{readingId,dayIndex:1,sourcePlanDay:1,passages:[{bookId:"TST",chapter:1,verseCount:4}]}]},null,2)}\n`),
+      writeFile(path.join(isolated,"fixtures","pilot-content","app-config.json"),`${JSON.stringify({sharedStartDate:"2026-09-08"},null,2)}\n`),
+      writeFile(path.join(canonicalCommentary,"mhc","source-manifest.json"),`${JSON.stringify(sourceManifest,null,2)}\n`),
+      writeFile(path.join(canonicalCommentary,"mhc","normalized","TST","001.jsonl"),`${JSON.stringify(normalizedUnit)}\n`),
+      writeFile(path.join(canonicalCommentary,"mhc","normalized","TST","001.manifest.json"),"{}\n"),
+      writeFile(path.join(workItemDir,"work-item.json"),`${JSON.stringify(cliItem,null,2)}\n`)
+    ]);
+    const lease=state.makeLedgerEvent({plan_version:planVersion,reading_id:readingId,chapter:"TST:1",chunk_id:"001-004",work_item_id:cliItem.work_item_id,model:SPARK,automation_id:automationId,primary_slot:state.latestDetroitSparkSlot(now),at:now,outcome:"leased",code:"LEASED"});
+    await mkdir(path.join(workRoot,"ledger"),{recursive:true});
+    await writeFile(path.join(workRoot,"ledger",`${readingId}.json`),`${JSON.stringify({schema_version:"mhc-native-ledger/v1",reading_id:readingId,events:[lease]},null,2)}\n`);
+    const authoring=await nativeAuthoringPaths({workRoot:aliasWorkRoot,workItemDir:path.dirname(path.join(isolated,relativeWorkItem)),item:cliItem});
+    const candidate={schema_version:"mhc-native-candidate/v1",work_item_id:cliItem.work_item_id,fact_brief:{verse_briefs:[]},verse_drafts:[]};
+    for(const verse of cliItem.worker_view.requested_verses){const visibleUnit=verse.source_units[0],visibleAtom=visibleUnit.source_atoms[0],snippet=visibleAtom.evidence_snippets[0],verseNumber=verse.verse_id.split(".").at(-1);candidate.fact_brief.verse_briefs.push({verse_id:verse.verse_id,coverage_type:verse.required_coverage_type,source_unit_ids:[visibleUnit.source_unit_id],source_reference_label:visibleUnit.reference_label,facts:[{fact_id:`${verse.verse_id}:f01`,importance:"required",category:"action_or_event",statement:`The FABRICATED actor completes bounded test action ${verseNumber} with clear agency.`,source_atom_id:visibleAtom.source_atom_id,source_snippet_id:snippet.source_snippet_id,evidence_quote:snippet.text,must_include_terms:["FABRICATED actor"],qualification:"none",verse_relevance:"target_marker"}]});candidate.verse_drafts.push({verse_id:verse.verse_id,blurb:`The FABRICATED actor completes bounded test action ${verseNumber} with clear agency and faithful restraint.`,coverage_type:verse.required_coverage_type,scope_note:"From Fabricated 1:1–4.",source_unit_ids:[visibleUnit.source_unit_id],source_atom_ids:[visibleAtom.source_atom_id],source_reference_label:visibleUnit.reference_label});}
+    const candidateBytes=`${JSON.stringify(candidate,null,2)}\n`;
+    await writeFile(authoring.candidatePath,candidateBytes);
+    assert.equal(await readFile(authoring.candidatePath,"utf8"),candidateBytes);
+    const result=spawnSync(process.execPath,[path.join(repositoryRoot,"scripts","mhc-native-worker.mjs"),"submit","--work-item",relativeWorkItem],{cwd:isolated,encoding:"utf8"});
+    assert.equal(result.status,0,result.stderr);
+    assert.equal(JSON.parse(result.stdout).state,"validated");
+    const staged=JSON.parse(await readFile(path.join(workItemDir,"staged.json"),"utf8"));
+    assert.equal(staged.fact_brief.verse_briefs.length,4);
+    assert.equal(staged.output.records.length,4);
+    assert.deepEqual(staged.output.records.map((record)=>record.verse_id),["TST.1.1","TST.1.2","TST.1.3","TST.1.4"]);
+    const ledger=JSON.parse(await readFile(path.join(workRoot,"ledger",`${readingId}.json`),"utf8"));
+    assert.equal(ledger.events.at(-1).outcome,"validated");
+    assert.equal(ledger.events.at(-1).work_item_id,cliItem.work_item_id);
+  } finally { await rm(root,{recursive:true,force:true}); }
+});
+
 test("retryable candidate diagnostics are bounded and do not become a terminal model failure", () => {
   const diagnostics = nativeCandidateValidationDiagnostics({
     code: "NATIVE_CANDIDATE_INVALID",
@@ -385,12 +470,35 @@ test("current ledger selection excludes stale plans and changed source work item
   assert.deepEqual(state.currentLedgerEvents({events:[current, oldPlan, changedSource],planVersion:"fabricated",workItemIds:[item.work_item_id]}).map(x=>x.event_id), ["MHNLE-current"]);
 });
 
-test("controller detects a missed later slot and restarts Luna from chunk one after partial Spark progress", () => {
+test("one validated Spark chunk satisfies only its current slot and preserves bounded continuation", () => {
+  const chunks=["001-001","002-002"],currentSlot="2026-09-07T15:15:00.000Z";
+  const currentProgress=[event({chunk_id:"001-001",outcome:"validated",at:"2026-09-07T15:20:00.000Z",primary_slot:currentSlot})];
+  const sameSlot=state.deriveChapterDecision({events:currentProgress,orderedChunkIds:chunks,now:"2026-09-07T15:25:00.000Z"});
+  assert.deepEqual(sameSlot,{owner:null,restart:false,blocked:false,reason:"primary_slot_complete",nextChunkId:"002-002",primary_slot:currentSlot});
+  assert.deepEqual(incompleteAssemblyReport(item,sameSlot),safeNativeReport({item,action:"none",state:"reading_incomplete"}));
+
+  const nextSlot=state.deriveChapterDecision({events:currentProgress,orderedChunkIds:chunks,now:"2026-09-07T21:16:00.000Z"});
+  assert.deepEqual(nextSlot,{owner:SPARK,restart:false,blocked:false,reason:"primary_pending",nextChunkId:"002-002",primary_slot:"2026-09-07T21:15:00.000Z"});
+});
+
+test("current-slot failure or no progress transfers, while prior-slot progress does not mask the decision", () => {
+  const chunks=["001-001","002-002"],currentSlot="2026-09-07T15:15:00.000Z";
   const initial=[event({chunk_id:"001-001",outcome:"validated",primary_slot:"2026-09-07T09:15:00.000Z"})];
-  const missed=state.deriveChapterDecision({events:initial,orderedChunkIds:["001-001","002-002"],now:"2026-09-07T15:26:00.000Z"});
+  const entirelyMissed=state.deriveChapterDecision({events:[],orderedChunkIds:chunks,now:"2026-09-07T15:25:00.000Z"});
+  assert.deepEqual(entirelyMissed,{owner:LUNA,restart:true,blocked:false,reason:"missed_primary",nextChunkId:"001-001",transferChunkId:"001-001",primary_slot:currentSlot});
+  const missed=state.deriveChapterDecision({events:initial,orderedChunkIds:chunks,now:"2026-09-07T15:26:00.000Z"});
   assert.deepEqual(missed,{owner:LUNA,restart:true,blocked:false,reason:"missed_primary",nextChunkId:"001-001",transferChunkId:"002-002",primary_slot:"2026-09-07T15:15:00.000Z"});
-  const failed=state.deriveChapterDecision({events:[...initial,event({chunk_id:"002-002",outcome:"model_failure",at:"2026-09-07T15:16:00.000Z",primary_slot:"2026-09-07T15:15:00.000Z"})],orderedChunkIds:["001-001","002-002"],now:"2026-09-07T15:20:00.000Z"});
+
+  const stale=state.deriveChapterDecision({events:[...initial,event({chunk_id:"002-002",outcome:"leased",at:"2026-09-07T15:16:00.000Z",primary_slot:currentSlot})],orderedChunkIds:chunks,now:"2026-09-07T15:25:00.000Z"});
+  assert.deepEqual(stale,{owner:LUNA,restart:true,blocked:false,reason:"stale_primary",nextChunkId:"001-001",transferChunkId:"002-002",primary_slot:currentSlot});
+
+  const currentProgress=event({chunk_id:"001-001",outcome:"validated",at:"2026-09-07T15:18:00.000Z",primary_slot:currentSlot});
+  const failed=state.deriveChapterDecision({events:[currentProgress,event({chunk_id:"002-002",outcome:"model_failure",at:"2026-09-07T15:19:00.000Z",primary_slot:currentSlot})],orderedChunkIds:chunks,now:"2026-09-07T15:20:00.000Z"});
   assert.equal(failed.owner,LUNA); assert.equal(failed.nextChunkId,"001-001");
+
+  const unknownProgress=state.deriveChapterDecision({events:[event({chunk_id:"999-999",outcome:"validated",at:"2026-09-07T15:18:00.000Z",primary_slot:currentSlot})],orderedChunkIds:chunks,now:"2026-09-07T15:26:00.000Z"});
+  assert.equal(unknownProgress.reason,"missed_primary");
+
   const mixed=[...initial,event({chapter:"TST:2",chunk_id:"001-001",outcome:"model_failure"})];
   assert.equal(state.deriveChapterDecision({events:mixed.filter(x=>x.chapter==="TST:1"),orderedChunkIds:["001-001"],now:"2026-09-07T15:20:00.000Z"}).owner,SPARK);
   assert.equal(state.deriveChapterDecision({events:mixed.filter(x=>x.chapter==="TST:2"),orderedChunkIds:["001-001"],now:"2026-09-07T15:20:00.000Z"}).owner,LUNA);
@@ -518,7 +626,7 @@ test("scheduled prepare resumes partial failed-submit accounting on the exact ac
     }
     const source=readFileSync(new URL("../scripts/mhc-native-worker.mjs",import.meta.url),"utf8"),prepare=source.slice(source.indexOf("async function prepareLedger"),source.indexOf("function matchingNativeLeases"));
     assert.ok(prepare.indexOf("findResumableNativeLease")<prepare.indexOf("selectionContext(true)"));
-    assert.match(prepare,/if\(resumed\)return[\s\S]*active_lease_resumed/);
+    assert.match(prepare,/if\(resumed\)\{[\s\S]*active_lease_resumed/);
   } finally {await rm(root,{recursive:true,force:true});}
 });
 
@@ -598,14 +706,23 @@ test("tracked native automation prompts preserve exact model, timing, review, an
   assert.match(luna, /05:25, 11:25, 17:25, and 23:25/); assert.match(luna, /gpt-5\.6-luna/); assert.match(luna, /--primary-automation-id/);
   for (const text of [spark, luna]) {
     assert.match(text, /workItemPath/);
+    assert.match(text, /candidatePath/);
+    assert.match(text, /validationPath/);
     assert.match(text, /actually generate `candidate\.json`/);
-    assert.match(text, /read only that work item's `validation\.json`/);
+    assert.match(text, /read only the exact (?:reported )?`validationPath`/);
+    assert.match(text, /readback|Read that exact path back/);
+    assert.match(text, /never replace it with or submit an empty shell|never replace it with or submit an empty shell/i);
     assert.match(text, /at most two repairs/);
   }
   assert.match(spark, /do not record historical cooldown/);
   assert.match(spark, /mhc:native:fail/);
+  assert.match(spark,/NATIVE_AUTOMATION_BLOCKED_BY_HOST_POLICY/);
+  assert.match(spark,/do not submit, run `mhc:native:fail`, append a Luna-eligibility event, or claim Luna failed or was unavailable/);
+  assert.match(spark,/One authenticated terminal `NATIVE_CANDIDATE_UNRESOLVED` event[\s\S]*only candidate-admission handoff signal[\s\S]*idempotent/);
   assert.match(luna, /mhc:backfill:record/); assert.match(luna, /NATIVE_CANDIDATE_UNRESOLVED/);
   assert.match(luna, /mhc:native:fail/);
+  assert.match(luna,/NO_ELIGIBLE_SPARK_TRANSFER/);
+  assert.match(luna,/do not claim that Luna failed or was unavailable/);
   for (const text of [spark, luna]) assert.match(text, /reading_incomplete/);
   assert.match(review, /approved all-assertions-true/); assert.match(review, /mhc:sync-latest/); assert.match(review, /Never let generation attach or publish/);
   for (const text of [spark, luna, review]) assert.match(text, /private prose, source atoms, IDs, or secrets|private prose, atoms, IDs, credentials, or secrets|private prose, source atoms, Scripture/);
@@ -647,4 +764,20 @@ test("native Spark and Luna contracts require complete candidates and every dist
     assert.match(text,/rejects unchanged candidate bytes/);
     assert.match(text,/three distinct failed submit/);
   }
+});
+
+test("native packet is one model-neutral two-stage contract with versioned refresh metadata", () => {
+  const packet=readFileSync(new URL("../prompts/mhc-native-candidate-packet-v2.md",import.meta.url),"utf8");
+  assert.match(packet,/one bounded two-stage task/);
+  assert.match(packet,/fact ledger for every requested verse/);
+  assert.match(packet,/write each verse draft from that same ledger/);
+  assert.match(packet,/mhc-native-candidate-packet\/v2/);
+  assert.doesNotMatch(packet,/Spark-only|Return only/i);
+  assert.match(packet,/zero validation warnings/);
+  assert.match(packet,/never replace it with an empty shell, placeholder, partial candidate/i);
+  const source=readFileSync(new URL("../scripts/mhc-native-worker.mjs",import.meta.url),"utf8"),createBody=source.slice(source.indexOf("async function create"),source.indexOf("async function reviewState"));
+  assert.match(createBody,/schema_version:"mhc-native-candidate-packet\/v2"/);
+  assert.match(createBody,/instructions_sha256/);
+  assert.match(createBody,/await put\(path\.join\(b,"packet\.json"\),packetManifest\)/);
+  assert.doesNotMatch(createBody,/mhc-fact-extractor-v8\.md|mhc-autonomous-writer-v5\.md/);
 });

@@ -49,6 +49,9 @@ export function deriveChapterDecision({events, orderedChunkIds, now, slotGraceMs
   const nextChunkId=orderedChunkIds.find(id=>!validated.has(id));
   if (!nextChunkId) return {owner:SPARK,complete:true,blocked:false,reason:"complete"};
   const slot=latestDetroitSparkSlot(now);
+  const knownChunks=new Set(orderedChunkIds);
+  const primaryProgress=ordered.some(e=>e.model===SPARK&&e.outcome==="validated"&&e.primary_slot===slot&&knownChunks.has(e.chunk_id));
+  if (primaryProgress) return {owner:null,restart:false,blocked:false,reason:"primary_slot_complete",nextChunkId,primary_slot:slot};
   const sparkForSlot=ordered.filter(e=>e.model===SPARK&&e.chunk_id===nextChunkId&&e.primary_slot===slot);
   const active=sparkForSlot.at(-1);
   if (active?.outcome==="leased" && Date.parse(now)>=Date.parse(slot)+slotGraceMs) return {owner:LUNA,restart:true,blocked:false,reason:"stale_primary",nextChunkId:orderedChunkIds[0],transferChunkId:nextChunkId,primary_slot:slot};

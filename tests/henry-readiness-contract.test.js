@@ -10,12 +10,21 @@ const runbook = fs.readFileSync(path.join(root, "docs/AUTOMATION_RUNBOOK.md"), "
 
 test("historical Henry backfill has an independent prompt and both lanes report failures safely", () => {
   assert.doesNotMatch(dailyPrompt, /mhc:backfill:next/);
+  assert.match(dailyPrompt, /Do not run `mhc:ensure`/);
+  assert.equal((dailyPrompt.match(/mhc:ensure/g) || []).length, 1);
   assert.match(dailyPrompt, /Historical Henry fallback debt belongs only to the independent Henry-backfill task/);
+  assert.match(dailyPrompt, /Henry generation is not a prerequisite in this daily lane/);
+  assert.match(dailyPrompt, /henryLayerStatus=fallback/);
+  assert.match(dailyPrompt, /currentHorizonHenryLayer\.status=debt/);
+  assert.match(dailyPrompt, /Continue the independently researched orientation, synthesis, review, validation, and publication/);
+  assert.match(dailyPrompt, /prior manifest remains live/);
   assert.match(dailyPrompt, /lane=daily_t_plus_7/);
   assert.match(henryPrompt, /npm run mhc:backfill:next/);
   assert.match(henryPrompt, /at most one manifest-backed verified fallback/);
   assert.match(henryPrompt, /lane=henry_backfill/);
   assert.match(henryPrompt, /prior manifest remains live/);
+  assert.match(henryPrompt,/generated-candidate admission failure may run one exact `gpt-5\.6-luna`/);
+  assert.match(henryPrompt,/controller\/bootstrap\/host-policy/);
   assert.match(runbook, /Henry backfill is an independent scheduled lane/);
   assert.match(runbook, /two failed model attempts retain the documented full-source-link fallback/);
   assert.match(runbook, /report Henry debt without changing daily-study readiness/);

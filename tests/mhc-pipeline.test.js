@@ -133,6 +133,18 @@ test("Henry routing is Spark-first, permits one Luna retry for model execution f
   assert.deepEqual(calls.slice(-2), ["gpt-5.3-codex-spark", "gpt-5.6-luna"]);
   assert.equal(fallback.routing.sparkFailure.code, "SPARK_MODEL_GENERATION_FAILED");
 
+  const admissionCalls = [];
+  const admittedByLuna = await routeHenryGeneration({invoke: async (model) => {
+    admissionCalls.push(model);
+    if (model === "gpt-5.3-codex-spark") throw Object.assign(new Error("fabricated Spark candidate exhausted admission repairs"), {
+      code: "SPARK_CANDIDATE_ADMISSION_FAILED", failureClassification: "model_candidate_admission", stage: "fact_chunk_admission"
+    });
+    return "luna-admitted";
+  }});
+  assert.equal(admittedByLuna.model, "gpt-5.6-luna");
+  assert.deepEqual(admissionCalls, ["gpt-5.3-codex-spark", "gpt-5.6-luna"]);
+  assert.deepEqual(admittedByLuna.routing.sparkFailure, {code:"SPARK_CANDIDATE_ADMISSION_FAILED",stage:"fact_chunk_admission"});
+
   const doubleFailure = await routeHenryGeneration({invoke: async (model) => {
     calls.push(model);
     throw Object.assign(new Error(`${model} failed`), {
@@ -142,6 +154,17 @@ test("Henry routing is Spark-first, permits one Luna retry for model execution f
   assert.equal(doubleFailure.henryFallbackRequired, true);
   assert.deepEqual(doubleFailure.attempts, ["gpt-5.3-codex-spark", "gpt-5.6-luna"]);
   assert.equal(doubleFailure.fallback.kind, "verified_full_commentary_link");
+
+  const doubleAdmission = await routeHenryGeneration({invoke: async (model) => {
+    throw Object.assign(new Error("fabricated candidate admission failure"), {
+      code:model === "gpt-5.3-codex-spark" ? "SPARK_CANDIDATE_ADMISSION_FAILED" : "LUNA_CANDIDATE_ADMISSION_FAILED",
+      failureClassification:"model_candidate_admission",stage:"writer_chunk_admission"
+    });
+  }});
+  assert.equal(doubleAdmission.henryFallbackRequired,true);
+  assert.deepEqual(doubleAdmission.attempts,["gpt-5.3-codex-spark","gpt-5.6-luna"]);
+  assert.equal(doubleAdmission.fallback.spark.code,"SPARK_CANDIDATE_ADMISSION_FAILED");
+  assert.equal(doubleAdmission.fallback.luna.code,"LUNA_CANDIDATE_ADMISSION_FAILED");
 
   const later = await routeHenryGeneration({routing: fallback.routing, invoke: async (model) => { calls.push(model); return "spark again"; }});
   assert.equal(later.model, "gpt-5.3-codex-spark");
@@ -160,6 +183,9 @@ test("Henry routing is Spark-first, permits one Luna retry for model execution f
     });
   }}), /CODEX_STATE_RUNTIME_UNAVAILABLE/);
   assert.deepEqual(runtimeCalls, ["gpt-5.3-codex-spark"]);
+  const policyCalls=[];
+  await assert.rejects(()=>routeHenryGeneration({invoke:async(model)=>{policyCalls.push(model);throw Object.assign(new Error("NATIVE_AUTOMATION_BLOCKED_BY_HOST_POLICY"),{code:"NATIVE_AUTOMATION_BLOCKED_BY_HOST_POLICY",stage:"controller"});}}),/NATIVE_AUTOMATION_BLOCKED_BY_HOST_POLICY/);
+  assert.deepEqual(policyCalls,["gpt-5.3-codex-spark"]);
   assert.equal(classifyCodexRuntimeFailure({text: "failed to initialize in-process app-server client"}).code, "CODEX_STATE_RUNTIME_UNAVAILABLE");
   assert.equal(classifyCodexRuntimeFailure({text: "usage limit exhausted"}), null);
 });

@@ -124,7 +124,8 @@ test("the independent Henry scheduled task uses the strict Spark-to-Luna policy 
   assert.match(prompt, /without `--max-retries`/);
   assert.match(prompt, /On every failure, retain the verified source link and the prior manifest/);
   assert.match(prompt, /never prepares a daily study/);
-  assert.match(prompt, /Deterministic request, source, checksum, schema, security, repository, review, validation, or publication failure never switches models/);
+  assert.match(prompt, /generated-candidate admission failure may run one exact `gpt-5\.6-luna`/);
+  assert.match(prompt, /Deterministic request, source, checksum, controller\/bootstrap\/host-policy, security, repository, review, or publication failure never switches models/);
   assert.match(prompt, /Never use Sol, Terra, or any other model/);
   assert.doesNotMatch(prompt, /skip this probe entirely/);
   assert.doesNotMatch(prompt, /coded quota\/model-unavailable failure may use/);
@@ -132,6 +133,10 @@ test("the independent Henry scheduled task uses the strict Spark-to-Luna policy 
   assert.match(prompt, /prior manifest remains live/);
   const daily = readFileSync(new URL("../prompts/daily-study-scheduled-task.md", import.meta.url), "utf8");
   assert.doesNotMatch(daily, /mhc:backfill:next/);
+  assert.match(daily, /Do not run `mhc:ensure`/);
+  assert.equal((daily.match(/mhc:ensure/g) || []).length,1);
+  assert.match(daily,/henryLayerStatus=fallback/);
+  assert.match(daily,/currentHorizonHenryLayer\.status=debt/);
   assert.match(daily, /lane=daily_t_plus_7/);
 });
 

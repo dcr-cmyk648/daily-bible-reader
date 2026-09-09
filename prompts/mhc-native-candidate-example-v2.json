@@ -1,0 +1,47 @@
+{
+  "schema_version": "mhc-native-candidate/v1",
+  "work_item_id": "MHNWI-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "fact_brief": {
+    "verse_briefs": [
+      {
+        "verse_id": "FAB.1.1",
+        "coverage_type": "direct",
+        "source_unit_ids": [
+          "fabricated.unit.1"
+        ],
+        "source_reference_label": "Fabricated 1:1",
+        "facts": [
+          {
+            "fact_id": "FAB.1.1:f01",
+            "importance": "required",
+            "category": "action_or_event",
+            "statement": "The FABRICATED actor completes the bounded test action.",
+            "source_atom_id": "fabricated.atom.1",
+            "source_snippet_id": "fabricated.atom.1:snippet:001",
+            "evidence_quote": "The FABRICATED actor completes the bounded test action for this fixture.",
+            "must_include_terms": [
+              "FABRICATED actor"
+            ],
+            "qualification": "none",
+            "verse_relevance": "target_marker"
+          }
+        ]
+      }
+    ]
+  },
+  "verse_drafts": [
+    {
+      "verse_id": "FAB.1.1",
+      "blurb": "The FABRICATED actor completes the bounded action faithfully and clearly.",
+      "coverage_type": "direct",
+      "scope_note": "From Fabricated 1:1.",
+      "source_unit_ids": [
+        "fabricated.unit.1"
+      ],
+      "source_atom_ids": [
+        "fabricated.atom.1"
+      ],
+      "source_reference_label": "Fabricated 1:1"
+    }
+  ]
+}

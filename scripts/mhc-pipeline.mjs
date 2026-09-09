@@ -433,12 +433,21 @@ function modelAttemptError({model, stage, message}) {
   return error;
 }
 
+function modelCandidateAdmissionError({model, stage, message}) {
+  const code = model === SPARK_MODEL ? "SPARK_CANDIDATE_ADMISSION_FAILED" : "LUNA_CANDIDATE_ADMISSION_FAILED";
+  const error = new Error(`${code}: ${message}`);
+  error.code = code;
+  error.failureClassification = "model_candidate_admission";
+  error.stage = stage;
+  return error;
+}
+
 function isModelAttemptFailure(error, model) {
   if (!error) return false;
   if (model === SPARK_MODEL) {
-    return ["SPARK_QUOTA_UNAVAILABLE", "SPARK_MODEL_UNAVAILABLE", "SPARK_MODEL_GENERATION_FAILED"].includes(error.code);
+    return ["SPARK_QUOTA_UNAVAILABLE", "SPARK_MODEL_UNAVAILABLE", "SPARK_MODEL_GENERATION_FAILED", "SPARK_CANDIDATE_ADMISSION_FAILED"].includes(error.code);
   }
-  return error.code === "LUNA_MODEL_GENERATION_FAILED";
+  return ["LUNA_MODEL_GENERATION_FAILED", "LUNA_CANDIDATE_ADMISSION_FAILED"].includes(error.code);
 }
 
 function shouldRetryCodexFailure({model, text}) {
@@ -1023,7 +1032,7 @@ async function generateLegacyOne(options) {
     await queueReview({...record, reason: checked.validation.valid ? "validation_warning" : "validation_failure",
       errors: checked.validation.errors});
   }
-  if (!checked.validation.valid) throw new Error(`${model} output failed validation. See ${path.relative(ROOT, jobDir)}.`);
+  if (!checked.validation.valid) throw modelCandidateAdmissionError({model,stage:"legacy_candidate_admission",message:`${model} output failed validation. See ${path.relative(ROOT,jobDir)}.`});
   process.stdout.write(`Completed ${jobSpec.metadata.job_id} with ${model}; ${checked.validation.warnings.length} warning(s).\n`);
   return {...checked, jobSpec, fingerprint, jobDir, outputPath: validatedOutputPath,
     reviewApplied: Boolean(humanReview), humanReview};
@@ -1364,7 +1373,7 @@ async function generateValidatedAtomFactFallback({
   }
   await writeJson(validationPath, checked.validation);
   if (!checked.validation.valid) {
-    throw new Error(`${model} atom fact fallback for ${verseId} ${atomId} failed deterministic validation.`);
+    throw modelCandidateAdmissionError({model,stage:"fact_atom_admission",message:`${model} atom fact fallback for ${verseId} ${atomId} failed deterministic validation.`});
   }
   return {...checked, childDir, fingerprint};
 }
@@ -1735,7 +1744,7 @@ async function generateValidatedFactChunk({
     if (atomFallback) return atomFallback;
     const fallback = await tryVerseFallback();
     if (fallback) return fallback;
-    throw new Error(`${model} fact chunk ${chunk.chunkId} failed deterministic validation after bounded self-repair.`);
+    throw modelCandidateAdmissionError({model,stage:"fact_chunk_admission",message:`${model} fact chunk ${chunk.chunkId} failed deterministic validation after bounded self-repair.`});
   }
   return {...checked, outputPath, chunkDir, skipped: false};
 }
@@ -1908,7 +1917,7 @@ async function generateValidatedWriterChunk({
   if (!draftChecked.validation.valid) {
     const fallback = await tryVerseFallback();
     if (fallback) return fallback;
-    throw new Error(`${model} writer chunk ${chunk.chunkId} failed draft validation after bounded self-repair.`);
+    throw modelCandidateAdmissionError({model,stage:"writer_chunk_admission",message:`${model} writer chunk ${chunk.chunkId} failed draft validation after bounded self-repair.`});
   }
 
   await writeJson(outputPath, draftChecked.output);
@@ -1917,7 +1926,7 @@ async function generateValidatedWriterChunk({
   if (!checked.validation.valid) {
     const fallback = await tryVerseFallback();
     if (fallback) return fallback;
-    throw new Error(`${model} writer chunk ${chunk.chunkId} failed deterministic admission after bounded repair.`);
+    throw modelCandidateAdmissionError({model,stage:"writer_chunk_admission",message:`${model} writer chunk ${chunk.chunkId} failed deterministic admission after bounded repair.`});
   }
   await writeJson(admissionPath, {
     // This legacy identifier remains stable for existing private audit readers; worker_model records the actual worker.
@@ -2082,7 +2091,7 @@ async function generateAutonomousChapter(options) {
     };
     await savePipelineJob(failure);
     await queueReview({...failure, reason: "autonomous_fact_validation_failure"});
-    throw new Error(`${model} fact brief failed deterministic validation. See ${path.relative(ROOT, factDir)}.`);
+    throw modelCandidateAdmissionError({model,stage:"fact_brief_admission",message:`${model} fact brief failed deterministic validation. See ${path.relative(ROOT,factDir)}.`});
   }
 
   const factBriefHash = await fileHash(factOutputPath);
@@ -2307,7 +2316,7 @@ async function generateAutonomousChapter(options) {
   await savePipelineJob(record);
   if (!checked.validation.valid) {
     await queueReview({...record, reason: "autonomous_admission_failure"});
-    throw new Error(`${model} autonomous output failed admission. See ${path.relative(ROOT, jobDir)}.`);
+    throw modelCandidateAdmissionError({model,stage:"chapter_admission",message:`${model} autonomous output failed admission. See ${path.relative(ROOT,jobDir)}.`});
   }
   process.stdout.write(`Completed ${chapterJobSpec.metadata.job_id} with autonomous ${model} fact extraction and writing; zero admission warnings.\n`);
   return {

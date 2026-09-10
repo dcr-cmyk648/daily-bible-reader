@@ -35,7 +35,7 @@ async function main() {
     timeZone: "America/Detroit", year: "numeric", month: "2-digit", day: "2-digit"
   }).format(new Date());
   const [plan, privatePlan, appConfig, protocol, protocolSchema, schema, manifest] = await Promise.all([
-    readJson(path.join(ROOT, "config", "bridge-schedules", "celebration-y3q4-bridge-full.json")),
+    readJson(path.join(ROOT, "config", "active-calendar", "celebration-bridge-long-term-active.json")),
     readJson(path.join(ROOT, "fixtures", "pilot-content", "plan.json")),
     readJson(path.join(ROOT, "fixtures", "pilot-content", "app-config.json")),
     readJson(path.join(ROOT, "config", "daily-study-protocol.json")),
@@ -45,7 +45,7 @@ async function main() {
   ]);
   assertSchemaValid(protocol, protocolSchema, {label: "Canonical daily-study protocol"});
   const manifestReadingIds = Object.keys(manifest && manifest.readings || {});
-  const artifactsByReadingId = Object.fromEntries(await Promise.all(plan.entries.map(async (entry) => {
+  const artifactsByReadingId = Object.fromEntries(await Promise.all(privatePlan.entries.map(async (entry) => {
     const base = path.join(PRIVATE_CONTENT, "bridge", "celebration-y3q4", entry.readingId);
     const [metadata, markdownBytes] = await Promise.all([readJson(`${base}.metadata.json`, true), optionalBytes(`${base}.md`)]);
     return [entry.readingId, {metadata, markdownBytes, manifestHasReading: manifestReadingIds.includes(entry.readingId)}];

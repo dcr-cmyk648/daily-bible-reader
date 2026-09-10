@@ -1,13 +1,22 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {readFileSync} from "node:fs";
+import {cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from "node:fs";
+import {spawnSync} from "node:child_process";
 import {createHash} from "node:crypto";
+import os from "node:os";
+import path from "node:path";
+import {fileURLToPath} from "node:url";
 import {buildRollingStudyWorkOrder, privateReadingReady} from "../scripts/lib/rolling-study-work-order.mjs";
 
 const json = (file) => JSON.parse(readFileSync(new URL(`../${file}`, import.meta.url), "utf8"));
+const ROOT = fileURLToPath(new URL("../", import.meta.url));
+const bridgeOnlyPrivatePlan = () => {
+  const rollingPlan = json("fixtures/pilot-content/plan.json");
+  return {...rollingPlan, entries: rollingPlan.entries.filter((entry) => Number.isInteger(entry.sourcePlanDay))};
+};
 const inputs = () => ({
   plan: json("config/bridge-schedules/celebration-y3q4-bridge-full.json"),
-  privatePlan: json("fixtures/pilot-content/plan.json"),
+  privatePlan: bridgeOnlyPrivatePlan(),
   appConfig: json("fixtures/pilot-content/app-config.json"),
   referencePlan: json("config/reference-plans/celebration-y3q4.json"),
   metrics: json("config/reference-plans/celebration-y3q4-chapter-metrics.json"),
@@ -206,4 +215,44 @@ test("the rolling horizon crosses into the active long-term calendar by day inde
   assert.equal(order.reading.readingId, "LTP-0001-GEN-INTRO");
   assert.equal(order.planExtensionRequired, true);
   assert.equal(order.reading.dayIndex, 40);
+});
+
+test("the rolling-study CLI selects Genesis introduction after the D092-ready private prefix", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "dbr-rolling-study-cli-"));
+  try {
+    for (const directory of ["scripts", "config", "fixtures", "schemas"]) {
+      cpSync(path.join(ROOT, directory), path.join(root, directory), {recursive: true});
+    }
+    const activePlan = json("config/active-calendar/celebration-bridge-long-term-active.json");
+    const privatePlanPath = path.join(root, "fixtures", "pilot-content", "plan.json");
+    const privatePlan = JSON.parse(readFileSync(privatePlanPath, "utf8"));
+    privatePlan.entries = activePlan.entries.slice(0, 39);
+    writeFileSync(privatePlanPath, `${JSON.stringify(privatePlan, null, 2)}\n`);
+
+    // The canonical private artifact directory stays shared across the bridge
+    // and active-calendar continuation; only the prepared prefix advances.
+    const artifactDirectory = path.join(root, "private-content", "bridge", "celebration-y3q4");
+    mkdirSync(artifactDirectory, {recursive: true});
+    const readyEntries = activePlan.entries.filter((entry) => entry.dayIndex >= 34 && entry.dayIndex <= 39);
+    const manifest = {readings: {}};
+    for (const entry of readyEntries) {
+      const artifact = reviewedArtifact(entry);
+      writeFileSync(path.join(artifactDirectory, `${entry.readingId}.metadata.json`), `${JSON.stringify(artifact.metadata)}\n`);
+      writeFileSync(path.join(artifactDirectory, `${entry.readingId}.md`), artifact.markdownBytes);
+      manifest.readings[entry.readingId] = {};
+    }
+    writeFileSync(path.join(root, "private-content", "private-manifest.json"), `${JSON.stringify(manifest)}\n`);
+
+    const result = spawnSync(process.execPath, ["scripts/rolling-study-work-order.mjs", "--today", "2026-09-10"], {
+      cwd: root, encoding: "utf8"
+    });
+    assert.equal(result.status, 0, result.stderr);
+    const order = JSON.parse(result.stdout);
+    assert.equal(order.action, "prepare_publish");
+    assert.equal(order.reading.readingId, "LTP-0001-GEN-INTRO");
+    assert.equal(order.reading.dayIndex, 40);
+    assert.equal(order.planExtensionRequired, true);
+  } finally {
+    rmSync(root, {recursive: true, force: true});
+  }
 });

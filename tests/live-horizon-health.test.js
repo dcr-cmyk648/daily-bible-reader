@@ -96,7 +96,7 @@ test("live horizon evaluation uses the reader validator for all Detroit current-
   assert.deepEqual(missing.componentFailures, [{readingId: horizon[4].readingId, missingComponentIds: ["metadata", "orientation", "henry", "main-synthesis", "verse-of-the-day", "takeaway", "comprehensive-synthesis", "sources"]}]);
 });
 
-test("live bridge keeps the stored credential in POST bodies and fetches exactly the horizon", async () => {
+test("live bridge keeps the stored credential in POST bodies, chunks the horizon, and evaluates the merged payload", async () => {
   const {verifyLiveHorizon, liveHealthCredentialsFromStores} = await healthModule;
   const credentials = liveHealthCredentialsFromStores({
     schemaVersion: "dbr-pages-public-config/v2",
@@ -110,12 +110,25 @@ test("live bridge keeps the stored credential in POST bodies and fetches exactly
   const boot = bootstrap();
   const horizon = boot.plan.entries.slice(0, 8);
   const calls = [];
+  let payloadRequestsInFlight = 0;
+  let maximumPayloadRequestsInFlight = 0;
   const fetchImpl = async (_url, request) => {
     const fields = Object.fromEntries(request.body.entries());
     calls.push(fields);
+    const isPayloadRequest = fields.method === "getReadingPayloads";
+    if (isPayloadRequest) {
+      payloadRequestsInFlight += 1;
+      maximumPayloadRequestsInFlight = Math.max(maximumPayloadRequestsInFlight, payloadRequestsInFlight);
+    }
     const result = fields.method === "getBootstrapData"
       ? boot
-      : {planVersion: boot.plan.planVersion, payloads: Object.fromEntries(horizon.map((reading) => [reading.readingId, payload(reading)]))};
+      : (() => {
+        const requestedIds = JSON.parse(fields.args_json)[1];
+        return {planVersion: boot.plan.planVersion, payloads: Object.fromEntries(requestedIds.map((readingId) => {
+          const reading = horizon.find((entry) => entry.readingId === readingId);
+          return [readingId, payload(reading)];
+        }))};
+      })();
     const response = {
       channel: "dbr-rpc-response/v1",
       requestId: fields.request_id,
@@ -124,15 +137,44 @@ test("live bridge keeps the stored credential in POST bodies and fetches exactly
       result: {ok: true, data: result}
     };
     const escapedResponse = JSON.stringify(JSON.stringify(response)).slice(1, -1);
-    return {ok: true, url: "https://script.googleusercontent.com/macros/echo", text: async () => `<!doctype html><script>window.top.postMessage(${escapedResponse},\"https://dcr-cmyk648.github.io\");</script>`};
+    return {ok: true, url: "https://script.googleusercontent.com/macros/echo", text: async () => {
+      if (isPayloadRequest) payloadRequestsInFlight -= 1;
+      return `<!doctype html><script>window.top.postMessage(${escapedResponse},\"https://dcr-cmyk648.github.io\");</script>`;
+    }};
   };
   const result = await verifyLiveHorizon(credentials, {fetchImpl, now: new Date("2026-09-04T16:00:00.000Z"), randomBytesFn: (length) => Buffer.alloc(length, 7)});
   assert.equal(result.status, "ready");
   assert.equal(result.currentHorizonHenryLayer.scope, "current_through_t_plus_7_chapters");
   assert.equal(result.currentHorizonHenryLayer.target, 8);
-  assert.deepEqual(calls.map((call) => call.method), ["getBootstrapData", "getReadingPayloads"]);
-  assert.deepEqual(JSON.parse(calls[1].args_json).slice(1)[0], horizon.map((reading) => reading.readingId));
+  assert.deepEqual(calls.map((call) => call.method), ["getBootstrapData", "getReadingPayloads", "getReadingPayloads"]);
+  assert.deepEqual(calls.slice(1).map((call) => JSON.parse(call.args_json)[1]), [
+    horizon.slice(0, 4).map((reading) => reading.readingId),
+    horizon.slice(4).map((reading) => reading.readingId)
+  ]);
+  assert.equal(maximumPayloadRequestsInFlight, 1);
   assert.equal(calls.every((call) => call.client_origin === "https://dcr-cmyk648.github.io"), true);
+});
+
+test("live horizon fails closed for a malformed or mismatched chunk", async () => {
+  const {verifyLiveHorizon, liveHealthCredentialsFromStores} = await healthModule;
+  const credentials = liveHealthCredentialsFromStores({schemaVersion:"dbr-pages-public-config/v2",enabled:true,backendWebAppUrl:FABRICATED_ENDPOINT}, [{authorId:"dustin",readerCode:"DBR-DUSTIN-fabricated_reader_code_123456789"}]);
+  const boot = bootstrap();
+  for (const invalidBatch of [
+    (requestedIds) => ({planVersion: "fabricated-other-plan/v1", payloads: Object.fromEntries(requestedIds.map((readingId) => [readingId, payload(boot.plan.entries.find((entry) => entry.readingId === readingId))]))}),
+    (requestedIds) => ({planVersion: boot.plan.planVersion, payloads: {[requestedIds[0]]: payload(boot.plan.entries.find((entry) => entry.readingId === requestedIds[0])), "TST-010": payload(boot.plan.entries[9])}}),
+    () => ({planVersion: boot.plan.planVersion, payloads: []})
+  ]) {
+    const fetchImpl = async (_url, request) => {
+      const fields = Object.fromEntries(request.body.entries());
+      const data = fields.method === "getBootstrapData" ? boot : invalidBatch(JSON.parse(fields.args_json)[1]);
+      const response = {channel:"dbr-rpc-response/v1",requestId:fields.request_id,responseNonce:fields.response_nonce,ok:true,result:{ok:true,data}};
+      return {ok:true,url:"https://script.googleusercontent.com/macros/echo",text:async()=>`<script>window.top.postMessage(${JSON.stringify(response)},"https://dcr-cmyk648.github.io");</script>`};
+    };
+    await assert.rejects(
+      verifyLiveHorizon(credentials, {fetchImpl, now:new Date("2026-09-04T16:00:00.000Z"), randomBytesFn:(length)=>Buffer.alloc(length, 6)}),
+      {code:"LIVE_HEALTH_PAYLOAD_BATCH_INVALID"}
+    );
+  }
 });
 
 test("live bridge rejects an inner backend failure instead of treating it as bootstrap data", async () => {

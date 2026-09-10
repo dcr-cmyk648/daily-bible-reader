@@ -571,6 +571,32 @@ test("long-term plan validation enforces four streams, intro adjacency, continui
   const brokenIntro = JSON.parse(JSON.stringify(structured));
   brokenIntro.entries[1].bookId = "EXO";
   assert.throws(() => core.validatePlanStructure(brokenIntro), {code: "INVALID_PLAN"});
+  assert.throws(() => core.validatePlanStructure(brokenIntro, {allowTerminalBookIntro: true}), {code: "INVALID_PLAN"});
+  const terminalIntro = JSON.parse(JSON.stringify(structured));
+  terminalIntro.entries.pop();
+  assert.throws(() => core.validatePlanStructure(terminalIntro), {code: "INVALID_PLAN"});
+  assert.equal(core.validatePlanStructure(terminalIntro, {allowTerminalBookIntro: true}), terminalIntro);
+  const contributionOpening = {
+    schemaVersion: "plan/v1", planVersion: "contribution-v1", entries: [
+      {planVersion: "contribution-v1", dayIndex: 1, readingId: "PRO-INTRO", kind: "book_intro", bookId: "PRO", streamId: "proverbs"},
+      {
+        planVersion: "contribution-v1", dayIndex: 2, readingId: "PSA-002", kind: "chapter", bookId: "PSA", chapter: 2, streamId: "psalms",
+        passages: [{bookId: "PSA", chapter: 2, verseCount: 12}],
+        streamContributions: [{
+          kind: "chapter", bookId: "PRO", chapter: 1, streamId: "proverbs",
+          passages: [{bookId: "PRO", chapter: 1, verseStart: 1, verseEnd: 8, verseCount: 8}]
+        }]
+      }
+    ]
+  };
+  assert.equal(core.validatePlanStructure(contributionOpening), contributionOpening);
+  const missingContribution = JSON.parse(JSON.stringify(contributionOpening));
+  missingContribution.entries[1].streamContributions = [];
+  assert.throws(() => core.validatePlanStructure(missingContribution), {code: "INVALID_PLAN"});
+  const nonOpeningContribution = JSON.parse(JSON.stringify(contributionOpening));
+  nonOpeningContribution.entries[1].streamContributions[0].passages[0] =
+    {bookId: "PRO", chapter: 1, verseStart: 2, verseEnd: 8, verseCount: 7};
+  assert.throws(() => core.validatePlanStructure(nonOpeningContribution), {code: "INVALID_PLAN"});
   const futureContext = JSON.parse(JSON.stringify(structured));
   futureContext.entries[0].contextReadingIds = [futureContext.entries[1].readingId];
   assert.throws(() => core.validatePlanStructure(futureContext), {code: "INVALID_PLAN"});

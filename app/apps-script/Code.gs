@@ -222,7 +222,7 @@ function dbrBuildReadingPayload_(privateState, registry, readingId) {
   }
   metadata.verseOfTheDay = DBRServerCore.validateVerseOfTheDay(metadata.verseOfTheDay, entry);
   const commentary = dbrMergeCommentaryMarkdown_(metadata, contentMarkdown);
-  const sourceIds = dbrCommentarySourceIds_(commentary, entry);
+  const sourceIds = dbrCommentarySourceIds_(commentary);
   const sources = dbrFilterAndValidateSources_(registry, sourceIds);
   return {commentary: commentary, sources: sources};
 }
@@ -679,7 +679,7 @@ function dbrValidatePrivateConfig_(config, plan, manifest) {
     throw dbrError_("CONTENT_INVALID", "The rolling prepared plan is invalid.");
   }
   try {
-    DBRServerCore.validatePlanStructure(plan);
+    DBRServerCore.validatePlanStructure(plan, {allowTerminalBookIntro: true});
   } catch (error) {
     throw dbrError_("CONTENT_INVALID", "Reading-plan structure is invalid.");
   }
@@ -701,7 +701,7 @@ function dbrValidatePrivateConfig_(config, plan, manifest) {
   })) throw dbrError_("CONTENT_INVALID", "Prepared plan does not match the active calendar prefix.");
   if (manifest) {
     try {
-      const prepared = DBRServerCore.manifestPreparedReadingIds(plan, manifest);
+      const prepared = DBRServerCore.manifestPreparedReadingIds(plan, manifest, {allowTerminalBookIntro: true});
       if (prepared.length !== plan.entries.length) throw new Error("Manifest is incomplete.");
     } catch (_) {
       throw dbrError_("CONTENT_INVALID", "The private manifest must exactly match the rolling prepared plan.");
@@ -823,8 +823,8 @@ function dbrMergeCommentaryMarkdown_(metadata, markdown) {
   return copy;
 }
 
-function dbrCommentarySourceIds_(commentary, entry) {
-  const ids = new Set(entry.sourceIds || []);
+function dbrCommentarySourceIds_(commentary) {
+  const ids = new Set();
   const dailyIntroduction = commentary.dailyIntroduction || {};
   (dailyIntroduction.sourceIds || []).forEach(function (id) { ids.add(id); });
   const commentarySummary = commentary.commentarySummary || {};
@@ -841,6 +841,9 @@ function dbrCommentarySourceIds_(commentary, entry) {
   (commentary.claims || []).forEach(function (claim) {
     (claim.sourceIds || []).forEach(function (id) { ids.add(id); });
   });
+  if (commentary.henrySourceLink && commentary.henrySourceLink.sourceId) {
+    ids.add(commentary.henrySourceLink.sourceId);
+  }
   return Array.from(ids);
 }
 

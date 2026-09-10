@@ -9,6 +9,8 @@ import {buildProtocolBackfillWorkOrder, selectProtocolBackfillCandidate} from ".
 
 const protocol = JSON.parse(readFileSync(new URL("../config/daily-study-protocol.json", import.meta.url), "utf8"));
 const schema = JSON.parse(readFileSync(new URL("../schemas/protocol-backfill-work-order.schema.json", import.meta.url), "utf8"));
+const activeCalendar = JSON.parse(readFileSync(new URL("../config/active-calendar/celebration-bridge-long-term-active.json", import.meta.url), "utf8"));
+const genesisPrefix = JSON.parse(readFileSync(new URL("../fixtures/pilot-content/plan.json", import.meta.url), "utf8"));
 const plan = {
   planVersion: "fabricated-protocol-plan/v1",
   entries: [1, 2, 3, 4].map((dayIndex) => ({
@@ -106,6 +108,38 @@ test("prior-study protocol backfill waits for the horizon then selects one most-
   assert.equal(order.guards.preserveCommentsAndHighlights, true);
   assert.equal(order.guards.preserveNewestReviewedHenry, true);
   assert.equal(order.guards.contentFirstManifestLast, true);
+});
+
+test("a 41-reading Genesis prefix evaluates against the active calendar and selects only the most recent prior stale reading", () => {
+  assert.equal(genesisPrefix.entries.length, 41);
+  assert.equal(genesisPrefix.entries.at(-1).readingId, "LTP-0002-GEN-001");
+  const artifacts = Object.fromEntries(genesisPrefix.entries.map((entry) => {
+    const current = artifact(entry);
+    current.metadata.henrySourceLink = {
+      sourceId: "fabricated_henry", title: "Fabricated Henry", note: "Fabricated test fallback", url: "https://example.test/henry"
+    };
+    return [entry.readingId, current];
+  }));
+  const prior = genesisPrefix.entries.find((entry) => entry.dayIndex === 33);
+  delete artifacts[prior.readingId].metadata.generation.contentProtocolVersion;
+  const manifestReadingIds = genesisPrefix.entries.map((entry) => entry.readingId);
+  const horizon = buildRollingStudyWorkOrder({
+    plan: activeCalendar, privatePlan: genesisPrefix,
+    appConfig: {...appConfig, sharedStartDate: "2026-08-08", futureLookaheadDays: 7},
+    protocol, today: "2026-09-10", issuedAt: "2026-09-10T12:00:00.000Z", readingArtifacts: artifacts
+  });
+  assert.equal(horizon.action, "none");
+  const candidate = selectProtocolBackfillCandidate({
+    plan: activeCalendar, appConfig: {...appConfig, sharedStartDate: "2026-08-08"}, today: "2026-09-10",
+    protocol, artifactsByReadingId: artifacts, manifestReadingIds
+  });
+  assert.equal(candidate.entry.readingId, prior.readingId);
+  const order = buildProtocolBackfillWorkOrder({
+    plan: activeCalendar, appConfig, today: "2026-09-10", protocol, horizonReady: true, candidate,
+    issuedAt: "2026-09-10T12:00:00.000Z"
+  });
+  assert.equal(order.action, "refresh_review_publish");
+  assert.equal(order.reading.readingId, prior.readingId);
 });
 
 test("daily scheduled workflow leaves historical Henry debt to the independent lane", () => {

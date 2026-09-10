@@ -10,6 +10,17 @@ import {authorizedBridgeSourceDay, buildBridgeExtension, buildCompleteBridgeSche
 
 const json = (file) => JSON.parse(readFileSync(new URL(`../${file}`, import.meta.url), "utf8"));
 
+function bridgeOnlyPlan() {
+  const rollingPlan = json("fixtures/pilot-content/plan.json");
+  const entries = rollingPlan.entries.filter((entry) => Number.isInteger(entry.sourcePlanDay));
+  const bookIds = new Set(entries.flatMap((entry) => entry.passages.map((passage) => passage.bookId)));
+  return {
+    ...rollingPlan,
+    entries,
+    bookMetrics: Object.fromEntries(Object.entries(rollingPlan.bookMetrics).filter(([bookId]) => bookIds.has(bookId)))
+  };
+}
+
 function addCivilDays(value, days) {
   const date = new Date(`${value}T00:00:00.000Z`);
   date.setUTCDate(date.getUTCDate() + days);
@@ -27,9 +38,19 @@ function nextBoundary(plan, appConfig) {
   };
 }
 
+function nextActiveBoundary(plan, appConfig, activeCalendar) {
+  const entry = activeCalendar.entries[plan.entries.length];
+  return {
+    readingId: entry.readingId,
+    today: addCivilDays(entry.civilDate, -appConfig.futureLookaheadDays)
+  };
+}
+
 test("the bridge may append exactly the reading entering the Detroit T+7 window", () => {
-  const plan = json("fixtures/pilot-content/plan.json");
-  const appConfig = json("fixtures/pilot-content/app-config.json");
+  const currentPlan = bridgeOnlyPlan();
+  const plan = {...currentPlan, entries: currentPlan.entries.slice(0, -1)};
+  const currentConfig = json("fixtures/pilot-content/app-config.json");
+  const appConfig = {...currentConfig, testingReadingIds: plan.entries.map((entry) => entry.readingId)};
   const referencePlan = json("config/reference-plans/celebration-y3q4.json");
   const metrics = json("config/reference-plans/celebration-y3q4-chapter-metrics.json");
   const boundary = nextBoundary(plan, appConfig);
@@ -45,8 +66,10 @@ test("the bridge may append exactly the reading entering the Detroit T+7 window"
 });
 
 test("the bridge cannot skip ahead or exceed the seven-day authorization", () => {
-  const plan = json("fixtures/pilot-content/plan.json");
-  const appConfig = json("fixtures/pilot-content/app-config.json");
+  const currentPlan = bridgeOnlyPlan();
+  const plan = {...currentPlan, entries: currentPlan.entries.slice(0, -1)};
+  const currentConfig = json("fixtures/pilot-content/app-config.json");
+  const appConfig = {...currentConfig, testingReadingIds: plan.entries.map((entry) => entry.readingId)};
   const referencePlan = json("config/reference-plans/celebration-y3q4.json");
   const metrics = json("config/reference-plans/celebration-y3q4-chapter-metrics.json");
   const boundary = nextBoundary(plan, appConfig);
@@ -57,7 +80,7 @@ test("the bridge cannot skip ahead or exceed the seven-day authorization", () =>
 });
 
 test("the full factual schedule is deterministic and does not broaden the preparation window", () => {
-  const plan = json("fixtures/pilot-content/plan.json");
+  const plan = bridgeOnlyPlan();
   const appConfig = json("fixtures/pilot-content/app-config.json");
   const referencePlan = json("config/reference-plans/celebration-y3q4.json");
   const metrics = json("config/reference-plans/celebration-y3q4-chapter-metrics.json");
@@ -67,7 +90,7 @@ test("the full factual schedule is deterministic and does not broaden the prepar
   assert.equal(full.entries.at(-1).readingId, "CC-Y3Q4-D092");
   assert.deepEqual(full.entries.at(-1).passages, [{bookId: "MAL", chapter: 4, verseCount: 6}]);
   assert.deepEqual(full, tracked);
-  assert.deepEqual(appConfig.testingReadingIds, plan.entries.slice(0, appConfig.testingReadingIds.length).map((entry) => entry.readingId));
+  assert.deepEqual(appConfig.testingReadingIds, json("fixtures/pilot-content/plan.json").entries.map((entry) => entry.readingId));
 });
 
 test("active-prefix CLI extends the plan and testing allowlist together", () => {
@@ -79,10 +102,11 @@ test("active-prefix CLI extends the plan and testing allowlist together", () => 
     cpSync(new URL("../config/active-calendar", import.meta.url), path.join(root, "config", "active-calendar"), {recursive: true});
     const planBefore = JSON.parse(readFileSync(path.join(root, "fixtures/pilot-content/plan.json"), "utf8"));
     const configBefore = JSON.parse(readFileSync(path.join(root, "fixtures/pilot-content/app-config.json"), "utf8"));
+    const activeCalendar = JSON.parse(readFileSync(path.join(root, "config/active-calendar/celebration-bridge-long-term-active.json"), "utf8"));
     writeFileSync(path.join(root, "fixtures/pilot-content/app-config.json"), `${JSON.stringify({
       ...configBefore, testingReadingIds: planBefore.entries.map((entry) => entry.readingId)
     }, null, 2)}\n`);
-    const boundary = nextBoundary(planBefore, configBefore);
+    const boundary = nextActiveBoundary(planBefore, configBefore, activeCalendar);
     const result = spawnSync(process.execPath, ["scripts/extend-active-prefix.mjs", "--today", boundary.today], {cwd: root, encoding: "utf8"});
     assert.equal(result.status, 0, result.stderr);
     assert.equal(result.stdout.trim(), boundary.readingId);
@@ -107,7 +131,8 @@ test("active-prefix CLI repairs an exact stale allowlist prefix without extendin
     const configBefore = JSON.parse(readFileSync(path.join(root, "fixtures/pilot-content/app-config.json"), "utf8"));
     const staleConfig = {...configBefore, testingReadingIds: planBefore.entries.slice(0, -1).map((entry) => entry.readingId)};
     writeFileSync(path.join(root, "fixtures/pilot-content/app-config.json"), `${JSON.stringify(staleConfig, null, 2)}\n`);
-    const boundary = nextBoundary(planBefore, staleConfig);
+    const activeCalendar = JSON.parse(readFileSync(path.join(root, "config/active-calendar/celebration-bridge-long-term-active.json"), "utf8"));
+    const boundary = nextActiveBoundary(planBefore, staleConfig, activeCalendar);
     const result = spawnSync(process.execPath, ["scripts/extend-active-prefix.mjs", "--today", boundary.today], {cwd: root, encoding: "utf8"});
     assert.equal(result.status, 0, result.stderr);
     assert.equal(result.stdout.trim(), planBefore.entries.at(-1).readingId);

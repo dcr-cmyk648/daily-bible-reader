@@ -9,6 +9,9 @@ const BRIDGE_VERSION = "dbr-form-bridge/v1";
 const BRIDGE_CHANNEL = "dbr-rpc-response/v1";
 const TOKEN_ENDPOINT = /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]{20,}\/exec$/;
 const TOKEN_RESPONSE_ORIGIN = /^(?:https:\/\/script\.google\.com|https:\/\/script\.googleusercontent\.com|https:\/\/n-[a-z0-9-]+-script\.googleusercontent\.com)$/;
+// Large reviewed private-commentary payloads can exceed the bridge response
+// limit when the whole current-through-T+7 window is requested at once.
+const HORIZON_PAYLOAD_BATCH_SIZE = 4;
 
 function failure(code) {
   const error = new Error(code);
@@ -18,6 +21,37 @@ function failure(code) {
 
 function safeString(value) {
   return typeof value === "string" ? value : "";
+}
+
+function isObjectRecord(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function mergeHorizonPayloadBatch(planVersion, requestedBatches, batches) {
+  const requestedIds = requestedBatches.flat();
+  if (new Set(requestedIds).size !== requestedIds.length || requestedBatches.length !== batches.length) {
+    throw failure("LIVE_HEALTH_PAYLOAD_BATCH_INVALID");
+  }
+  const payloads = Object.create(null);
+  for (let index = 0; index < batches.length; index += 1) {
+    const batch = batches[index];
+    const requestedIdsInBatch = requestedBatches[index];
+    if (!isObjectRecord(batch) || batch.planVersion !== planVersion || !isObjectRecord(batch.payloads)) {
+      throw failure("LIVE_HEALTH_PAYLOAD_BATCH_INVALID");
+    }
+    const payloadIds = Object.keys(batch.payloads);
+    if (payloadIds.length !== requestedIdsInBatch.length ||
+        payloadIds.some((readingId) => !requestedIdsInBatch.includes(readingId)) ||
+        payloadIds.some((readingId) => Object.prototype.hasOwnProperty.call(payloads, readingId))) {
+      throw failure("LIVE_HEALTH_PAYLOAD_BATCH_INVALID");
+    }
+    Object.assign(payloads, batch.payloads);
+  }
+  if (Object.keys(payloads).length !== requestedIds.length ||
+      requestedIds.some((readingId) => !Object.prototype.hasOwnProperty.call(payloads, readingId))) {
+    throw failure("LIVE_HEALTH_PAYLOAD_BATCH_INVALID");
+  }
+  return {planVersion, payloads};
 }
 
 export function validateLiveHealthCredentials(input) {
@@ -283,8 +317,16 @@ export async function verifyLiveHorizon(credentials, options = {}) {
   const startIndex = schedule.status === "before_start" ? 0 : schedule.status === "pilot_complete"
     ? entries.length : Math.max(0, schedule.calendarDayIndex - 1);
   const horizonIds = entries.slice(startIndex, startIndex + 8).map((entry) => entry.readingId);
-  const payloadBatch = horizonIds.length
-    ? await callLiveHealthBridge(credentials, "getReadingPayloads", [credentials.readerCode, horizonIds], options)
+  const requestedBatches = [];
+  for (let index = 0; index < horizonIds.length; index += HORIZON_PAYLOAD_BATCH_SIZE) {
+    requestedBatches.push(horizonIds.slice(index, index + HORIZON_PAYLOAD_BATCH_SIZE));
+  }
+  const payloadBatches = [];
+  for (const readingIds of requestedBatches) {
+    payloadBatches.push(await callLiveHealthBridge(credentials, "getReadingPayloads", [credentials.readerCode, readingIds], options));
+  }
+  const payloadBatch = requestedBatches.length
+    ? mergeHorizonPayloadBatch(bootstrap.plan.planVersion, requestedBatches, payloadBatches)
     : {planVersion: bootstrap.plan.planVersion, payloads: {}};
   const now = options.now || new Date();
   return {

@@ -691,6 +691,32 @@ test("Apps Script accepts both legacy and current commentary metadata during mig
   assert.match(code, /DBR_COMMENTARY_SCHEMA_VERSIONS\.includes\(metadata\.schemaVersion\)/);
 });
 
+test("Apps Script source validation excludes schedule provenance while retaining commentary citations", () => {
+  const code = fs.readFileSync(path.join(__dirname, "../app/apps-script/Code.gs"), "utf8")
+    .replace(/JSON\.parse\("\{\\"__dbr_active_calendar__\\":true\}"\)/, "({})");
+  const context = vm.createContext({});
+  new vm.Script(`${code}\nglobalThis.__commentarySourceIds = dbrCommentarySourceIds_; globalThis.__filterSources = dbrFilterAndValidateSources_;`, {
+    filename: "Code.gs"
+  }).runInContext(context);
+  const commentary = {
+    dailyIntroduction: {sourceIds: ["commentary-source"]},
+    commentarySummary: {paragraphs: [{sourceIds: ["summary-source"]}]},
+    henrySourceLink: {sourceId: "henry-source"}
+  };
+  const longTermEntry = {
+    kind: "book_intro", readingId: "LTP-0001-GEN-INTRO",
+    sourceIds: ["schedule-provenance-not-in-private-registry"]
+  };
+  const sourceIds = context.__commentarySourceIds(commentary, longTermEntry);
+  assert.deepEqual([...sourceIds], ["commentary-source", "summary-source", "henry-source"]);
+  const registry = {
+    schemaVersion: "source-registry/v1",
+    sources: sourceIds.map((sourceId) => ({sourceId, summaryUseStatus: "included"}))
+  };
+  assert.deepEqual(context.__filterSources(registry, sourceIds).map((source) => source.sourceId), sourceIds);
+  assert.throws(() => context.__filterSources(registry, ["schedule-provenance-not-in-private-registry"]), /cited source/i);
+});
+
 test("Apps Script batches today plus seven prepared readings behind one authorization", () => {
   const code = fs.readFileSync(path.join(__dirname, "../app/apps-script/Code.gs"), "utf8");
   const batch = code.slice(code.indexOf("function getReadingPayloads"), code.indexOf("function dbrBuildReadingPayload_"));
@@ -847,6 +873,35 @@ test("content readiness requires every end-to-end study component and exposes th
   };
   assert.equal(app.readingContentIsPrepared(missingHenry, first), true);
   assert.equal(app.readingPreparationReport(missingHenry, first).components.find((component) => component.id === "henry").ready, true);
+  const bookIntro = {readingId: "LTP-0001-GEN-INTRO", dayIndex: 40, kind: "book_intro", bookId: "GEN"};
+  const introFallback = structuredClone(complete);
+  introFallback.commentary.readingId = bookIntro.readingId;
+  delete introFallback.commentary.verseOfTheDay;
+  delete introFallback.commentary.verseCommentary;
+  introFallback.commentary.henrySourceLink = {
+    sourceId: "source-one",
+    title: "Read the fabricated Genesis introduction",
+    url: "https://example.test/henry/genesis-introduction",
+    note: "A verified full public-domain book-introduction link replaces the unavailable test-only overview shard."
+  };
+  assert.equal(app.readingContentIsPrepared(introFallback, bookIntro), true);
+  assert.deepEqual(app.readingPreparationReport(introFallback, bookIntro).components.find((component) => component.id === "book-overview"), {
+    id: "book-overview", label: "verified full Matthew Henry book-introduction link", ready: true
+  });
+  const invalidIntroFallback = structuredClone(introFallback);
+  invalidIntroFallback.commentary.henrySourceLink.url = "javascript:alert(1)";
+  assert.equal(app.readingContentIsPrepared(invalidIntroFallback, bookIntro), false);
+  const introOverview = structuredClone(introFallback);
+  delete introOverview.commentary.henrySourceLink;
+  introOverview.commentary.bookCommentary = {
+    schema_version: "mhc-runtime/v1", validation_status: "valid", review_status: "approved",
+    resource: {
+      resource_type: "book_intro", book_id: "GEN",
+      blurb: "Fabricated book overview gives a substantive test-only introduction to Genesis and its literary, theological, canonical, historical, and pastoral setting for this readiness fixture.",
+      source_unit_ids: ["fabricated-genesis-introduction"], source_reference_label: "Fabricated public-domain source"
+    }
+  };
+  assert.equal(app.readingContentIsPrepared(introOverview, bookIntro), true);
   const missingFullSource = structuredClone(complete);
   delete missingFullSource.commentary.verseCommentary.source_atoms.atom1;
   assert.equal(app.readingContentIsPrepared(missingFullSource, first), false);
@@ -1170,7 +1225,7 @@ test("editorial contract requires practical prose and confessional evidentiary w
   assert.match(validator, /executive synthesis must contain 220–600 words/);
   assert.match(validator, /const readings = plan\.entries\.map/);
   assert.match(validator, /substantive: true/);
-  assert.match(validator, /prepared: entry\.sourcePlanDay >= 57/);
+  assert.match(validator, /prepared: entryIsEndToEndPrepared\(entry\)/);
   assert.match(validator, /const preparedCount = readings\.filter/);
   assert.match(validator, /const synthesisCount = readings\.filter/);
   assert.match(validator, /externalSchemas: \{"mhc-runtime\.schema\.json": mhcRuntimeSchema\}/);

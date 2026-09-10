@@ -4,6 +4,7 @@ import {createHash} from "node:crypto";
 import {access, readFile, readdir} from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+import {fileURLToPath} from "node:url";
 import {assertSchemaValid} from "./lib/schema-validator.mjs";
 import {supportsSourceSetVersion, validateRegistryProvenance} from "./validate-source-registry.mjs";
 
@@ -144,6 +145,33 @@ function assertStandalone(text, label) {
     `${label}: displayed units must stand alone within the day's reading`);
 }
 
+export function expectedVerseCommentaryShardCount(entry) {
+  return entry?.kind === "chapter" && Array.isArray(entry.passages) ? entry.passages.length : 0;
+}
+
+export function entryIsEndToEndPrepared(entry) {
+  return Boolean(entry) && (entry.sourcePlanDay >= 57 || !Number.isInteger(entry.sourcePlanDay));
+}
+
+export function selectedVerseMatchesEntry(entry, selectedVerse) {
+  if (!entry || !selectedVerse) return false;
+  if (entry.kind === "book_intro") {
+    const representativeVerse = entry.representativeVerse;
+    return Boolean(representativeVerse && representativeVerse.bookId === selectedVerse.bookId &&
+      representativeVerse.chapter === selectedVerse.chapter && representativeVerse.verse === selectedVerse.verse);
+  }
+  const selectedPassage = Array.isArray(entry.passages) && entry.passages.find((passage) =>
+    passage.bookId === selectedVerse.bookId && passage.chapter === selectedVerse.chapter
+  );
+  return Boolean(selectedPassage && selectedVerse.verse <= selectedPassage.verseCount);
+}
+
+export function verseMetadataMatchesEntry(entry, commentary) {
+  return entry?.kind === "book_intro"
+    ? !Object.hasOwn(commentary || {}, "verseOfTheDay")
+    : selectedVerseMatchesEntry(entry, commentary && commentary.verseOfTheDay);
+}
+
 async function main() {
   const hasPrivate = await exists(CONTENT_DIR) && await exists(REGISTRY_PATH);
   if (!hasPrivate) {
@@ -164,7 +192,7 @@ async function main() {
     markdown: `${entry.readingId}.md`,
     metadata: `${entry.readingId}.metadata.json`,
     substantive: true,
-    prepared: entry.sourcePlanDay >= 57
+    prepared: entryIsEndToEndPrepared(entry)
   }));
   const expectedFiles = new Set(readings.flatMap((reading) => [reading.markdown, reading.metadata]));
   assertSchemaValid(registry, sourceSchema, {label: "Private bridge source registry"});
@@ -239,14 +267,11 @@ async function main() {
       }
       });
     }
-    if (reading.prepared) assert(verseCommentaries.length === entry.passages.length || validHenrySourceLink,
+    if (reading.prepared) assert(verseCommentaries.length === expectedVerseCommentaryShardCount(entry) || validHenrySourceLink,
       `${reading.readingId}: an end-to-end prepared reading requires reviewed Matthew Henry shards or a verified full-commentary link`);
-    const selectedVerse = commentary.verseOfTheDay;
-    const selectedPassage = entry && entry.passages.find((passage) =>
-      passage.bookId === selectedVerse.bookId && passage.chapter === selectedVerse.chapter
-    );
-    assert(selectedPassage && selectedVerse.verse <= selectedPassage.verseCount,
-      `${reading.readingId}: verse of the day must belong to the configured reading`);
+    assert(verseMetadataMatchesEntry(entry, commentary), entry.kind === "book_intro"
+      ? `${reading.readingId}: book introductions must omit verse-of-the-day metadata`
+      : `${reading.readingId}: verse of the day must belong to the configured reading`);
     assert(paragraphCount(commentary.dailyIntroduction.markdown) >= 1 && paragraphCount(commentary.dailyIntroduction.markdown) <= 2,
       `${reading.readingId}: daily introduction must contain one or two paragraphs`);
     assert(wordCount(commentary.dailyIntroduction.markdown) <= 150,
@@ -377,7 +402,9 @@ async function main() {
   process.stdout.write(`Private content validation passed (${preparedCount} end-to-end prepared studies; ${synthesisCount} syntheses; ${placeholderCount} explicit placeholders; ${registry.sources.length} registered sources; no stored Scripture).\n`);
 }
 
-main().catch((error) => {
-  process.stderr.write(`Private content validation failed: ${error.message}\n`);
-  process.exitCode = 1;
-});
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((error) => {
+    process.stderr.write(`Private content validation failed: ${error.message}\n`);
+    process.exitCode = 1;
+  });
+}

@@ -176,8 +176,8 @@
     return {contentFileId: record.contentFileId, metadataFileId: record.metadataFileId};
   }
 
-  function manifestPreparedReadingIds(plan, manifest) {
-    validatePlanStructure(plan);
+  function manifestPreparedReadingIds(plan, manifest, options) {
+    validatePlanStructure(plan, options);
     const parsed = parseManifest(manifest);
     const manifestIds = Object.keys(parsed.readings || {});
     if (!manifestIds.length) {
@@ -334,7 +334,8 @@
     };
   }
 
-  function validatePlanStructure(plan) {
+  function validatePlanStructure(plan, options) {
+    const allowTerminalBookIntro = Boolean(options && options.allowTerminalBookIntro === true);
     if (!plan || !plan.planVersion || !Array.isArray(plan.entries) || !plan.entries.length) {
       throw domainError("INVALID_PLAN", "Reading plan is unavailable.");
     }
@@ -363,34 +364,63 @@
       earlierIds.add(entry.readingId);
     });
 
-    if (!plan.structure) return plan;
-    const expectedStreams = ["old_testament", "new_testament", "psalms", "proverbs"];
-    const configuredStreams = Array.isArray(plan.structure.streams)
-      ? plan.structure.streams.map((stream) => stream && stream.streamId)
-      : [];
-    if (configuredStreams.length !== expectedStreams.length ||
-        new Set(configuredStreams).size !== expectedStreams.length ||
-        expectedStreams.some((streamId) => !configuredStreams.includes(streamId))) {
-      throw domainError("INVALID_PLAN", "The long-term plan must configure each of the four reading streams exactly once.");
+    if (plan.structure) {
+      const expectedStreams = ["old_testament", "new_testament", "psalms", "proverbs"];
+      const configuredStreams = Array.isArray(plan.structure.streams)
+        ? plan.structure.streams.map((stream) => stream && stream.streamId)
+        : [];
+      if (configuredStreams.length !== expectedStreams.length ||
+          new Set(configuredStreams).size !== expectedStreams.length ||
+          expectedStreams.some((streamId) => !configuredStreams.includes(streamId))) {
+        throw domainError("INVALID_PLAN", "The long-term plan must configure each of the four reading streams exactly once.");
+      }
+      const nextSequence = new Map(expectedStreams.map((streamId) => [streamId, 1]));
+      plan.entries.forEach((entry) => {
+        if (!nextSequence.has(entry.streamId) || entry.streamSequence !== nextSequence.get(entry.streamId)) {
+          throw domainError("INVALID_PLAN", "Reading stream sequences must be contiguous in scheduled order.");
+        }
+        nextSequence.set(entry.streamId, entry.streamSequence + 1);
+      });
     }
-    const nextSequence = new Map(expectedStreams.map((streamId) => [streamId, 1]));
+    const contributionsFor = function (entry) {
+      return Array.isArray(entry.streamContributions) && entry.streamContributions.length
+        ? entry.streamContributions : [entry];
+    };
+    const isBookIntroduction = function (contribution, streamId, bookId) {
+      return contribution && contribution.kind === "book_intro" && contribution.streamId === streamId &&
+        contribution.bookId === bookId;
+    };
+    const isOpeningChapter = function (contribution, streamId, bookId) {
+      const openingPassage = contribution && Array.isArray(contribution.passages) ? contribution.passages[0] : null;
+      return contribution && contribution.kind === "chapter" && contribution.streamId === streamId &&
+        contribution.bookId === bookId && contribution.chapter === 1 && openingPassage &&
+        openingPassage.bookId === bookId && openingPassage.chapter === 1 &&
+        (!Number.isInteger(openingPassage.verseStart) || openingPassage.verseStart === 1);
+    };
     plan.entries.forEach((entry, index) => {
-      if (!nextSequence.has(entry.streamId) || entry.streamSequence !== nextSequence.get(entry.streamId)) {
-        throw domainError("INVALID_PLAN", "Reading stream sequences must be contiguous in scheduled order.");
-      }
-      nextSequence.set(entry.streamId, entry.streamSequence + 1);
       const next = plan.entries[index + 1];
-      if (entry.kind === "book_intro" && (!next || next.kind !== "chapter" || next.bookId !== entry.bookId ||
-          next.chapter !== 1 || next.streamId !== entry.streamId)) {
-        throw domainError("INVALID_PLAN", "Every book introduction must be followed immediately by chapter 1.");
-      }
-      if (entry.kind === "chapter" && entry.chapter === 1) {
+      contributionsFor(entry).filter(function (contribution) {
+        return contribution && contribution.kind === "book_intro" && contribution.streamId;
+      }).forEach(function (introduction) {
+        const terminalPrefixIntro = allowTerminalBookIntro && entry.kind === "book_intro" &&
+          index === plan.entries.length - 1;
+        if (!terminalPrefixIntro && (!next || !contributionsFor(next).some(function (contribution) {
+          return isOpeningChapter(contribution, introduction.streamId, introduction.bookId);
+        }))) {
+          throw domainError("INVALID_PLAN", "Every book introduction must be followed immediately by chapter 1.");
+        }
+      });
+      contributionsFor(entry).filter(function (contribution) {
+        return contribution && contribution.streamId &&
+          isOpeningChapter(contribution, contribution.streamId, contribution.bookId);
+      }).forEach(function (openingChapter) {
         const previous = plan.entries[index - 1];
-        if (!previous || previous.kind !== "book_intro" || previous.bookId !== entry.bookId ||
-            previous.streamId !== entry.streamId) {
+        if (!previous || !contributionsFor(previous).some(function (contribution) {
+          return isBookIntroduction(contribution, openingChapter.streamId, openingChapter.bookId);
+        })) {
           throw domainError("INVALID_PLAN", "Chapter 1 of every book must follow its book introduction.");
         }
-      }
+      });
     });
     return plan;
   }

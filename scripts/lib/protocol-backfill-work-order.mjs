@@ -52,9 +52,9 @@ export function selectProtocolBackfillCandidate({plan, appConfig, today, protoco
   if (!appConfig || typeof appConfig.sharedStartDate !== "string") throw new Error("A shared start date is required.");
   const entries = orderedEntries(plan);
   const manifest = manifestReadingIds instanceof Set ? manifestReadingIds : new Set(manifestReadingIds || []);
-  const currentSourceDay = entries[0].sourcePlanDay + Math.max(0, civilDayOffset(appConfig.sharedStartDate, today));
+  const currentDayIndex = 1 + Math.max(0, civilDayOffset(appConfig.sharedStartDate, today));
   for (const entry of [...entries].reverse()) {
-    if (!manifest.has(entry.readingId) || entry.sourcePlanDay >= currentSourceDay) continue;
+    if (!manifest.has(entry.readingId) || entry.dayIndex >= currentDayIndex) continue;
     const artifact = artifactFor(artifactsByReadingId, entry.readingId);
     if (!artifact || !artifact.metadata || !artifact.markdownBytes || artifact.metadata.readingId !== entry.readingId) continue;
     const freshness = evaluateContentProtocolFreshness({

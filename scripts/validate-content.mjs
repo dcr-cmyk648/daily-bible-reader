@@ -91,8 +91,9 @@ async function main() {
     schemas[filename] = schema;
   }
 
-  const [plan, fullBridgeSchedule, config, deploymentConfig, registry, placeholder, referencePlan, policies, manifestExample, appsManifest, longTermInput, longTermCandidate, dailyStudyProtocol] = await Promise.all([
+  const [plan, activeCalendar, fullBridgeSchedule, config, deploymentConfig, registry, placeholder, referencePlan, policies, manifestExample, appsManifest, longTermInput, longTermCandidate, dailyStudyProtocol] = await Promise.all([
     json("fixtures/pilot-content/plan.json"),
+    json("config/active-calendar/celebration-bridge-long-term-active.json"),
     json("config/bridge-schedules/celebration-y3q4-bridge-full.json"),
     json("fixtures/pilot-content/app-config.json"),
     json("config/app-config.example.json"),
@@ -108,6 +109,7 @@ async function main() {
   ]);
 
   assertSchemaValid(plan, schemas["plan.schema.json"], {label: "Pilot plan", externalSchemas: schemas});
+  assertSchemaValid(activeCalendar, schemas["plan.schema.json"], {label: "Active calendar", externalSchemas: schemas});
   assertSchemaValid(fullBridgeSchedule, schemas["plan.schema.json"], {label: "Complete bridge schedule", externalSchemas: schemas});
   assertSchemaValid(longTermCandidate, schemas["plan.schema.json"], {label: "Long-term review candidate", externalSchemas: schemas});
   assertSchemaValid(registry, schemas["source.schema.json"], {label: "Source registry", externalSchemas: schemas});
@@ -121,8 +123,15 @@ async function main() {
   assert(plan.schemaVersion === "plan/v1", "Plan schema version.");
   assert(fullBridgeSchedule.entries.length === 39 && fullBridgeSchedule.entries.at(-1).readingId === "CC-Y3Q4-D092",
     "Complete bridge schedule must end at D092.");
+  const bridgeEntries = plan.entries.filter((entry) => Number.isInteger(entry.sourcePlanDay));
+  const bridgeBookIds = new Set(bridgeEntries.flatMap((entry) => entry.passages.map((passage) => passage.bookId)));
+  const bridgePrefix = {
+    ...plan,
+    entries: bridgeEntries,
+    bookMetrics: Object.fromEntries(Object.entries(plan.bookMetrics).filter(([bookId]) => bridgeBookIds.has(bookId)))
+  };
   const regeneratedFullBridgeSchedule = buildCompleteBridgeSchedule({
-    plan,
+    plan: bridgePrefix,
     appConfig: config,
     referencePlan,
     metrics: await json("config/reference-plans/celebration-y3q4-chapter-metrics.json")
@@ -145,26 +154,25 @@ async function main() {
     longTermCandidate.entries.length === longTermMetadata.dailySlotCount,
   "Long-term v2 candidate must declare and contain exactly 1,224 daily slots.");
   const firstSourcePlanDay = 54;
-  const activeThroughSourcePlanDay = plan.entries.at(-1).sourcePlanDay;
   const detroitToday = new Intl.DateTimeFormat("en-CA", {
     timeZone: config.timezone, year: "numeric", month: "2-digit", day: "2-digit"
   }).format(new Date());
   const civilDay = (value) => Math.floor(Date.parse(`${value}T00:00:00Z`) / 86400000);
-  const authorizedThroughSourcePlanDay = Math.min(92, firstSourcePlanDay +
+  const authorizedPrivatePrefixLength = Math.min(activeCalendar.entries.length, 1 +
     Math.max(0, civilDay(detroitToday) - civilDay(config.sharedStartDate)) + config.futureLookaheadDays);
-  assert(activeThroughSourcePlanDay <= authorizedThroughSourcePlanDay,
-    "Tracked bridge may not exceed the current Detroit T+7 horizon.");
-  const bridgeIds = Array.from({length: activeThroughSourcePlanDay - firstSourcePlanDay + 1}, (_, index) =>
-    `CC-Y3Q4-D${String(index + firstSourcePlanDay).padStart(3, "0")}`);
+  assert(plan.entries.length <= authorizedPrivatePrefixLength,
+    "Tracked private prefix may not exceed the current Detroit T+7 horizon.");
   const fullBridgeIds = Array.from({length: 39}, (_, index) =>
     `CC-Y3Q4-D${String(index + firstSourcePlanDay).padStart(3, "0")}`);
   assert(plan.planVersion === "celebration-y3q4-bridge-2026-v1", "Bridge plan version.");
-  assert(plan.entries.length === bridgeIds.length, "Tracked rolling bridge must end at its declared active horizon.");
-  assert(JSON.stringify(plan.entries.map((entry) => entry.readingId)) === JSON.stringify(bridgeIds), "Bridge reading IDs and order.");
+  assert(plan.entries.length >= 1 && plan.entries.length <= activeCalendar.entries.length,
+    "Tracked private plan must be a non-empty prefix of the active calendar.");
+  assert(plan.entries.every((entry, index) => JSON.stringify(entry) === JSON.stringify(activeCalendar.entries[index])),
+    "Tracked private plan must exactly match the immutable active-calendar prefix.");
   assert(JSON.stringify(fullBridgeSchedule.entries.map((entry) => entry.readingId)) === JSON.stringify(fullBridgeIds),
     "Compiled bridge schedule must include every factual source day through D092.");
-  assert(new Set(plan.entries.map((entry) => entry.readingId)).size === bridgeIds.length, "Reading IDs must be stable and unique.");
-  plan.entries.forEach((entry, index) => {
+  assert(new Set(plan.entries.map((entry) => entry.readingId)).size === plan.entries.length, "Reading IDs must be stable and unique.");
+  bridgePrefix.entries.forEach((entry, index) => {
     assert(entry.dayIndex === index + 1, "Plan day indexes must be contiguous.");
     assert(entry.sourcePlanDay === index + firstSourcePlanDay, "Source-plan day mapping must stay contiguous.");
     assert(entry.planVersion === plan.planVersion, "Entry plan version mismatch.");
@@ -179,7 +187,8 @@ async function main() {
   assert(config.futureReadingsLocked === true && config.futureLookaheadDays === 7, "Seven future readings must be visible.");
   assert(config.offlineReadingWindowDays === 8 && config.preparedAheadDays === 7 &&
     config.privateContentCacheMaxAgeSeconds === 1209600, "Device target must retain today plus seven future private studies without expiring T+7 before its day arrives.");
-  assert(JSON.stringify(config.testingReadingIds) === JSON.stringify(bridgeIds), "Testing override is restricted to bridge readings.");
+  assert(JSON.stringify(config.testingReadingIds) === JSON.stringify(plan.entries.map((entry) => entry.readingId)),
+    "Testing override is restricted to the rolling private prefix.");
   assert(deploymentConfig.sharedStartDateMode === "fixed", "Deployment example must use an explicit shared start date.");
   assert(deploymentConfig.futureLookaheadDays === 7 && deploymentConfig.offlineReadingWindowDays === 8 &&
     deploymentConfig.preparedAheadDays === 7 && deploymentConfig.privateContentCacheMaxAgeSeconds === 1209600,
@@ -203,7 +212,7 @@ async function main() {
       assert(source.accessDate && source.accessMethod, `${source.sourceId}: consulted source requires access evidence`);
     }
   });
-  plan.entries.forEach((entry) => validateCommentary({
+  bridgePrefix.entries.forEach((entry) => validateCommentary({
     ...placeholder,
     readingId: entry.readingId,
     verseOfTheDay: {bookId: entry.passages[0].bookId, chapter: entry.passages[0].chapter, verse: 1}
@@ -220,8 +229,8 @@ async function main() {
   assert(policy.requiredAttribution.notice.includes("Users may not copy or download more than 500 verses"), "Required ESV notice.");
 
   assert(manifestExample.schemaVersion === "private-manifest/v1", "Private manifest example version.");
-  assert(Object.keys(manifestExample.readings).every((readingId) => bridgeIds.includes(readingId)),
-    "Manifest example may name only active bridge readings.");
+  assert(Object.keys(manifestExample.readings).every((readingId) => plan.entries.some((entry) => entry.readingId === readingId)),
+    "Manifest example may name only rolling private-prefix readings.");
   assert(appsManifest.webapp.executeAs === "USER_ACCESSING" && appsManifest.webapp.access === "ANYONE", "Fail-closed Apps Script deployment identity.");
   assert(!appsManifest.webapp.access.includes("ANONYMOUS"), "Anonymous Apps Script access is forbidden.");
   const scopes = new Set(appsManifest.oauthScopes);
@@ -251,7 +260,7 @@ async function main() {
     assert(ignore.includes(entry), `.gitignore missing ${entry}`)
   );
 
-  process.stdout.write(`Content validation passed (${schemaFiles.length} schemas, ${bridgeIds.length} private-prefix readings, ${fullBridgeIds.length} scheduled bridge readings, 92-day reference schedule, fabricated Scripture only).\n`);
+  process.stdout.write(`Content validation passed (${schemaFiles.length} schemas, ${plan.entries.length} private-prefix readings, ${fullBridgeIds.length} scheduled bridge readings, 92-day reference schedule, fabricated Scripture only).\n`);
 }
 
 main().catch((error) => {

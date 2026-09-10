@@ -930,6 +930,140 @@
       "sourceIds": [
         "youversion_celebration_y3q4_plan_3805"
       ]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 38,
+      "sourcePlanDay": 91,
+      "readingId": "CC-Y3Q4-D091",
+      "kind": "chapter",
+      "bookId": "MAL",
+      "chapter": 3,
+      "passages": [
+        {
+          "bookId": "MAL",
+          "chapter": 3,
+          "verseCount": 18
+        }
+      ],
+      "orderingRationale": "Temporary bridge preserves Day 91 of Celebration Church's published Year 3, Quarter 4 sequence.",
+      "chronologyBasis": "pragmatic",
+      "confidence": "high",
+      "notes": "One chapter appears on the Scripture page.",
+      "sourceIds": [
+        "youversion_celebration_y3q4_plan_3805"
+      ]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 39,
+      "sourcePlanDay": 92,
+      "readingId": "CC-Y3Q4-D092",
+      "kind": "chapter",
+      "bookId": "MAL",
+      "chapter": 4,
+      "passages": [
+        {
+          "bookId": "MAL",
+          "chapter": 4,
+          "verseCount": 6
+        }
+      ],
+      "contextReadingIds": [
+        "CC-Y3Q4-D091"
+      ],
+      "orderingRationale": "Temporary bridge preserves Day 92 of Celebration Church's published Year 3, Quarter 4 sequence.",
+      "chronologyBasis": "pragmatic",
+      "confidence": "high",
+      "notes": "One chapter appears on the Scripture page.",
+      "sourceIds": [
+        "youversion_celebration_y3q4_plan_3805"
+      ]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 40,
+      "civilDate": "2026-09-16",
+      "readingId": "LTP-0001-GEN-INTRO",
+      "kind": "book_intro",
+      "bookId": "GEN",
+      "streamId": "old_testament",
+      "streamSequence": 1,
+      "unitLabel": "Genesis overview",
+      "representativeVerse": {
+        "bookId": "GEN",
+        "chapter": 1,
+        "verse": 1
+      },
+      "orderingRationale": "Genesis opens the plan because its creation, fall, flood, and patriarchal narrative supplies the canonical and historical frame for the remaining Bible.",
+      "chronologyBasis": "event",
+      "confidence": "high",
+      "notes": "Review-only book introduction; page 2 is the portable overview and page 3 centers the book's historical, canonical, and contextual fit.",
+      "sourceIds": [
+        "bible_api_web_structure_2026_08_26",
+        "tgc_old_testament_order_2026_08_26",
+        "tgc_historical_books_2026_08_26"
+      ],
+      "streamContributions": [
+        {
+          "streamId": "old_testament",
+          "streamSequence": 1,
+          "kind": "book_intro",
+          "bookId": "GEN",
+          "representativeVerse": {
+            "bookId": "GEN",
+            "chapter": 1,
+            "verse": 1
+          }
+        }
+      ]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 41,
+      "civilDate": "2026-09-17",
+      "readingId": "LTP-0002-GEN-001",
+      "kind": "chapter",
+      "bookId": "GEN",
+      "streamId": "old_testament",
+      "streamSequence": 2,
+      "unitLabel": "Genesis 1",
+      "chapter": 1,
+      "passages": [
+        {
+          "bookId": "GEN",
+          "chapter": 1,
+          "verseCount": 31
+        }
+      ],
+      "orderingRationale": "Genesis opens the plan because its creation, fall, flood, and patriarchal narrative supplies the canonical and historical frame for the remaining Bible.",
+      "chronologyBasis": "event",
+      "confidence": "high",
+      "notes": "One complete canonical chapter.",
+      "sourceIds": [
+        "bible_api_web_structure_2026_08_26",
+        "tgc_old_testament_order_2026_08_26",
+        "tgc_historical_books_2026_08_26"
+      ],
+      "contextReadingIds": [
+        "LTP-0001-GEN-INTRO"
+      ],
+      "streamContributions": [
+        {
+          "streamId": "old_testament",
+          "streamSequence": 2,
+          "kind": "chapter",
+          "bookId": "GEN",
+          "chapter": 1,
+          "passages": [
+            {
+              "bookId": "GEN",
+              "chapter": 1,
+              "verseCount": 31
+            }
+          ]
+        }
+      ]
     }
   ],
   "bookMetrics": {
@@ -992,6 +1126,11 @@
       "verseCount": 55,
       "chapterCount": 4,
       "versification": "Factual Protestant chapter metrics for bridge policy calculations"
+    },
+    "GEN": {
+      "verseCount": 1533,
+      "chapterCount": 50,
+      "versification": "Protestant chapter and verse numbering; factual structural metadata only"
     }
   }
 }

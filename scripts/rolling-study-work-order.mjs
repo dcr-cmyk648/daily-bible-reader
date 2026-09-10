@@ -34,7 +34,7 @@ async function main() {
     timeZone: "America/Detroit", year: "numeric", month: "2-digit", day: "2-digit"
   }).format(new Date());
   const [plan, privatePlan, appConfig, referencePlan, metrics, schema, protocolSchema, protocol, manifest] = await Promise.all([
-    readJson(path.join(ROOT, "config", "bridge-schedules", "celebration-y3q4-bridge-full.json")),
+    readJson(path.join(ROOT, "config", "active-calendar", "celebration-bridge-long-term-active.json")),
     readJson(path.join(ROOT, "fixtures", "pilot-content", "plan.json")),
     readJson(path.join(ROOT, "fixtures", "pilot-content", "app-config.json")),
     readJson(path.join(ROOT, "config", "reference-plans", "celebration-y3q4.json")),
@@ -45,15 +45,12 @@ async function main() {
     readJson(path.join(PRIVATE_CONTENT, "private-manifest.json"), true)
   ]);
   assertSchemaValid(protocol, protocolSchema, {label: "Canonical daily-study protocol"});
-  const firstSourceDay = plan.entries[0].sourcePlanDay;
-  const finalSourceDay = plan.entries.at(-1).sourcePlanDay;
   const lookaheadDays = appConfig.futureLookaheadDays;
-  const rawCurrentSourceDay = firstSourceDay + Math.max(0,
+  const rawCurrentDayIndex = 1 + Math.max(0,
     Math.floor((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${appConfig.sharedStartDate}T00:00:00Z`)) / 86400000));
-  const currentSourceDay = Math.min(Math.max(firstSourceDay, rawCurrentSourceDay), finalSourceDay);
-  const sourceDay = Math.min(rawCurrentSourceDay + lookaheadDays, finalSourceDay);
-  const horizonEntries = rawCurrentSourceDay > finalSourceDay ? [] : plan.entries.filter((entry) =>
-    entry.sourcePlanDay >= currentSourceDay && entry.sourcePlanDay <= sourceDay);
+  const targetDayIndex = Math.min(rawCurrentDayIndex + lookaheadDays, plan.entries.length);
+  const horizonEntries = rawCurrentDayIndex > plan.entries.length ? [] : plan.entries.filter((entry) =>
+    entry.dayIndex >= rawCurrentDayIndex && entry.dayIndex <= targetDayIndex);
   const readingArtifacts = Object.fromEntries(await Promise.all(horizonEntries.map(async (entry) => {
     const readingId = entry.readingId;
     const base = path.join(PRIVATE_CONTENT, "bridge", "celebration-y3q4", readingId);

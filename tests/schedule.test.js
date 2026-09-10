@@ -250,6 +250,21 @@ test("Apps Script private-config validator accepts the current active prefix and
   assert.throws(() => validate(config, changedBook, manifest), /Prepared plan does not match/);
 });
 
+test("Apps Script rolling private-prefix validation permits only a terminal book introduction", () => {
+  const terminalIntroPlan = {...activePlan, entries: activePlan.entries.slice(0, 40)};
+  assert.throws(() => serverCore.validatePlanStructure(terminalIntroPlan), {code: "INVALID_PLAN"});
+  assert.equal(serverCore.validatePlanStructure(terminalIntroPlan, {allowTerminalBookIntro: true}), terminalIntroPlan);
+  const earliestPermittedDate = new Date(`${config.sharedStartDate}T12:00:00Z`);
+  earliestPermittedDate.setUTCDate(
+    earliestPermittedDate.getUTCDate() + terminalIntroPlan.entries.at(-1).dayIndex - 1 - config.preparedAheadDays
+  );
+  const validate = validatorHarness(earliestPermittedDate.toISOString().slice(0, 10));
+  assert.doesNotThrow(() => validate(config, terminalIntroPlan, validManifestFor(terminalIntroPlan.entries)));
+  const malformed = structuredClone(terminalIntroPlan);
+  malformed.entries[38].bookId = "EXO";
+  assert.throws(() => validate(config, malformed, validManifestFor(malformed.entries)), /Prepared plan does not match/);
+});
+
 test("cached compatibility bootstrap requires a calendar revision while legacy plans remain readable", () => {
   const record = {readingId: "__app-bootstrap__", schemaVersion: "bootstrap-cache/v1", authorId: "dustin",
     cachedAt: "2026-09-01T00:00:00Z", expiresAt: "2026-09-02T00:00:00Z",

@@ -1591,7 +1591,7 @@
   }
 
   function normalizedHenrySourceLink(link, entry, sources) {
-    if (!link || !entry || entry.kind !== "chapter" ||
+    if (!link || !entry || !["chapter", "book_intro"].includes(entry.kind) ||
         typeof link.sourceId !== "string" || !link.sourceId.trim() ||
         typeof link.title !== "string" || !link.title.trim() || link.title.length > 200 ||
         typeof link.note !== "string" || !link.note.trim() || link.note.length > 500 ||
@@ -1603,7 +1603,15 @@
       return null;
     }
     if (url.protocol !== "https:" || url.username || url.password) return null;
-    return {sourceId: link.sourceId, title: link.title.trim(), url: url.href, note: link.note.trim()};
+    return {
+      sourceId: link.sourceId,
+      title: link.title.trim(),
+      url: url.href,
+      note: link.note.trim(),
+      label: entry.kind === "book_intro"
+        ? "verified full Matthew Henry book-introduction link"
+        : "verified full Matthew Henry chapter link"
+    };
   }
 
   function validMhcRuntimeProvenance(shard) {
@@ -2572,7 +2580,13 @@
           Array.isArray(introduction.sourceIds) && introduction.sourceIds.length > 0
       },
       entry && entry.kind === "book_intro"
-        ? {id: "book-overview", label: "Matthew Henry book overview", ready: metadataReady && bookCommentaryIsComplete(commentary, entry)}
+        ? {
+          id: "book-overview",
+          label: henrySourceLinkReady
+            ? "verified full Matthew Henry book-introduction link"
+            : "Matthew Henry book overview",
+          ready: metadataReady && (bookCommentaryIsComplete(commentary, entry) || henrySourceLinkReady)
+        }
         : {id: "scripture", label: "ESV passage configuration", ready: chapterPassagesAreConfigured(entry)},
       ...(entry && entry.kind === "book_intro" ? [] : [{
         id: "henry",

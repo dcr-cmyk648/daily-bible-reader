@@ -1403,7 +1403,7 @@ test("ensure CLI dry-run resolves the exact next active entry from an isolated r
   const repositoryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "dbr-mhc-ensure-d082-"));
   try {
     ["config", "fixtures", "schemas", "scripts"].forEach((name) => {
-      fs.symlinkSync(path.join(__dirname, "..", name), path.join(repositoryRoot, name), "dir");
+      fs.symlinkSync(path.join(__dirname, "..", name), path.join(repositoryRoot, name), process.platform === "win32" ? "junction" : "dir");
     });
     const preparedPlan = json("fixtures/pilot-content/plan.json");
     const activePlan = json("config/active-calendar/celebration-bridge-long-term-active.json");
@@ -1793,7 +1793,8 @@ test("each Codex child gets a controller temporary SQLite home in its inherited 
   assert.equal(spawnOptions.env.CODEX_SQLITE_HOME, sqliteHome);
   assert.equal(spawnOptions.env.HOME, process.env.HOME);
   assert.equal(spawnOptions.env.CODEX_HOME, process.env.CODEX_HOME);
-  assert.equal(spawnOptions.env.PATH, process.env.PATH);
+  const pathKey = Object.keys(process.env).find((key) => key.toUpperCase() === "PATH");
+  assert.equal(spawnOptions.env[pathKey], process.env[pathKey]);
   assert.deepEqual(removed, [{target: sqliteHome, options: {recursive: true, force: true, maxRetries: 2}}]);
 });
 
@@ -1842,7 +1843,9 @@ test("controller SQLite bootstrap copies only schema, migrations, and a complete
     assert.equal(target.prepare("SELECT COUNT(*) AS count FROM threads WHERE body LIKE ?").get("%SENTINEL%").count, 0);
     assert.equal(target.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'index' AND name = 'threads_body'").get().count, 1);
     target.close();
-    assert.equal(fs.statSync(targetPath).mode & 0o777, 0o600);
+    // POSIX mode bits are not Windows ACLs; Windows reports synthesized permission bits.
+    if (process.platform !== "win32") assert.equal(fs.statSync(targetPath).mode & 0o777, 0o600);
+    fs.accessSync(targetPath, fs.constants.R_OK | fs.constants.W_OK);
 
     let seededBeforeSpawn = false;
     await runCodex({

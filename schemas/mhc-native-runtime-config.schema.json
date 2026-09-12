@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daily-bible-reader.local/schemas/mhc-native-runtime-config.schema.json",
+  "title": "Native Henry runtime configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "source_revision", "project_root", "runtime_root", "spark_automation_id", "luna_automation_id"],
+  "properties": {
+    "schema_version": {"const": "mhc-native-runtime-config/v1"},
+    "source_revision": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+    "project_root": {"type": "string", "minLength": 1},
+    "runtime_root": {"type": "string", "minLength": 1},
+    "spark_automation_id": {"type": "string", "minLength": 1, "maxLength": 200},
+    "luna_automation_id": {"type": "string", "minLength": 1, "maxLength": 200}
+  }
+}

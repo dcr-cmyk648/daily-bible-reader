@@ -3,6 +3,7 @@
 import {readFile} from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+import {pathToFileURL} from "node:url";
 import {assertSchemaValid} from "./lib/schema-validator.mjs";
 
 const ROOT = process.cwd();
@@ -123,7 +124,7 @@ async function main() {
     `${Object.entries(report.byStatus).map(([status, count]) => `${status}=${count}`).join(", ") || "empty"}).\n`);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main().catch((error) => {
     process.stderr.write(`Source registry validation failed: ${error.message}\n`);
     process.exitCode = 1;

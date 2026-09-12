@@ -306,13 +306,13 @@ test("native authoring paths resolve a private-store symlink and reject escapes 
   try {
     await mkdir(workItemDir, {recursive:true});
     await mkdir(path.dirname(aliasRoot), {recursive:true});
-    await symlink(canonicalRoot, aliasRoot, "dir");
+    await symlink(canonicalRoot, aliasRoot, process.platform === "win32" ? "junction" : "dir");
     const paths = await nativeAuthoringPaths({workRoot:aliasRoot, workItemDir:path.join(aliasRoot,item.work_item_id), item});
     assert.equal(paths.candidatePath, path.join(await realpath(workItemDir), "candidate.json"));
     assert.equal(paths.validationPath, path.join(await realpath(workItemDir), "validation.json"));
     await mkdir(path.join(root,"outside"));
     await assert.rejects(nativeAuthoringPaths({workRoot:aliasRoot,workItemDir:path.join(root,"outside"),item}),/outside the expected/);
-    await symlink(path.join(root,"outside-candidate.json"), paths.candidatePath);
+    await symlink(path.join(root, process.platform === "win32" ? "outside" : "outside-candidate.json"), paths.candidatePath, process.platform === "win32" ? "junction" : "file");
     await assert.rejects(nativeAuthoringPaths({workRoot:aliasRoot,workItemDir:path.join(aliasRoot,item.work_item_id),item}),/absent or a regular file/);
   } finally { await rm(root,{recursive:true,force:true}); }
 });
@@ -330,9 +330,9 @@ test("actual submit CLI stages a complete four-verse candidate saved through its
   const workItemDir=path.join(workRoot,cliItem.work_item_id),aliasWorkRoot=path.join(isolated,"private-content","automation","mhc-native-work-items"),relativeWorkItem=path.join("private-content","automation","mhc-native-work-items",cliItem.work_item_id,"work-item.json");
   try {
     await Promise.all([mkdir(workItemDir,{recursive:true}),mkdir(path.join(canonicalCommentary,"mhc","normalized","TST"),{recursive:true}),mkdir(path.join(isolated,"fixtures","pilot-content"),{recursive:true})]);
-    await symlink(canonicalPrivate,path.join(isolated,"private-content"),"dir");
-    await symlink(canonicalCommentary,path.join(isolated,"private-commentary"),"dir");
-    await symlink(path.join(repositoryRoot,"schemas"),path.join(isolated,"schemas"),"dir");
+    await symlink(canonicalPrivate,path.join(isolated,"private-content"),process.platform === "win32" ? "junction" : "dir");
+    await symlink(canonicalCommentary,path.join(isolated,"private-commentary"),process.platform === "win32" ? "junction" : "dir");
+    await symlink(path.join(repositoryRoot,"schemas"),path.join(isolated,"schemas"),process.platform === "win32" ? "junction" : "dir");
     await Promise.all([
       writeFile(path.join(isolated,"fixtures","pilot-content","plan.json"),`${JSON.stringify({planVersion,entries:[{readingId,dayIndex:1,sourcePlanDay:1,passages:[{bookId:"TST",chapter:1,verseCount:4}]}]},null,2)}\n`),
       writeFile(path.join(isolated,"fixtures","pilot-content","app-config.json"),`${JSON.stringify({sharedStartDate:"2026-09-08"},null,2)}\n`),
@@ -475,6 +475,8 @@ test("one validated Spark chunk satisfies only its current slot and preserves bo
   const currentProgress=[event({chunk_id:"001-001",outcome:"validated",at:"2026-09-07T15:20:00.000Z",primary_slot:currentSlot})];
   const sameSlot=state.deriveChapterDecision({events:currentProgress,orderedChunkIds:chunks,now:"2026-09-07T15:25:00.000Z"});
   assert.deepEqual(sameSlot,{owner:null,restart:false,blocked:false,reason:"primary_slot_complete",nextChunkId:"002-002",primary_slot:currentSlot});
+  const runnerContinuation=state.deriveChapterDecision({events:currentProgress,orderedChunkIds:chunks,now:"2026-09-07T15:25:00.000Z",allowPrimaryContinuation:true});
+  assert.deepEqual(runnerContinuation,{owner:SPARK,restart:false,blocked:false,reason:"primary_pending",nextChunkId:"002-002",primary_slot:currentSlot});
   assert.deepEqual(incompleteAssemblyReport(item,sameSlot),safeNativeReport({item,action:"none",state:"reading_incomplete"}));
 
   const nextSlot=state.deriveChapterDecision({events:currentProgress,orderedChunkIds:chunks,now:"2026-09-07T21:16:00.000Z"});
@@ -780,4 +782,11 @@ test("native packet is one model-neutral two-stage contract with versioned refre
   assert.match(createBody,/instructions_sha256/);
   assert.match(createBody,/await put\(path\.join\(b,"packet\.json"\),packetManifest\)/);
   assert.doesNotMatch(createBody,/mhc-fact-extractor-v8\.md|mhc-autonomous-writer-v5\.md/);
+});
+
+test("a live bounded Spark wake continues into a new chapter without creating Luna eligibility",async()=>{
+  const {deriveChapterDecision}=await import("../scripts/lib/mhc-native-state.mjs");
+  const now="2026-09-10T15:40:00.000Z",orderedChunkIds=["TST:2:001-004"];
+  const decision=deriveChapterDecision({events:[],orderedChunkIds,now,allowPrimaryContinuation:true,primaryWakeProgress:true});assert.equal(decision.owner,SPARK);
+  const fallback=deriveChapterDecision({events:[],orderedChunkIds,now,allowPrimaryContinuation:true});assert.equal(fallback.owner,LUNA);
 });

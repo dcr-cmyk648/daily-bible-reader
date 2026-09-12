@@ -4,6 +4,7 @@ import {readFile} from "node:fs/promises";
 import {spawnSync} from "node:child_process";
 import path from "node:path";
 import process from "node:process";
+import {pathToFileURL} from "node:url";
 
 const ROOT = process.cwd();
 const PRIVATE_PATH_PATTERNS = [
@@ -159,7 +160,7 @@ async function main() {
   process.stdout.write(`Repository safety check passed (${paths.length} file${paths.length === 1 ? "" : "s"} inspected).\n`);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) main().catch((error) => {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main().catch((error) => {
   process.stderr.write(`Repository safety check could not run: ${error.message}\n`);
   process.exitCode = 1;
 });

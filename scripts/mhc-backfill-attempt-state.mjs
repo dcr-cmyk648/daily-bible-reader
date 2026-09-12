@@ -7,6 +7,7 @@ import {assertSchemaValid} from "./lib/schema-validator.mjs";
 import {emptyMhcBackfillAttemptState, normalizedAttemptState, recordMhcBackfillAttempt} from "./lib/mhc-backfill-attempt-state.mjs";
 
 const ROOT = process.cwd();
+const TRACKED_ROOT = process.env.MHC_NATIVE_TRACKED_ROOT || ROOT;
 const STATE_PATH = path.join(ROOT, "private-content", "automation", "mhc-backfill-attempt-state.json");
 
 function parseArgs(argv) {
@@ -29,8 +30,8 @@ async function main() {
   const options = parseArgs(process.argv.slice(2));
   if (options.help) return process.stdout.write("Usage: node scripts/mhc-backfill-attempt-state.mjs --reading <readingId> --outcome <published|model_failure|blocked> --stage <generation|review|validation|publication|controller> --code <SAFE_CODE> [--at ISO-8601]\n");
   const [plan, schema, existing] = await Promise.all([
-    readJson(path.join(ROOT, "fixtures", "pilot-content", "plan.json")),
-    readJson(path.join(ROOT, "schemas", "mhc-backfill-attempt-state.schema.json")),
+    readJson(path.join(TRACKED_ROOT, "fixtures", "pilot-content", "plan.json")),
+    readJson(path.join(TRACKED_ROOT, "schemas", "mhc-backfill-attempt-state.schema.json")),
     readJson(STATE_PATH)
   ]);
   const state = normalizedAttemptState(existing, plan.planVersion);

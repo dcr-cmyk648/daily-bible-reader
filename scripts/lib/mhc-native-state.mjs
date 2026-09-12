@@ -34,7 +34,7 @@ export function latestDetroitSparkSlot(now, slotMinutes = SPARK_SLOT_MINUTES) {
   for (const delta of [-1,0]) { const d = new Date(Date.UTC(+p.year, +p.month - 1, +p.day + delta)); const y=d.getUTCFullYear(), m=String(d.getUTCMonth()+1).padStart(2,"0"), day=String(d.getUTCDate()).padStart(2,"0"); for (const total of slotMinutes) { const slot=utcForDetroit(y,m,day,Math.floor(total / 60),total % 60); if(slot)candidates.push(slot); } }
   return candidates.filter(x => Date.parse(x) <= Date.parse(now)).sort().at(-1);
 }
-export function deriveChapterDecision({events, orderedChunkIds, now, slotGraceMs = SLOT_GRACE_MS}) {
+export function deriveChapterDecision({events, orderedChunkIds, now, slotGraceMs = SLOT_GRACE_MS, allowPrimaryContinuation = false, primaryWakeProgress = false}) {
   const ordered=[...events].sort((a,b)=>Date.parse(a.at)-Date.parse(b.at));
   const blocking=ordered.find(e=>["deterministic_failure","source_failure","schema_failure","review_failure"].includes(e.outcome));
   if (blocking) return {owner:null,blocked:true,reason:blocking.outcome};
@@ -51,7 +51,8 @@ export function deriveChapterDecision({events, orderedChunkIds, now, slotGraceMs
   const slot=latestDetroitSparkSlot(now);
   const knownChunks=new Set(orderedChunkIds);
   const primaryProgress=ordered.some(e=>e.model===SPARK&&e.outcome==="validated"&&e.primary_slot===slot&&knownChunks.has(e.chunk_id));
-  if (primaryProgress) return {owner:null,restart:false,blocked:false,reason:"primary_slot_complete",nextChunkId,primary_slot:slot};
+  if (primaryProgress && !allowPrimaryContinuation) return {owner:null,restart:false,blocked:false,reason:"primary_slot_complete",nextChunkId,primary_slot:slot};
+  if ((primaryProgress || primaryWakeProgress) && allowPrimaryContinuation) return {owner:SPARK,restart:false,blocked:false,reason:"primary_pending",nextChunkId,primary_slot:slot};
   const sparkForSlot=ordered.filter(e=>e.model===SPARK&&e.chunk_id===nextChunkId&&e.primary_slot===slot);
   const active=sparkForSlot.at(-1);
   if (active?.outcome==="leased" && Date.parse(now)>=Date.parse(slot)+slotGraceMs) return {owner:LUNA,restart:true,blocked:false,reason:"stale_primary",nextChunkId:orderedChunkIds[0],transferChunkId:nextChunkId,primary_slot:slot};

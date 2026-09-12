@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daily-bible-reader.local/schemas/mhc-native-runner-checkpoint.schema.json",
+  "title": "Native Henry runner checkpoint",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "checkpoint_id", "checkpoint_sha256", "runtime_manifest_sha256", "runtime_revision", "lane", "model", "automation_id", "primary_automation_id", "started_at", "lease_cutoff_at", "deadline_at", "validated_chunks", "candidate_submissions", "max_validated_chunks", "max_candidate_submissions", "state", "reading_id", "work_item_path", "work_item_sha256"],
+  "properties": {
+    "schema_version": {"const": "mhc-native-runner-checkpoint/v1"},
+    "checkpoint_id": {"type": "string", "pattern": "^MHNR-[a-f0-9]{32}$"},
+    "checkpoint_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "runtime_manifest_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "runtime_revision": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+    "lane": {"enum": ["spark", "luna"]},
+    "model": {"enum": ["gpt-5.3-codex-spark", "gpt-5.6-luna"]},
+    "automation_id": {"type": "string", "minLength": 1, "maxLength": 200},
+    "primary_automation_id": {"type": ["string", "null"], "maxLength": 200},
+    "started_at": {"type": "string", "format": "date-time"},
+    "lease_cutoff_at": {"type": "string", "format": "date-time"},
+    "deadline_at": {"type": "string", "format": "date-time"},
+    "validated_chunks": {"type": "integer", "minimum": 0},
+    "candidate_submissions": {"type": "integer", "minimum": 0},
+    "max_validated_chunks": {"const": 16},
+    "max_candidate_submissions": {"const": 48},
+    "state": {"enum": ["starting", "author_candidate", "repair_candidate", "checkpointed", "complete", "blocked"]},
+    "reading_id": {"type": ["string", "null"], "maxLength": 160},
+    "work_item_path": {"type": ["string", "null"], "maxLength": 1024},
+    "work_item_sha256": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+    "last_code": {"type": ["string", "null"], "maxLength": 120}
+  }
+}

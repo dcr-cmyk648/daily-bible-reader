@@ -1,5 +1,17 @@
 # Project state
 
+## Cortan Henry runner repair — 2026-09-12
+
+The dedicated Henry repair is implemented and validated in the isolated `a25e/BibleApp` worktree at base `c960e12`; it is not committed, pushed, installed in the canonical project, or activated. The canonical checkout and its six migration edits, the dirty migration snapshot, original unfinished implementation, real private content, reviewed library artifacts, historical leases, and daily devotional automation were not modified. Henry automations remain paused.
+
+The installed Windows entry now avoids per-wake Git/bootstrap operations, installs exact committed blobs with checksum-bound pointer-last activation, and uses native Node/PowerShell invocation. Ledger-based recovery covers staging interruptions, complete readings without checkpoints, terminal candidate failure, and superseded leases. One-reading pinning, cross-chapter Spark continuation, three distinct candidate attempts, crash-safe 48-submit accounting, 16-chunk/45-minute leasing limits, the 60-minute authoring deadline, exact model routing, and canonical path/junction checks preserve the independent review/publication boundary.
+
+Final validation: `npm.cmd run check` passed all **355 tests**, 42 schemas, repository/source/content gates, all builds, and exact Pages verification. Both installed real-controller integration tests completed 15 fabricated chunks through admission, ledger, assembly, and actual reviewer discovery; no model or network was used. `npm.cmd run publish:pages` reproduced unchanged frontend `d35abd879455dc50` and PWA `a3cde99646bb00aa`, then exact verification passed. Ignored real-content validation was explicitly skipped because this isolated worktree contains no real drafts; the recorded canonical migration validation was not rerun. Test subprocesses required explicitly approved execution outside the Windows sandbox after `spawn EPERM`.
+
+The source fingerprints and precise gates are in `docs/validation/henry-windows-repair-20260912.json`; the detailed recovery/capacity evidence is in `docs/execplans/henry-deterministic-runner-throughput.md`, and the concrete release/activation sequence is in `docs/HENRY_WINDOWS_ACTIVATION.md`. Next: obtain explicit approval for this reviewed code-only commit/push, install the exact accepted revision, separately resolve historical operational path/lease ownership, and obtain Henry activation approval. A naturally authorized exact-model reading and a naturally scheduled wake remain necessary before claiming unattended reliability; no real Henry material was generated as a smoke test.
+
+---
+
 Updated 2026-09-10 (`America/Detroit`).
 
 The September 10 daily lane completed the Celebration-to-long-term crossover and is live through Detroit T+7, September 17. D091/Malachi 3, D092/Malachi 4, the Genesis introduction, and Genesis 1 were independently researched where required, reviewed, validated, and published content-first with the existing private manifest updated last. The private prefix now contains exactly 41 contiguous active-calendar readings. Exact payload and manifest readback, unchanged narrow sharing, named-reading health, and the full authenticated eight-reading health gate all passed. The current chapter horizon has 0 complete, 7 verified-fallback debts, and 0 unavailable Matthew Henry layers; that debt remains assigned to the independent native lane.
@@ -314,3 +326,33 @@ The full source-day mapping remains factual metadata only; the active bridge use
 ## Next concrete action
 
 Confirm that the next scheduled reviewer consumes the tracked work-order command and no-ops the completed D084 handoff instead of rescanning it. Then prepare D091/September 14 through direct editorial review, content-first/manifest-last Drive publication, exact readback, and its exact-reading live gate. Reevaluate the bounded work order afterward and run the full horizon health check only when no gap remains. The independent Henry lane may continue to its next eligible fallback candidate; each future review must complete durable-library finalization and app-visible publication before success is recorded.
+
+## Henry activation coordination update — 2026-09-12
+
+The manager relayed the user’s explicit activation instruction and owns all
+release, installation, and task changes. Read-only canonical preflight found
+zero live historical leases; 221 native work-store files stayed hash-identical.
+D087 is the deterministic next fallback: eight winning chunks remain valid,
+with only Psalm 150:5–6 requiring a fresh eligible Luna lease. D084’s actual
+review work order is a completed/manifest-backed no-op. The Henry runtime and
+Henry task definitions are not installed on Cortan; original identities must be
+restored for work-item continuity. No activation mutation or real generation
+was performed by the isolated repair task. `docs/HENRY_WINDOWS_ACTIVATION.md`
+contains the classified preflight and the manager’s concrete next steps.
+
+The manager subsequently restored all three Henry definitions as PAUSED; a
+read-only check confirms their original IDs and exact model/reasoning settings.
+The installed reviewer ends at reviewed-library finalization. Attachment, private
+validation, live-health, and manifest-last Drive publication require the manager’s
+separately verified existing publication lane or a reviewed command extension.
+This capability limit was handed to the manager before activation; no source
+fingerprint, runtime, or task state was changed by this repair task.
+
+The manager resolved the reviewer capability boundary by explicitly handing
+attachment/validation/publication to its existing verified offline Cortan
+publication workspace. No native runtime code patch is required. The three
+Henry tasks remain PAUSED pending coordinated source release and installation.
+
+## Release approval - 2026-09-12
+
+The user explicitly approved committing and pushing this validated Henry repair and activating it on Cortan. The manager owns the release, exact-commit installation and task activation. The canonical dirty checkout and independent daily-service runtime remain preserved. All 22 frozen code fingerprints match the accepted 355-test handoff; remote main was verified at the same c960e12 base before release. Operational results will be recorded after installation and the first real run.

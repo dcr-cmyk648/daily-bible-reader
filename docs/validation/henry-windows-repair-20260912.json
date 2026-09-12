@@ -1,0 +1,144 @@
+{
+  "description": "Cortan Henry repair validation; fabricated controller tests, no real model execution or publication",
+  "date": "2026-09-12",
+  "base_revision": "c960e12ad1c03f1019735ed335e53db31c9119a2",
+  "source_status": "uncommitted isolated repair, awaiting explicit commit/push approval",
+  "platform": "win32",
+  "node": "v24.16.0",
+  "validation": {
+    "command": "npm.cmd run check",
+    "tests": 355,
+    "passed": 355,
+    "failed": 0,
+    "schemas": 42,
+    "private_content": "skipped: ignored real drafts absent; canonical migration validation was not repeated",
+    "installed_integration": {
+      "spark_chunks": 15,
+      "luna_chunks": 15,
+      "controller_modules": "actual admission, ledger, assembly, reviewer discovery",
+      "test_clock": "controlled Date only, controller modules not replaced",
+      "uses_model": false,
+      "network_access": false
+    },
+    "pages_publication": "local generation only; exact unchanged assets verified",
+    "frontend": "d35abd879455dc50",
+    "pwa": "a3cde99646bb00aa"
+  },
+  "operational_gates": [
+    "Explicit commit/push approval",
+    "Release installation from clean accepted commit",
+    "Naturally authorized exact-model complete-reading proof and naturally scheduled wake",
+    "Existing independent source review and manifest-last publication",
+    "Manager enables approved tasks only after verified installation and correct Windows execution authorization"
+  ],
+  "files": [
+    {
+      "path": "package.json",
+      "sha256": "9b5121313c725846b0177b9f6a55adacd8e0f65c67b23dc4ebd32ddbe6bb8824"
+    },
+    {
+      "path": "prompts/mhc-native-generation-runner-v1.md",
+      "sha256": "3316a1ca2ef5ef492f49dd7acce2ebeb23a1132bee44709f0cd0e2a3c74d3723"
+    },
+    {
+      "path": "prompts/mhc-native-review-runner-v1.md",
+      "sha256": "4a7f9eb621f3d055c30bcb3f3ee4f618595ca6aadaff066f22fc2169bb354538"
+    },
+    {
+      "path": "schemas/mhc-native-runner-checkpoint.schema.json",
+      "sha256": "886dc8c4a2a7bee52552d816806a790fe6c926f9e677954ffcd6e326471d9539"
+    },
+    {
+      "path": "schemas/mhc-native-runtime-config.schema.json",
+      "sha256": "89fd0acbaf249af0d072990b7dd9ea400766da4646ba398d4dfbd59ca8040ffc"
+    },
+    {
+      "path": "schemas/mhc-native-runtime-manifest.schema.json",
+      "sha256": "59aa33f4f5d96eacc902b60b6842e2b3958c55b8486d94d5a239e7c416ecad60"
+    },
+    {
+      "path": "schemas/mhc-native-runtime-pointer.schema.json",
+      "sha256": "74c1e3a3e4499474c871e41b494562dc6c2a7c493477b11b0c4d8730a0522c52"
+    },
+    {
+      "path": "scripts/check-repository-safety.mjs",
+      "sha256": "4af9f91f055cf4f82d6f0ef6801a687f0fca035937da39462a62870ae551f2df"
+    },
+    {
+      "path": "scripts/install-mhc-native-runtime.mjs",
+      "sha256": "1bf5b3906f59811e96e60192555570f6d961e7d9813a0c9d06d39ba6f2a17b65"
+    },
+    {
+      "path": "scripts/lib/mhc-native-paths.mjs",
+      "sha256": "cc53d3e109076a208990be2372529d3e3668cf955209f9353a9dc0b94d7bfb91"
+    },
+    {
+      "path": "scripts/lib/mhc-native-runner.mjs",
+      "sha256": "5871b4ef5790e97f727100e0fbafcbf290e44b9cb6586806b80b5f1f631f6c5b"
+    },
+    {
+      "path": "scripts/lib/mhc-native-state.mjs",
+      "sha256": "90aa9e198be6a402046d63f6ee13e35f17a18a2e4029f0f59d0e1d502aef672a"
+    },
+    {
+      "path": "scripts/mhc-backfill-attempt-state.mjs",
+      "sha256": "e87ca1fb915ebeaef3fe2bc532d3114a334a45c89c4b3150e305f5a04564aa2a"
+    },
+    {
+      "path": "scripts/mhc-native-review-work-order.mjs",
+      "sha256": "4fd2d05445c1a7b3bbdc271b3e81a97d870b43dfd9a462d40d8135d6abd5925e"
+    },
+    {
+      "path": "scripts/mhc-native-runner.mjs",
+      "sha256": "ddbb80b9a3d7ae0115390c86b67bec58298618195becc0cce354574133cee760"
+    },
+    {
+      "path": "scripts/mhc-native-runtime-launcher.mjs",
+      "sha256": "0a1aa75c2b259745bc8dd83d4a23a8e263f9ab5bc2b1a8ed88982d5e4dd7a850"
+    },
+    {
+      "path": "scripts/mhc-native-worker.mjs",
+      "sha256": "1584ae7852209cf72f00d57572547b89792d3433fd3163519469f802400c3383"
+    },
+    {
+      "path": "scripts/mhc-pipeline.mjs",
+      "sha256": "04a8f6639aeb2be1eef2819f08a64d25406b52a764aa04ed8727655386bac73b"
+    },
+    {
+      "path": "scripts/validate-source-registry.mjs",
+      "sha256": "ca5461bc8a913fcb312532c9b0a7c3419ce36c465d67b687146eaf73d8b4c744"
+    },
+    {
+      "path": "tests/mhc-native-runner.test.js",
+      "sha256": "27bef9a577673910ccfcadf5bc11fda745f601931d6df3736b5d260db7a5b76a"
+    },
+    {
+      "path": "tests/mhc-native-worker.test.js",
+      "sha256": "b53f9c354112ce756eaa4c665e4e8601a437c23911bca9d70eb8c8ac1aefb592"
+    },
+    {
+      "path": "tests/mhc-pipeline.test.js",
+      "sha256": "ca1b8bf4dd3673cb8f3622541459c94cc98221612584a2011e5228e350800cb1"
+    }
+  ],
+  "activation_authorization": "User activation instruction relayed by manager; manager exclusively coordinates mutations",
+  "canonical_preflight": {
+    "mode": "read-only",
+    "work_items": 24,
+    "ledger_files": 5,
+    "active_historical_leases": 0,
+    "hashed_work_store_files": 221,
+    "all_files_unchanged": true,
+    "redirects": 0,
+    "next_reading": "CC-Y3Q4-D087",
+    "winning_validated_chunks": 8,
+    "remaining_chunk": "PSA150:005-006",
+    "next_action": "fresh eligible Luna lease, no historical lease adoption",
+    "review_work_order": "D084 completed/manifest_backed",
+    "henry_runtime_installed": false,
+    "henry_definitions_present_on_cortan": true,
+    "henry_definitions_state": "three restored by manager; read-only verification confirms PAUSED"
+  },
+  "reviewer_capability_limit": "Installed work-order/prepare/apply/finalize only; attachment/private validation/live-health/Drive publication remain outside launcher",
+  "reviewer_publication_handoff": "Resolved by manager: existing separately verified offline Cortan publication workspace after native review finalization; daily preparation/protocol refresh excluded"
+}

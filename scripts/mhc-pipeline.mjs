@@ -5,6 +5,7 @@ import {access, appendFile, chmod, mkdir, mkdtemp, readFile, readdir, rename, rm
 import {homedir, tmpdir} from "node:os";
 import path from "node:path";
 import process from "node:process";
+import {pathToFileURL} from "node:url";
 import {DatabaseSync} from "node:sqlite";
 import {
   AUTONOMOUS_GENERATION_MODE,
@@ -3442,7 +3443,7 @@ async function main() {
   else throw new Error(`Unknown command ${options.command}.\n\n${usage()}`);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main().catch((error) => {
     process.stderr.write(`Matthew Henry pipeline failed: ${error.message}\n`);
     process.exitCode = 1;

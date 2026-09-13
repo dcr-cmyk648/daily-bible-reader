@@ -8,7 +8,7 @@ import {assertCanonicalPath} from "./lib/mhc-native-paths.mjs";
 import {readCheckpoint,withRunnerLock} from "./lib/mhc-native-runner.mjs";
 
 const sha=value=>createHash("sha256").update(value).digest("hex");
-const scopes=["scripts","schemas","prompts","fixtures/pilot-content/plan.json","fixtures/pilot-content/app-config.json"];
+const scopes=["scripts","schemas","prompts","fixtures/pilot-content/plan.json","fixtures/pilot-content/app-config.json","config/active-calendar/celebration-bridge-long-term-active.json"];
 const usage="Usage: node scripts/install-mhc-native-runtime.mjs --project-root PATH --revision 40HEX --spark-automation-id ID --luna-automation-id ID";
 function options(args){const value={};for(let i=0;i<args.length;i+=2){if(!["--project-root","--revision","--spark-automation-id","--luna-automation-id"].includes(args[i])||!args[i+1])throw Error(usage);value[args[i].slice(2).replace(/-([a-z])/g,(_,c)=>c.toUpperCase())]=args[i+1];}return value;}
 function git(root,args){const result=spawnSync("git",args,{cwd:root,windowsHide:true,maxBuffer:32*1024*1024});if(result.status!==0)throw Error("Cannot verify committed runtime source.");return result.stdout;}
@@ -31,7 +31,7 @@ async function main(){
   // Read committed blobs, never label a mutable working copy with a revision.
   const entries=git(sourceRoot,["ls-tree","-r","-z",opts.revision,"--",...scopes]).toString().split("\0").filter(Boolean).map(line=>{
     const match=/^(100644|100755) blob ([a-f0-9]{40})\t(.+)$/.exec(line);
-    if(!match||! /^(scripts|schemas|prompts|fixtures)\/[A-Za-z0-9._/-]+$/.test(match[3])||match[3].split("/").includes(".."))throw Error("Runtime source has an unsafe tree entry.");
+    if(!match||! /^(scripts|schemas|prompts|fixtures|config)\/[A-Za-z0-9._/-]+$/.test(match[3])||match[3].split("/").includes(".."))throw Error("Runtime source has an unsafe tree entry.");
     return {path:match[3],bytes:git(sourceRoot,["cat-file","blob",match[2]])};
   });
   if(!entries.some(e=>e.path==="scripts/mhc-native-runner.mjs"))throw Error("Source commit has no native runner.");

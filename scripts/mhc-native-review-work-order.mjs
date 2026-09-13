@@ -4,14 +4,15 @@ import process from "node:process";
 import {readFile} from "node:fs/promises";
 import {nativeReviewWorkOrder} from "./lib/mhc-native-review-work-order.mjs";
 
+import {loadHenryPlan} from "./lib/mhc-priority.mjs";
 const root = process.cwd();
 const trackedRoot = process.env.MHC_NATIVE_TRACKED_ROOT || root;
 const json = file => readFile(file, "utf8").then(JSON.parse);
 
 async function main() {
   if (process.argv.length !== 2) throw new Error("Usage: npm run mhc:native:review:work-order");
-  const [plan, appConfig, handoffSchema, transactionSchema, approvalSchema, candidateSchema, reviewSchema] = await Promise.all([
-    json(path.join(trackedRoot,"fixtures/pilot-content/plan.json")), json(path.join(trackedRoot,"fixtures/pilot-content/app-config.json")),
+  const {plan, appConfig} = await loadHenryPlan(trackedRoot);
+  const [handoffSchema, transactionSchema, approvalSchema, candidateSchema, reviewSchema] = await Promise.all([
     json(path.join(trackedRoot,"schemas/mhc-native-review-handoff.schema.json")), json(path.join(trackedRoot,"schemas/mhc-native-review-transaction.schema.json")),
     json(path.join(trackedRoot,"schemas/mhc-native-review-approval.schema.json")), json(path.join(trackedRoot,"schemas/mhc-native-review-candidate.schema.json")), json(path.join(trackedRoot,"schemas/mhc-schedule-review.schema.json"))
   ]);

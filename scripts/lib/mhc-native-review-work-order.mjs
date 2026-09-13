@@ -4,6 +4,7 @@ import path from "node:path";
 import {assertSchemaValid} from "./schema-validator.mjs";
 import {loadLatestHenryReading, sameHenryRuntime} from "./mhc-library-sync.mjs";
 import {sha256, stableJson} from "./mhc-pipeline.mjs";
+import {henryPriorityWindow,hasHenryPublicationReceipt} from "./mhc-priority.mjs";
 
 const digest = bytes => createHash("sha256").update(bytes).digest("hex");
 const safeId = value => /^[A-Za-z0-9][A-Za-z0-9._:-]{2,159}$/.test(String(value || ""));
@@ -163,7 +164,8 @@ async function approvalState({base, handoff, readingId, planVersion, approvalSch
   } catch { return "invalid"; }
 }
 
-export async function nativeReviewWorkOrder({root, workRoot, privateRoot, canonicalRoot, libraryRoot, transactionRoot, plan, appConfig, handoffSchema, transactionSchema, approvalSchema = {}, candidateSchema = {}, reviewSchema = {}, runtimeSchemaPath}) {
+export async function nativeReviewWorkOrder({root, workRoot, privateRoot, canonicalRoot, libraryRoot, transactionRoot, plan, appConfig, handoffSchema, transactionSchema, approvalSchema = {}, candidateSchema = {}, reviewSchema = {}, runtimeSchemaPath, now = new Date()}) {
+  const window = henryPriorityWindow(appConfig,now);
   let children;
   try { children = await readdir(path.join(workRoot, "review-staging"), {withFileTypes:true}); }
   catch (error) { if (error.code === "ENOENT") return {lane:"henry_backfill",readingId:null,scheduleDate:null,action:"none",state:"no_review_handoffs",stage:"classification",priorManifestState:"manifest_unchanged"}; throw error; }
@@ -183,12 +185,21 @@ export async function nativeReviewWorkOrder({root, workRoot, privateRoot, canoni
     const local = canonical.state === "committed" ? await libraryAndAttachment({libraryRoot,runtimeSchemaPath,metadataPath:path.join(privateRoot,"bridge","celebration-y3q4",`${readingId}.metadata.json`),readingId}) : {library:{current:false},attached:{current:false}};
     const manifest = await json(path.join(privateRoot,"private-manifest.json"),true);
     const result = classifyNativeReviewState({handoff:handoffState,canonical,library:local.library,attached:local.attached,manifestBacked:Boolean(manifest?.readings?.[readingId])});
+    if(result.state==="completed"&&
+        !await hasHenryPublicationReceipt({privateRoot,readingId,manifest})) {
+      Object.assign(result,{action:"recover_publish",state:"committed_publication_debt",stage:"publication"});
+    }
+    if(result.action==="review"&&entry.dayIndex>window.horizonDay)continue;
     candidates.push({readingId,scheduleDate:scheduleDate(appConfig,entry),...result});
   }
+  if(!candidates.length)return {lane:"henry_backfill",readingId:null,scheduleDate:null,action:"none",state:"no_eligible_review_handoffs",stage:"classification",priorManifestState:"manifest_unchanged"};
   const invalid = candidates.find(candidate => candidate.state === "blocked");
   if (invalid) return {lane:"henry_backfill",readingId:invalid.readingId,scheduleDate:invalid.scheduleDate,action:invalid.action,state:invalid.state,stage:invalid.stage,code:invalid.code,priorManifestState:invalid.priorManifestState};
   const rank = {resume_apply:0,recover_finalize:1,recover_attach:2,recover_publish:3,review:4,none:5};
-  candidates.sort((left,right) => rank[left.action] - rank[right.action] || left.scheduleDate.localeCompare(right.scheduleDate) || left.readingId.localeCompare(right.readingId));
+  const reviewTier = candidate => candidate.scheduleDate>=window.today&&candidate.scheduleDate<=window.horizonDate?0:1;
+  candidates.sort((left,right) => rank[left.action] - rank[right.action] ||
+    (left.action==="review" ? reviewTier(left)-reviewTier(right) : 0) ||
+    left.scheduleDate.localeCompare(right.scheduleDate) || left.readingId.localeCompare(right.readingId));
   const chosen = candidates[0];
   return {lane:"henry_backfill",readingId:chosen.readingId,scheduleDate:chosen.scheduleDate,action:chosen.action,state:chosen.state,stage:chosen.stage,...(chosen.code ? {code:chosen.code} : {}),priorManifestState:chosen.priorManifestState};
 }

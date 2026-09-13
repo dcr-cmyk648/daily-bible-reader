@@ -67,7 +67,7 @@ test("native review work orders classify retained handoffs from trusted completi
 test("native review work orders treat both absent and empty staging as safe no-ops", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "mhc-native-review-order-"));
   try {
-    const input = {root,workRoot:path.join(root,"work"),privateRoot:path.join(root,"private"),canonicalRoot:path.join(root,"canonical"),libraryRoot:path.join(root,"library"),transactionRoot:path.join(root,"transactions"),plan:{planVersion:"fabricated",entries:[]},appConfig:{sharedStartDate:"2026-08-08"},handoffSchema:{},transactionSchema:{},runtimeSchemaPath:path.join(root,"runtime.json")};
+    const input = {root,workRoot:path.join(root,"work"),privateRoot:path.join(root,"private"),canonicalRoot:path.join(root,"canonical"),libraryRoot:path.join(root,"library"),transactionRoot:path.join(root,"transactions"),plan:{planVersion:"fabricated",entries:[]},appConfig:{futureLookaheadDays:7,sharedStartDate:"2026-08-08"},handoffSchema:{},transactionSchema:{},runtimeSchemaPath:path.join(root,"runtime.json")};
     const expected = {lane:"henry_backfill",readingId:null,scheduleDate:null,action:"none",state:"no_review_handoffs",stage:"classification",priorManifestState:"manifest_unchanged"};
     assert.deepEqual(await nativeReviewWorkOrder(input), expected);
     await mkdir(path.join(input.workRoot,"review-staging"),{recursive:true});
@@ -102,12 +102,12 @@ test("native work order routes a committed reading absent from a valid catalog t
     await writeFile(path.join(libraryRoot,"plans/fabricated/catalog.json"),catalogBytes,{flag:"w"}).catch(async () => { await mkdir(path.join(libraryRoot,"plans/fabricated"),{recursive:true}); await writeFile(path.join(libraryRoot,"plans/fabricated/catalog.json"),catalogBytes); });
     await writeJson(path.join(libraryRoot,"current.json"),{schema_version:"mhc-library-pointer/v1",plan_version:"fabricated",catalog_file:"plans/fabricated/catalog.json",catalog_sha256:sha256(catalogBytes)});
     await writeJson(path.join(privateRoot,"private-manifest.json"),{readings:{[readingId]:{}}});
-    const report = await nativeReviewWorkOrder({root,workRoot,privateRoot,canonicalRoot,libraryRoot,transactionRoot,plan,appConfig:{sharedStartDate:"2026-08-08"},handoffSchema:{},transactionSchema:{},runtimeSchemaPath:path.join(root,"runtime.json")});
+    const report = await nativeReviewWorkOrder({root,workRoot,privateRoot,canonicalRoot,libraryRoot,transactionRoot,plan,appConfig:{futureLookaheadDays:7,sharedStartDate:"2026-08-08"},handoffSchema:{},transactionSchema:{},runtimeSchemaPath:path.join(root,"runtime.json")});
     assert.deepEqual(report,{lane:"henry_backfill",readingId,scheduleDate:"2026-08-09",action:"recover_finalize",state:"committed_library_debt",stage:"finalization",priorManifestState:"manifest_backed"});
   } finally { await rm(root,{recursive:true,force:true}); }
 });
 
-test("native work order validates an exact approved uncommitted binding for apply resumption", async () => {
+test("approved transaction recovery precedes a forward pending-review handoff", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "mhc-native-review-resume-"));
   try {
     const readingId = "FAB-001", workRoot = path.join(root,"work"), base = path.join(workRoot,"review-staging",readingId), writeJson = async (file,value) => { await mkdir(path.dirname(file),{recursive:true}); await writeFile(file,`${JSON.stringify(value,null,2)}\n`); };
@@ -119,7 +119,7 @@ test("native work order validates an exact approved uncommitted binding for appl
     await Promise.all([writeJson(path.join(base,"review-handoff.json"),handoff),writeJson(path.join(base,"review-candidate.json"),candidate),writeJson(path.join(base,"review-approved.json"),review),writeJson(path.join(base,"review-approval.json"),approval)]);
     const pendingId = "FAB-002";
     await writeJson(path.join(workRoot,"review-staging",pendingId,"review-handoff.json"),{reading_id:pendingId,plan_version:"fabricated",status:"unreviewed",publication_status:"not_published",chapters:[{}]});
-    const report = await nativeReviewWorkOrder({root,workRoot,privateRoot:path.join(root,"private"),canonicalRoot:path.join(root,"canonical"),libraryRoot:path.join(root,"library"),transactionRoot:path.join(root,"transactions"),plan:{planVersion:"fabricated",entries:[{readingId,dayIndex:2,passages:[{bookId:"TST",chapter:1,verseCount:1}]},{readingId:pendingId,dayIndex:1,passages:[{bookId:"TST",chapter:1,verseCount:1}]}]},appConfig:{sharedStartDate:"2026-08-08"},handoffSchema:{},transactionSchema:{},approvalSchema:{},candidateSchema:{},reviewSchema:{},runtimeSchemaPath:path.join(root,"runtime.json")});
+    const report = await nativeReviewWorkOrder({root,workRoot,privateRoot:path.join(root,"private"),canonicalRoot:path.join(root,"canonical"),libraryRoot:path.join(root,"library"),transactionRoot:path.join(root,"transactions"),plan:{planVersion:"fabricated",entries:[{readingId,dayIndex:2,passages:[{bookId:"TST",chapter:1,verseCount:1}]},{readingId:pendingId,dayIndex:36,passages:[{bookId:"TST",chapter:1,verseCount:1}]}]},appConfig:{futureLookaheadDays:7,sharedStartDate:"2026-08-08"},handoffSchema:{},transactionSchema:{},approvalSchema:{},candidateSchema:{},reviewSchema:{},runtimeSchemaPath:path.join(root,"runtime.json")});
     assert.deepEqual(report,{lane:"henry_backfill",readingId,scheduleDate:"2026-08-09",action:"resume_apply",state:"approved_uncommitted",stage:"admission",priorManifestState:"manifest_unpublished"});
   } finally { await rm(root,{recursive:true,force:true}); }
 });
@@ -130,7 +130,7 @@ test("native work order fails closed when an orphaned transaction exists without
     const readingId = "FAB-001", workRoot = path.join(root,"work"), transactionRoot = path.join(root,"transactions"), writeJson = async (file,value) => { await mkdir(path.dirname(file),{recursive:true}); await writeFile(file,`${JSON.stringify(value)}\n`); };
     await writeJson(path.join(workRoot,"review-staging",readingId,"review-handoff.json"),{reading_id:readingId,plan_version:"fabricated",status:"unreviewed",publication_status:"not_published",chapters:[{}]});
     await mkdir(path.join(transactionRoot,`${readingId}-orphan`),{recursive:true});
-    const report = await nativeReviewWorkOrder({root,workRoot,privateRoot:path.join(root,"private"),canonicalRoot:path.join(root,"canonical"),libraryRoot:path.join(root,"library"),transactionRoot,plan:{planVersion:"fabricated",entries:[{readingId,dayIndex:1,passages:[{bookId:"TST",chapter:1,verseCount:1}]}]},appConfig:{sharedStartDate:"2026-08-08"},handoffSchema:{},transactionSchema:{},runtimeSchemaPath:path.join(root,"runtime.json")});
+    const report = await nativeReviewWorkOrder({root,workRoot,privateRoot:path.join(root,"private"),canonicalRoot:path.join(root,"canonical"),libraryRoot:path.join(root,"library"),transactionRoot,plan:{planVersion:"fabricated",entries:[{readingId,dayIndex:1,passages:[{bookId:"TST",chapter:1,verseCount:1}]}]},appConfig:{futureLookaheadDays:7,sharedStartDate:"2026-08-08"},handoffSchema:{},transactionSchema:{},runtimeSchemaPath:path.join(root,"runtime.json")});
     assert.deepEqual(report,{lane:"henry_backfill",readingId,scheduleDate:"2026-08-08",action:"none",state:"blocked",stage:"classification",code:"REVIEW_TRANSACTION_ORPHANED",priorManifestState:"manifest_unpublished"});
   } finally { await rm(root,{recursive:true,force:true}); }
 });
@@ -142,7 +142,7 @@ test("Luna transfer records the bound Spark work item rather than its controller
 });
 
 test("native work-item dates come from app configuration rather than the plan document", () => {
-  assert.equal(scheduleDateForEntry({sharedStartDate: "2026-08-08"}, {dayIndex: 28}), "2026-09-04");
+  assert.equal(scheduleDateForEntry({futureLookaheadDays:7,sharedStartDate: "2026-08-08"}, {dayIndex: 28}), "2026-09-04");
   assert.throws(() => scheduleDateForEntry({}, {dayIndex: 28}), /fixed shared start date/);
 });
 
@@ -335,7 +335,7 @@ test("actual submit CLI stages a complete four-verse candidate saved through its
     await symlink(path.join(repositoryRoot,"schemas"),path.join(isolated,"schemas"),process.platform === "win32" ? "junction" : "dir");
     await Promise.all([
       writeFile(path.join(isolated,"fixtures","pilot-content","plan.json"),`${JSON.stringify({planVersion,entries:[{readingId,dayIndex:1,sourcePlanDay:1,passages:[{bookId:"TST",chapter:1,verseCount:4}]}]},null,2)}\n`),
-      writeFile(path.join(isolated,"fixtures","pilot-content","app-config.json"),`${JSON.stringify({sharedStartDate:"2026-09-08"},null,2)}\n`),
+      writeFile(path.join(isolated,"fixtures","pilot-content","app-config.json"),`${JSON.stringify({futureLookaheadDays:7,sharedStartDate:"2026-09-08"},null,2)}\n`),
       writeFile(path.join(canonicalCommentary,"mhc","source-manifest.json"),`${JSON.stringify(sourceManifest,null,2)}\n`),
       writeFile(path.join(canonicalCommentary,"mhc","normalized","TST","001.jsonl"),`${JSON.stringify(normalizedUnit)}\n`),
       writeFile(path.join(canonicalCommentary,"mhc","normalized","TST","001.manifest.json"),"{}\n"),

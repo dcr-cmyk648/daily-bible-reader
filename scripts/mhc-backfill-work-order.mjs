@@ -8,6 +8,7 @@ import {assertSchemaValid} from "./lib/schema-validator.mjs";
 import {buildMhcBackfillWorkOrder, selectMhcBackfillCandidate} from "./lib/mhc-backfill-work-order.mjs";
 import {normalizedAttemptState} from "./lib/mhc-backfill-attempt-state.mjs";
 
+import {loadHenryPlan,pendingHenryHandoffs} from "./lib/mhc-priority.mjs";
 const ROOT = process.cwd();
 const PRIVATE_CONTENT = path.join(ROOT, "private-content");
 const LIBRARY_ROOT = path.join(ROOT, "private-commentary", "mhc", "stores", "library");
@@ -82,8 +83,8 @@ async function main() {
     process.stdout.write("Usage: node scripts/mhc-backfill-work-order.mjs [--compact]\n");
     return;
   }
-  const [plan, manifest, schema, attemptSchema, attemptStateInput] = await Promise.all([
-    readJson(path.join(ROOT, "fixtures", "pilot-content", "plan.json")),
+  const {plan, appConfig} = await loadHenryPlan(ROOT);
+  const [manifest, schema, attemptSchema, attemptStateInput] = await Promise.all([
     readJson(path.join(PRIVATE_CONTENT, "private-manifest.json")),
     readJson(path.join(ROOT, "schemas", "mhc-backfill-work-order.schema.json")),
     readJson(path.join(ROOT, "schemas", "mhc-backfill-attempt-state.schema.json")),
@@ -92,12 +93,13 @@ async function main() {
   const attemptState = normalizedAttemptState(attemptStateInput, plan.planVersion);
   if (attemptStateInput) assertSchemaValid(attemptState, attemptSchema, {label: "Matthew Henry private attempt state"});
   const metadataByReadingId = new Map();
-  await Promise.all(plan.entries.map(async (entry) => {
+  await Promise.all(plan.entries.filter(entry=>manifest.readings?.[entry.readingId]).map(async (entry) => {
     const metadata = await readJson(path.join(PRIVATE_CONTENT, "bridge", "celebration-y3q4", `${entry.readingId}.metadata.json`), true);
     if (metadata) metadataByReadingId.set(entry.readingId, metadata);
   }));
+  const pendingReadingIds = await pendingHenryHandoffs({privateRoot:PRIVATE_CONTENT,plan,manifest,handoffSchema:await readJson(path.join(ROOT,"schemas/mhc-native-review-handoff.schema.json"))});
   const selection = selectMhcBackfillCandidate({
-    plan,
+    plan, appConfig, pendingReadingIds,
     metadataByReadingId,
     manifestReadingIds: Object.keys(manifest.readings || {}),
     attemptState

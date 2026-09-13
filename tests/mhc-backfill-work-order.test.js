@@ -5,10 +5,11 @@ import {assertSchemaValid} from "../scripts/lib/schema-validator.mjs";
 import {
   buildMhcBackfillWorkOrder,
   isVerifiedHenryFallback,
-  selectMhcBackfillCandidate
+  selectMhcBackfillCandidate as selectCandidate
 } from "../scripts/lib/mhc-backfill-work-order.mjs";
 import {emptyMhcBackfillAttemptState, recordMhcBackfillAttempt} from "../scripts/lib/mhc-backfill-attempt-state.mjs";
 
+const selectMhcBackfillCandidate = args => selectCandidate({appConfig:{futureLookaheadDays:7,sharedStartDate:"2026-08-01"},...args});
 const schema = JSON.parse(readFileSync(new URL("../schemas/mhc-backfill-work-order.schema.json", import.meta.url), "utf8"));
 const attemptSchema = JSON.parse(readFileSync(new URL("../schemas/mhc-backfill-attempt-state.schema.json", import.meta.url), "utf8"));
 const plan = {

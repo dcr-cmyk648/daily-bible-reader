@@ -41,7 +41,6 @@
         "reading_id",
         "schedule_date",
         "day_index",
-        "source_plan_day",
         "file",
         "sha256",
         "passage_count",

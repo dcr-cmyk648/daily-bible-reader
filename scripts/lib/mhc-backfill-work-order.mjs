@@ -1,5 +1,6 @@
 import {createHash} from "node:crypto";
 import {MHC_BACKFILL_COOLDOWN_MS, normalizedAttemptState} from "./mhc-backfill-attempt-state.mjs";
+import {henryPriorityWindow, HENRY_SELECTION_POLICY} from "./mhc-priority.mjs";
 
 const ACTIONS_BY_LIBRARY_STATE = Object.freeze({
   missing: "generate_review_publish",
@@ -67,8 +68,9 @@ function metadataFor(metadataByReadingId, readingId) {
   return metadataByReadingId && metadataByReadingId[readingId] || null;
 }
 
-export function selectMhcBackfillCandidate({plan, metadataByReadingId, manifestReadingIds, attemptState = null, now = new Date(), cooldownMs = MHC_BACKFILL_COOLDOWN_MS}) {
+export function selectMhcBackfillCandidate({plan, appConfig, metadataByReadingId, manifestReadingIds, pendingReadingIds = new Set(), attemptState = null, now = new Date(), cooldownMs = MHC_BACKFILL_COOLDOWN_MS}) {
   const entries = orderedEntries(plan);
+  const window = henryPriorityWindow(appConfig,now);
   const manifest = manifestReadingIds instanceof Set ? manifestReadingIds : new Set(manifestReadingIds || []);
   const state = normalizedAttemptState(attemptState, plan.planVersion);
   const currentMs = new Date(now).getTime();
@@ -76,27 +78,40 @@ export function selectMhcBackfillCandidate({plan, metadataByReadingId, manifestR
     throw new Error("A valid current time and nonnegative Matthew Henry cooldown are required.");
   }
   const candidates = entries.flatMap((entry) => {
-    if (entry.kind !== "chapter" || !manifest.has(entry.readingId)) return [];
+    if (entry.kind !== "chapter" || entry.dayIndex > window.horizonDay || !manifest.has(entry.readingId)) return [];
     const metadata = metadataFor(metadataByReadingId, entry.readingId);
-    if (!metadata || metadata.readingId !== entry.readingId || !isVerifiedHenryFallback(metadata.henrySourceLink)) return [];
+    const pending = pendingReadingIds.has(entry.readingId);
+    if (!metadata || metadata.readingId !== entry.readingId ||
+        (!isVerifiedHenryFallback(metadata.henrySourceLink) && !pending)) return [];
     const attempt = state.attempts[entry.readingId] || null;
     const attemptedAtMs = attempt ? Date.parse(attempt.attemptedAt) : null;
     const nextEligibleAt = attemptedAtMs === null ? null : new Date(attemptedAtMs + cooldownMs).toISOString();
-    return [{entry, metadata, attempt, attemptedAtMs, nextEligibleAt, coolingDown: attemptedAtMs !== null && currentMs < attemptedAtMs + cooldownMs}];
+    return [{entry, metadata, pending, attempt, attemptedAtMs, nextEligibleAt, coolingDown: attemptedAtMs !== null && currentMs < attemptedAtMs + cooldownMs}];
   });
-  const eligible = candidates.filter((candidate) => !candidate.coolingDown)
-    .sort((left, right) => (left.attemptedAtMs ?? -Infinity) - (right.attemptedAtMs ?? -Infinity) || left.entry.dayIndex - right.entry.dayIndex);
-  const cooling = candidates.filter((candidate) => candidate.coolingDown)
+  const forward = candidates.filter(candidate => candidate.entry.dayIndex >= window.currentDay);
+  // Forward debt keeps priority even while it is cooling down. Other eligible
+  // forward dates may proceed, but historical work waits for this tier to clear.
+  const tier = forward.length ? forward : candidates;
+  const eligible = tier.filter((candidate) => !candidate.coolingDown && !candidate.pending)
+    .sort((left, right) => forward.length ? left.entry.dayIndex - right.entry.dayIndex :
+      (left.attemptedAtMs ?? -Infinity) - (right.attemptedAtMs ?? -Infinity) || left.entry.dayIndex - right.entry.dayIndex);
+  const cooling = tier.filter((candidate) => candidate.coolingDown)
     .sort((left, right) => left.attemptedAtMs - right.attemptedAtMs || left.entry.dayIndex - right.entry.dayIndex);
   const selected = eligible[0] || null;
   return {
     candidate: selected,
     queue: {
-      eligibleFallbackCount: candidates.length,
+      eligibleFallbackCount: tier.length,
       selectableCount: eligible.length,
       coolingDownCount: cooling.length,
+      awaitingReviewCount: tier.filter(candidate=>candidate.pending).length,
       cooldownSeconds: cooldownMs / 1000,
-      selectionPolicy: "least_recent_attempt_then_plan_order",
+      selectionPolicy: HENRY_SELECTION_POLICY,
+      priorityTier: forward.length ? "forward" : "historical",
+      today: window.today,
+      horizonDate: window.horizonDate,
+      forwardDebtCount: forward.length,
+      historicalDebtCount: candidates.length - forward.length,
       nextEligibleAt: cooling[0]?.nextEligibleAt || null
     }
   };
@@ -119,8 +134,9 @@ function buildEnsureRequest(planVersion, readingId) {
 
 export function buildMhcBackfillWorkOrder({plan, candidate, queue, libraryState = null, issuedAt}) {
   orderedEntries(plan);
-  const emptyQueue = queue || {eligibleFallbackCount: 0, selectableCount: 0, coolingDownCount: 0, cooldownSeconds: MHC_BACKFILL_COOLDOWN_MS / 1000, selectionPolicy: "least_recent_attempt_then_plan_order", nextEligibleAt: null};
+  const emptyQueue = queue || {eligibleFallbackCount: 0, selectableCount: 0, coolingDownCount: 0, cooldownSeconds: MHC_BACKFILL_COOLDOWN_MS / 1000, selectionPolicy: HENRY_SELECTION_POLICY, nextEligibleAt: null};
   if (!candidate) {
+    const awaitingReview = emptyQueue.awaitingReviewCount > 0;
     const coolingDown = emptyQueue.eligibleFallbackCount > 0 && emptyQueue.selectableCount === 0;
     return {
       schemaVersion: "mhc-backfill-work-order/v1",
@@ -128,14 +144,14 @@ export function buildMhcBackfillWorkOrder({plan, candidate, queue, libraryState 
       issuedAt,
       planVersion: plan.planVersion,
       action: "none",
-      reasonCode: coolingDown ? "published_henry_fallbacks_cooling_down" : "no_published_henry_fallbacks",
+      reasonCode: awaitingReview ? "henry_review_or_publication_pending" : coolingDown ? "published_henry_fallbacks_cooling_down" : "no_published_henry_fallbacks",
       reading: null,
       metadataPath: null,
       manifestEntryPresent: false,
       libraryState: null,
       sparkRequest: null,
       queue: emptyQueue,
-      diagnostic: {lane: "henry_backfill", status: coolingDown ? "cooldown" : "empty", priorManifestRemainsLive: true, retryAction: coolingDown ? "wait_for_next_eligible_attempt" : "no_historical_henry_action"},
+      diagnostic: {lane: "henry_backfill", status: awaitingReview ? "awaiting_review" : coolingDown ? "cooldown" : "empty", priorManifestRemainsLive: true, retryAction: awaitingReview ? "wait_for_review_or_publication" : coolingDown ? "wait_for_next_eligible_attempt" : "no_historical_henry_action"},
       guards: GUARDS
     };
   }

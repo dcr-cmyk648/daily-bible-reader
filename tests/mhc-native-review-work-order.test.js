@@ -20,7 +20,7 @@ async function fixture(){
  const audit={schema_version:'mhc-schedule-audit/v1',reading_id:readingId,plan_version:planVersion,audit_status:'verified_link_required',review_status:'unreviewed',publication_status:'not_published',main_commentary_unchanged:true,henry_link_fallback_required:true,human_review:{status:'required',approval:null,reviewed_at:null},passages:passages.map(p=>({book_id:p.bookId,chapter:p.chapter,verse_count:p.verseCount,generation_status:'verified_link_required',henry_fallback_required:true,worker_model:null,review_applied:false,corrected_verse_ids:[],runtime_path:null,record_count:0,source_atom_count:0}))};
  const auditPath=path.join(canonicalRoot,'schedule',readingId,'audit.json');
  await put(auditPath,audit);await put(path.join(workRoot,'review-staging',readingId,'review-handoff.json'),handoff);await put(path.join(privateRoot,'private-manifest.json'),{readings:{[readingId]:{}}});
- const args={root,privateRoot,canonicalRoot,workRoot,transactionRoot,libraryRoot:path.join(canonicalRoot,'stores/library'),plan,appConfig:{sharedStartDate:'2026-09-01'},...schemas,runtimeSchemaPath:path.join(code,'schemas/mhc-runtime.schema.json')};
+ const args={root,privateRoot,canonicalRoot,workRoot,transactionRoot,libraryRoot:path.join(canonicalRoot,'stores/library'),plan,appConfig:{futureLookaheadDays:7,sharedStartDate:'2026-09-01'},...schemas,runtimeSchemaPath:path.join(code,'schemas/mhc-runtime.schema.json')};
  return {root,audit,auditPath,args};
 }
 async function snapshot(root,relative=''){const out={};for(const e of await readdir(path.join(root,relative),{withFileTypes:true})){const name=path.join(relative,e.name);if(e.isDirectory())Object.assign(out,await snapshot(root,name));else out[name]=createHash('sha256').update(await readFile(path.join(root,name))).digest('hex');}return out;}
@@ -50,4 +50,21 @@ test('fallback recognition preserves fail-closed identity, review, partial-outpu
   ['existing review record',()=>{},f=>put(path.join(f.args.canonicalRoot,'schedule',readingId,'review.json'),{fabricated:true})]
  ];
  for(const [name,mutate,setup] of cases)await t.test(name,async()=>{const f=await fixture();try{mutate(f.audit);await put(f.auditPath,f.audit);if(setup)await setup(f);const before=await snapshot(f.root),result=await nativeReviewWorkOrder(f.args);assert.equal(result.state,'blocked');assert.equal(result.action,'none');assert.deepEqual(await snapshot(f.root),before);}finally{await rm(f.root,{recursive:true,force:true});}});
+});
+
+test('review discovery prioritizes a forward handoff ahead of untouched historical review',async()=>{
+ const f=await fixture();try{
+  const original=JSON.parse(await readFile(path.join(f.args.workRoot,'review-staging',readingId,'review-handoff.json'),'utf8'));
+  const forwardId='FAB-FORWARD';
+  for(let day=2;day<=12;day++)f.args.plan.entries.push({...f.args.plan.entries[0],readingId:day===12?forwardId:`FAB-FILLER-${day}`,dayIndex:day});
+  await put(path.join(f.args.workRoot,'review-staging',forwardId,'review-handoff.json'),{...original,reading_id:forwardId});
+  await put(path.join(f.args.privateRoot,'private-manifest.json'),{readings:{[readingId]:{},[forwardId]:{}}});
+  const result=await nativeReviewWorkOrder({...f.args,now:'2026-09-12T16:00:00Z'});
+  assert.equal(result.readingId,forwardId);assert.equal(result.action,'review');
+  const earlier=await nativeReviewWorkOrder({...f.args,now:'2026-09-01T16:00:00Z'});
+  assert.equal(earlier.readingId,readingId);
+  await rm(path.join(f.args.workRoot,'review-staging',readingId),{recursive:true});
+  const onlyFuture=await nativeReviewWorkOrder({...f.args,now:'2026-09-01T16:00:00Z'});
+  assert.equal(onlyFuture.action,'none');assert.equal(onlyFuture.state,'no_eligible_review_handoffs');
+ }finally{await rm(f.root,{recursive:true,force:true});}
 });

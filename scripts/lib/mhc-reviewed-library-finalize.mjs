@@ -42,6 +42,9 @@ function scheduleDate(appConfig, entry) {
   return new Date(Date.UTC(year, month - 1, day + entry.dayIndex - 1)).toISOString().slice(0, 10);
 }
 function requireApprovedAudit({audit, plan, entry, readingId, appConfig}) {
+  if (entry.sourcePlanDay !== undefined && (!Number.isInteger(entry.sourcePlanDay) || entry.sourcePlanDay < 1 || entry.sourcePlanDay > 100000)) {
+    throw new Error("Canonical audit source-plan day is invalid.");
+  }
   if (audit?.schema_version !== "mhc-schedule-audit/v1" || audit.reading_id !== readingId || audit.plan_version !== plan.planVersion ||
       audit.audit_status !== "approved" || audit.review_status !== "approved" || audit.human_review?.status !== "approved" ||
       audit.human_review?.approval !== "approved" || audit.source_plan_day !== entry.sourcePlanDay ||
@@ -139,12 +142,12 @@ export async function finalizeReviewedLibrary({canonicalRoot, libraryRoot, trans
     throw new Error("Canonical audit provenance is stale or tampered.");
   }
   await requireCommittedTransaction({transactionRoot, readingId, planVersion:plan.planVersion, destinationBytes:transactionDestinations, transactionSchema});
-  const reading = {schema_version:"mhc-portable-reading/v1",plan_version:plan.planVersion,reading_id:readingId,schedule_date:audit.schedule_date,day_index:entry.dayIndex,source_plan_day:entry.sourcePlanDay,timezone:"America/Detroit",worker_model:workerModel,worker_models:workerModels,prompt_version:audit.prompt_version,review_status:"approved",human_review_status:"approved",publication_status:"not_published",contains_scripture:false,chapters};
+  const reading = {schema_version:"mhc-portable-reading/v1",plan_version:plan.planVersion,reading_id:readingId,schedule_date:audit.schedule_date,day_index:entry.dayIndex,...(Number.isInteger(entry.sourcePlanDay)?{source_plan_day:entry.sourcePlanDay}:{}),timezone:"America/Detroit",worker_model:workerModel,worker_models:workerModels,prompt_version:audit.prompt_version,review_status:"approved",human_review_status:"approved",publication_status:"not_published",contains_scripture:false,chapters};
   assertSchemaValid(reading, {...readingSchema, $ref:"#/$defs/reading"}, {label:"Reviewed portable reading", externalSchemas:{"mhc-runtime.schema.json":runtimeSchema}});
   const bytes = jsonBytes(reading), checksum = digest(bytes), key = planKey(plan.planVersion), relativeReading = `plans/${key}/readings/${readingId}.${checksum.slice(0,16)}.json`;
   const prior = await loadPriorCatalog({libraryRoot, planVersion:plan.planVersion, catalogSchema});
   await contentAddressed(path.join(libraryRoot, relativeReading), bytes, "Reviewed Henry reading");
-  const descriptor = {reading_id:readingId,schedule_date:reading.schedule_date,day_index:reading.day_index,source_plan_day:reading.source_plan_day,file:relativeReading,sha256:checksum,passage_count:chapters.length,worker_model:reading.worker_model,worker_models:workerModels,prompt_version:reading.prompt_version,review_status:"approved",human_review_status:"approved"};
+  const descriptor = {reading_id:readingId,schedule_date:reading.schedule_date,day_index:reading.day_index,...(Number.isInteger(reading.source_plan_day)?{source_plan_day:reading.source_plan_day}:{}),file:relativeReading,sha256:checksum,passage_count:chapters.length,worker_model:reading.worker_model,worker_models:workerModels,prompt_version:reading.prompt_version,review_status:"approved",human_review_status:"approved"};
   const existing = new Map((prior?.readings || []).map((candidate) => [candidate.reading_id, candidate]));
   const old = existing.get(readingId);
   existing.set(readingId, {...descriptor, first_stored_at:old?.first_stored_at || approvedAt, last_stored_at:old && old.sha256 === checksum ? old.last_stored_at : approvedAt});

@@ -243,6 +243,13 @@ test("reviewed-library finalization fails closed when the existing pointer is un
   await assert.rejects(() => finalizeReviewedLibrary({canonicalRoot:data.canonicalRoot, libraryRoot:data.root, transactionRoot:data.transactionRoot, readingId:data.readingId, plan:data.plan, appConfig:data.appConfig, runtimeSchema:data.runtimeSchema, readingSchema:data.readingSchema, catalogSchema:data.catalogSchema, transactionSchema:data.transactionSchema}), /Henry library pointer is unavailable/);
 });
 
+test("optional long-term source-plan provenance still rejects malformed supplied values",async()=>{
+  const {finalizeReviewedLibrary}=await import("../scripts/lib/mhc-reviewed-library-finalize.mjs");
+  const data=await reviewedCanonicalFixture();
+  data.plan.entries[0].sourcePlanDay="FABRICATED INVALID DAY";
+  await assert.rejects(()=>finalizeReviewedLibrary({...data,libraryRoot:data.root}),/source-plan day is invalid/);
+});
+
 test("Henry handoff follows the checksum-bound current catalog and replaces a stale attachment", async () => {
   const {syncLatestHenryRuntime} = await import("../scripts/lib/mhc-library-sync.mjs");
   const data = await fixture();

@@ -10,7 +10,7 @@
     "issuedAt": {"type": "string", "format": "date-time"},
     "planVersion": {"type": "string", "minLength": 1, "maxLength": 200},
     "action": {"enum": ["none", "generate_review_publish", "review_attach_publish", "attach_publish"]},
-    "reasonCode": {"enum": ["no_published_henry_fallbacks", "published_henry_fallbacks_cooling_down", "spark_generation_required", "generated_artifact_requires_review", "reviewed_artifact_requires_approval", "approved_artifact_ready_to_attach"]},
+    "reasonCode": {"enum": ["henry_review_or_publication_pending", "no_published_henry_fallbacks", "published_henry_fallbacks_cooling_down", "spark_generation_required", "generated_artifact_requires_review", "reviewed_artifact_requires_approval", "approved_artifact_ready_to_attach"]},
     "reading": {"type": ["object", "null"]},
     "metadataPath": {
       "type": ["string", "null"],
@@ -48,7 +48,13 @@
         "selectableCount": {"type": "integer", "minimum": 0},
         "coolingDownCount": {"type": "integer", "minimum": 0},
         "cooldownSeconds": {"const": 86400},
-        "selectionPolicy": {"const": "least_recent_attempt_then_plan_order"},
+        "selectionPolicy": {"const": "forward_chronological_then_historical_least_recent"},
+        "priorityTier": {"enum": ["forward", "historical"]},
+        "today": {"type": "string", "format": "date"},
+        "horizonDate": {"type": "string", "format": "date"},
+        "forwardDebtCount": {"type": "integer", "minimum": 0},
+        "awaitingReviewCount": {"type": "integer", "minimum": 0},
+        "historicalDebtCount": {"type": "integer", "minimum": 0},
         "nextEligibleAt": {"type": ["string", "null"], "format": "date-time"}
       },
       "additionalProperties": false
@@ -58,9 +64,9 @@
       "required": ["lane", "status", "priorManifestRemainsLive", "retryAction"],
       "properties": {
         "lane": {"const": "henry_backfill"},
-        "status": {"enum": ["selected", "cooldown", "empty"]},
+        "status": {"enum": ["awaiting_review", "selected", "cooldown", "empty"]},
         "priorManifestRemainsLive": {"const": true},
-        "retryAction": {"enum": ["process_one_selected_reading", "wait_for_next_eligible_attempt", "no_historical_henry_action"]},
+        "retryAction": {"enum": ["wait_for_review_or_publication", "process_one_selected_reading", "wait_for_next_eligible_attempt", "no_historical_henry_action"]},
         "lastAttemptedAt": {"type": ["string", "null"], "format": "date-time"},
         "failedStage": {"type": ["string", "null"], "enum": ["generation", "review", "validation", "publication", "controller", null]},
         "failureCode": {"type": ["string", "null"], "pattern": "^[A-Z][A-Z0-9_:-]{2,79}$"}

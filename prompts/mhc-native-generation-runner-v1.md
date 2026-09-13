@@ -9,3 +9,13 @@ The runner alone selects work, admits candidates, records terminal failure after
 On Windows, use the installed absolute Node executable and launcher module; follow the returned PowerShell `advanceCommand` exactly. When the host sandbox denies child-process execution, request that exact local command with `sandbox_permissions: require_escalated`; a denial is a controller block, never model failure or Luna eligibility. Do not change global trust, hooks, or host permissions. Stop model authoring at the returned `deadlineAt`, and let `advance` perform only permitted reconciliation/checkpointing. Repeated starts in one scheduled slot do not replenish the budget.
 
 The Spark task itself uses exact `gpt-5.3-codex-spark` with medium reasoning. The Luna task itself uses exact `gpt-5.6-luna` with low reasoning and authors only controller-admitted eligible fallback work. The native assigned task writes candidates directly; never delegate or launch a nested model process.
+# Adaptive priority
+
+Let the installed controller select from the immutable factual calendar and current
+private published prefix. It fills published chapter Henry gaps from today's
+Detroit date through the configured preparation horizon first, then historical
+backlog. Never independently rescan or override its selected reading. Cooldown or
+pending review/publication debt in the forward tier keeps backlog waiting, while
+other actionable forward dates may proceed. Preserve the active lease, pinned wake,
+and shared Spark/Luna pair even if nearer work appears. Book overviews and
+unpublished studies remain the separate daily service's responsibility.

@@ -430,3 +430,56 @@ source/content checks, all builds, and exact Pages verification. Frontend
 `d35abd879455dc50` and PWA `a3cde99646bb00aa` remain unchanged. Real private-content
 validation was skipped in the isolated checkout; the real-input probe described
 above wrote only to an ignored isolated library copy.
+
+## Adaptive Henry forward priority - 2026-09-12
+
+The user requested Henry completion through the normal preparation horizon before
+historical backlog. Selection now uses the actual America/Detroit civil date and
+validated `futureLookaheadDays` (0–7). It chooses published chapter Henry debt in
+that window chronologically. If the earliest date is cooling, another eligible
+forward date may proceed; if all forward debt is cooling or awaiting review or
+publication, historical generation waits. When no published forward debt remains,
+historical selection retains least-recent-attempt fairness. Unpublished/unprepared
+dates and book overviews remain the daily lane's responsibility. Nothing expands
+devotional preparation or authorizes generation beyond the configured horizon.
+
+The immutable Henry runtime now includes the already-approved full factual active
+calendar. A shared loader verifies its checksum and exact installed-prefix match;
+generation, work-order review, and finalization all resolve the same factual
+reading identities. The live private manifest and metadata restrict selection to
+published studies, so newly prepared entries become visible without rewriting the
+installed prefix. Active leases, pinned wakes, valid chunks, and the shared
+Spark/Luna pair retain precedence over fresh queue selection.
+
+Validated generation handoffs skip regeneration while other actionable forward
+dates proceed. Native review preserves approved transaction recovery first, then
+prioritizes untouched forward review over historical handoffs; untouched handoffs
+beyond the horizon do not begin review. Local attachment alone cannot clear debt.
+Every retained native handoff requires the existing publication receipt to match
+its reading, exact metadata payload hash, current reading metadata pointer, exact
+readback flags, live ready status, and complete Henry status. Unrelated manifest
+updates do not invalidate that receipt. Unpublished work remains debt when it ages
+into backlog. This is local evidence of the publisher's verified live result,
+not a new live network check; only the authorized publisher may issue the receipt
+after its real gates. The manager independently verified legacy D084 and created
+its genuine receipt; D087 already had one. No reading IDs are grandfathered in code.
+
+Long-term entries legitimately lack a Celebration source-plan day. Portable and
+catalog schemas now permit omission, while validating supplied values; finalization
+retains exact plan/audit binding. The manager will align the offline publication
+workspace's schemas with the accepted revision, preserving the daily lane's scope.
+
+Read-only prospective selection on September 12 chose D089 from five forward gaps
+ahead of eight historical gaps. The factual calendar has 1,263 entries and the
+live prefix has 41; no shared file was changed by this implementation task.
+Fabricated installed Spark/Luna flows cover selection beyond an old prefix,
+nearer work appearing during a pinned wake, full review/finalization, and receipt
+gates. Luna additionally covers a long-term chapter with no source-plan day.
+Release, installation, publication-workspace alignment, and resuming the paused
+generation tasks remain manager-owned.
+
+The adaptive-priority change passed `npm.cmd run check`: 397/397 tests, 42 schemas,
+repository/source/content checks, all builds, and exact Pages verification.
+Frontend `d35abd879455dc50` and PWA `a3cde99646bb00aa` remain unchanged. Real private
+validation was skipped in this isolated checkout; the manager will validate the
+accepted-revision publication workspace against the existing private stores.

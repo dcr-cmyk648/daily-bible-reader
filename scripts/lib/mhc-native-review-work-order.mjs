@@ -48,6 +48,50 @@ function expectedDestinations(entry, readingId) {
   ]);
 }
 
+function isUnadmittedFallbackAudit(audit, {readingId, planVersion, entry}) {
+  return audit?.schema_version === "mhc-schedule-audit/v1" &&
+    audit.reading_id === readingId && audit.plan_version === planVersion &&
+    audit.audit_status === "verified_link_required" && audit.review_status === "unreviewed" &&
+    audit.publication_status === "not_published" && audit.main_commentary_unchanged === true &&
+    audit.henry_link_fallback_required === true && audit.human_review?.status === "required" &&
+    audit.human_review.approval === null && audit.human_review.reviewed_at === null &&
+    Array.isArray(audit.passages) && audit.passages.length === entry.passages.length &&
+    audit.passages.every((passage, index) => {
+      const expected = entry.passages[index];
+      return passage?.book_id === expected.bookId && passage.chapter === expected.chapter &&
+        passage.verse_count === expected.verseCount && passage.generation_status === "verified_link_required" &&
+        passage.henry_fallback_required === true && passage.worker_model === null &&
+        passage.runtime_path === null && passage.runtime == null &&
+        passage.record_count === 0 && passage.source_atom_count === 0 && passage.review_applied === false &&
+        Array.isArray(passage.corrected_verse_ids) && passage.corrected_verse_ids.length === 0;
+    });
+}
+
+async function unadmittedFallbackState({canonicalRoot, transactionRoot, readingId, entry}) {
+  try {
+    const transactions = await readdir(transactionRoot).catch(error => {
+      if (error.code === "ENOENT") return [];
+      throw error;
+    });
+    if (transactions.some(name => name.startsWith(`${readingId}-`))) {
+      return {state:"invalid",code:"REVIEW_TRANSACTION_ORPHANED"};
+    }
+    // A fallback-only audit must not hide prior or partly applied review output.
+    const artifacts = [path.join("schedule", readingId, "review.json"),
+      ...entry.passages.map(passage => path.join("runtime", passage.bookId, `${String(passage.chapter).padStart(3, "0")}.json`))];
+    for (const relative of artifacts) {
+      const present = await lstat(path.join(canonicalRoot, relative)).catch(error => {
+        if (error.code === "ENOENT") return null;
+        throw error;
+      });
+      if (present) return {state:"invalid",code:"REVIEW_CANONICAL_INVALID"};
+    }
+    // This is generation history, not a canonical native admission. Retain it
+    // untouched while the independent reviewer assesses the new handoff.
+    return {state:"absent"};
+  } catch { return {state:"invalid",code:"REVIEW_CANONICAL_INVALID"}; }
+}
+
 async function canonicalState({canonicalRoot, transactionRoot, readingId, planVersion, entry, transactionSchema}) {
   let audit;
   try { audit = await json(await regular(path.join(canonicalRoot, "schedule", readingId, "audit.json"))); }
@@ -58,6 +102,9 @@ async function canonicalState({canonicalRoot, transactionRoot, readingId, planVe
       if (candidates.some(candidate => candidate.name.startsWith(`${readingId}-`))) return {state:"invalid",code:"REVIEW_TRANSACTION_ORPHANED"};
     } catch (transactionError) { if (transactionError.code !== "ENOENT") return {state:"invalid",code:"REVIEW_TRANSACTION_UNAVAILABLE"}; }
     return {state:"absent"};
+  }
+  if (isUnadmittedFallbackAudit(audit, {readingId, planVersion, entry})) {
+    return unadmittedFallbackState({canonicalRoot, transactionRoot, readingId, entry});
   }
   if (audit?.schema_version !== "mhc-schedule-audit/v1" || audit.reading_id !== readingId || audit.plan_version !== planVersion ||
       audit.audit_status !== "approved" || audit.review_status !== "approved" || audit.human_review?.status !== "approved" || audit.human_review?.approval !== "approved") return {state:"invalid",code:"REVIEW_CANONICAL_INVALID"};

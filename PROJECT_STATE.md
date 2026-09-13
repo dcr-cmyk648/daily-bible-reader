@@ -356,3 +356,36 @@ Henry tasks remain PAUSED pending coordinated source release and installation.
 ## Release approval - 2026-09-12
 
 The user explicitly approved committing and pushing this validated Henry repair and activating it on Cortan. The manager owns the release, exact-commit installation and task activation. The canonical dirty checkout and independent daily-service runtime remain preserved. All 22 frozen code fingerprints match the accepted 355-test handoff; remote main was verified at the same c960e12 base before release. Operational results will be recorded after installation and the first real run.
+
+## Henry fallback review classification follow-up - 2026-09-12
+
+The manager released and installed `c3b51fe` and activated the three original
+Henry tasks. The first real Luna continuation completed D087's remaining chunk
+and produced a complete unreviewed handoff. Reviewer discovery then blocked on
+`REVIEW_CANONICAL_INVALID`: the canonical audit was an older, honest
+`verified_link_required` fallback-generation record, with no generated runtime,
+approval, applied review, or native transaction. The classifier had treated every
+existing audit as a purported approved native admission.
+
+The isolated follow-up recognizes only the exact unreviewed fallback shape for
+the requested reading, plan, and ordered passages. It also requires absent native
+transactions, canonical review output, and expected chapter runtimes. This allows
+independent review while retaining the old audit unchanged until approved apply.
+Approved-admission, transaction, hash, library, and completion checks are unchanged.
+A read-only comparison against canonical D087 changed the result from blocked to
+`review` / `pending_review`; hashes of six relevant private files stayed identical.
+
+Regression coverage includes actual CLI discovery, 23 malformed or conflicting
+fallback variants, and both fabricated installed Spark/Luna fifteen-chunk flows
+through prepare, hash-bound approval, apply, finalize, and attachment-debt
+discovery. The fixtures preserve the fallback audit before apply and handoff bytes
+through finalization. Release, exact-revision runtime installation, and operational
+review remain manager-owned; this follow-up has not mutated shared private stores,
+runtime pointers, task definitions, or Git history. The prior 355-test receipt
+remains historical evidence for `c3b51fe`.
+
+The follow-up passed `npm.cmd run check`: 380/380 tests, 42 schemas, repository
+safety, source/content validation, all builds, and exact Pages verification.
+Frontend `d35abd879455dc50` and PWA `a3cde99646bb00aa` are unchanged.
+Real private-content validation was skipped because ignored drafts are absent
+from this isolated checkout; all reviewer-flow execution used fabricated data.

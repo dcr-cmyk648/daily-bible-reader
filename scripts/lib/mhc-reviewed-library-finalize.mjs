@@ -130,13 +130,16 @@ export async function finalizeReviewedLibrary({canonicalRoot, libraryRoot, trans
     transactionDestinations.push({destination: expectedPath, bytes: runtimeResult.bytes});
   }
   const workerModels = [...new Set(chapters.map((chapter) => chapter.runtime.worker_model))].sort();
+  // Native review records the first passage's model as the representative.
+  // Sorting the complete model set must not change that separate binding.
+  const workerModel = chapters[0]?.runtime.worker_model;
   const promptVersions = [...new Set(chapters.map((chapter) => chapter.runtime.prompt_version))];
-  if (promptVersions.length !== 1 || promptVersions[0] !== audit.prompt_version || audit.worker_model !== workerModels[0] ||
+  if (promptVersions.length !== 1 || promptVersions[0] !== audit.prompt_version || audit.worker_model !== workerModel ||
       JSON.stringify([...(audit.worker_models || [])].sort()) !== JSON.stringify(workerModels)) {
     throw new Error("Canonical audit provenance is stale or tampered.");
   }
   await requireCommittedTransaction({transactionRoot, readingId, planVersion:plan.planVersion, destinationBytes:transactionDestinations, transactionSchema});
-  const reading = {schema_version:"mhc-portable-reading/v1",plan_version:plan.planVersion,reading_id:readingId,schedule_date:audit.schedule_date,day_index:entry.dayIndex,source_plan_day:entry.sourcePlanDay,timezone:"America/Detroit",worker_model:workerModels[0],worker_models:workerModels,prompt_version:audit.prompt_version,review_status:"approved",human_review_status:"approved",publication_status:"not_published",contains_scripture:false,chapters};
+  const reading = {schema_version:"mhc-portable-reading/v1",plan_version:plan.planVersion,reading_id:readingId,schedule_date:audit.schedule_date,day_index:entry.dayIndex,source_plan_day:entry.sourcePlanDay,timezone:"America/Detroit",worker_model:workerModel,worker_models:workerModels,prompt_version:audit.prompt_version,review_status:"approved",human_review_status:"approved",publication_status:"not_published",contains_scripture:false,chapters};
   assertSchemaValid(reading, {...readingSchema, $ref:"#/$defs/reading"}, {label:"Reviewed portable reading", externalSchemas:{"mhc-runtime.schema.json":runtimeSchema}});
   const bytes = jsonBytes(reading), checksum = digest(bytes), key = planKey(plan.planVersion), relativeReading = `plans/${key}/readings/${readingId}.${checksum.slice(0,16)}.json`;
   const prior = await loadPriorCatalog({libraryRoot, planVersion:plan.planVersion, catalogSchema});
@@ -146,7 +149,7 @@ export async function finalizeReviewedLibrary({canonicalRoot, libraryRoot, trans
   const old = existing.get(readingId);
   existing.set(readingId, {...descriptor, first_stored_at:old?.first_stored_at || approvedAt, last_stored_at:old && old.sha256 === checksum ? old.last_stored_at : approvedAt});
   const readings = [...existing.values()].sort((left, right) => left.day_index - right.day_index || left.reading_id.localeCompare(right.reading_id));
-  const catalog = {schema_version:"mhc-library-catalog/v1",catalog_id:`${plan.planVersion}:mhc-library`,plan_version:plan.planVersion,updated_at:old && old.sha256 === checksum ? prior.updated_at : approvedAt,worker_model:workerModels[0],worker_models:[...new Set(readings.flatMap((candidate) => candidate.worker_models || [candidate.worker_model]))].sort(),prompt_version:reading.prompt_version,publication_status:"not_published",contains_scripture:false,readings};
+  const catalog = {schema_version:"mhc-library-catalog/v1",catalog_id:`${plan.planVersion}:mhc-library`,plan_version:plan.planVersion,updated_at:old && old.sha256 === checksum ? prior.updated_at : approvedAt,worker_model:workerModel,worker_models:[...new Set(readings.flatMap((candidate) => candidate.worker_models || [candidate.worker_model]))].sort(),prompt_version:reading.prompt_version,publication_status:"not_published",contains_scripture:false,readings};
   assertSchemaValid(catalog, catalogSchema, {label:"Reviewed Henry library catalog"});
   const catalogBytes = jsonBytes(catalog), catalogRelative = `plans/${key}/catalog.json`, catalogPath = path.join(libraryRoot, catalogRelative);
   if (!prior || digest(jsonBytes(prior)) !== digest(catalogBytes)) await atomic(catalogPath, catalogBytes);

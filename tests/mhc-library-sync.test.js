@@ -111,7 +111,7 @@ async function fixture(reviewStatus = "in_review") {
   return {root, metadataPath, latest};
 }
 
-async function reviewedCanonicalFixture() {
+async function reviewedCanonicalFixture(models = ["gpt-5.3-codex-spark"]) {
   const data = await fixture();
   const canonicalRoot = path.join(data.root, "canonical");
   const readingId = "CC-Y3Q4-D059";
@@ -121,13 +121,24 @@ async function reviewedCanonicalFixture() {
   await fs.writeFile(path.join(canonicalRoot, "runtime", "NAM", "002.json"), `${JSON.stringify(approved, null, 2)}\n`);
   const plan = {planVersion: "fabricated-plan-v1", entries: [{readingId, dayIndex: 6, sourcePlanDay: 59, passages: [{bookId: "NAM", chapter: 2, verseCount: 1}]}]};
   const audit = {schema_version:"mhc-schedule-audit/v1",reading_id:readingId,plan_version:plan.planVersion,source_plan_day:59,schedule_date:"2026-08-13",timezone:"America/Detroit",worker_model:"gpt-5.3-codex-spark",worker_models:["gpt-5.3-codex-spark"],prompt_version:"mhc-worker/v100",audit_status:"approved",review_status:"approved",publication_status:"not_published",human_review:{status:"approved",approval:"approved",reviewed_at:"2026-08-12T13:18:26.238Z"},passages:[{book_id:"NAM",chapter:2,verse_count:1,runtime_path:"runtime/NAM/002.json"}]};
+  plan.entries[0].passages = models.map((model, index) => ({bookId:"NAM",chapter:index+2,verseCount:1}));
+  audit.worker_model = models[0];
+  audit.worker_models = [...new Set(models)];
+  audit.passages = await Promise.all(models.map(async (model, index) => {
+    const chapter = index + 2, chapterCode = String(chapter).padStart(3,"0");
+    const value = JSON.parse(JSON.stringify(approved).replaceAll("NAM.2.",`NAM.${chapter}.`).replaceAll("NAM:002:",`NAM:${chapterCode}:`).replaceAll("Nahum 2:",`Nahum ${chapter}:`));
+    value.chapter = chapter; value.worker_model = model;
+    const runtimePath = `runtime/NAM/${chapterCode}.json`;
+    await fs.writeFile(path.join(canonicalRoot,runtimePath),`${JSON.stringify(value,null,2)}\n`);
+    return {book_id:"NAM",chapter,verse_count:1,runtime_path:runtimePath,worker_model:model};
+  }));
   await fs.writeFile(path.join(canonicalRoot, "schedule", readingId, "audit.json"), `${JSON.stringify(audit, null, 2)}\n`);
   const runtimeSchema = JSON.parse(await fs.readFile(path.join(__dirname, "../schemas/mhc-runtime.schema.json"), "utf8"));
   const readingSchema = JSON.parse(await fs.readFile(path.join(__dirname, "../schemas/mhc-window-store.schema.json"), "utf8"));
   const activation = JSON.parse(await fs.readFile(path.join(__dirname, "../schemas/mhc-activation.schema.json"), "utf8"));
   const transactionSchema = JSON.parse(await fs.readFile(path.join(__dirname, "../schemas/mhc-native-review-transaction.schema.json"), "utf8"));
   const transactionRoot = path.join(data.root, "transactions");
-  const destinations = ["runtime/NAM/002.json", `schedule/${readingId}/audit.json`];
+  const destinations = [...audit.passages.map(p=>p.runtime_path), `schedule/${readingId}/audit.json`];
   const values = await Promise.all(destinations.map((destination) => fs.readFile(path.join(canonicalRoot, destination))));
   const manifest = {schema_version:"mhc-native-review-transaction/v1",reading_id:readingId,plan_version:plan.planVersion,review_sha256:"c".repeat(64),state:"staged",destinations:destinations.map((destination, index) => ({destination,staged_file:`staged/${index}.json`,sha256:digest(values[index])}))};
   const transaction = path.join(transactionRoot, `${readingId}-${manifest.review_sha256.slice(0,16)}`);
@@ -155,6 +166,44 @@ test("reviewed-library finalization admits a canonical-only review, preserves ca
   const attached = await syncLatestHenryRuntime({libraryRoot:data.root,readingId:data.readingId,metadataPath,runtimeSchemaPath:path.join(__dirname,"../schemas/mhc-runtime.schema.json")});
   assert.equal(attached.changed, true);
   await assert.doesNotReject(() => syncLatestHenryRuntime({libraryRoot:data.root,readingId:data.readingId,metadataPath,runtimeSchemaPath:path.join(__dirname,"../schemas/mhc-runtime.schema.json"),checkOnly:true}));
+});
+
+test("mixed-model finalization preserves the first chapter model and exact committed artifacts", async () => {
+  const {finalizeReviewedLibrary} = await import("../scripts/lib/mhc-reviewed-library-finalize.mjs");
+  const models = ["gpt-5.6-luna","gpt-5.3-codex-spark","gpt-5.6-luna"];
+  const data = await reviewedCanonicalFixture(models);
+  const options = {...data,libraryRoot:data.root};
+  const protectedPaths = [...data.manifest.destinations.map(d=>path.join(data.canonicalRoot,d.destination)),...data.manifest.destinations.map(d=>path.join(data.transaction,d.staged_file)),path.join(data.transaction,"manifest.json"),path.join(data.transaction,"committed.json")];
+  const before = await Promise.all(protectedPaths.map(file=>fs.readFile(file)));
+  assert.equal((await finalizeReviewedLibrary(options)).changed,true);
+  const pointer = JSON.parse(await fs.readFile(path.join(data.root,"current.json"),"utf8"));
+  const catalog = JSON.parse(await fs.readFile(path.join(data.root,pointer.catalog_file),"utf8"));
+  const descriptor = catalog.readings.find(r=>r.reading_id===data.readingId);
+  const reading = JSON.parse(await fs.readFile(path.join(data.root,descriptor.file),"utf8"));
+  assert.equal(reading.worker_model,models[0]);
+  assert.deepEqual(reading.worker_models,[...new Set(models)].sort());
+  assert.deepEqual(reading.chapters.map(c=>c.runtime.worker_model),models);
+  assert.equal(descriptor.worker_model,models[0]);
+  assert.equal((await finalizeReviewedLibrary(options)).changed,false);
+  assert.deepEqual(await Promise.all(protectedPaths.map(file=>fs.readFile(file))),before);
+});
+
+test("mixed-model finalization still rejects incorrect provenance and transaction bindings before library writes", async t => {
+  const {finalizeReviewedLibrary} = await import("../scripts/lib/mhc-reviewed-library-finalize.mjs");
+  for (const [name,mutate,expected] of [
+    ["wrong representative",a=>a.worker_model="gpt-5.3-codex-spark",/provenance/],
+    ["missing model",a=>a.worker_models=["gpt-5.6-luna"],/provenance/],
+    ["extra model",a=>a.worker_models.push("fabricated-unknown-model"),/provenance/],
+    ["wrong prompt",a=>a.prompt_version="fabricated-stale",/provenance/],
+    ["schema-valid audit mutation",a=>a.prepared_on="2026-08-01",/Committed transaction destinations/]
+  ]) await t.test(name,async()=>{
+    const data = await reviewedCanonicalFixture(["gpt-5.6-luna","gpt-5.3-codex-spark","gpt-5.6-luna"]);
+    const pointerPath = path.join(data.root,"current.json"),before = await fs.readFile(pointerPath);
+    const auditPath = path.join(data.canonicalRoot,"schedule",data.readingId,"audit.json"),audit = JSON.parse(await fs.readFile(auditPath,"utf8"));
+    mutate(audit); await fs.writeFile(auditPath,JSON.stringify(audit)+"\n");
+    await assert.rejects(()=>finalizeReviewedLibrary({...data,libraryRoot:data.root}),expected);
+    assert.deepEqual(await fs.readFile(pointerPath),before);
+  });
 });
 
 test("reviewed-library finalization rejects tampered canonical bindings before changing the library", async () => {

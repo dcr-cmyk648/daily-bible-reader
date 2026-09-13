@@ -389,3 +389,44 @@ safety, source/content validation, all builds, and exact Pages verification.
 Frontend `d35abd879455dc50` and PWA `a3cde99646bb00aa` are unchanged.
 Real private-content validation was skipped because ignored drafts are absent
 from this isolated checkout; all reviewer-flow execution used fabricated data.
+
+## Henry mixed-model finalization correction - 2026-09-12
+
+The real scheduled D087 review passed admission after `f6b546b`, then stopped at
+`committed_library_debt` / `recover_finalize` with `Canonical audit provenance is
+stale or tampered`. The audit correctly identifies its first passage's worker as
+Luna, with ordered passage models Luna/Spark/Luna. Finalization sorted the complete
+model set and incorrectly compared that representative field with the alphabetically
+first model, Spark. This was a producer/consumer convention mismatch, not a change
+to the approved content or transaction.
+
+The correction validates the representative against the first ordered chapter
+runtime and preserves it in the portable reading and catalog. The complete model
+set remains sorted and exact; prompt, approval, runtime schema, canonical-byte,
+staged-byte, and committed-transaction guards remain required. A fabricated
+three-chapter regression reproduces the old exception and verifies successful,
+idempotent finalization with canonical and transaction artifacts unchanged.
+Negative cases retain rejection for a wrong representative, missing/extra models,
+wrong prompt, and a schema-valid audit change outside the committed transaction.
+
+A read-only probe used the real D087 canonical artifacts and transaction, with
+all output directed into an ignored isolated copy of the library. The installed
+old finalizer failed at the exact reported guard; the corrected finalizer passed
+every subsequent gate and its retry made no change. Work-order discovery against
+the isolated result returned `recover_attach` / `committed_attachment_debt`.
+All 21 checked shared audit,
+runtime, transaction, review, manifest, metadata, and library-pointer files stayed
+byte-identical. No approved artifact was regenerated or rewritten. This does not
+constitute live finalization, attachment, or publication.
+
+The manager owns the approved release and exact-revision installation. Recovery
+then uses only the existing installed launcher command `reviewer finalize
+--reading CC-Y3Q4-D087`, followed by work-order discovery and the separately
+authorized attachment/publication lane. Do not reapply or replace the committed
+review. The daily service and prior verified live fallback remain independent.
+
+Validation passed `npm.cmd run check`: 387/387 tests, 42 schemas, repository and
+source/content checks, all builds, and exact Pages verification. Frontend
+`d35abd879455dc50` and PWA `a3cde99646bb00aa` remain unchanged. Real private-content
+validation was skipped in the isolated checkout; the real-input probe described
+above wrote only to an ignored isolated library copy.

@@ -651,3 +651,55 @@ attempt bytes and audit history while creating one v2 job; it cannot reset exist
 v2 attempts or run from a schedule. Fabricated regression tests cover those limits.
 Today's publication and unattended recovery evidence will be recorded after their
 actual checks. One manual success does not establish future scheduled reliability.
+
+Recovery revision `34816db` is now pushed and installed; all 421 local checks and
+both GitHub workflows passed. The existing offline publication bootstrap is aligned
+to that commit. Its reviewer task's saved commit references were updated without
+schedule/model changes. Automatic review rejected the proposed saved Spark/Luna
+instruction clarifications; explicit approval for those two changes was requested
+in the task. Their existing schedules remain active and unchanged.
+
+Malachi 3's explicit migration preserved the v1 attempt bytes. All three Spark
+packets passed on their first submissions. The implementation task identified
+material source omissions and proposed a bounded editorial repair. Automatic
+review rejected that script on reviewer-identity/integrity grounds; it never ran.
+The existing independent reviewer instead conducted its own review under its own
+identity. A further source check caught omitted identities/refining imagery and
+overstated judgment language after its approval. Publication was held before Drive
+writes. The service lacked an approved-review revision path, so a hash-bound
+`reviewer reopen` transition is now implemented: old evidence, approvals, budgets,
+receipts and live versions are preserved, a fresh full review is required, and
+revised approvals have separate transaction directories. Targeted fabricated tests
+pass preservation, stale binding, idempotency, fresh-approval and re-finalization
+checks. Release and corrected-reading evidence remain to be recorded after actual
+verification. The live Malachi 4 phone-width verse sheet was inspected and shows
+the condensed summary plus expandable source text with no horizontal overflow.
+
+The full review-revision release check passed 423 tests, safety, deterministic
+build and Pages verification, including actual installed-launcher reopening. Public
+frontend/PWA/backend bytes remain unchanged. Automatic approval review then
+rejected its commit before execution, citing the explicit-commit approval rule.
+The task requested explicit commit/push/immutable-install/bootstrap-alignment
+approval. These code changes remain local; the active runtime stays `34816db`.
+The current independent reviewer agrees that material wording needs correction,
+has stopped before Drive writes, and awaits the supported revision path. It must
+perform its own fresh review after activation; no denied editorial script may be
+replayed through it. The original v1 cooldown and all Spark candidate histories
+remain preserved. Today's live fallback is still unchanged at this handoff;
+tomorrow's verified condensed commentary is live. Saved Spark/Luna instruction
+updates separately await the explicit approval already requested in the task.
+
+An attempt to temporarily pause the recurring reviewer during the correction hold
+was also rejected by automatic review as a schedule mutation. Its schedule remains
+ACTIVE; the independent task and manager were told to hold the current publication.
+Do not claim that the recurring automation was paused. Resume work only through
+the expressly approved release/instruction/schedule actions, without indirect
+changes to private state or automation memory to reproduce a denied action.
+
+The user subsequently explicitly approved end-to-end delivery, including pushing,
+updating, online access and all required release/automation steps, as standing
+authorization for requested app changes. AGENTS.md now records this scope while
+preserving privacy, source-review and release gates. The existing reviewer schedule
+was successfully paused for the coordinated correction release; this supersedes
+the earlier blocked pause attempt. Corrected live publication remains the acceptance
+criterion, rather than installation or local attachment alone.

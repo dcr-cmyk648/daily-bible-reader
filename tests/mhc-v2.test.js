@@ -7,7 +7,7 @@ import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {VERSION,MODELS,REVIEW_ASSERTIONS,compileReading,validateCandidate,digestObject} from '../scripts/lib/mhc-v2.mjs';
 import {sha256,normalizedBatchHash} from '../scripts/lib/mhc-pipeline.mjs';
-import {serviceContext,startV2,advanceV2,buildReview,reviewWorkOrderV2,applyReviewV2,editorialRepairV2,requestEditorialV2,migrateCurrentV2} from '../scripts/lib/mhc-v2-service.mjs';
+import {serviceContext,startV2,advanceV2,buildReview,reviewWorkOrderV2,applyReviewV2,editorialRepairV2,requestEditorialV2,migrateCurrentV2,reopenReviewV2} from '../scripts/lib/mhc-v2-service.mjs';
 import {atomicJson,appendState,loadJob,readJson,bytesFor,createJob} from '../scripts/lib/mhc-v2-store.mjs';
 
 const repo=fileURLToPath(new URL('..',import.meta.url));
@@ -53,6 +53,35 @@ test('v2 respects natural treatment boundaries, bounds batches, and excludes nor
   assert.equal(compiled.input_sha256,input().input_sha256);
 });
 test('v2 accepts a faithful synonym without a generated vocabulary scaffold',()=>{const p=input(1).chapters[0].batches[0];assert.equal(validateCandidate(candidate(p),p).valid,true);});
+test('reopened approval requires fresh review and isolated transactions without erasing prior work',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1});await drain(ctx,now);await approve(ctx,'FAB-1',now);
+  const directory=path.join(ctx.jobRoot,'FAB-1'),before=await loadJob(directory),oldHash=before.state.review.approved_sha256;
+  const oldBytes=await readFile(path.join(directory,`approved/${oldHash}.json`)),oldReview=await readFile(path.join(directory,'review.json'));
+  const reason='FABRICATED reviewer found a material missing qualification';
+  await assert.rejects(reopenReviewV2(ctx,'FAB-1','0'.repeat(64),'FABRICATED reviewer',reason,now),/APPROVAL_BINDING/);
+  await reopenReviewV2(ctx,'FAB-1',oldHash,'FABRICATED reviewer',reason,now);
+  const reopened=await loadJob(directory);assert.equal(reopened.state.phase,'review_pending');assert.equal(reopened.state.review,null);assert.deepEqual(reopened.state.accepted,before.state.accepted);assert.deepEqual(reopened.state.sessions,before.state.sessions);assert.equal(reopened.state.total_submissions,before.state.total_submissions);
+  await reopenReviewV2(ctx,'FAB-1',oldHash,'FABRICATED reviewer',reason,now);assert.equal((await loadJob(directory)).sequence,reopened.sequence);
+  await assert.rejects(applyReviewV2(ctx,'FAB-1',now),/APPROVAL_INVALID/);
+  const order=await reviewWorkOrderV2(ctx,now),bundle=await readJson(order.bundlePath);assert.equal(bundle.previous_approvals[0].approved_sha256,oldHash);assert.notEqual(bundle.review_basis_sha256,JSON.parse(oldReview).review_basis_sha256);
+  const review={...JSON.parse(oldReview),review_basis_sha256:bundle.review_basis_sha256,reviewed_at:new Date(now.getTime()+1000).toISOString(),corrections:[{verse_id:'TST.1.1',blurb:'FABRICATED: the village caretaker patiently supplies households facing hardship, helping neighbors through a difficult period.',reason:'FABRICATED source-compared revision.'}]};await writeFile(order.reviewPath,bytesFor(review));
+  await applyReviewV2(ctx,'FAB-1',now);await applyReviewV2(ctx,'FAB-1',now);
+  const after=await loadJob(directory);assert.notEqual(after.state.review.approved_sha256,oldHash);assert.deepEqual(await readFile(path.join(directory,`approved/${oldHash}.json`)),oldBytes);
+  assert.ok((await readdir(path.join(directory,'transactions'))).some(n=>n.startsWith('FAB-1-')));assert.ok((await readdir(path.join(directory,'transactions/revisions'))).includes(after.state.review.approved_sha256));
+  await assert.rejects(reopenReviewV2(ctx,'FAB-1',oldHash,'FABRICATED reviewer',reason,now),/APPROVAL_BINDING/);
+});
+test('reopening a published reading removes completion proof but leaves live metadata and receipt intact',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1});await drain(ctx,now);await approve(ctx,'FAB-1',now);
+  const directory=path.join(ctx.jobRoot,'FAB-1');let job=await loadJob(directory);
+  const approved=await readJson(path.join(directory,`approved/${job.state.review.approved_sha256}.json`));
+  const metadataFile=await atomicJson(ctx.privateRoot,'bridge/celebration-y3q4/FAB-1.metadata.json',{readingId:'FAB-1',verseCommentary:approved.results[0].runtime});
+  const manifestFile=await atomicJson(ctx.privateRoot,'private-manifest.json',{readings:{'FAB-1':{metadataFileId:'FABRICATED_POINTER'}}});
+  const receiptFile=await atomicJson(ctx.privateRoot,'automation/staging/FAB-1/manager-publication-result.json',{schemaVersion:'mhc-manager-publication-result/v1',readingId:'FAB-1',status:'published_verified',metadataReadback:'exact_bytes',manifestReadback:'exact_bytes',liveReadingStatus:'ready',henryLayerStatus:'complete',metadataFileId:'FABRICATED_POINTER',payloadSha256:sha256(await readFile(metadataFile))});
+  await reviewWorkOrderV2(ctx,now);job=await loadJob(directory);assert.equal(job.state.phase,'published');
+  const files=[metadataFile,manifestFile,receiptFile],before=await Promise.all(files.map(f=>readFile(f)));
+  await reopenReviewV2(ctx,'FAB-1',job.state.review.approved_sha256,'FABRICATED reviewer','FABRICATED newly discovered source omission',now);
+  const after=await loadJob(directory);assert.equal(after.state.publication,null);assert.equal(after.state.phase,'review_pending');assert.deepEqual(await Promise.all(files.map(f=>readFile(f))),before);assert.deepEqual(after.state.history.at(-1).prior_publication,job.state.publication);
+});
 test('explicit current-day v1 migration preserves cooldown bytes and cannot reset an existing v2 job',async t=>{
   const {ctx,now}=await fixture(t,{verseCount:1,readingCount:2});
   const file=await atomicJson(ctx.privateRoot,'automation/mhc-backfill-attempt-state.json',{schemaVersion:'mhc-backfill-attempt-state/v1',planVersion:ctx.plan.planVersion,attempts:{'FAB-1':{attemptedAt:now.toISOString(),outcome:'model_failure',stage:'validation',code:'NATIVE_CANDIDATE_UNRESOLVED'}}});
@@ -181,5 +210,9 @@ test('installed v2 launcher executes actual modules and cannot silently reinstal
   assert.equal(report.action,'author_candidate');await writeCandidate(report);
   report=invoke(['advance','--reading','FAB-1','--session',sessionId(report)]);assert.equal(report.action,'review_handoff');assert.equal(report.published,false);
   const order=invoke(['reviewer','work-order']);assert.equal(order.action,'review');assert.equal(invoke(['status']).readings[0].state,'review_pending');
+  const bundle=await readJson(order.bundlePath);await writeFile(order.reviewPath,bytesFor({schema_version:'mhc-evidence-approval/v2',reading_id:'FAB-1',review_basis_sha256:bundle.review_basis_sha256,status:'approved',reviewer:'FABRICATED independent reviewer',reviewed_at:new Date().toISOString(),findings:['FABRICATED source comparison.'],assertions:Object.fromEntries(REVIEW_ASSERTIONS.map(k=>[k,true])),corrections:[]}));
+  const applied=invoke(['reviewer','apply','--reading','FAB-1']);assert.equal(applied.action,'publish_required');
+  assert.equal(invoke(['reviewer','reopen','--reading','FAB-1','--approved-sha256',applied.approvedSha256,'--reviewer','FABRICATED independent reviewer','--reason','FABRICATED material source issue after approval']).action,'review_reopened');
+  assert.notEqual((await readJson(invoke(['reviewer','work-order']).bundlePath)).review_basis_sha256,bundle.review_basis_sha256);
   const downgrade=spawnSync(process.execPath,[...args.slice(0,-1),'v1'],{cwd:ctx.releaseRoot,encoding:'utf8',windowsHide:true});assert.notEqual(downgrade.status,0);assert.match(downgrade.stderr,/V2 jobs exist/);
 });

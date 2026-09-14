@@ -7,6 +7,21 @@ sentence/evidence association, and every review concern. Check identities,
 relationships, agency, negation, causation, qualifications, uncertainty, shared
 range scope, readability, direct contemporary prose, and absence of copied source
 wording. Vocabulary checks cannot substitute for this comparison.
+Check that each record conveys the source's specific interpretation of the verse's
+central identity, image, or relationship. A generic but supportable exhortation is
+not a sufficient condensation when that explanation is missing. Uncited material
+in the full packet must be considered for these omissions; a required citation
+change belongs in the bounded packet repair, not a prose-only approval correction.
+
+If a material source problem is found after approval, stop publication and hold
+the publisher before reopening. Use the installed launcher with reviewer reopen,
+--reading, --approved-sha256 (the exact current approval), --reviewer (your actual
+identity), and --reason (your specific source finding). This creates a fresh
+review basis while preserving all candidates, budgets, old approvals and live
+versions. Read the new work order, including previous_approvals, and conduct the
+complete review again; earlier prose corrections do not silently carry forward.
+Use the existing bounded packet repair when citations must change. Never reopen
+merely to retry generation, clear a permission block, or skip publication checks.
 
 For action=review, write the supplied reviewPath with schema_version
 mhc-evidence-approval/v2, exact reading_id and review_basis_sha256 from the bundle,

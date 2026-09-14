@@ -149,6 +149,20 @@ job's approved artifact. Local attachment alone is insufficient. A stale receipt
 or different attachment reopens publication verification debt. Already-approved
 transaction/library/publication interruptions resume without reauthoring.
 
+When a reviewer discovers a source error after approval, the publisher first
+pauses any in-flight publication. The installed `reviewer reopen` command requires
+the exact current approval SHA-256, actual reviewer identity, and a specific reason.
+It appends an approval-revocation event and returns the reading to full review.
+Accepted candidates, attempt budgets, source inputs, old approvals, transactions,
+receipts and live files remain unchanged. The new bundle includes earlier review
+findings/corrections, but requires a fresh approval against its changed basis.
+Citation changes still use the same bounded packet editorial repair; reopening
+does not replenish those allowances. Each revised approval has an isolated
+transaction directory, preserving both the old committed transaction and the
+finalizer's exact-one transaction guarantee. A stale approval hash cannot revoke
+a newer approval. This path is for material editorial findings, not automatic
+retries or permission workarounds.
+
 Legacy review handoffs remain recoverable through the installed reviewer. When
 there is no v2 review work, it consults the retained legacy work-order handler and
 returns its v1 review instructions. Explicit legacy prepare/apply/finalize review

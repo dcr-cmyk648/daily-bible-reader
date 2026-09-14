@@ -3,7 +3,7 @@ import {readFile} from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import {advanceRunner,startRunner,withRunnerLock} from "./lib/mhc-native-runner.mjs";
-import {serviceContext,startV2,advanceV2,reviewWorkOrderV2,applyReviewV2,statusV2,editorialRepairV2,requestEditorialV2,migrateCurrentV2} from "./lib/mhc-v2-service.mjs";
+import {serviceContext,startV2,advanceV2,reviewWorkOrderV2,applyReviewV2,statusV2,editorialRepairV2,requestEditorialV2,migrateCurrentV2,reopenReviewV2} from "./lib/mhc-v2-service.mjs";
 
 const json=async file=>JSON.parse(await readFile(file,"utf8"));
 let activePipeline=null;
@@ -37,6 +37,7 @@ async function main(){
       if(command==='reviewer'&&args[0]==='work-order'){const order=await reviewWorkOrderV2(service);return order.state==='no_review_work'?legacyReview(ctx,'work-order',[]):order;}
       if(command==='reviewer'&&(args.includes('--work-item')||args[0]==='finalize'))return legacyReview(ctx,args[0],args.slice(1));
       if(command==='reviewer'&&args[0]==='apply')return applyReviewV2(service,option(args,'--reading'));
+      if(command==='reviewer'&&args[0]==='reopen')return reopenReviewV2(service,option(args,'--reading'),option(args,'--approved-sha256'),option(args,'--reviewer'),option(args,'--reason'));
       if(command==='reviewer'&&args[0]==='repair')return editorialRepairV2(service,option(args,'--reading'));
       if(command==='reviewer'&&args[0]==='request-repair')return requestEditorialV2(service,option(args,'--reading'));
       throw Error('V2 supports spark, luna, advance, status, reviewer work-order/apply/repair. Legacy commands cannot mutate a v2 job.');

@@ -247,7 +247,24 @@ export async function buildReview(ctx,readingId) {
     results.push({book_id:chapter.book_id,chapter:chapter.chapter,verse_count:chapter.verse_count,runtime});
   }
   const basis={schema_version:'mhc-evidence-review/v2',reading_id:readingId,input_sha256:job.input.input_sha256,accepted:job.state.accepted,results,sentences,source_packets:job.input.chapters.flatMap(c=>c.batches),editorial_history:job.state.history,review_concerns:concerns,required_assertions:REVIEW_ASSERTIONS};
+  const reopened=job.state.history.filter(e=>e.kind==='approval_reopened');
+  if(reopened.length){basis.previous_approvals=[];for(const event of reopened){const approved=await readJson(await confined(job.directory,`approved/${event.approved_sha256}.json`,{missing:false}));if(digestObject(approved)!==event.approved_sha256)throw new Error('V2_APPROVED_ARTIFACT_CHANGED');basis.previous_approvals.push({approved_sha256:event.approved_sha256,review:approved.review});}}
   return {job,entry,bundle:{...basis,review_basis_sha256:digestObject(basis)}};
+}
+
+export async function reopenReviewV2(ctx,readingId,approvedSha256,reviewer,reason,now=new Date()) {
+  if(!/^[a-f0-9]{64}$/.test(String(approvedSha256))||typeof reviewer!=='string'||reviewer.trim().length<2||reviewer.length>200||typeof reason!=='string'||reason.trim().length<20||reason.length>2000)throw new Error('V2_REOPEN_ARGUMENTS');
+  let {job}=await checkedJob(ctx,readingId);
+  const prior=job.state.history.filter(e=>e.kind==='approval_reopened').at(-1);
+  if(job.state.phase==='review_pending'&&!job.state.review&&prior?.approved_sha256===approvedSha256)return report(ctx,job,{action:'review_reopened'});
+  if(!['approved','publishing','published'].includes(job.state.phase)||job.state.review?.approved_sha256!==approvedSha256)throw new Error('V2_REOPEN_APPROVAL_BINDING');
+  const approved=await readJson(await confined(job.directory,`approved/${approvedSha256}.json`,{missing:false}));
+  if(digestObject(approved)!==approvedSha256)throw new Error('V2_APPROVED_ARTIFACT_CHANGED');
+  const decision={kind:'approval_reopened',approved_sha256:approvedSha256,reviewer:reviewer.trim(),reason:reason.trim(),at:new Date(now).toISOString(),prior_publication:job.state.publication};
+  await atomicJson(job.directory,`review/reopened-${digestObject(decision)}.json`,decision,{immutable:true});
+  const state={...job.state,phase:'review_pending',review:null,publication:null,blocker:null,history:[...job.state.history,decision]};
+  job=await appendState(job,'approval_reopened',state,now);
+  return report(ctx,job,{action:'review_reopened'});
 }
 
 async function publicationMatches(ctx,job) {
@@ -355,7 +372,10 @@ export async function applyReviewV2(ctx,readingId,now=new Date()) {
   const entries=[...approved.results.map((r,i)=>({destination:passages[i].runtime_path,value:r.runtime})),{destination:`schedule/${readingId}/audit.json`,value:audit}];
   const transaction={schema_version:'mhc-native-review-transaction/v1',reading_id:readingId,plan_version:job.input.plan_version,review_sha256:digestObject(approved.review),state:'staged',destinations:entries.map((e,i)=>({destination:e.destination,staged_file:`staged/${i}.json`,sha256:sha256(bytesFor(e.value))}))};
   const schemas=async name=>readJson(path.join(ctx.releaseRoot,`schemas/${name}.schema.json`));
-  const transactionRoot=await confined(ctx.jobRoot,`${readingId}/transactions`);await mkdir(transactionRoot,{recursive:true});
+  // Review revisions get separate transactions; old committed bytes survive
+  // without competing with this approval's exact-one finalization requirement.
+  const revision=job.state.history.some(e=>e.kind==='approval_reopened')?`/revisions/${job.state.review.approved_sha256}`:'';
+  const transactionRoot=await confined(ctx.jobRoot,`${readingId}/transactions${revision}`);await mkdir(transactionRoot,{recursive:true});
   // Canonical publication artifacts use the existing transaction/finalizer. V2
   // transactions live under this reading's job, not a competing global ledger.
   await applyNativeTransaction({root:transactionRoot,canonicalRoot:ctx.mhcRoot,manifest:transaction,entries,transactionSchema:await schemas('mhc-native-review-transaction'),progressSchema:await schemas('mhc-native-review-progress')});

@@ -23,6 +23,14 @@ Read the complete allowed treatment. Preserve material named identities,
 relationships, agency, causes, and meaningful alternatives or uncertainty. The
 packet's requirements point to relevant evidence IDs. Selecting evidence is not
 the same as preserving its meaning; actually convey the supported explanation.
+Convey Henry's specific interpretation, not merely a generic restatement of the
+reading. If he identifies a messenger, title, image, or relationship central to
+the requested verse, name that identification or explain that image. Find and cite
+the supporting atom even when it is outside target_evidence_ids but still within
+the request's allowed evidence. Do not replace the explanation with a vague call
+to seriousness or obedience. Preserve uncertainty rather than turning a possible
+historical reconstruction into a fact, and avoid invented comparisons or claims
+about timing, public exposure, or causation.
 Use the supplied verse scope honestly. A shared treatment need not be rewritten
 into invented distinctions for neighboring verses. Do not transfer claims from an
 unrelated source range. Omit rhetorical padding and archaic wording. Use fresh

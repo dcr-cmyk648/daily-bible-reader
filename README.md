@@ -1,5 +1,12 @@
 # Daily Bible Reader
 
+The offline Matthew Henry replacement and its activation/operational acceptance
+are documented in [Henry v2 operations](docs/HENRY_V2_OPERATIONS.md). It asks the
+author for source-supported sentences, tracks one durable reading job through
+independent review, and requires exact verified publication before reporting
+completion. Historical Henry commands below remain compatibility tools; installed
+v2 tasks use only their verified launcher and returned source packets.
+
 A private, mobile-first daily Bible reader for two people. The active pre-launch bridge uses Celebration Church's *Reading the Bible in 3 Years — Year 3 Quarter 4*. The current backend compiles the complete factual remaining schedule, `CC-Y3Q4-D054` through `CC-Y3Q4-D092` (August 8–September 15, 2026), for calendar display. Private Drive content remains a separate contiguous prepared prefix, maintained only through the current Detroit day plus seven days so unprepared future studies never open as complete.
 
 The complete source-day mapping is generated from the reviewed reference plan and factual chapter metrics; it includes the grouped multi-chapter days while storing neither ESV wording nor devotional content.

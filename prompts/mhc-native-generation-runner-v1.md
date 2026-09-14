@@ -1,5 +1,9 @@
 # Installed native Henry generation runner
 
+This is the retained v1 contract. An installation whose pipeline_version is
+mhc-evidence-author/v2 uses prompts/mhc-v2-generation-runner.md instead. Do not mix
+the v1 fact-brief/three-submission instructions with a v2 source packet.
+
 Run only the stable absolute `mhc-native` launcher supplied by the installed runtime. Invoke its `spark` or `luna` command once. Do not fetch Git, create a worktree, link private directories, install dependencies, or discover another checkout. The launcher verifies its immutable tracked-code release and canonical private roots before controller work.
 
 When the safe result says `action=author_candidate` or `action=repair_candidate`, use the exact reported `candidatePath`, `validationPath`, and `instructionsPath`. Follow the complete bounded instructions and worker contract there. Write one substantive candidate, read it back completely, then run the exact returned `advanceCommand`. On a validation failure, read the reported validation file, materially repair the same candidate, read it back, and run the newly returned `advanceCommand`. Continue this bounded author/advance cycle until the runner reports `review_handoff`, `checkpointed`, `blocked`, or a safe no-op. Never replace a failed save with an empty or partial candidate.

@@ -6,11 +6,12 @@ import process from "node:process";
 import {spawnSync} from "node:child_process";
 import {assertCanonicalPath} from "./lib/mhc-native-paths.mjs";
 import {readCheckpoint,withRunnerLock} from "./lib/mhc-native-runner.mjs";
+import {loadJob} from "./lib/mhc-v2-store.mjs";
 
 const sha=value=>createHash("sha256").update(value).digest("hex");
 const scopes=["scripts","schemas","prompts","fixtures/pilot-content/plan.json","fixtures/pilot-content/app-config.json","config/active-calendar/celebration-bridge-long-term-active.json"];
 const usage="Usage: node scripts/install-mhc-native-runtime.mjs --project-root PATH --revision 40HEX --spark-automation-id ID --luna-automation-id ID";
-function options(args){const value={};for(let i=0;i<args.length;i+=2){if(!["--project-root","--revision","--spark-automation-id","--luna-automation-id"].includes(args[i])||!args[i+1])throw Error(usage);value[args[i].slice(2).replace(/-([a-z])/g,(_,c)=>c.toUpperCase())]=args[i+1];}return value;}
+function options(args){const value={};for(let i=0;i<args.length;i+=2){if(!["--project-root","--revision","--spark-automation-id","--luna-automation-id","--pipeline"].includes(args[i])||!args[i+1])throw Error(usage);value[args[i].slice(2).replace(/-([a-z])/g,(_,c)=>c.toUpperCase())]=args[i+1];}if(value.pipeline&&!['v1','v2'].includes(value.pipeline))throw Error(usage);return value;}
 function git(root,args){const result=spawnSync("git",args,{cwd:root,windowsHide:true,maxBuffer:32*1024*1024});if(result.status!==0)throw Error("Cannot verify committed runtime source.");return result.stdout;}
 async function atomic(file,bytes){const temp=`${file}.tmp-${process.pid}`;await writeFile(temp,bytes,{mode:0o600});await rename(temp,file);}
 async function assertNoActiveWake(runtimeRoot,schema){
@@ -21,6 +22,17 @@ async function assertNoActiveWake(runtimeRoot,schema){
     const raw=JSON.parse(await readFile(path.join(checkpointRoot,name),"utf8"));
     const {value}=await readCheckpoint({checkpointRoot,checkpointId:name.slice(0,-5),schema,manifestSha256:raw.runtime_manifest_sha256});
     if(!["complete","blocked"].includes(value.state))throw Error("Runtime installation refused while a native runner wake is active.");
+  }
+}
+async function assertSafePipelineCutover(projectRoot,pipeline){
+  const v2Root=path.join(projectRoot,'private-content/automation/mhc-v2');
+  const jobs=await readdir(v2Root).catch(e=>{if(e.code==='ENOENT')return [];throw e;});
+  if(jobs.length&&pipeline!=='v2')throw Error('V2 jobs exist; an explicit compatible rollback migration is required before selecting v1.');
+  for(const id of jobs){const directory=await assertCanonicalPath(projectRoot,path.join(v2Root,id)),job=await loadJob(directory);if(job.state?.phase==='generating'&&Date.parse(job.state.session?.deadline_at)>Date.now())throw Error('Runtime installation refused while a v2 authoring session is active.');}
+  if(pipeline==='v2'){
+    const ledgerRoot=path.join(projectRoot,'private-content/automation/mhc-native-work-items/ledger');
+    const files=await readdir(ledgerRoot).catch(e=>{if(e.code==='ENOENT')return [];throw e;});
+    for(const file of files){const value=JSON.parse(await readFile(await assertCanonicalPath(projectRoot,path.join(ledgerRoot,file)),'utf8')),latest=new Map();if(!Array.isArray(value.events))throw Error('Legacy ledger is invalid at cutover.');for(const event of value.events)latest.set(event.work_item_id,event);if([...latest.values()].some(e=>e.outcome==='leased'))throw Error('V2 cutover refused while a legacy work item is leased.');}
   }
 }
 async function main(){
@@ -39,7 +51,9 @@ async function main(){
   const runtimeRoot=await assertCanonicalPath(projectRoot,path.join(projectRoot,"private-content/automation/mhc-runtime"),{allowMissing:true});await mkdir(runtimeRoot,{recursive:true,mode:0o700});
   await withRunnerLock({runtimeRoot},async()=>{
     await assertNoActiveWake(runtimeRoot,JSON.parse(entries.find(e=>e.path==="schemas/mhc-native-runner-checkpoint.schema.json").bytes));
+    await assertSafePipelineCutover(projectRoot,opts.pipeline||'v1');
     const config={schema_version:"mhc-native-runtime-config/v1",source_revision:opts.revision,project_root:projectRoot,runtime_root:runtimeRoot,spark_automation_id:opts.sparkAutomationId,luna_automation_id:opts.lunaAutomationId};
+    if(opts.pipeline==='v2')config.pipeline_version='mhc-evidence-author/v2';
     const configBytes=Buffer.from(`${JSON.stringify(config,null,2)}\n`);
     const manifest={schema_version:"mhc-native-runtime-manifest/v1",source_revision:opts.revision,created_at:git(sourceRoot,["show","-s","--format=%cI",opts.revision]).toString().trim(),files:entries.map(e=>({path:e.path,sha256:sha(e.bytes),bytes:e.bytes.length}))};
     const manifestBytes=Buffer.from(`${JSON.stringify(manifest,null,2)}\n`),manifestSha=sha(manifestBytes),release=`${opts.revision}-${manifestSha.slice(0,16)}`;

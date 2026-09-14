@@ -1,5 +1,12 @@
 # Matthew Henry preprocessing pipeline
 
+The September 13 replacement is documented in
+[HENRY_V2_OPERATIONS.md](HENRY_V2_OPERATIONS.md). Its explicit installer selection
+is `--pipeline v2`; it uses source-range packets, sentence/evidence authoring,
+one append-only reading lifecycle, independent review, and exact publication
+completion. The sections below preserve v1 contracts and calibration history;
+they are not additional active generation routes under a v2 installation.
+
 This is an offline, resumable source-preprocessing workflow. It never runs AI in the browser or Apps Script, never downloads ESV text, and never publishes commentary automatically. It supports four bounded uses:
 
 - the preserved Genesis book-introduction/Genesis 1 Spark-versus-Luna calibration; and

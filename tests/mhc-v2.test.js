@@ -1,0 +1,166 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtemp,mkdir,writeFile,readFile,rm,cp,readdir} from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
+import {spawnSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
+import {VERSION,MODELS,REVIEW_ASSERTIONS,compileReading,validateCandidate,digestObject} from '../scripts/lib/mhc-v2.mjs';
+import {sha256,normalizedBatchHash} from '../scripts/lib/mhc-pipeline.mjs';
+import {serviceContext,startV2,advanceV2,buildReview,reviewWorkOrderV2,applyReviewV2,editorialRepairV2,requestEditorialV2} from '../scripts/lib/mhc-v2-service.mjs';
+import {atomicJson,appendState,loadJob,readJson,bytesFor,createJob} from '../scripts/lib/mhc-v2-store.mjs';
+
+const repo=fileURLToPath(new URL('..',import.meta.url));
+const sourceManifest={source_id:'fabricated-henry',work_title:'FABRICATED TEST COMMENTARY',module_name:'MHC',module_version:'2.2',source_version_date:'2026-01-01',retrieved_at:'2026-01-01',license:'Public domain FABRICATED TEST',archive_sha256:'a'.repeat(64),source_format:'CrossWire SWORD zCom4 OSIS',versification:'KJV',source_url:'https://example.invalid/fabricated',download_url:'https://example.invalid/fabricated.zip'};
+function unit(chapter,start,end,{identity=false}={}) {
+  const id=`fabricated:TST:${chapter}:${start}-${end}`,text=`vv. ${start}-${end}. FABRICATED TEST COMMENTARY: the caretaker distributes parcels to needy households. Patient kindness benefits the village during its difficult season.${identity?' The caretaker, that is, Maribel, brings help.':''}`;
+  const {source_id,work_title,...provenance}=sourceManifest;
+  return {schema_version:'mhc-normalized-source/v3',source_id,source_unit_id:id,work_title,book_id:'TST',chapter,verse_start:start,verse_end:end,reference_label:`Fabricated ${chapter}:${start}-${end}`,unit_type:'verse_range',source_text:text,source_text_sha256:sha256(text),source_atoms:[{source_atom_id:`${id}:a1`,sequence:1,atom_type:'commentary',text,text_sha256:sha256(text)}],worker_source_sha256:sha256(text),excluded_scripture_sha256:null,verse_anchors:[],provenance};
+}
+function input(verseCount=20) {
+  const entry={readingId:'FAB-READING',passages:[{bookId:'TST',chapter:1,verseCount}]};
+  const units=verseCount===20?[unit(1,1,11),unit(1,12,20)]:[unit(1,1,verseCount)];
+  return compileReading({entry,planVersion:'fabricated-plan',scheduleDate:'2026-09-13',sourceManifest,chapters:[{bookId:'TST',chapter:1,units}]});
+}
+function candidate(packet) {
+  return {schema_version:'mhc-evidence-candidate/v2',packet_id:packet.packet_id,records:packet.requests.map(r=>({verse_id:r.verse_id,sentences:[{text:'FABRICATED: a thoughtful village helper hands out supplies, easing the hardship faced by local families.',evidence_ids:[r.evidence_ids[0]]}]}))};
+}
+async function fixture(t,{verseCount=12,chapterCount=1,readingCount=1}={}) {
+  const root=await mkdtemp(path.join(os.tmpdir(),'mhc-v2-fabricated-'));t.after(()=>rm(root,{recursive:true,force:true}));
+  const releaseRoot=path.join(root,'release'),projectRoot=path.join(root,'project');
+  await mkdir(releaseRoot,{recursive:true});await cp(path.join(repo,'schemas'),path.join(releaseRoot,'schemas'),{recursive:true});await cp(path.join(repo,'prompts'),path.join(releaseRoot,'prompts'),{recursive:true});
+  const passages=Array.from({length:chapterCount},(_,i)=>({bookId:'TST',chapter:i+1,verseCount}));
+  const plan={planVersion:'fabricated-plan',entries:Array.from({length:readingCount},(_,i)=>({planVersion:'fabricated-plan',readingId:`FAB-${i+1}`,dayIndex:i+1,kind:'chapter',passages}))};
+  const config={sharedStartDate:'2026-09-13',futureLookaheadDays:7};
+  await atomicJson(releaseRoot,'fixtures/pilot-content/plan.json',plan);await atomicJson(releaseRoot,'fixtures/pilot-content/app-config.json',config);
+  for(const dir of ['private-content','private-commentary/mhc','research/raw','research/working'])await mkdir(path.join(projectRoot,dir),{recursive:true});
+  const manifest={readings:Object.fromEntries(plan.entries.map(e=>[e.readingId,{}]))};
+  await atomicJson(projectRoot,'private-content/private-manifest.json',manifest);
+  for(const e of plan.entries)await atomicJson(projectRoot,`private-content/bridge/celebration-y3q4/${e.readingId}.metadata.json`,{readingId:e.readingId,henrySourceLink:{sourceId:'fabricated-henry',title:'FABRICATED Henry',note:'FABRICATED test fallback',url:'https://example.invalid/fabricated'}});
+  await atomicJson(projectRoot,'private-commentary/mhc/source-manifest.json',sourceManifest);
+  for(const p of passages){const units=[unit(p.chapter,1,Math.min(verseCount,7)),...(verseCount>7?[unit(p.chapter,8,verseCount)]:[])],stem=`private-commentary/mhc/normalized/TST/${String(p.chapter).padStart(3,'0')}`;await mkdir(path.dirname(path.join(projectRoot,stem)),{recursive:true});await writeFile(path.join(projectRoot,`${stem}.jsonl`),units.map(u=>JSON.stringify(u)).join('\n')+'\n');await atomicJson(projectRoot,`${stem}.manifest.json`,{source_archive_sha256:sourceManifest.archive_sha256,book_id:'TST',chapter:p.chapter,indexed_verse_count:verseCount,normalized_batch_sha256:normalizedBatchHash(units)});}
+  const ctx=await serviceContext({projectRoot,releaseRoot,launcher:path.join(root,'launcher.mjs'),config:{spark_automation_id:'fabricated-spark',luna_automation_id:'fabricated-luna'},runtimeRoot:path.join(projectRoot,'private-content/automation/mhc-runtime')});
+  return {ctx,now:new Date('2026-09-13T15:16:00Z')};
+}
+async function writeCandidate(report,mutate=x=>x) {const packet=await readJson(report.sourcePath);const value=mutate(candidate(packet));await writeFile(report.candidatePath,bytesFor(value));return value;}
+const sessionId=report=>report.advanceArgv.at(-1);
+async function drain(ctx,now,{lane='spark'}={}) {let report=await startV2(ctx,lane,now),count=0;while(['author_candidate','repair_candidate'].includes(report.action)){await writeCandidate(report);report=await advanceV2(ctx,report.readingId,sessionId(report),now);assert.ok(++count<40);}return {report,count};}
+async function approve(ctx,id,now) {const order=await reviewWorkOrderV2(ctx,now),bundle=await readJson(order.bundlePath);assert.equal(order.readingId,id);await writeFile(order.reviewPath,bytesFor({schema_version:'mhc-evidence-approval/v2',reading_id:id,review_basis_sha256:bundle.review_basis_sha256,status:'approved',reviewer:'FABRICATED independent reviewer',reviewed_at:now.toISOString(),findings:['FABRICATED comparison of every sentence and source only; no real commentary.'],assertions:Object.fromEntries(REVIEW_ASSERTIONS.map(k=>[k,true])),corrections:[]}));return applyReviewV2(ctx,id,now);}
+
+test('v2 respects natural treatment boundaries, bounds batches, and excludes normalized Scripture accounting text',()=>{
+  const compiled=input();assert.deepEqual(compiled.chapters[0].batches.map(p=>p.requests.length),[8,3,8,1]);
+  for(const packet of compiled.chapters[0].batches){assert.equal(new Set(packet.requests.map(r=>r.source_reference_label)).size,1);assert.ok(!JSON.stringify(packet).includes('source_text'));}
+  assert.equal(compiled.input_sha256,input().input_sha256);
+});
+test('v2 accepts a faithful synonym without a generated vocabulary scaffold',()=>{const p=input(1).chapters[0].batches[0];assert.equal(validateCandidate(candidate(p),p).valid,true);});
+test('v2 rejects hidden evidence and duplicate/missing verse records',()=>{const p=input(3).chapters[0].batches[0],c=candidate(p);c.records[0].sentences[0].evidence_ids=['fabricated:hidden'];assert.equal(validateCandidate(c,p).valid,false);const d=candidate(p);d.records[1]=d.records[0];assert.ok(validateCandidate(d,p).diagnostics.some(d=>d.code==='V2_VERSE_COVERAGE'));});
+test('v2 required-evidence diagnostic identifies support rather than prescribing word insertion',()=>{const p=input(1).chapters[0].batches[0];p.evidence.push({...p.evidence[0],evidence_id:'fabricated:identity',text:'FABRICATED: Maribel is the caretaker.',text_sha256:sha256('FABRICATED: Maribel is the caretaker.')});p.requests[0].evidence_ids.push('fabricated:identity');p.requests[0].requirements=[{kind:'identity',terms:['Maribel'],evidence_ids:['fabricated:identity']}];const c=candidate(p);c.records[0].sentences[0].text='FABRICATED: Maribel carries helpful supplies for struggling families.';const result=validateCandidate(c,p);assert.equal(result.valid,false);assert.deepEqual(result.diagnostics.find(d=>d.code==='V2_REQUIRED_EVIDENCE').evidence_ids,['fabricated:identity']);});
+test('v2 detects changed atom bytes before authoring',()=>{const u=unit(1,1,1);u.source_atoms[0].text+=' changed';assert.throws(()=>compileReading({entry:{readingId:'FAB-001',passages:[{bookId:'TST',chapter:1,verseCount:1}]},planVersion:'fab',scheduleDate:'2026-09-13',sourceManifest,chapters:[{bookId:'TST',chapter:1,units:[u]}]}),/V2_SOURCE_INTEGRITY/);});
+test('v2 refuses oversized evidence rather than silently dropping context',()=>{const u=unit(1,1,1),text='FABRICATED long evidence. '.repeat(4200);u.source_atoms[0].text=text;u.source_atoms[0].text_sha256=sha256(text);assert.throws(()=>compileReading({entry:{readingId:'FAB-001',passages:[{bookId:'TST',chapter:1,verseCount:1}]},planVersion:'fab',scheduleDate:'2026-09-13',sourceManifest,chapters:[{bookId:'TST',chapter:1,units:[u]}]}),/V2_SOURCE_PACKET_TOO_LARGE/);});
+
+test('real v2 modules drain multiple chapters, approve, finalize and require exact matching publication',async t=>{
+  const {ctx,now}=await fixture(t,{chapterCount:3});const {report,count}=await drain(ctx,now);assert.equal(count,6);assert.equal(report.action,'review_handoff');assert.equal(report.published,false);
+  const {bundle}=await buildReview(ctx,'FAB-1');assert.equal(bundle.results.length,3);assert.equal(bundle.sentences.length,36);
+  const applied=await approve(ctx,'FAB-1',now);assert.equal(applied.state,'publishing');assert.equal(applied.published,false);
+  const repeated=await applyReviewV2(ctx,'FAB-1',now);assert.equal(repeated.state,'publishing');
+  const publicationOrder=await reviewWorkOrderV2(ctx,now);assert.equal(publicationOrder.action,'recover_publish');
+  const metadataFile=path.join(ctx.privateRoot,'bridge/celebration-y3q4/FAB-1.metadata.json'),manifestFile=path.join(ctx.privateRoot,'private-manifest.json');
+  const metadata=await readJson(metadataFile);metadata.verseCommentaries=bundle.results.map(r=>({...r.runtime,review_status:'approved'}));delete metadata.henrySourceLink;await writeFile(metadataFile,bytesFor(metadata));
+  assert.equal((await reviewWorkOrderV2(ctx,now)).action,'recover_publish');
+  const manifest=await readJson(manifestFile);manifest.readings['FAB-1'].metadataFileId='FABRICATED_METADATA_POINTER';await writeFile(manifestFile,bytesFor(manifest));
+  const receipt={schemaVersion:'mhc-manager-publication-result/v1',readingId:'FAB-1',status:'published_verified',metadataReadback:'exact_bytes',manifestReadback:'exact_bytes',liveReadingStatus:'ready',henryLayerStatus:'complete',metadataFileId:'FABRICATED_METADATA_POINTER',payloadSha256:sha256(await readFile(metadataFile))};
+  await atomicJson(ctx.privateRoot,'automation/staging/FAB-1/manager-publication-result.json',receipt);
+  assert.equal((await reviewWorkOrderV2(ctx,now)).state,'no_review_work');assert.equal((await loadJob(path.join(ctx.jobRoot,'FAB-1'))).state.phase,'published');
+});
+test('same-wake restart keeps budget, preserves rejects, clears stale failure on success',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1});let r=await startV2(ctx,'spark',now);const id=sessionId(r);await writeCandidate(r,c=>({...c,packet_id:'MHP2-'+'0'.repeat(32)}));r=await advanceV2(ctx,'FAB-1',id,now);assert.equal(r.action,'repair_candidate');let job=await loadJob(path.join(ctx.jobRoot,'FAB-1'));assert.equal(job.state.total_submissions,1);
+  r=await startV2(ctx,'spark',now);assert.equal(sessionId(r),id);r=await advanceV2(ctx,'FAB-1',id,now);assert.equal(r.action,'repair_candidate');job=await loadJob(path.join(ctx.jobRoot,'FAB-1'));assert.equal(job.state.total_submissions,1);
+  const diagnostics=r.validationPath;await writeCandidate(r);r=await advanceV2(ctx,'FAB-1',id,now);assert.equal(r.action,'review_handoff');assert.equal((await readJson(diagnostics)).valid,true);assert.equal((await readdir(path.join(job.directory,'attempts'))).length,2);
+});
+test('crash after durable reservation resumes exact saved bytes without another submission charge',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1});const r=await startV2(ctx,'spark',now),p=await readJson(r.sourcePath),c=candidate(p),bytes=bytesFor(c),hash=sha256(bytes);let job=await loadJob(path.join(ctx.jobRoot,'FAB-1'));await atomicJson(job.directory,`attempts/${hash}.json`,{bytes,value:c},{immutable:true});const state=structuredClone(job.state);state.pending_attempt={key:`${p.packet_id}:spark`,hash,packet_id:p.packet_id,lane:'spark'};state.total_submissions=1;state.session.submissions=1;state.sessions[state.session.id]=state.session;job=await appendState(job,'submission_reserved',state,now);
+  await writeFile(r.candidatePath,'{}');const result=await startV2(ctx,'spark',now);assert.equal(result.action,'review_handoff');assert.equal((await loadJob(job.directory)).state.total_submissions,1);
+});
+test('two distinct rejections trigger recorded Luna fallback; Luna never invents missed-primary eligibility',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1});assert.equal((await startV2(ctx,'luna',now)).state,'awaiting_primary');let r=await startV2(ctx,'spark',now);for(let n=0;n<2;n++){await writeCandidate(r,c=>({...c,packet_id:'MHP2-'+String(n).repeat(32)}));r=await advanceV2(ctx,'FAB-1',sessionId(r),now);}assert.equal(r.state,'fallback_pending');const result=await drain(ctx,new Date('2026-09-13T17:26:00Z'),{lane:'luna'});assert.equal(result.report.action,'review_handoff');const review=await buildReview(ctx,'FAB-1');assert.equal(review.bundle.results[0].runtime.worker_model,MODELS.luna);
+});
+test('Luna exhaustion gets one explicit editorial derivative, not replenished model retries',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1});let r=await startV2(ctx,'spark',now);for(const lane of ['spark','luna']){if(lane==='luna')r=await startV2(ctx,lane,new Date('2026-09-13T17:26:00Z'));for(let n=0;n<2;n++){await writeCandidate(r,c=>({...c,packet_id:'MHP2-'+String(n).repeat(32)}));r=await advanceV2(ctx,'FAB-1',sessionId(r),now);}}
+  assert.equal(r.state,'editorial_attention');const order=await reviewWorkOrderV2(ctx,now),basis=await readJson(order.packetPath);await writeFile(order.repairPath,bytesFor({schema_version:'mhc-evidence-editorial-repair/v2',input_sha256:basis.input_sha256,rejected_sha256:basis.rejected_sha256,status:'approved',reviewer:'FABRICATED editor',reviewed_at:now.toISOString(),findings:['FABRICATED exact evidence correction.'],candidate:candidate(basis.packet)}));
+  const result=await editorialRepairV2(ctx,'FAB-1',now);assert.equal(result.action,'review_handoff');assert.equal((await loadJob(path.join(ctx.jobRoot,'FAB-1'))).state.total_submissions,4);await assert.rejects(editorialRepairV2(ctx,'FAB-1',now),/PHASE_INVALID/);
+});
+test('an older editorial repair queues remaining packets behind the active reading and resumes without resetting attempts',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:12,readingCount:2});let r=await startV2(ctx,'spark',now);
+  for(const lane of ['spark','luna']){if(lane==='luna')r=await startV2(ctx,lane,new Date('2026-09-13T17:26:00Z'));for(let n=0;n<2;n++){await writeCandidate(r,c=>({...c,packet_id:'MHP2-'+String(n).repeat(32)}));r=await advanceV2(ctx,'FAB-1',sessionId(r),now);}}
+  const later=new Date('2026-09-13T21:16:00Z'),active=await startV2(ctx,'spark',later);assert.equal(active.readingId,'FAB-2');
+  const order=await reviewWorkOrderV2(ctx,later),basis=await readJson(order.packetPath);
+  await writeFile(order.repairPath,bytesFor({schema_version:'mhc-evidence-editorial-repair/v2',input_sha256:basis.input_sha256,rejected_sha256:basis.rejected_sha256,status:'approved',reviewer:'FABRICATED editor',reviewed_at:later.toISOString(),findings:['FABRICATED supported correction while another reading is active.'],candidate:candidate(basis.packet)}));
+  assert.equal((await editorialRepairV2(ctx,'FAB-1',later)).state,'queued');
+  const queued=await loadJob(path.join(ctx.jobRoot,'FAB-1'));assert.equal(queued.state.total_submissions,4);
+  assert.equal((await startV2(ctx,'spark',later)).readingId,'FAB-2');await drain(ctx,later);
+  assert.equal((await startV2(ctx,'spark',later)).code,'V2_OTHER_MODEL_OWNS_CHAPTER');
+  const resumed=await drain(ctx,later,{lane:'luna'});assert.equal(resumed.report.readingId,'FAB-1');assert.equal(resumed.report.action,'review_handoff');
+  assert.equal((await loadJob(queued.directory)).state.total_submissions,5);
+});
+test('current review work precedes historical publication recovery without losing that recovery',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1,readingCount:2});
+  await drain(ctx,now);await approve(ctx,'FAB-1',now);await drain(ctx,now);
+  const order=await reviewWorkOrderV2(ctx,new Date('2026-09-14T15:16:00Z'));
+  assert.equal(order.readingId,'FAB-2');assert.equal(order.action,'review');
+  assert.equal((await loadJob(path.join(ctx.jobRoot,'FAB-1'))).state.phase,'publishing');
+});
+test('source changes and stale reviews cannot be rebound to approval',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1});await drain(ctx,now);const order=await reviewWorkOrderV2(ctx,now);await writeFile(order.reviewPath,bytesFor({schema_version:'mhc-evidence-approval/v2',reading_id:'FAB-1',review_basis_sha256:'0'.repeat(64),status:'approved'}));await assert.rejects(applyReviewV2(ctx,'FAB-1',now),/APPROVAL_INVALID/);
+  const sourceFile=path.join(ctx.mhcRoot,'normalized/TST/001.jsonl');const u=JSON.parse((await readFile(sourceFile,'utf8')).trim());u.source_atoms[0].text+=' changed';await writeFile(sourceFile,JSON.stringify(u)+'\n');await assert.rejects(buildReview(ctx,'FAB-1'),/SOURCE|INTEGRITY/);
+});
+test('event chain rejects mutation and missing history',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1});await startV2(ctx,'spark',now);const dir=path.join(ctx.jobRoot,'FAB-1'),eventFile=path.join(dir,'events/000001.json'),event=await readJson(eventFile);event.state.total_submissions=500;await writeFile(eventFile,bytesFor(event));await assert.rejects(loadJob(dir),/EVENT_HASH_MISMATCH/);
+});
+test('pre-existing legacy cooldown blocks v2 reissue and forward debt blocks backlog',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1});await atomicJson(ctx.privateRoot,'automation/mhc-backfill-attempt-state.json',{schemaVersion:'mhc-backfill-attempt-state/v1',planVersion:ctx.plan.planVersion,attempts:{'FAB-1':{attemptedAt:now.toISOString(),outcome:'model_failure',stage:'validation',code:'NATIVE_CANDIDATE_UNRESOLVED'}}});const result=await startV2(ctx,'spark',now);assert.equal(result.state,'no_eligible_reading');assert.equal(result.queue.coolingDownCount,1);assert.equal((await readdir(ctx.jobRoot)).length,0);
+});
+
+test('partial initial job and missing final handoff recover from the single event history',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1});let r=await startV2(ctx,'spark',now);const directory=path.join(ctx.jobRoot,'FAB-1');
+  // Simulate interruption after input commit but before the initial event.
+  for(const n of await readdir(path.join(directory,'events')))await rm(path.join(directory,'events',n));
+  r=await startV2(ctx,'spark',now);assert.equal(r.action,'author_candidate');await writeCandidate(r);await advanceV2(ctx,'FAB-1',sessionId(r),now);
+  let job=await loadJob(directory);assert.equal(job.state.phase,'review_pending');const files=(await readdir(path.join(directory,'events'))).sort();const final=await readJson(path.join(directory,'events',files.at(-1)));assert.equal(final.kind,'generation_complete');await rm(path.join(directory,'events',files.at(-1)));
+  r=await startV2(ctx,'spark',now);assert.equal(r.action,'review_handoff');job=await loadJob(directory);assert.equal(job.state.total_submissions,1);
+});
+test('reviewer can reject semantic evidence, record one correction, and invalidate the old approval basis',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1});await drain(ctx,now);const initial=await reviewWorkOrderV2(ctx,now),bundle=await readJson(initial.bundlePath),packet=bundle.source_packets[0];
+  await writeFile(initial.reviewPath,bytesFor({schema_version:'mhc-evidence-review-decision/v2',reading_id:'FAB-1',review_basis_sha256:bundle.review_basis_sha256,status:'changes_requested',packet_id:packet.packet_id,reviewer:'FABRICATED reviewer',reviewed_at:now.toISOString(),findings:['FABRICATED: preserve the specific kind of assistance.']}));
+  await requestEditorialV2(ctx,'FAB-1',now);const order=await reviewWorkOrderV2(ctx,now),basis=await readJson(order.packetPath),corrected=candidate(packet);corrected.records[0].sentences[0].text='FABRICATED: the helpful caretaker delivers practical support to families during a trying period.';
+  await writeFile(order.repairPath,bytesFor({schema_version:'mhc-evidence-editorial-repair/v2',input_sha256:basis.input_sha256,rejected_sha256:basis.rejected_sha256,status:'approved',reviewer:'FABRICATED editor',reviewed_at:now.toISOString(),findings:['FABRICATED direct comparison supports the correction.'],candidate:corrected}));
+  await editorialRepairV2(ctx,'FAB-1',now);const updated=await buildReview(ctx,'FAB-1');assert.notEqual(updated.bundle.review_basis_sha256,bundle.review_basis_sha256);assert.equal(updated.job.state.total_submissions,1);assert.equal(updated.bundle.editorial_history.length,2);
+  await assert.rejects(requestEditorialV2(ctx,'FAB-1',now),/BINDING/);await approve(ctx,'FAB-1',now);
+});
+test('forward cooldown debt prevents generation of historical backlog',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1,readingCount:2});ctx.appConfig.sharedStartDate='2026-09-12';await atomicJson(ctx.privateRoot,'automation/mhc-backfill-attempt-state.json',{schemaVersion:'mhc-backfill-attempt-state/v1',planVersion:ctx.plan.planVersion,attempts:{'FAB-2':{attemptedAt:now.toISOString(),outcome:'model_failure',stage:'validation',code:'NATIVE_CANDIDATE_UNRESOLVED'}}});const result=await startV2(ctx,'spark',now);assert.equal(result.state,'no_eligible_reading');assert.equal(result.queue.priorityTier,'forward');assert.equal(result.queue.historicalDebtCount,1);
+});
+test('expired session cannot author or replenish its budget until a later slot',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1});const r=await startV2(ctx,'spark',now);await writeCandidate(r);const expired=new Date(now.getTime()+61*60*1000);assert.equal((await advanceV2(ctx,'FAB-1',sessionId(r),expired)).action,'checkpointed');assert.equal((await startV2(ctx,'spark',expired)).action,'checkpointed');const job=await loadJob(path.join(ctx.jobRoot,'FAB-1'));assert.equal(job.state.total_submissions,0);assert.equal((await startV2(ctx,'spark',new Date('2026-09-13T21:16:00Z'))).action,'author_candidate');
+});
+test('tampered or wrong approved runtime cannot be completed by a locally valid publication receipt',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1});await drain(ctx,now);await approve(ctx,'FAB-1',now);
+  const {bundle}=await buildReview(ctx,'FAB-1'),metadataFile=path.join(ctx.privateRoot,'bridge/celebration-y3q4/FAB-1.metadata.json');
+  const wrong={...bundle.results[0].runtime,review_status:'approved'};wrong.records['TST.1.1'].blurb='FABRICATED different content has been attached by mistake.';
+  await writeFile(metadataFile,bytesFor({readingId:'FAB-1',verseCommentary:wrong}));await atomicJson(ctx.privateRoot,'private-manifest.json',{readings:{'FAB-1':{metadataFileId:'FABRICATED_POINTER'}}});await atomicJson(ctx.privateRoot,'automation/staging/FAB-1/manager-publication-result.json',{schemaVersion:'mhc-manager-publication-result/v1',readingId:'FAB-1',status:'published_verified',metadataReadback:'exact_bytes',manifestReadback:'exact_bytes',liveReadingStatus:'ready',henryLayerStatus:'complete',metadataFileId:'FABRICATED_POINTER',payloadSha256:sha256(await readFile(metadataFile))});
+  assert.equal((await reviewWorkOrderV2(ctx,now)).action,'recover_publish');assert.equal((await loadJob(path.join(ctx.jobRoot,'FAB-1'))).state.phase,'publishing');
+});
+test('installed v2 launcher executes actual modules and cannot silently reinstall v1 over live v2 jobs',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1});await cp(path.join(repo,'scripts'),path.join(ctx.releaseRoot,'scripts'),{recursive:true});
+  await atomicJson(ctx.releaseRoot,'fixtures/pilot-content/app-config.json',{sharedStartDate:new Intl.DateTimeFormat('en-CA',{timeZone:'America/Detroit'}).format(new Date()),futureLookaheadDays:7});
+  const run=(bin,args,options={})=>{const r=spawnSync(bin,args,{cwd:ctx.releaseRoot,encoding:'utf8',windowsHide:true,maxBuffer:2*1024*1024,...options});assert.equal(r.status,0,`${bin} failed: ${r.stderr}`);return r.stdout.trim();};
+  run('git',['init','-q']);run('git',['add','scripts','schemas','prompts','fixtures']);run('git',['-c','user.name=FABRICATED Test','-c','user.email=fabricated@example.invalid','-c','core.hooksPath=.no-test-hooks','commit','-qm','FABRICATED runtime test only']);const revision=run('git',['rev-parse','HEAD']);
+  const installer=path.join(ctx.releaseRoot,'scripts/install-mhc-native-runtime.mjs'),args=[installer,'--project-root',ctx.projectRoot,'--revision',revision,'--spark-automation-id','fabricated-spark','--luna-automation-id','fabricated-luna','--pipeline','v2'];
+  const installed=JSON.parse(run(process.execPath,args));const invoke=(args)=>JSON.parse(run(process.execPath,[installed.launcher,...args],{cwd:os.tmpdir()}));
+  // Actual installed selection, packet preparation, admission and review
+  // discovery, from an arbitrary cwd. No model or real content is involved.
+  let report=invoke(['spark']);
+  assert.equal(report.action,'author_candidate');await writeCandidate(report);
+  report=invoke(['advance','--reading','FAB-1','--session',sessionId(report)]);assert.equal(report.action,'review_handoff');assert.equal(report.published,false);
+  const order=invoke(['reviewer','work-order']);assert.equal(order.action,'review');assert.equal(invoke(['status']).readings[0].state,'review_pending');
+  const downgrade=spawnSync(process.execPath,[...args.slice(0,-1),'v1'],{cwd:ctx.releaseRoot,encoding:'utf8',windowsHide:true});assert.notEqual(downgrade.status,0);assert.match(downgrade.stderr,/V2 jobs exist/);
+});

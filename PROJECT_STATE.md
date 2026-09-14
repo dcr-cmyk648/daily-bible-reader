@@ -483,3 +483,114 @@ repository/source/content checks, all builds, and exact Pages verification.
 Frontend `d35abd879455dc50` and PWA `a3cde99646bb00aa` remain unchanged. Real private
 validation was skipped in this isolated checkout; the manager will validate the
 accepted-revision publication workspace against the existing private stores.
+
+## Henry architecture reassessment - 2026-09-13
+
+The user requested an end-to-end explanation of weeks of Henry failures and a
+durable alternative, including possible pipeline reconstruction. The read-only
+review and proposed migration are in
+`docs/execplans/henry-pipeline-reliability-review.md`. The recommendation is to
+replace the duplicated fact/prose authoring contract and consolidate the job
+lifecycle, while retaining verified sources, private storage, independent review,
+immutable publication, and exact readback. No replacement is implemented yet.
+
+Retained history includes 207 rejected prose snapshots and 294 rejected fact-brief
+snapshots across old versions and calibrations; these are not 501 failed studies
+or a controlled model comparison. Native evidence includes both validated Spark
+and Luna chunks and separate startup, continuation, review, and publication faults.
+Fourteen validated work items retain stale failure diagnostics, demonstrating why
+status must be derived from authenticated completion evidence. Existing D084/D087
+publisher receipts report complete exact-readback publication; this review made
+no fresh live probe.
+
+Pure validation of unchanged D090 chunk 009-012 reproduced the sole explicit-identity
+failure. The identity is present in its draft and raw required facts/anchors but
+absent from the selected required evidence; hydration removes the unsupported
+anchor. Correct supporting evidence was exposed in the compact worker view. Two
+of five D090 chunks remain validated; the terminal attempt and September 14
+07:29:34 Eastern cooldown remain untouched. Fabricated in-memory counterexamples
+also showed that the lexical fact-bound subcheck rejects a faithful synonym and
+accepts a reversed assertion retaining the required word; this is not a claimed
+bypass of full admission or independent review.
+
+The proposal includes a private paired quality evaluation, cause-specific retry
+policy, compatibility export to the existing runtime, staged job migration, and
+seven consecutive normal scheduled publications before claiming reliability.
+Model adequacy remains unmeasured; no stronger model or altered generation scope
+has been approved. The earlier Spark execution approval request remains pending
+after automatic review rejected the launcher for missing trusted authorization.
+No generation, cooldown reset, shared private write, automation update, publication,
+deployment, commit, or push occurred in this architectural review. The manager
+owns operational coordination and will receive the concrete design handoff.
+Repository safety passed (413 files) and `git diff --check` passed. No app code
+changed; the application suite was not rerun for this documentation-only review.
+
+## Henry v2 implementation for devotional trial - 2026-09-13
+
+The user explicitly approved the complete pipeline replacement and requested
+implementation now for testing over the next devotional days. Implementation is
+in `scripts/lib/mhc-v2.mjs`, `mhc-v2-store.mjs`, and `mhc-v2-service.mjs`, with an
+explicit installed-runner/installer `--pipeline v2` selection. Operational contracts
+and migration limits are in `docs/HENRY_V2_OPERATIONS.md`. The manager retains the
+separate release authorization and owns commit/push, immutable installation,
+existing automation alignment, and the same-commit private-publication bootstrap.
+
+V2 replaces the generated fact ledger with verse sentences and evidence IDs. Code
+builds natural source-range packets, exact runtime metadata and citations. A single
+hash-linked event history owns each reading from source input through actual
+publication; candidate bytes and budget reservations are immutable. One initial
+submission plus one repair is allowed per packet. A real Spark candidate exhaustion
+permits Luna for that chapter; absence/permission denial never creates eligibility.
+Luna exhaustion can receive one source-bound editorial correction of a substantive
+draft. Final reviewers can request the same bounded correction for a semantic or
+citation defect, invalidating the prior approval basis. Source review remains
+independent and required. Local attachment cannot complete a reading: the exact
+approved runtime and genuine current publisher receipt must both match.
+
+The existing transaction, reviewed library, private runtime format, publisher and
+public app remain. Legacy completed review handoffs stay recoverable. Existing
+v1 chunks, terminal attempts, cooldowns, receipts and rollback source are untouched;
+new v2 jobs respect the shared cooldown before migration. Legacy partial chunks
+are retained historically rather than silently relabeled under the new contract.
+Installation refuses active legacy leases/v2 sessions and silent rollback to v1
+over v2 jobs. Each scheduled task must replace its old instructions with the
+corresponding `mhc-v2-generation-runner.md` or `mhc-v2-review-runner.md` contract.
+
+Read-only source compilation passed D090 (20 verses/four packets), D091
+(18/three), D092 (six/two), and Genesis 1 (31/ten). Genesis's preserved v1 normalized
+cache exposed a compatibility gap; v2 now rebuilds missing/recognized legacy
+normalization in memory from the hash-verified local archive and module, without
+overwriting historical caches or downloading anything. Source corruption remains
+a blocker. No model generation or live content publication was used for this proof.
+
+The first combined targeted run passed 29 tests, including actual installed v1
+compatibility and a new installed v2 launcher from a fabricated temporary Git
+repository, complete multi-chapter review/library/publication gates, reservation
+crash recovery, stale diagnostics, model fallback, editorial derivatives, old
+cooldowns and rollback refusal. Further semantic-review feedback and deadline
+regressions passed in the 417-test full release check. Release review then added
+two regressions: current-window review ahead of historical publication recovery,
+and an older editorial correction queuing safely while another reading authors.
+Both passed; the final expanded `npm run check` completed with 419/419 tests,
+42 schemas, repository safety (423 files), deterministic builds and Pages
+verification passing. Private validation in this worktree skipped absent ignored
+drafts; manager's canonical private-store compatibility check remains required.
+The final reviewer prompt explicitly permits the existing manager-pinned offline
+publication bootstrap and passed the actual installed-v2 regression separately.
+`npm run publish:pages` reproduced the same frontend `d35abd879455dc50`, PWA
+`a3cde99646bb00aa` and backend `f6cf2d33873fc7a0` assets without public app changes.
+Code is frozen for the manager's separately authorized release. No commit, push,
+runtime installation, live generation or publication was performed in this
+implementation worktree. Activation evidence must be recorded separately before
+declaring the trial live.
+
+Activation handoff was rejected by automatic approval review: it required trusted
+explicit user approval for commit, push, immutable installation and existing
+automation activation rather than relying on the manager thread's recorded
+authorization. Implementation and local verification are complete; release is
+pending that approval. No alternate release route was attempted. A separate
+private queue-evidence transmission was also rejected and was not retried.
+
+Seven consecutive normal scheduled reviewed publications remain the operational
+reliability target. Code checks, installation and the user's upcoming trial are
+distinct milestones; future devotional success has not been claimed.

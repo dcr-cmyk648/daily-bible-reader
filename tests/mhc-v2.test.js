@@ -10,7 +10,7 @@ import {sha256,normalizedBatchHash} from '../scripts/lib/mhc-pipeline.mjs';
 import {serviceContext,startV2,advanceV2,buildReview,reviewWorkOrderV2,applyReviewV2,editorialRepairV2,requestEditorialV2,migrateCurrentV2,reopenReviewV2} from '../scripts/lib/mhc-v2-service.mjs';
 import {atomicJson,appendState,loadJob,readJson,bytesFor,createJob} from '../scripts/lib/mhc-v2-store.mjs';
 import {writeFileSync} from 'node:fs';
-import {runAuthorSession,transportSchema,authorArguments,successfulModelResult,verifyPublicPacket} from '../scripts/lib/mhc-v2-author-session.mjs';
+import {runAuthorSession,transportSchema,authorArguments,successfulModelResult,verifyPublicPacket,publicRepairDiagnostics} from '../scripts/lib/mhc-v2-author-session.mjs';
 
 const repo=fileURLToPath(new URL('..',import.meta.url));
 const sourceManifest={source_id:'fabricated-henry',work_title:'FABRICATED TEST COMMENTARY',module_name:'MHC',module_version:'2.2',source_version_date:'2026-01-01',retrieved_at:'2026-01-01',license:'Public domain FABRICATED TEST',archive_sha256:'a'.repeat(64),source_format:'CrossWire SWORD zCom4 OSIS',versification:'KJV',source_url:'https://example.invalid/fabricated',download_url:'https://example.invalid/fabricated.zip'};
@@ -91,6 +91,14 @@ test('author transport rejects edited source and outside packet paths before mod
   await assert.rejects(verifyPublicPacket(ctx,{...work,sourcePath:path.join(ctx.projectRoot,'private-content/private-manifest.json')},'spark'),/PATH_OUTSIDE_ROOT/);
   const packet=await readJson(work.sourcePath);packet.evidence[0].text='FABRICATED PRIVATE DEVOTIONAL';await writeFile(work.sourcePath,bytesFor(packet));
   await assert.rejects(verifyPublicPacket(ctx,work,'spark'),/PUBLIC_SOURCE_MISMATCH/);
+});
+test('author transport admits only fixed repair hints and hash-verified installed instructions',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1}),work=await startV2(ctx,'spark',now),packet=await readJson(work.sourcePath);
+  const privateMarker='FABRICATED PRIVATE DEVOTIONAL';
+  const hints=publicRepairDiagnostics({records:[privateMarker],diagnostics:[{code:'V2_SOURCE_COPY',message:privateMarker,verse_id:packet.requests[0].verse_id,path:privateMarker},{code:privateMarker,message:privateMarker,verse_id:privateMarker}]},packet);
+  assert.ok(!JSON.stringify(hints).includes(privateMarker));assert.equal(hints[0].verse_id,packet.requests[0].verse_id);assert.equal(hints[1].code,'V2_CANDIDATE_SCHEMA');
+  const instructions=await readJson(work.instructionsPath);instructions.instructions=privateMarker;await writeFile(work.instructionsPath,bytesFor(instructions));
+  await assert.rejects(verifyPublicPacket(ctx,work,'spark'),/INSTRUCTIONS_INVALID/);
 });
 test('author transport cannot use API-key auth, alternate models or successful tool activity',async t=>{
   const {ctx,now}=await fixture(t,{verseCount:1});

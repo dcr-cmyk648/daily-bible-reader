@@ -9,6 +9,18 @@ import {atomicJson,confined,maybeJson,readJson} from './mhc-v2-store.mjs';
 const authorActions=new Set(['author_candidate','repair_candidate']);
 const effort=lane=>lane==='spark'?'medium':'low';
 const blocked=(work,code)=>({...work,action:'checkpointed',stage:'model_transport',code});
+const repairMessages={V2_CANDIDATE_SCHEMA:'Return exactly the required candidate JSON schema.',V2_PACKET_MISMATCH:'Use the supplied packet_id.',V2_VERSE_COVERAGE:'Return all requested verses exactly once in the supplied order.',V2_EVIDENCE_SCOPE:'Cite only the evidence IDs allowed for this verse.',V2_EMPTY_PROSE:'Write substantive sentences.',V2_PROSE_LENGTH:'Keep combined prose within 1200 characters.',V2_CITATION_LIMIT:'Use at most twelve distinct evidence IDs per verse.',V2_REQUIRED_EVIDENCE:'Preserve and cite the required identity or relationship.',V2_SOURCE_COPY:'Use fresh wording without extended source copying.'};
+
+export function publicRepairDiagnostics(validation,packet) {
+  const verses=new Set(packet.requests.map(r=>r.verse_id));
+  // Never forward raw validation messages, candidate records, paths, requirement
+  // objects or extra properties. Every output word is static or from the already
+  // verified public packet, even if the local diagnostics file was altered.
+  return (Array.isArray(validation?.diagnostics)?validation.diagnostics:[]).map(d=>{
+    const code=Object.hasOwn(repairMessages,d?.code)?d.code:'V2_CANDIDATE_SCHEMA';
+    return {code,message:repairMessages[code],...(verses.has(d?.verse_id)?{verse_id:d.verse_id}:{})};
+  });
+}
 
 export function transportSchema(schema) {
   const value=structuredClone(schema);
@@ -43,7 +55,7 @@ export async function verifyPublicPacket(ctx,work,lane) {
   const atoms=new Map(source.chapters.flatMap(c=>c.units.flatMap(u=>u.source_atoms.map(a=>[a.source_atom_id,a]))));
   for(const evidence of packet.evidence){const atom=atoms.get(evidence.evidence_id);if(!atom||!['commentary','heading'].includes(atom.atom_type)||atom.text!==evidence.text)throw Error('V2_TRANSPORT_NON_COMMENTARY_INPUT');}
   const instructions=await readJson(work.instructionsPath);
-  if(instructions.model!==MODELS[lane]||instructions.reasoning_effort!==effort(lane))throw Error('V2_TRANSPORT_INSTRUCTIONS_INVALID');
+  if(instructions.model!==MODELS[lane]||instructions.reasoning_effort!==effort(lane)||instructions.instructions!==await readFile(path.join(ctx.releaseRoot,'prompts/mhc-v2-author.md'),'utf8'))throw Error('V2_TRANSPORT_INSTRUCTIONS_INVALID');
   return {packet,instructions,proof:{packet_sha256:digestObject(packet),source_archive_sha256:source.sourceManifest.archive_sha256,public_domain_commentary_only:true,model:MODELS[lane],reasoning_effort:effort(lane),destination:'OpenAI Codex using existing ChatGPT login'}};
 }
 
@@ -78,7 +90,7 @@ export async function runAuthorSession(ctx,{lane,codexExecutable},dependencies={
     if(!record){
       const schemaPath=await atomicJson(root,`${relative}/transport.schema.json`,transportSchema(await readJson(work.schemaPath)),{immutable:true});
       const args=authorArguments({model:MODELS[lane],reasoning:effort(lane),schemaPath,outputPath,mcpNames});
-      let diagnostics='';if(work.action==='repair_candidate')diagnostics=JSON.stringify(await readJson(work.validationPath));
+      let diagnostics='';if(work.action==='repair_candidate')diagnostics=JSON.stringify(publicRepairDiagnostics(await readJson(work.validationPath),packet));
       const prompt=`Condense the supplied verified public-domain Henry source packet. You are the exact assigned author, not the reviewer. Return only the candidate JSON. Do not use tools, read other files, change files, or publish. The parent records and validates your final response.\n\n${instructions.instructions}\n\nSOURCE PACKET:\n${JSON.stringify(packet)}\n\n${diagnostics?'VALIDATION TO REPAIR:\n'+diagnostics:''}`;
       record={schema_version:'mhc-model-execution/v1',session,proof,started_at:clock().toISOString(),status:'started'};
       await atomicJson(root,`${relative}/result.json`,record);

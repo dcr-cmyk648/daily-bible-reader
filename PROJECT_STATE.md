@@ -721,3 +721,34 @@ disables child tools, preserves actual model provenance and stops duplicate
 dispatches. Fabricated tests cover confinement, model/auth restrictions, candidate
 budgets, transport failure and identical rejected output. This closes a remaining
 orchestration gap; its full release and real-input trial remain to be recorded.
+
+The final author-transport source passed all 429 tests, safety (428 files), build
+and Pages verification. Release `9c03095` was pushed and installed immutably;
+the existing offline publication bootstrap is aligned. Both existing generation
+automations keep their cadences but now use a Terra low coordinator for the single
+installed command; their actual authors remain Spark medium and eligible Luna
+low in capability-restricted child executions. The reviewer keeps Terra high.
+
+D091 corrected publication is now verified. Its manifest discrepancy was only a
+trailing line ending, with all parsed fields identical. The independent reviewer
+completed the source corrections and 423-check publication workspace validation;
+its connector upload was rejected because direct approval in the root conversation
+was not recognized in that task. Root verified the exact approved artifact and
+unchanged non-Henry fields, used the user's direct standing approval to upload the
+immutable version, verified exact metadata bytes, promoted only D091's manifest
+pointer, and verified exact manifest bytes and authenticated ready/Henry-complete
+health. The genuine receipt reconciled successfully. The live reader's existing
+session picked up the corrected Malachi 3:5 paragraph through normal navigation
+and refresh, without clearing cache. At 390 px the verse sheet had no horizontal
+overflow and showed the condensed paragraph and Read Henry disclosure, with no
+internal audit note. A real next-reading author-session trial is in progress;
+future unattended reliability remains an observation target.
+
+The controlled fresh scheduled test fired at 10:07 Detroit (requested 10:05);
+the normal Spark-lane cadence was restored immediately. It was blocked before
+generation because raw repair diagnostics had not been proven non-sensitive.
+The adapter now projects diagnostics onto static messages and verified public
+verse IDs, omitting all raw messages, candidate records, paths and extra fields.
+It also checks author instructions against the immutable installed prompt. A
+fabricated adversarial test proves those local files cannot add private text to
+the model request. This is a narrowed data boundary, not an approval bypass.

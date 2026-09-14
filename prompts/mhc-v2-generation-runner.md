@@ -16,6 +16,11 @@ embedded Scripture transcription. Private storage paths do not make this public-
 domain source prose private. Source provenance is CrossWire MHC 2.2, Public Domain:
 https://www.crosswire.org/sword/modules/ModInfo.jsp?modName=MHC.
 
+Repair hints are rebuilt exclusively from a fixed code/message dictionary plus
+verse IDs present in the verified public packet. Raw diagnostic messages, prior
+candidate records, paths and arbitrary properties are never transmitted. Author
+instructions must exactly match the hash-verified installed prompt before any call.
+
 The actual writer is gpt-5.3-codex-spark at medium reasoning for the spark lane,
 or gpt-5.6-luna at low only after controller-recorded eligible Spark exhaustion.
 The coordinating task's model never substitutes its own prose. The installed

@@ -594,3 +594,29 @@ private queue-evidence transmission was also rejected and was not retried.
 Seven consecutive normal scheduled reviewed publications remain the operational
 reliability target. Code checks, installation and the user's upcoming trial are
 distinct milestones; future devotional success has not been claimed.
+
+## Reader fallback incident - 2026-09-14
+
+The user reported that the Malachi 3 verse sheet still displayed a full-source
+fallback containing an internal processing audit. The renderer directly used
+`henrySourceLink.note`. It now uses a fixed reader-facing availability message,
+retains the verified source link, and leaves private audit metadata untouched.
+This also protects the view when an older cached payload contains an audit note.
+The actual verse-sheet regression covers this fabricated case; browser checks
+at 320 and 390 pixels passed with no horizontal overflow. Full `npm run check`
+passed 419 tests, safety and deterministic build/Pages verification. Local assets
+are frontend `4b05f67d0006c9a8` and PWA `c8772c306270501a`; backend is unchanged.
+
+The accepted v2 runtime remains installed at `0066dd1`, but its job directory was
+empty during this investigation. Saved scheduled-run reports describe execution
+approval rejection before generation. The reader screenshot therefore does not
+show a new generated summary or establish model quality. No denied generation
+was retried via a different task/model, no cooldown was reset, and no private
+commentary was generated or published by this fix. Installation and passing tests
+were insufficient to establish user trial readiness: a first actual reviewed
+publication is required before reporting that the replacement delivers commentary.
+
+The scoped UI follow-up commit was rejected before staging by automatic approval
+review because the earlier release approval was limited to the pipeline change.
+The display fix and built public assets remain local pending direct approval;
+no alternate release path was attempted.

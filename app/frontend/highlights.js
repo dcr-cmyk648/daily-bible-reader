@@ -249,7 +249,11 @@
       source.hidden = true;
       details.hidden = true;
       if (fallback) fallback.hidden = !sourceLink;
-      if (fallbackNote) fallbackNote.textContent = sourceLink ? sourceLink.note : "";
+      // Source verification notes belong to the private research audit, not the
+      // verse sheet. Keep this message stable even for older cached payloads.
+      if (fallbackNote) fallbackNote.textContent = sourceLink
+        ? "A condensed summary is not available for this reading. You can read the full Matthew Henry commentary below."
+        : "";
       if (sourceLink && fallbackLink) {
         fallbackLink.href = sourceLink.url;
         fallbackLink.textContent = sourceLink.title;

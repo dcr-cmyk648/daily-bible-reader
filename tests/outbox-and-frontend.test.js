@@ -377,6 +377,12 @@ test("highlight sheet retries stale access before fabricated add/remove without 
     scripture: {isMock: true, passages: [{bookId: "FAB", chapter: 1, canonical: "Fabricated 1", verses: ["FABRICATED TEST VERSE."]}]},
     participants: [{authorId: "dustin", displayName: "Dustin"}, {authorId: "shane", displayName: "Shane"}],
     session: {authorId: "dustin", displayName: "Dustin"},
+    henrySourceLink: {
+      sourceId: "fabricated-henry",
+      title: "FABRICATED full commentary link",
+      url: "https://example.invalid/fabricated-henry",
+      note: "FABRICATED INTERNAL AUDIT: worker lane withheld; checksum inspection recorded."
+    },
     online: false
   });
   await Promise.resolve();
@@ -384,6 +390,11 @@ test("highlight sheet retries stale access before fabricated add/remove without 
   await verse.click();
   assert.equal(nodes.get("highlightPopover").hidden, false);
   assert.equal(nodes.get("highlightClose").focused, true);
+  assert.equal(nodes.get("verseCommentaryFallback").hidden, false);
+  assert.equal(nodes.get("verseCommentaryFallbackNote").textContent,
+    "A condensed summary is not available for this reading. You can read the full Matthew Henry commentary below.");
+  assert.doesNotMatch(nodes.get("verseCommentaryFallbackNote").textContent, /INTERNAL AUDIT|worker|checksum/);
+  assert.equal(nodes.get("verseCommentaryFallbackLink").href, "https://example.invalid/fabricated-henry");
   assert.equal(nodes.get("highlightAction").disabled, false);
   await nodes.get("highlightAction").click();
   assert.equal(recoveryAttempts, 2);

@@ -703,3 +703,21 @@ preserving privacy, source-review and release gates. The existing reviewer sched
 was successfully paused for the coordinated correction release; this supersedes
 the earlier blocked pause attempt. Corrected live publication remains the acceptance
 criterion, rather than installation or local attachment alone.
+
+Review-revision release `49810e5` was pushed, passed both GitHub checks, installed
+immutably and aligned with the offline publication bootstrap. The independent
+reviewer used the supported reopen transition, repaired two packets with added
+source citations, completed a fresh full review and finalized a new library
+artifact. Its publication concurrency guard caught a changed live manifest and
+held the write for reconciliation. The live browser currently displays the earlier
+D091 condensation; corrected-version verification remains pending.
+
+The existing Spark execution repeatedly abandoned its task for incidental plugin
+catalog context, even after the approved instruction updates. A deterministic
+`author-run` adapter now keeps the exact Spark/Luna model solely on the bounded
+source-to-JSON task and leaves scheduling to a coordinator. It verifies the
+public-domain-only packet independently, uses existing ChatGPT CLI authentication,
+disables child tools, preserves actual model provenance and stops duplicate
+dispatches. Fabricated tests cover confinement, model/auth restrictions, candidate
+budgets, transport failure and identical rejected output. This closes a remaining
+orchestration gap; its full release and real-input trial remain to be recorded.

@@ -233,3 +233,17 @@ Seven consecutive normal scheduled publications without manual restarts remain
 the reliability acceptance target. Installation or fabricated tests alone do not
 meet it. The user's requested live trial begins only after explicit activation;
 neither this document nor the implementation claims that future runs have passed.
+
+The generation scheduler now coordinates `author-run --lane spark|luna
+--codex-executable <approved absolute CLI>`. The coordinator does not author.
+The installed adapter recompiles the current packet from verified public-domain
+source, compares every atom and rejects non-commentary inputs before transmission
+to the exact OpenAI author through the existing ChatGPT login. It disables child
+shell, apps, plugins, subagents, web and configured MCP servers. No API-key fallback
+is allowed. Structured response transport uses its own schema adaptation; strict
+candidate validation is unchanged. Actual response hashes and execution outcomes
+remain private. Each packet/attempt/session dispatch occurs at most once, including
+transport failures. The existing lock, one-reading limit, session deadline,
+candidate budgets, independent review and exact publication receipt remain gates.
+The saved coordinator model may differ from the actual author model; only the
+model in the real child execution authors the attributed condensation.

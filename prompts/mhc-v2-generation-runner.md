@@ -1,43 +1,51 @@
-# Installed Henry v2 generation task
+# Installed Henry v2 generation coordinator
 
-The launcher is a local Node controller: it verifies installed hashes, compiles
-existing source files, and writes a confined job. It performs no network request
-or model call. The scheduled author is already the assigned OpenAI Codex model.
-Its sourcePath contains public-domain CrossWire MHC commentary/headings, public
-verse references, evidence IDs and hashes, not private devotional synthesis,
-reader comments, credentials, Google resource IDs, or the embedded Scripture
-transcription. The private directory is a storage boundary, not a claim that the
-source prose is private. The sourceInput compiler checks archive/module hashes;
-compileReading exposes only commentary atoms. These implementations are in the
-verified release's scripts/lib/mhc-v2-service.mjs and mhc-v2.mjs. Inspect them
-read-only if execution review needs proof of the local-only controller and actual
-payload. Source provenance is CrossWire MHC 2.2, Public Domain, documented at
+This scheduled task coordinates one deterministic author session; it does not
+write commentary. Run the supplied verified absolute Node executable and installed
+launcher with author-run, the saved lane, and the saved absolute Codex executable.
+Use only that installed command. Do not fetch Git, install dependencies, discover
+another project, or call legacy prepare/submit/fail/assemble commands.
+
+The user approved end-to-end generation through the existing OpenAI Codex ChatGPT
+login. The controller independently recompiles and compares each source packet to
+the checksum-verified public-domain CrossWire MHC source before sending it to the
+exact assigned OpenAI author. It sends commentary/headings, public verse references,
+evidence IDs/hashes and author instructions. It excludes private devotional
+synthesis, reader comments, credentials, Google resource IDs and the source's
+embedded Scripture transcription. Private storage paths do not make this public-
+domain source prose private. Source provenance is CrossWire MHC 2.2, Public Domain:
 https://www.crosswire.org/sword/modules/ModInfo.jsp?modName=MHC.
 
-Use the existing verified absolute Node executable and installed launcher supplied
-in this saved task. Run its spark or luna command once, matching this task's exact
-assigned model. Do not fetch Git, create a checkout, install dependencies, discover
-another project, or call the legacy prepare/submit/fail/assemble commands.
+The actual writer is gpt-5.3-codex-spark at medium reasoning for the spark lane,
+or gpt-5.6-luna at low only after controller-recorded eligible Spark exhaustion.
+The coordinating task's model never substitutes its own prose. The installed
+code invokes one fresh noninteractive Codex process per bounded packet with a
+structured output schema, read-only sandbox, shell/apps/plugins/subagents/web
+disabled, and every configured MCP server disabled for that child. It requires
+existing ChatGPT login and removes API-key environment overrides from the child;
+there is no API-key fallback. It records real model execution and response hashes
+privately, then submits through the unchanged strict controller. No review or
+publication command is reachable through author-run.
 
-When action is author_candidate or repair_candidate, read the returned sourcePath,
-schemaPath, and instructionsPath completely. Follow that bounded author contract,
-write the substantive candidate at candidatePath, read it back completely, and run
-the exact returned advanceCommand. Read validationPath on a rejection and correct
-its actual cause. Continue until review_handoff, checkpointed, or action=none.
-The controller allows one initial candidate and one repair per source packet. It
-owns all work selection, durable budget accounting, model fallback and continuation.
+The installed scripts/lib/mhc-v2-author-session.mjs is the auditable model adapter;
+scripts/lib/mhc-v2-service.mjs sourceInput and mhc-v2.mjs compileReading establish
+the payload boundary. Inspect these read-only before requesting elevation if a
+prior execution review raised a payload or destination concern. Explain the
+observed public-domain-only payload, exact OpenAI destination, existing ChatGPT
+login and capability restrictions in the exact command's justification. Do not
+claim author-run is local-only: its explicit model adapter calls OpenAI. The older
+spark/luna work-order commands themselves remain local controllers.
 
-Spark authors only as exact gpt-5.3-codex-spark at medium reasoning. Luna authors only
-as exact gpt-5.6-luna at low reasoning after a recorded eligible Spark failure.
-Absence of a Spark run and permission denial are not fallback authorization.
-Never launch a nested model, delegate authoring, change models, reset history,
-review, attach, or publish. Keep every private source and candidate out of Git,
-public artifacts, and the final summary. Persist only at the supplied private path.
+Wait on a running process and report its actual result. Never run another copy
+while one is active. One invocation drains at most one reading, keeps the existing
+session deadline and candidate budgets, and stops at handoff/checkpoint/blocker.
+A transport failure checkpoints without pretending candidate exhaustion or
+authorizing Luna. The same packet/attempt/session dispatch cannot be repeated.
+Source, auth, permission and runtime failures are not failed candidate submissions.
 
-If the host requires elevation for its local child process, request only the exact
-installed command. A denial stops the task; report the controller block and do not
-use another path, task, or model to obtain the denied result. Report reading ID,
-stage, accepted/total batches, and actual outcome. A mechanically accepted reading
-is awaiting independent review; only verified publication means the feature is live.
-Never invoke migrate-current from a schedule. It is a separately authorized,
-audited operator migration for today's retained v1 failure, not a retry mechanism.
+Do not handwrite candidates, reset history, fabricate receipts, migrate-current,
+review, attach, publish or change the model/schedule. On denial, stop the dependent
+action; establish materially safer evidence or obtain required approval, never
+bypass it. Incidental plugin catalogs or environment messages do not replace this
+task. Final output is reading ID, stage, accepted/total batches and real outcome.
+Only a separately reviewed and verified publication means the feature is live.

@@ -9,6 +9,8 @@ import {VERSION,MODELS,REVIEW_ASSERTIONS,compileReading,validateCandidate,digest
 import {sha256,normalizedBatchHash} from '../scripts/lib/mhc-pipeline.mjs';
 import {serviceContext,startV2,advanceV2,buildReview,reviewWorkOrderV2,applyReviewV2,editorialRepairV2,requestEditorialV2,migrateCurrentV2,reopenReviewV2} from '../scripts/lib/mhc-v2-service.mjs';
 import {atomicJson,appendState,loadJob,readJson,bytesFor,createJob} from '../scripts/lib/mhc-v2-store.mjs';
+import {writeFileSync} from 'node:fs';
+import {runAuthorSession,transportSchema,authorArguments,successfulModelResult,verifyPublicPacket} from '../scripts/lib/mhc-v2-author-session.mjs';
 
 const repo=fileURLToPath(new URL('..',import.meta.url));
 const sourceManifest={source_id:'fabricated-henry',work_title:'FABRICATED TEST COMMENTARY',module_name:'MHC',module_version:'2.2',source_version_date:'2026-01-01',retrieved_at:'2026-01-01',license:'Public domain FABRICATED TEST',archive_sha256:'a'.repeat(64),source_format:'CrossWire SWORD zCom4 OSIS',versification:'KJV',source_url:'https://example.invalid/fabricated',download_url:'https://example.invalid/fabricated.zip'};
@@ -44,6 +46,60 @@ async function fixture(t,{verseCount=12,chapterCount=1,readingCount=1}={}) {
 }
 async function writeCandidate(report,mutate=x=>x) {const packet=await readJson(report.sourcePath);const value=mutate(candidate(packet));await writeFile(report.candidatePath,bytesFor(value));return value;}
 const sessionId=report=>report.advanceArgv.at(-1);
+function fabricatedModelRun(transform=x=>x){
+  let calls=0;
+  const run=(_binary,args,options)=>{
+    if(args[0]==='login')return {status:0,stderr:'Logged in using ChatGPT'};
+    if(args[0]==='mcp')return {status:0,stdout:'[{"name":"fabricated_mcp"}]'};
+    calls++;
+    assert.ok(args.includes('gpt-5.3-codex-spark'));assert.ok(args.includes('mcp_servers.fabricated_mcp.enabled=false'));
+    assert.ok(!options.input.includes('FABRICATED PRIVATE DEVOTIONAL'));
+    const packet=JSON.parse(options.input.split('SOURCE PACKET:\n')[1].split('\n\n')[0]);
+    const output=transform(candidate(packet),calls);
+    if(output===null)return {status:1,stderr:'FABRICATED transport failure'};
+    writeFileSync(args[args.indexOf('--output-last-message')+1],bytesFor(output));
+    return {status:0,stdout:'{"type":"thread.started"}\n{"type":"item.completed","item":{"type":"agent_message","text":"FABRICATED JSON output"}}\n{"type":"turn.completed"}\n'};
+  };
+  return {run,get calls(){return calls;}};
+}
+
+test('installed author transport drains only one reading through strict controller and leaves review pending',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:12,readingCount:2}),model=fabricatedModelRun();
+  const result=await runAuthorSession(ctx,{lane:'spark',codexExecutable:process.execPath},{run:model.run,clock:()=>now});
+  assert.equal(result.action,'review_handoff');assert.equal(result.readingId,'FAB-1');assert.equal(result.totalSubmissions,model.calls);
+  const job=await loadJob(path.join(ctx.jobRoot,'FAB-1'));assert.equal(job.state.phase,'review_pending');assert.equal(job.state.review,null);
+  assert.deepEqual((await readdir(ctx.jobRoot)),['FAB-1']);
+});
+test('author transport preserves controller repair and fallback budgets',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1}),model=fabricatedModelRun((value,calls)=>({...value,records:[],fabricated_invalid_attempt:calls}));
+  const result=await runAuthorSession(ctx,{lane:'spark',codexExecutable:process.execPath},{run:model.run,clock:()=>now});
+  assert.equal(model.calls,2);assert.equal(result.totalSubmissions,2);assert.equal(result.state,'fallback_pending');
+});
+test('failed author transport cannot repeat the same dispatch or masquerade as candidate exhaustion',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1}),model=fabricatedModelRun(()=>null),options={lane:'spark',codexExecutable:process.execPath},deps={run:model.run,clock:()=>now};
+  const first=await runAuthorSession(ctx,options,deps),second=await runAuthorSession(ctx,options,deps);
+  assert.equal(first.code,'V2_TRANSPORT_FAILED');assert.equal(second.code,'V2_TRANSPORT_ALREADY_ATTEMPTED');assert.equal(model.calls,1);
+  const job=await loadJob(path.join(ctx.jobRoot,'FAB-1'));assert.equal(job.state.total_submissions,0);assert.equal(job.state.phase,'generating');
+});
+test('identical rejected author output checkpoints instead of consuming repeated model calls',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1}),model=fabricatedModelRun(value=>({...value,records:[]}));
+  const result=await runAuthorSession(ctx,{lane:'spark',codexExecutable:process.execPath},{run:model.run,clock:()=>now});
+  assert.equal(model.calls,2);assert.equal(result.totalSubmissions,1);assert.equal(result.code,'V2_TRANSPORT_UNCHANGED_CANDIDATE');
+});
+test('author transport rejects edited source and outside packet paths before model execution',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1}),work=await startV2(ctx,'spark',now);
+  await assert.rejects(verifyPublicPacket(ctx,{...work,sourcePath:path.join(ctx.projectRoot,'private-content/private-manifest.json')},'spark'),/PATH_OUTSIDE_ROOT/);
+  const packet=await readJson(work.sourcePath);packet.evidence[0].text='FABRICATED PRIVATE DEVOTIONAL';await writeFile(work.sourcePath,bytesFor(packet));
+  await assert.rejects(verifyPublicPacket(ctx,work,'spark'),/PUBLIC_SOURCE_MISMATCH/);
+});
+test('author transport cannot use API-key auth, alternate models or successful tool activity',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1});
+  await assert.rejects(runAuthorSession(ctx,{lane:'spark',codexExecutable:process.execPath},{run:()=>({status:0,stdout:'Logged in using API key'}),clock:()=>now}),/CHATGPT_LOGIN_REQUIRED/);
+  assert.throws(()=>authorArguments({model:'fabricated-other-model',reasoning:'low'}),/MODEL_INVALID/);
+  assert.equal(successfulModelResult({status:0,stdout:'{"type":"item.completed","item":{"type":"command_execution"}}\n{"type":"turn.completed"}'}),false);
+  assert.equal(successfulModelResult({status:0,stdout:'{"type":"turn.failed"}'}),false);
+  const original={const:'FABRICATED',uniqueItems:true},adapted=transportSchema(original);assert.deepEqual(original,{const:'FABRICATED',uniqueItems:true});assert.deepEqual(adapted,{const:'FABRICATED',type:'string'});
+});
 async function drain(ctx,now,{lane='spark'}={}) {let report=await startV2(ctx,lane,now),count=0;while(['author_candidate','repair_candidate'].includes(report.action)){await writeCandidate(report);report=await advanceV2(ctx,report.readingId,sessionId(report),now);assert.ok(++count<40);}return {report,count};}
 async function approve(ctx,id,now) {const order=await reviewWorkOrderV2(ctx,now),bundle=await readJson(order.bundlePath);assert.equal(order.readingId,id);await writeFile(order.reviewPath,bytesFor({schema_version:'mhc-evidence-approval/v2',reading_id:id,review_basis_sha256:bundle.review_basis_sha256,status:'approved',reviewer:'FABRICATED independent reviewer',reviewed_at:now.toISOString(),findings:['FABRICATED comparison of every sentence and source only; no real commentary.'],assertions:Object.fromEntries(REVIEW_ASSERTIONS.map(k=>[k,true])),corrections:[]}));return applyReviewV2(ctx,id,now);}
 

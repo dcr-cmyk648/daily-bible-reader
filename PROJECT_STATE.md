@@ -765,3 +765,49 @@ restrictions. Transport failures persist a queued checkpoint. A narrowly guarded
 audited installer recovery handles this one proven unstarted configuration failure
 without losing old execution bytes, clearing attempts or extending the deadline.
 The real next-reading generation/publication trial remains in progress.
+
+Release `eaa7011` passed all 431 tests, repository safety (429 files), deterministic
+build/Pages verification and both GitHub workflows. Its immutable installation
+and offline publication bootstrap are aligned. The canonical project's AGENTS.md
+now matches the already-committed standing delivery authorization; its privacy,
+Henry-only model boundary and release gates are unchanged.
+
+The real scheduled coordinator resumed the audited unstarted configuration
+failure and completed Genesis 1 authoring at 14:36 UTC on September 14. All 31
+verses across ten packets passed on their first actual Spark submissions: ten
+submissions, ten accepted packets, about 71 seconds from first dispatch to final
+response. Each completed execution records the actual Spark model and restricted
+public-source input. The original failed startup, original session deadline and
+all history remain intact. This establishes real generation and review handoff,
+not yet live publication. All three existing Henry automations are ACTIVE again
+at their original cadences, with the reviewer due for its normal hourly run.
+
+The ordinary hourly reviewer began at 10:45 Detroit, independently reviewed all
+31 Genesis 1 records, made source-bound clarity/direct-prose corrections, and
+finalized the approved library artifact. Its initial publication conflict was an
+incorrect inference: an executed raw-byte/deep-equality comparison established
+that the current live and canonical manifests matched. The saved reviewer now
+requires deterministic comparisons with actual differing field paths before
+declaring conflicts. It then uploaded the immutable metadata, verified exact
+metadata and manifest readbacks, observed ready/Henry-complete live health, and
+recorded the genuine receipt. Root independently fetched the resulting manifest:
+only Genesis 1's metadata pointer changed; all 41 reading entries were preserved.
+This real scheduled trial needed diagnostic intervention; it is not evidence of
+future unattended reliability.
+
+The live existing-session test then caught a separate display defect: background
+sync replaced cached commentary and rerendered the study, but the optional verse
+enhancer retained its earlier fallback context. The refresh now updates that
+enhancer's commentary in place, preserving the selected verse, DOM, highlight
+state and pending write context. Fabricated regression coverage exercises both
+the real refresh wiring and an already-open fallback becoming readable commentary;
+a different reading cannot update the open panel. This is a routine commentary
+display release, with no storage, authentication, transport or backend change.
+Its live immutable-release verification remains to be recorded below.
+
+The display fix passed all 432 tests, repository safety, bounded-line builds and
+deterministic Pages verification. It generates frontend `94389a423eeb63cc` and
+PWA `56f0b385999bc686`; the backend remains `f6cf2d33873fc7a0`. Before release,
+ordinary live-reader navigation confirmed Genesis 1:1's published condensation
+and Read Henry disclosure. The installed service independently reports D091,
+D092 and Genesis 1 as published, with three, two and ten actual submissions.

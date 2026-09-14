@@ -265,3 +265,11 @@ than its normalized readable-text field. Preserve raw baselines privately. If
 parsed manifests are identical but line endings differ, reconcile the canonical
 mirror to the observed live bytes and validate it; do not interpret formatting
 as a changed reading or overwrite a newer semantic update.
+
+Before declaring a manifest conflict, execute byte/hash and parsed deep-equality
+comparisons against the current canonical `private-content/private-manifest.json`.
+Keep the actual raw connector bytes privately and use `Buffer.equals`, SHA-256
+and `util.isDeepStrictEqual`. Old publication receipts, staging manifest candidates,
+visual inspection of IDs and normalized connector text are not comparison evidence.
+A semantic-conflict report must identify differing field paths from an executed
+comparison. Re-fetch the live manifest immediately before its final pointer update.

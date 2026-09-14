@@ -371,7 +371,7 @@ test("highlight sheet retries stale access before fabricated add/remove without 
   };
   context.globalThis = context;
   vm.runInNewContext(highlights, context, {filename: "highlights.js"});
-  enhancer.render({
+  const readingContext = {
     readingId: "FABRICATED-001",
     planVersion: "fabricated/v1",
     scripture: {isMock: true, passages: [{bookId: "FAB", chapter: 1, canonical: "Fabricated 1", verses: ["FABRICATED TEST VERSE."]}]},
@@ -384,7 +384,8 @@ test("highlight sheet retries stale access before fabricated add/remove without 
       note: "FABRICATED INTERNAL AUDIT: worker lane withheld; checksum inspection recorded."
     },
     online: false
-  });
+  };
+  enhancer.render(readingContext);
   await Promise.resolve();
   const verse = find(nodes.get("scriptureContent"), ".scripture-verse");
   await verse.click();
@@ -398,6 +399,27 @@ test("highlight sheet retries stale access before fabricated add/remove without 
   assert.equal(nodes.get("highlightAction").disabled, false);
   await nodes.get("highlightAction").click();
   assert.equal(recoveryAttempts, 2);
+  assert.equal(verse.attributes.get("data-highlight-reader-0"), "true");
+  const updatedCommentary = {
+    label: "Fabricated condensed commentary",
+    records: {"FAB.1.1": {
+      blurb: "FABRICATED NEWLY PUBLISHED SUMMARY FOR THIS TEST.",
+      source_reference_label: "Fabricated 1:1",
+      source_atom_ids: ["fabricated-atom"]
+    }},
+    source_atoms: {"fabricated-atom": {
+      text: "FABRICATED SOURCE TEXT FOR THIS TEST.",
+      source_reference_label: "Fabricated 1:1"
+    }}
+  };
+  enhancer.updateCommentary({...readingContext, readingId: "FABRICATED-OTHER", verseCommentary: updatedCommentary});
+  assert.equal(nodes.get("verseCommentaryFallback").hidden, false);
+  enhancer.updateCommentary({...readingContext, verseCommentary: updatedCommentary, henrySourceLink: null});
+  assert.equal(nodes.get("highlightPopover").hidden, false);
+  assert.equal(find(nodes.get("scriptureContent"), ".scripture-verse"), verse);
+  assert.equal(nodes.get("verseCommentaryFallback").hidden, true);
+  assert.equal(nodes.get("verseCommentaryBlurb").textContent, updatedCommentary.records["FAB.1.1"].blurb);
+  assert.match(verse.attributes.get("aria-label"), /Precomputed Matthew Henry summary available/);
   assert.equal(verse.attributes.get("data-highlight-reader-0"), "true");
   await Promise.resolve();
   await Promise.resolve();
@@ -1380,6 +1402,34 @@ test("cached readings paint first, then use one confirmed recovery to rerender a
   assert.match(loadReading, /refresh\.state === "refreshed"\) setSyncStatus\("Reading synchronized"\)/);
   assert.match(loadReading, /refresh\.state === "retryable"\) setSyncStatus\("Saved reading shown · secure sync retry available"\)/);
   assert.match(source, /renderHistoricalContextPanels\(comprehensivePartition\.context, sources \|\| \[\]\)/);
+});
+
+test("a synchronized Henry revision reaches the active verse panel after commentary rerenders", async () => {
+  const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
+  const persist = source.slice(source.indexOf("async function persistPrivatePayload"), source.indexOf("function mayUseOfflineFallback"));
+  const notify = source.slice(source.indexOf("function notifyHighlightCommentaryUpdate"), source.indexOf("function registerHighlightEnhancer"));
+  const oldPayload = {metadata: {readingId: "FABRICATED-OPEN", commentaryVersion: "fabricated/v1"}};
+  const newPayload = {metadata: {...oldPayload.metadata, verseCommentary: {generation_timestamp: "2026-09-14T12:00:00Z"}}};
+  const calls = [];
+  let rendered = oldPayload.metadata;
+  const state = {
+    privatePayloadByReadingId: new Map([["FABRICATED-OPEN", oldPayload]]),
+    config: {}, view: "reading", currentEntry: {readingId: "FABRICATED-OPEN"},
+    highlightEnhancer: {updateCommentary(value) { calls.push(value); }}
+  };
+  const sandbox = {
+    state, newPayload, privatePayloadRevision: app.privatePayloadRevision,
+    renderCommentary(value) { rendered = value; },
+    highlightContext() { return {readingId: rendered.readingId, verseCommentary: rendered.verseCommentary}; },
+    setSyncStatus() {}
+  };
+  vm.createContext(sandbox);
+  vm.runInContext(`${persist}\n${notify}`, sandbox);
+  await vm.runInContext('persistPrivatePayload("FABRICATED-OPEN", newPayload)', sandbox);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].verseCommentary, newPayload.metadata.verseCommentary);
+  await vm.runInContext('persistPrivatePayload("FABRICATED-OPEN", newPayload)', sandbox);
+  assert.equal(calls.length, 1, "identical refresh does not disturb the open verse");
 });
 
 test("reading Sync and resume retry the open payload without duplicate commentary renders", () => {

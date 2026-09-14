@@ -2217,6 +2217,12 @@
     } catch (_) {}
   }
 
+  function notifyHighlightCommentaryUpdate() {
+    const enhancer = state.highlightEnhancer;
+    if (!enhancer || typeof enhancer.updateCommentary !== "function") return;
+    try { enhancer.updateCommentary(highlightContext()); } catch (_) {}
+  }
+
   function registerHighlightEnhancer(enhancer) {
     state.highlightEnhancer = enhancer && typeof enhancer.render === "function" ? enhancer : null;
     notifyHighlightEnhancer();
@@ -2807,6 +2813,7 @@
       const commentary = payload && (payload.commentary || payload.metadata);
       if (commentary && commentary.readingId === readingId) {
         renderCommentary(commentary, payload.sources || state.sources || []);
+        notifyHighlightCommentaryUpdate();
         setSyncStatus("Study updated to the newest version");
       }
     }

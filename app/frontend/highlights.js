@@ -414,6 +414,15 @@
     }
   }
 
+  function updateCommentary(nextContext) {
+    if (!context || !nextContext || context.readingId !== nextContext.readingId ||
+        context.planVersion !== nextContext.planVersion || context.scripture !== nextContext.scripture) return;
+    // Keep the selected verse, DOM nodes and any pending highlight write intact.
+    context.verseCommentary = nextContext.verseCommentary;
+    context.henrySourceLink = nextContext.henrySourceLink;
+    applyHighlightState();
+  }
+
   function render(nextContext) {
     ++writeToken;
     context = nextContext;
@@ -435,5 +444,5 @@
   root.document.addEventListener("keydown", function closeOnEscape(event) {
     if (event.key === "Escape" && !element("highlightPopover").hidden) closePopover(true);
   });
-  api.registerHighlightEnhancer({render: render});
+  api.registerHighlightEnhancer({render: render, updateCommentary: updateCommentary});
 })(typeof globalThis !== "undefined" ? globalThis : this);

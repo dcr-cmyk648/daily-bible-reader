@@ -620,3 +620,34 @@ The scoped UI follow-up commit was rejected before staging by automatic approval
 review because the earlier release approval was limited to the pipeline change.
 The display fix and built public assets remain local pending direct approval;
 no alternate release path was attempted.
+
+## End-to-end Henry recovery authorized and underway - 2026-09-14
+
+The user subsequently explicitly approved whatever is required to produce visible
+commentary. UI fix `b69a3cd` is committed and on main; repository and Pages workflows
+passed. Existing deployment identities and backend are unchanged. The earlier
+local-only UI status above is superseded by this verified release.
+
+Actual v2 Malachi 4 authoring completed with the exact Spark model: two packets,
+one accepted submission each. The primary independently compared every source
+atom and all six summaries, applying bounded wording corrections with unchanged
+citations. The installed transaction finalized the reviewed library. Canonical
+private-store checks passed 419 tests and the bundle validated. Only Henry fields
+changed in the reading metadata. A new private immutable metadata file was
+uploaded, read back byte for byte, and referenced by a manifest-last update with
+exact readback. The live named-reading check returned ready and Henry complete.
+A genuine publisher receipt was recorded and the installed reviewer reconciled it.
+Private artifacts and resource IDs remain outside Git.
+
+The scheduled author still encountered an automatic-review rejection before local
+controller execution: its private storage path was mistaken for an unspecified
+model data transfer. The actual launcher and source compiler were inspected; the
+controller is local-only and its packet prose is verified public-domain CrossWire
+MHC. The same exact command was approved here with that evidence. The generation
+contract now exposes these facts explicitly, without changing approval controls.
+Today's retained v1 validation failure also delays migration under the old cooldown.
+A separately authorized, current-reading-only migration now preserves the original
+attempt bytes and audit history while creating one v2 job; it cannot reset existing
+v2 attempts or run from a schedule. Fabricated regression tests cover those limits.
+Today's publication and unattended recovery evidence will be recorded after their
+actual checks. One manual success does not establish future scheduled reliability.

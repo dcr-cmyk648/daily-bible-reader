@@ -3,7 +3,7 @@ import {readFile} from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import {advanceRunner,startRunner,withRunnerLock} from "./lib/mhc-native-runner.mjs";
-import {serviceContext,startV2,advanceV2,reviewWorkOrderV2,applyReviewV2,statusV2,editorialRepairV2,requestEditorialV2} from "./lib/mhc-v2-service.mjs";
+import {serviceContext,startV2,advanceV2,reviewWorkOrderV2,applyReviewV2,statusV2,editorialRepairV2,requestEditorialV2,migrateCurrentV2} from "./lib/mhc-v2-service.mjs";
 
 const json=async file=>JSON.parse(await readFile(file,"utf8"));
 let activePipeline=null;
@@ -33,6 +33,7 @@ async function main(){
       if(command==='spark'||command==='luna')return startV2(service,command);
       if(command==='advance')return advanceV2(service,option(args,'--reading'),option(args,'--session'));
       if(command==='status')return statusV2(service);
+      if(command==='migrate-current')return migrateCurrentV2(service,option(args,'--reading'),option(args,'--legacy-attempt-sha256'),option(args,'--reason'));
       if(command==='reviewer'&&args[0]==='work-order'){const order=await reviewWorkOrderV2(service);return order.state==='no_review_work'?legacyReview(ctx,'work-order',[]):order;}
       if(command==='reviewer'&&(args.includes('--work-item')||args[0]==='finalize'))return legacyReview(ctx,args[0],args.slice(1));
       if(command==='reviewer'&&args[0]==='apply')return applyReviewV2(service,option(args,'--reading'));

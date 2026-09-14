@@ -7,7 +7,7 @@ import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {VERSION,MODELS,REVIEW_ASSERTIONS,compileReading,validateCandidate,digestObject} from '../scripts/lib/mhc-v2.mjs';
 import {sha256,normalizedBatchHash} from '../scripts/lib/mhc-pipeline.mjs';
-import {serviceContext,startV2,advanceV2,buildReview,reviewWorkOrderV2,applyReviewV2,editorialRepairV2,requestEditorialV2} from '../scripts/lib/mhc-v2-service.mjs';
+import {serviceContext,startV2,advanceV2,buildReview,reviewWorkOrderV2,applyReviewV2,editorialRepairV2,requestEditorialV2,migrateCurrentV2} from '../scripts/lib/mhc-v2-service.mjs';
 import {atomicJson,appendState,loadJob,readJson,bytesFor,createJob} from '../scripts/lib/mhc-v2-store.mjs';
 
 const repo=fileURLToPath(new URL('..',import.meta.url));
@@ -53,6 +53,25 @@ test('v2 respects natural treatment boundaries, bounds batches, and excludes nor
   assert.equal(compiled.input_sha256,input().input_sha256);
 });
 test('v2 accepts a faithful synonym without a generated vocabulary scaffold',()=>{const p=input(1).chapters[0].batches[0];assert.equal(validateCandidate(candidate(p),p).valid,true);});
+test('explicit current-day v1 migration preserves cooldown bytes and cannot reset an existing v2 job',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1,readingCount:2});
+  const file=await atomicJson(ctx.privateRoot,'automation/mhc-backfill-attempt-state.json',{schemaVersion:'mhc-backfill-attempt-state/v1',planVersion:ctx.plan.planVersion,attempts:{'FAB-1':{attemptedAt:now.toISOString(),outcome:'model_failure',stage:'validation',code:'NATIVE_CANDIDATE_UNRESOLVED'}}});
+  const bytes=await readFile(file),hash=sha256(bytes),reason='FABRICATED explicit user approval for current reading migration';
+  await assert.rejects(migrateCurrentV2(ctx,'FAB-2',hash,reason,now),/CURRENT_PUBLISHED_ONLY/);
+  await assert.rejects(migrateCurrentV2(ctx,'FAB-1','0'.repeat(64),reason,now),/ATTEMPT_CHANGED/);
+  assert.equal((await migrateCurrentV2(ctx,'FAB-1',hash,reason,now)).action,'migration_queued');
+  assert.deepEqual(await readFile(file),bytes);
+  const r=await startV2(ctx,'spark',now);await writeCandidate(r,c=>({...c,packet_id:'MHP2-'+'0'.repeat(32)}));await advanceV2(ctx,'FAB-1',sessionId(r),now);
+  assert.equal((await migrateCurrentV2(ctx,'FAB-1',hash,reason,now)).action,'migration_already_exists');
+  const job=await loadJob(path.join(ctx.jobRoot,'FAB-1'));assert.equal(job.state.total_submissions,1);assert.equal(job.state.history[0].legacy_attempt_sha256,hash);assert.deepEqual(await readFile(file),bytes);
+});
+test('migration refuses a controller/permission failure and another active author',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1,readingCount:2});
+  const make=code=>atomicJson(ctx.privateRoot,'automation/mhc-backfill-attempt-state.json',{schemaVersion:'mhc-backfill-attempt-state/v1',planVersion:ctx.plan.planVersion,attempts:{'FAB-1':{attemptedAt:now.toISOString(),outcome:'model_failure',stage:'validation',code}}});
+  const reason='FABRICATED explicit authorization for migration only';
+  let file=await make('PERMISSION_DENIED');await assert.rejects(migrateCurrentV2(ctx,'FAB-1',sha256(await readFile(file)),reason,now),/LEGACY_FAILURE_REQUIRED/);
+  file=await make('NATIVE_CANDIDATE_UNRESOLVED');assert.equal((await startV2(ctx,'spark',now)).readingId,'FAB-2');await assert.rejects(migrateCurrentV2(ctx,'FAB-1',sha256(await readFile(file)),reason,now),/AUTHOR_ACTIVE/);
+});
 test('v2 rejects hidden evidence and duplicate/missing verse records',()=>{const p=input(3).chapters[0].batches[0],c=candidate(p);c.records[0].sentences[0].evidence_ids=['fabricated:hidden'];assert.equal(validateCandidate(c,p).valid,false);const d=candidate(p);d.records[1]=d.records[0];assert.ok(validateCandidate(d,p).diagnostics.some(d=>d.code==='V2_VERSE_COVERAGE'));});
 test('v2 required-evidence diagnostic identifies support rather than prescribing word insertion',()=>{const p=input(1).chapters[0].batches[0];p.evidence.push({...p.evidence[0],evidence_id:'fabricated:identity',text:'FABRICATED: Maribel is the caretaker.',text_sha256:sha256('FABRICATED: Maribel is the caretaker.')});p.requests[0].evidence_ids.push('fabricated:identity');p.requests[0].requirements=[{kind:'identity',terms:['Maribel'],evidence_ids:['fabricated:identity']}];const c=candidate(p);c.records[0].sentences[0].text='FABRICATED: Maribel carries helpful supplies for struggling families.';const result=validateCandidate(c,p);assert.equal(result.valid,false);assert.deepEqual(result.diagnostics.find(d=>d.code==='V2_REQUIRED_EVIDENCE').evidence_ids,['fabricated:identity']);});
 test('v2 detects changed atom bytes before authoring',()=>{const u=unit(1,1,1);u.source_atoms[0].text+=' changed';assert.throws(()=>compileReading({entry:{readingId:'FAB-001',passages:[{bookId:'TST',chapter:1,verseCount:1}]},planVersion:'fab',scheduleDate:'2026-09-13',sourceManifest,chapters:[{bookId:'TST',chapter:1,units:[u]}]}),/V2_SOURCE_INTEGRITY/);});

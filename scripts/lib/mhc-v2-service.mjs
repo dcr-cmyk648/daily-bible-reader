@@ -3,7 +3,7 @@ import path from 'node:path';
 import {VERSION,MODELS,MAX_SUBMISSIONS,REVIEW_ASSERTIONS,candidateSchema,compileReading,validateCandidate,chapterRuntime,digestObject} from './mhc-v2.mjs';
 import {appendState,atomicJson,bytesFor,confined,createJob,loadJob,maybeJson,readJson} from './mhc-v2-store.mjs';
 import {loadHenryPlan,henryPriorityWindow,hasHenryPublicationReceipt,pendingHenryHandoffs} from './mhc-priority.mjs';
-import {selectMhcBackfillCandidate} from './mhc-backfill-work-order.mjs';
+import {selectMhcBackfillCandidate,isVerifiedHenryFallback} from './mhc-backfill-work-order.mjs';
 import {latestDetroitSparkSlot} from './mhc-native-state.mjs';
 import {scheduleDateForEntry} from './mhc-native-worker.mjs';
 import {sha256,normalizedBatchHash,normalizeBookChapter,readSwordModule,findSourceReportingPhrase,validateSourceCopyRisk} from './mhc-pipeline.mjs';
@@ -105,6 +105,37 @@ async function selection(ctx,jobs,now) {
   for(const entry of ctx.plan.entries.filter(e=>manifest.readings?.[e.readingId]))metadata.set(entry.readingId,await maybeJson(await confined(ctx.privateRoot,`bridge/celebration-y3q4/${entry.readingId}.metadata.json`)));
   const attemptState=await maybeJson(await confined(ctx.privateRoot,'automation/mhc-backfill-attempt-state.json'));
   return selectMhcBackfillCandidate({plan:ctx.plan,appConfig:ctx.appConfig,metadataByReadingId:metadata,manifestReadingIds:Object.keys(manifest.readings||{}),pendingReadingIds:pending,attemptState,now});
+}
+
+// Explicit operator recovery only: migrate today's failed v1 contract once,
+// preserving the exact legacy attempt and all v2 budgets. Scheduled selection
+// never calls this function and still observes every shared cooldown.
+export async function migrateCurrentV2(ctx,readingId,attemptSha256,reason,now=new Date()) {
+  if(!validReading(readingId)||!/^[a-f0-9]{64}$/.test(String(attemptSha256))||typeof reason!=='string'||reason.trim().length<20||reason.length>1000)throw new Error('V2_MIGRATION_ARGUMENTS');
+  const entry=ctx.plan.entries.find(e=>e.readingId===readingId),window=henryPriorityWindow(ctx.appConfig,now);
+  const manifest=await readJson(await confined(ctx.privateRoot,'private-manifest.json',{missing:false}));
+  if(!entry||entry.kind!=='chapter'||entry.dayIndex!==window.currentDay||!manifest.readings?.[readingId])throw new Error('V2_MIGRATION_CURRENT_PUBLISHED_ONLY');
+  const bytes=await readFile(await confined(ctx.privateRoot,'automation/mhc-backfill-attempt-state.json',{missing:false}));
+  if(sha256(bytes)!==attemptSha256)throw new Error('V2_MIGRATION_ATTEMPT_CHANGED');
+  const attempts=JSON.parse(bytes),attempt=attempts.attempts?.[readingId];
+  if(attempts.planVersion!==ctx.plan.planVersion||attempt?.outcome!=='model_failure'||attempt.code!=='NATIVE_CANDIDATE_UNRESOLVED'||!Number.isFinite(Date.parse(attempt.attemptedAt)))throw new Error('V2_MIGRATION_LEGACY_FAILURE_REQUIRED');
+  const jobs=await allJobs(ctx),existing=jobs.find(j=>j.input.reading_id===readingId);
+  if(existing)return report(ctx,existing,{action:'migration_already_exists'});
+  if(jobs.some(j=>j.state?.phase==='generating'))throw new Error('V2_MIGRATION_AUTHOR_ACTIVE');
+  const metadata=await readJson(await confined(ctx.privateRoot,`bridge/celebration-y3q4/${readingId}.metadata.json`,{missing:false}));
+  const pending=await pendingHenryHandoffs({privateRoot:ctx.privateRoot,plan:ctx.plan,manifest,handoffSchema:await readJson(path.join(ctx.releaseRoot,'schemas/mhc-native-review-handoff.schema.json'))});
+  if(metadata.readingId!==readingId||!isVerifiedHenryFallback(metadata.henrySourceLink)||pending.has(readingId))throw new Error('V2_MIGRATION_REVIEW_OR_CONTENT_EXISTS');
+  const sources=await sourceInput(ctx,entry);
+  const authorization={kind:'explicit_current_v1_migration',reading_id:readingId,reason:reason.trim(),legacy_attempt_sha256:attemptSha256,legacy_attempt:attempt,authorized_at:new Date(now).toISOString()};
+  // Persist the authorization before creating the job, so even an interruption
+  // between its first event and the migration event leaves the recovery basis.
+  const auditPath=`migration-authorizations/${readingId}.json`;
+  const prior=await maybeJson(await confined(ctx.privateRoot,auditPath));
+  if(prior&&(prior.legacy_attempt_sha256!==attemptSha256||prior.reason!==authorization.reason))throw new Error('V2_MIGRATION_AUTHORIZATION_CHANGED');
+  await atomicJson(ctx.privateRoot,auditPath,prior||authorization,{immutable:true});
+  let job=await createJob(ctx.jobRoot,sources.input,now);
+  job=await appendState(job,'explicit_legacy_migration',{...job.state,phase:'queued',history:[...job.state.history,prior||authorization]},now);
+  return report(ctx,job,{action:'migration_queued'});
 }
 
 async function beginSession(ctx,job,lane,now) {

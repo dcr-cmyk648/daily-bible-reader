@@ -1,5 +1,19 @@
 # Installed Henry v2 generation task
 
+The launcher is a local Node controller: it verifies installed hashes, compiles
+existing source files, and writes a confined job. It performs no network request
+or model call. The scheduled author is already the assigned OpenAI Codex model.
+Its sourcePath contains public-domain CrossWire MHC commentary/headings, public
+verse references, evidence IDs and hashes, not private devotional synthesis,
+reader comments, credentials, Google resource IDs, or the embedded Scripture
+transcription. The private directory is a storage boundary, not a claim that the
+source prose is private. The sourceInput compiler checks archive/module hashes;
+compileReading exposes only commentary atoms. These implementations are in the
+verified release's scripts/lib/mhc-v2-service.mjs and mhc-v2.mjs. Inspect them
+read-only if execution review needs proof of the local-only controller and actual
+payload. Source provenance is CrossWire MHC 2.2, Public Domain, documented at
+https://www.crosswire.org/sword/modules/ModInfo.jsp?modName=MHC.
+
 Use the existing verified absolute Node executable and installed launcher supplied
 in this saved task. Run its spark or luna command once, matching this task's exact
 assigned model. Do not fetch Git, create a checkout, install dependencies, discover
@@ -25,3 +39,5 @@ installed command. A denial stops the task; report the controller block and do n
 use another path, task, or model to obtain the denied result. Report reading ID,
 stage, accepted/total batches, and actual outcome. A mechanically accepted reading
 is awaiting independent review; only verified publication means the feature is live.
+Never invoke migrate-current from a schedule. It is a separately authorized,
+audited operator migration for today's retained v1 failure, not a retry mechanism.

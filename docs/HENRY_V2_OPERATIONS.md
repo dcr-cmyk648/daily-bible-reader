@@ -109,6 +109,24 @@ reading started under v2 after its cooldown uses the new contract explicitly;
 this one-time migration can repeat earlier partial work. Routine v2 restarts
 reuse their own accepted packets without regeneration.
 
+An explicitly approved operator recovery may use `migrate-current --reading ID
+--legacy-attempt-sha256 HASH --reason TEXT` through the installed launcher. It is
+limited to today's manifest-published chapter with a retained v1
+`NATIVE_CANDIDATE_UNRESOLVED` model failure, no v2 job, no outstanding legacy review,
+and no other active author. It binds the exact legacy attempt-file bytes and saves
+the approval reason before creating one queued v2 migration. It never edits the
+legacy file, resets a v2 budget, substitutes a model, or bypasses review/publication.
+Repeated invocation returns the existing job. Scheduled tasks must never invoke it.
+This exception requires specific operator authorization; ordinary selection retains
+the legacy cooldown.
+
+The scheduled controller has no network or model calls. Its author packet contains
+public-domain MHC commentary and public reference/hash metadata. Private storage
+does not make those source paragraphs private user data. The generation contract
+explains this distinction and points to the verified compiler so execution review
+can inspect the actual payload and local operation rather than infer a transfer
+from the storage path. No global trust or approval setting is changed.
+
 ## Review and publication
 
 The independent reviewer receives every sentence/evidence association, full source

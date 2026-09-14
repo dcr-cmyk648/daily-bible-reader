@@ -811,3 +811,15 @@ PWA `56f0b385999bc686`; the backend remains `f6cf2d33873fc7a0`. Before release,
 ordinary live-reader navigation confirmed Genesis 1:1's published condensation
 and Read Henry disclosure. The installed service independently reports D091,
 D092 and Genesis 1 as published, with three, two and ten actual submissions.
+
+Display release `99abd2a` is pushed and live. Both GitHub workflows passed; all
+12 served public files matched their validated bytes and MIME types, with the
+public backend status and missing-code denial still passing. The existing browser
+profile used the normal Restart with update control and loaded the exact new core,
+enhancer and PWA assets without clearing downloaded data. The live Genesis 1:1
+sheet showed the condensation at 390 px; its 350 px panel had no horizontal
+overflow or internal pipeline note, and Read Henry expanded real source text.
+Viewport settings were restored. This was browser/mobile-width verification,
+not a new installed-iPhone test; no shell, storage, authentication or backend
+contract changed. All three Henry schedules remain ACTIVE at their normal
+cadences. The next devotional days remain the unattended reliability trial.

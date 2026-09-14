@@ -247,3 +247,21 @@ transport failures. The existing lock, one-reading limit, session deadline,
 candidate budgets, independent review and exact publication receipt remain gates.
 The saved coordinator model may differ from the actual author model; only the
 model in the real child execution authors the attributed condensation.
+
+Connector inventory and its disabled-state verification run with the same
+apps/plugins restrictions as the author, before selecting or starting a job.
+Transport checkpoints persist a queued state without altering session deadlines
+or budgets, permitting a safe compatible runtime update while no writer is active.
+For the one retained initial CLI configuration rejection, the installer accepts
+`--recover-unstarted-transport <readingId>` only under its existing global lock.
+It requires zero candidates/submissions, one exact failed execution, empty model
+events, no output file, the known pre-start configuration error, a different
+accepted revision, and no previous recovery. It preserves the failed bytes and
+all session history, appends an audit event, and permits one separately addressed
+dispatch. An active, uncertain or actually started model cannot use this recovery.
+
+For publication byte checks, use the original raw connector file bytes rather
+than its normalized readable-text field. Preserve raw baselines privately. If
+parsed manifests are identical but line endings differ, reconcile the canonical
+mirror to the observed live bytes and validate it; do not interpret formatting
+as a changed reading or overwrite a newer semantic update.

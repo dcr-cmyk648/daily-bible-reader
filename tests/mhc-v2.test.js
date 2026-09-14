@@ -11,6 +11,7 @@ import {serviceContext,startV2,advanceV2,buildReview,reviewWorkOrderV2,applyRevi
 import {atomicJson,appendState,loadJob,readJson,bytesFor,createJob} from '../scripts/lib/mhc-v2-store.mjs';
 import {writeFileSync} from 'node:fs';
 import {runAuthorSession,transportSchema,authorArguments,successfulModelResult,verifyPublicPacket,publicRepairDiagnostics} from '../scripts/lib/mhc-v2-author-session.mjs';
+import {recoverUnstartedTransport} from '../scripts/lib/mhc-v2-transport-recovery.mjs';
 
 const repo=fileURLToPath(new URL('..',import.meta.url));
 const sourceManifest={source_id:'fabricated-henry',work_title:'FABRICATED TEST COMMENTARY',module_name:'MHC',module_version:'2.2',source_version_date:'2026-01-01',retrieved_at:'2026-01-01',license:'Public domain FABRICATED TEST',archive_sha256:'a'.repeat(64),source_format:'CrossWire SWORD zCom4 OSIS',versification:'KJV',source_url:'https://example.invalid/fabricated',download_url:'https://example.invalid/fabricated.zip'};
@@ -50,7 +51,7 @@ function fabricatedModelRun(transform=x=>x){
   let calls=0;
   const run=(_binary,args,options)=>{
     if(args[0]==='login')return {status:0,stderr:'Logged in using ChatGPT'};
-    if(args[0]==='mcp')return {status:0,stdout:'[{"name":"fabricated_mcp"}]'};
+    if(args.includes('mcp'))return {status:0,stdout:JSON.stringify([{name:'fabricated_mcp',enabled:!args.includes('mcp_servers.fabricated_mcp.enabled=false')}])};
     calls++;
     assert.ok(args.includes('gpt-5.3-codex-spark'));assert.ok(args.includes('mcp_servers.fabricated_mcp.enabled=false'));
     assert.ok(!options.input.includes('FABRICATED PRIVATE DEVOTIONAL'));
@@ -79,7 +80,24 @@ test('failed author transport cannot repeat the same dispatch or masquerade as c
   const {ctx,now}=await fixture(t,{verseCount:1}),model=fabricatedModelRun(()=>null),options={lane:'spark',codexExecutable:process.execPath},deps={run:model.run,clock:()=>now};
   const first=await runAuthorSession(ctx,options,deps),second=await runAuthorSession(ctx,options,deps);
   assert.equal(first.code,'V2_TRANSPORT_FAILED');assert.equal(second.code,'V2_TRANSPORT_ALREADY_ATTEMPTED');assert.equal(model.calls,1);
-  const job=await loadJob(path.join(ctx.jobRoot,'FAB-1'));assert.equal(job.state.total_submissions,0);assert.equal(job.state.phase,'generating');
+  const job=await loadJob(path.join(ctx.jobRoot,'FAB-1'));assert.equal(job.state.total_submissions,0);assert.equal(job.state.phase,'queued');
+});
+test('unstarted configuration recovery preserves failed bytes and budgets and resumes only on a new release',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1});ctx.config.source_revision='a'.repeat(40);const model=fabricatedModelRun();
+  const failing=(bin,args,options)=>args[0]==='exec'?{status:1,stdout:'',stderr:'Error loading config.toml: invalid transport\nin `mcp_servers.fabricated_mcp`\n'}:model.run(bin,args,options);
+  await runAuthorSession(ctx,{lane:'spark',codexExecutable:process.execPath},{run:failing,clock:()=>now});
+  const root=path.join(ctx.jobRoot,'FAB-1'),before=await loadJob(root),key=(await readdir(path.join(root,'model-executions')))[0],file=path.join(root,'model-executions',key,'result.json'),bytes=await readFile(file);
+  await assert.rejects(recoverUnstartedTransport(ctx.projectRoot,'FAB-1','a'.repeat(40),now),/NEW_RELEASE_REQUIRED/);
+  await writeFile(path.join(root,'model-executions',key,'events.jsonl'),'{}');
+  await assert.rejects(recoverUnstartedTransport(ctx.projectRoot,'FAB-1','b'.repeat(40),now),/MODEL_MAY_HAVE_STARTED/);
+  await writeFile(path.join(root,'model-executions',key,'events.jsonl'),'');
+  // Reproduce the older adapter's still-generating checkpoint for the installer.
+  await appendState(await loadJob(root),'FABRICATED legacy transport checkpoint',{...before.state,phase:'generating'},now);
+  await recoverUnstartedTransport(ctx.projectRoot,'FAB-1','b'.repeat(40),now);
+  const recovered=await loadJob(root);assert.equal(recovered.state.phase,'queued');assert.deepEqual(recovered.state.sessions,before.state.sessions);assert.equal(recovered.state.total_submissions,0);assert.deepEqual(await readFile(file),bytes);
+  await assert.rejects(recoverUnstartedTransport(ctx.projectRoot,'FAB-1','c'.repeat(40),now),/NOT_UNSTARTED/);
+  ctx.config.source_revision='b'.repeat(40);
+  const result=await runAuthorSession(ctx,{lane:'spark',codexExecutable:process.execPath},{run:model.run,clock:()=>now});assert.equal(result.action,'review_handoff');assert.equal(result.totalSubmissions,1);assert.equal(model.calls,1);assert.deepEqual(await readFile(file),bytes);
 });
 test('identical rejected author output checkpoints instead of consuming repeated model calls',async t=>{
   const {ctx,now}=await fixture(t,{verseCount:1}),model=fabricatedModelRun(value=>({...value,records:[]}));

@@ -4,11 +4,16 @@ import path from 'node:path';
 import {isDeepStrictEqual} from 'node:util';
 import {startV2,advanceV2,sourceInput} from './mhc-v2-service.mjs';
 import {MODELS,digestObject} from './mhc-v2.mjs';
-import {atomicJson,confined,maybeJson,readJson} from './mhc-v2-store.mjs';
+import {atomicJson,confined,maybeJson,readJson,loadJob,appendState} from './mhc-v2-store.mjs';
 
 const authorActions=new Set(['author_candidate','repair_candidate']);
 const effort=lane=>lane==='spark'?'medium':'low';
 const blocked=(work,code)=>({...work,action:'checkpointed',stage:'model_transport',code});
+async function checkpointTransport(ctx,work,code,now){
+  const job=await loadJob(await confined(ctx.jobRoot,work.readingId,{missing:false}));
+  if(job.state.phase==='generating')await appendState(job,'transport_checkpoint',{...job.state,phase:'queued',blocker:{stage:'model_transport',code}},now);
+  return {...blocked(work,code),state:'queued'};
+}
 const repairMessages={V2_CANDIDATE_SCHEMA:'Return exactly the required candidate JSON schema.',V2_PACKET_MISMATCH:'Use the supplied packet_id.',V2_VERSE_COVERAGE:'Return all requested verses exactly once in the supplied order.',V2_EVIDENCE_SCOPE:'Cite only the evidence IDs allowed for this verse.',V2_EMPTY_PROSE:'Write substantive sentences.',V2_PROSE_LENGTH:'Keep combined prose within 1200 characters.',V2_CITATION_LIMIT:'Use at most twelve distinct evidence IDs per verse.',V2_REQUIRED_EVIDENCE:'Preserve and cite the required identity or relationship.',V2_SOURCE_COPY:'Use fresh wording without extended source copying.'};
 
 export function publicRepairDiagnostics(validation,packet) {
@@ -70,22 +75,29 @@ export async function runAuthorSession(ctx,{lane,codexExecutable},dependencies={
   const options={cwd:ctx.projectRoot,env,encoding:'utf8',windowsHide:true,maxBuffer:8*1024*1024,timeout:30000};
   const login=run(codexExecutable,['login','status'],options),auth=`${login.stdout||''}\n${login.stderr||''}`;
   if(login.status!==0||!/Logged in using ChatGPT/i.test(auth)||/API key/i.test(auth))throw Error('V2_TRANSPORT_CHATGPT_LOGIN_REQUIRED');
-  const mcp=run(codexExecutable,['mcp','list','--json'],options);
+  const restricted=['--disable','apps','--disable','plugins'];
+  const mcp=run(codexExecutable,[...restricted,'mcp','list','--json'],options);
   if(mcp.status!==0)throw Error('V2_TRANSPORT_MCP_PREFLIGHT_FAILED');
   let servers;try{servers=JSON.parse(mcp.stdout);}catch{throw Error('V2_TRANSPORT_MCP_PREFLIGHT_FAILED');}
   if(!Array.isArray(servers)||servers.some(s=>typeof s.name!=='string'))throw Error('V2_TRANSPORT_MCP_PREFLIGHT_FAILED');
   const mcpNames=servers.map(s=>s.name);
+  if(mcpNames.some(name=>!/^[A-Za-z0-9_-]+$/.test(name)))throw Error('V2_TRANSPORT_MCP_NAME_INVALID');
+  const check=run(codexExecutable,[...restricted,...mcpNames.flatMap(name=>['-c',`mcp_servers.${name}.enabled=false`]),'mcp','list','--json'],options);
+  let disabled;try{disabled=JSON.parse(check.stdout);}catch{throw Error('V2_TRANSPORT_MCP_PREFLIGHT_FAILED');}
+  if(check.status!==0||!Array.isArray(disabled)||disabled.some(s=>s.enabled!==false))throw Error('V2_TRANSPORT_MCP_PREFLIGHT_FAILED');
   let work=await startV2(ctx,lane,clock());
   for(let count=0;authorActions.has(work.action)&&count<32;count++){
     const {packet,instructions,proof}=await verifyPublicPacket(ctx,work,lane);
     const remaining=Date.parse(work.deadlineAt)-clock().getTime();
-    if(remaining<15000)return blocked(work,'V2_TRANSPORT_DEADLINE');
+    if(remaining<15000)return checkpointTransport(ctx,work,'V2_TRANSPORT_DEADLINE',clock());
     const session=work.advanceArgv.at(-1),root=await confined(ctx.jobRoot,work.readingId,{missing:false});
-    const key=digestObject({session,packet:packet.packet_id,submissions:work.totalSubmissions});
+    const baseKey=digestObject({session,packet:packet.packet_id,submissions:work.totalSubmissions});
+    const job=await loadJob(root),recovery=job.state.history.findLast(e=>e.kind==='unstarted_transport_recovered'&&e.execution_key===baseKey);
+    const key=recovery?digestObject({original_execution:baseKey,recovery_sha256:digestObject(recovery)}):baseKey;
     const relative=`model-executions/${key}`,recordPath=await confined(root,`${relative}/result.json`);
     let record=await maybeJson(recordPath);
     if(record&&(!isDeepStrictEqual(record.proof,proof)||record.session!==session))throw Error('V2_TRANSPORT_RECEIPT_MISMATCH');
-    if(record&&record.status!=='completed')return blocked(work,'V2_TRANSPORT_ALREADY_ATTEMPTED');
+    if(record&&record.status!=='completed')return checkpointTransport(ctx,work,'V2_TRANSPORT_ALREADY_ATTEMPTED',clock());
     const outputPath=await confined(root,`${relative}/response.json`);
     if(!record){
       const schemaPath=await atomicJson(root,`${relative}/transport.schema.json`,transportSchema(await readJson(work.schemaPath)),{immutable:true});
@@ -99,9 +111,9 @@ export async function runAuthorSession(ctx,{lane,codexExecutable},dependencies={
       await writeFile(await confined(root,`${relative}/stderr.txt`),result.stderr||'',{mode:0o600});
       if(!successfulModelResult(result)){
         await atomicJson(root,`${relative}/result.json`,{...record,status:'failed',finished_at:clock().toISOString(),exit_code:result.status,error_code:result.error?.code??null});
-        return blocked(work,'V2_TRANSPORT_FAILED');
+        return checkpointTransport(ctx,work,'V2_TRANSPORT_FAILED',clock());
       }
-      let candidate;try{candidate=await readJson(outputPath);}catch{return blocked(work,'V2_TRANSPORT_OUTPUT_MISSING');}
+      let candidate;try{candidate=await readJson(outputPath);}catch{return checkpointTransport(ctx,work,'V2_TRANSPORT_OUTPUT_MISSING',clock());}
       record={...record,status:'completed',finished_at:clock().toISOString(),candidate_sha256:digestObject(candidate)};
       await atomicJson(root,`${relative}/result.json`,record);
     }
@@ -110,7 +122,7 @@ export async function runAuthorSession(ctx,{lane,codexExecutable},dependencies={
     await atomicJson(root,path.relative(root,work.candidatePath),candidate);
     const priorSubmissions=work.totalSubmissions;
     work=await advanceV2(ctx,work.readingId,session,clock());
-    if(authorActions.has(work.action)&&work.totalSubmissions===priorSubmissions)return blocked(work,'V2_TRANSPORT_UNCHANGED_CANDIDATE');
+    if(authorActions.has(work.action)&&work.totalSubmissions===priorSubmissions)return checkpointTransport(ctx,work,'V2_TRANSPORT_UNCHANGED_CANDIDATE',clock());
   }
   return work;
 }

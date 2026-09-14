@@ -7,11 +7,12 @@ import {spawnSync} from "node:child_process";
 import {assertCanonicalPath} from "./lib/mhc-native-paths.mjs";
 import {readCheckpoint,withRunnerLock} from "./lib/mhc-native-runner.mjs";
 import {loadJob} from "./lib/mhc-v2-store.mjs";
+import {recoverUnstartedTransport} from './lib/mhc-v2-transport-recovery.mjs';
 
 const sha=value=>createHash("sha256").update(value).digest("hex");
 const scopes=["scripts","schemas","prompts","fixtures/pilot-content/plan.json","fixtures/pilot-content/app-config.json","config/active-calendar/celebration-bridge-long-term-active.json"];
 const usage="Usage: node scripts/install-mhc-native-runtime.mjs --project-root PATH --revision 40HEX --spark-automation-id ID --luna-automation-id ID";
-function options(args){const value={};for(let i=0;i<args.length;i+=2){if(!["--project-root","--revision","--spark-automation-id","--luna-automation-id","--pipeline"].includes(args[i])||!args[i+1])throw Error(usage);value[args[i].slice(2).replace(/-([a-z])/g,(_,c)=>c.toUpperCase())]=args[i+1];}if(value.pipeline&&!['v1','v2'].includes(value.pipeline))throw Error(usage);return value;}
+function options(args){const value={};for(let i=0;i<args.length;i+=2){if(!["--project-root","--revision","--spark-automation-id","--luna-automation-id","--pipeline","--recover-unstarted-transport"].includes(args[i])||!args[i+1])throw Error(usage);value[args[i].slice(2).replace(/-([a-z])/g,(_,c)=>c.toUpperCase())]=args[i+1];}if(value.pipeline&&!['v1','v2'].includes(value.pipeline))throw Error(usage);if(value.recoverUnstartedTransport&&value.pipeline!=='v2')throw Error(usage);return value;}
 function git(root,args){const result=spawnSync("git",args,{cwd:root,windowsHide:true,maxBuffer:32*1024*1024});if(result.status!==0)throw Error("Cannot verify committed runtime source.");return result.stdout;}
 async function atomic(file,bytes){const temp=`${file}.tmp-${process.pid}`;await writeFile(temp,bytes,{mode:0o600});await rename(temp,file);}
 async function assertNoActiveWake(runtimeRoot,schema){
@@ -51,6 +52,7 @@ async function main(){
   const runtimeRoot=await assertCanonicalPath(projectRoot,path.join(projectRoot,"private-content/automation/mhc-runtime"),{allowMissing:true});await mkdir(runtimeRoot,{recursive:true,mode:0o700});
   await withRunnerLock({runtimeRoot},async()=>{
     await assertNoActiveWake(runtimeRoot,JSON.parse(entries.find(e=>e.path==="schemas/mhc-native-runner-checkpoint.schema.json").bytes));
+    if(opts.recoverUnstartedTransport)await recoverUnstartedTransport(projectRoot,opts.recoverUnstartedTransport,opts.revision);
     await assertSafePipelineCutover(projectRoot,opts.pipeline||'v1');
     const config={schema_version:"mhc-native-runtime-config/v1",source_revision:opts.revision,project_root:projectRoot,runtime_root:runtimeRoot,spark_automation_id:opts.sparkAutomationId,luna_automation_id:opts.lunaAutomationId};
     if(opts.pipeline==='v2')config.pipeline_version='mhc-evidence-author/v2';

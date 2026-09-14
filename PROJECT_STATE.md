@@ -752,3 +752,16 @@ verse IDs, omitting all raw messages, candidate records, paths and extra fields.
 It also checks author instructions against the immutable installed prompt. A
 fabricated adversarial test proves those local files cannot add private text to
 the model request. This is a narrowed data boundary, not an approval bypass.
+
+Release `a301bd2` passed 430 checks and both GitHub workflows, was installed and
+aligned with the publication bootstrap. The scheduled task's next policy concern
+incorrectly applied the broader daily-synthesis restriction to Henry condensation.
+Reading the explicit AGENTS.md Henry exception resolved it without a policy edit.
+The actual controller then selected Genesis 1. Codex stopped in 82 milliseconds
+with a local configuration error, before any model event or candidate: inventory
+included a plugin connector absent from the restricted child configuration.
+Preflight now inventories and verifies disabled connectors under the exact child
+restrictions. Transport failures persist a queued checkpoint. A narrowly guarded,
+audited installer recovery handles this one proven unstarted configuration failure
+without losing old execution bytes, clearing attempts or extending the deadline.
+The real next-reading generation/publication trial remains in progress.

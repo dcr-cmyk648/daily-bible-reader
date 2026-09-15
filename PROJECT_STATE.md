@@ -847,3 +847,15 @@ The repair passed all 433 tests, repository/source/content gates, builds and exa
 Pages verification. Public frontend, PWA and backend bytes are unchanged. The
 targeted regression passed actual 41-to-42 and 42-to-43 factual prefix extensions,
 including a terminal book introduction, without touching canonical private data.
+
+Release `55c9681` is pushed and both GitHub workflows passed. The separate installed
+daily-study bootstrap pins that exact revision, creates a no-overlay offline clone,
+and passed fresh real-store validation plus the full 433-test/build/Pages gate.
+Its SHA-256 is `00d6dc9d0493f69ab29dfe9ea252a586eeca70e91dd2ab41701b174b0e623cf6`.
+The prior shared Henry bootstrap remains byte-identical at `eaa7011`. The existing
+daily heartbeat and current canonical service instructions now point to the
+daily-only bootstrap and accepted revision; exact saved-prompt readback confirms
+the same ACTIVE status, 03:00 cadence and manager target. No Henry task or archiving
+preference changed. The evaluator still selects the preserved Genesis 2 earliest
+gap. This maintenance generated and published nothing; the manager must resume
+that work through its normal complete editorial and exact-publication gates.

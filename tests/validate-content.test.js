@@ -8,12 +8,41 @@ const test = require("node:test");
 
 const run = promisify(execFile);
 
-test("general content gate accepts the 41-entry active-calendar prefix without leaking Genesis metrics into the bridge build", async () => {
+test("general content gate accepts the current active-calendar prefix without leaking long-term metrics into the bridge build", async () => {
+  const plan = JSON.parse(readFileSync(path.join(__dirname, "../fixtures/pilot-content/plan.json"), "utf8"));
   const {stdout, stderr} = await run(process.execPath, ["scripts/validate-content.mjs"], {
     cwd: path.join(__dirname, "..")
   });
   assert.equal(stderr, "");
-  assert.match(stdout, /Content validation passed \(\d+ schemas, 41 private-prefix readings, 39 scheduled bridge readings/);
+  assert.match(stdout, new RegExp(`Content validation passed \\(\\d+ schemas, ${plan.entries.length} private-prefix readings, 39 scheduled bridge readings`));
+});
+
+test("content and historical protocol gates survive successive valid private-prefix extensions", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "dbr-growing-prefix-"));
+  try {
+    for (const directory of ["app", "config", "fixtures", "schemas", "scripts", "tests"]) {
+      cpSync(path.join(__dirname, "..", directory), path.join(root, directory), {recursive: true});
+    }
+    cpSync(path.join(__dirname, "..", ".gitignore"), path.join(root, ".gitignore"));
+    const planPath = path.join(root, "fixtures/pilot-content/plan.json");
+    const config = JSON.parse(readFileSync(path.join(root, "fixtures/pilot-content/app-config.json"), "utf8"));
+    const active = JSON.parse(readFileSync(path.join(root, "config/active-calendar/celebration-bridge-long-term-active.json"), "utf8"));
+    for (let step = 0; step < 2; step += 1) {
+      const before = JSON.parse(readFileSync(planPath, "utf8"));
+      const next = active.entries[before.entries.length];
+      const date = new Date(`${next.civilDate}T00:00:00Z`);
+      date.setUTCDate(date.getUTCDate() - config.futureLookaheadDays);
+      const extended = spawnSync(process.execPath, ["scripts/extend-active-prefix.mjs", "--today", date.toISOString().slice(0, 10)], {cwd: root, encoding: "utf8"});
+      assert.equal(extended.status, 0, extended.stderr);
+      const validation = spawnSync(process.execPath, ["scripts/validate-content.mjs"], {cwd: root, encoding: "utf8"});
+      assert.equal(validation.status, 0, validation.stderr);
+      assert.match(validation.stdout, new RegExp(`${before.entries.length + 1} private-prefix readings, 39 scheduled bridge readings`));
+      const protocol = spawnSync(process.execPath, ["--test", "tests/protocol-refresh-backfill.test.js"], {cwd: root, encoding: "utf8"});
+      assert.equal(protocol.status, 0, protocol.stdout + protocol.stderr);
+    }
+  } finally {
+    rmSync(root, {recursive: true, force: true});
+  }
 });
 
 test("general content gate rejects a drifted long-term entry in the rolling prefix", () => {

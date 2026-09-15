@@ -823,3 +823,27 @@ Viewport settings were restored. This was browser/mobile-width verification,
 not a new installed-iPhone test; no shell, storage, authentication or backend
 contract changed. All three Henry schedules remain ACTIVE at their normal
 cadences. The next devotional days remain the unattended reliability trial.
+
+## Daily preparation maintenance — September 15, 2026
+
+The 03:00 daily wake correctly stopped because its saved heartbeat and service
+instructions required `0066dd1` while the shared bootstrap had been advanced to
+accepted Henry release `eaa7011`. The older preserved daily failure also identifies
+two tests that incorrectly required the growing prepared prefix to stay at 41
+entries. The content test now derives its count from the validated current prefix;
+the historical Genesis crossover test uses an explicit immutable-calendar prefix.
+A regression extends an isolated factual prefix twice and runs the actual content
+and protocol gates, while the existing drift-rejection test remains passing.
+
+The maintenance will install a separately pinned daily-study bootstrap and align
+only the daily service instructions/heartbeat. The shared Henry bootstrap, all
+Henry prompts (including completion-only archiving), schedules, runtime and private
+publications remain outside this change. The fresh existing bootstrap passed real
+private validation with 41 syntheses, 38 end-to-end prepared studies and 315 sources.
+No study was generated or published; final release and installed daily validation
+are recorded separately after they actually pass.
+
+The repair passed all 433 tests, repository/source/content gates, builds and exact
+Pages verification. Public frontend, PWA and backend bytes are unchanged. The
+targeted regression passed actual 41-to-42 and 42-to-43 factual prefix extensions,
+including a terminal book introduction, without touching canonical private data.

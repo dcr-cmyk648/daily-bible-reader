@@ -10,7 +10,8 @@ import {buildProtocolBackfillWorkOrder, selectProtocolBackfillCandidate} from ".
 const protocol = JSON.parse(readFileSync(new URL("../config/daily-study-protocol.json", import.meta.url), "utf8"));
 const schema = JSON.parse(readFileSync(new URL("../schemas/protocol-backfill-work-order.schema.json", import.meta.url), "utf8"));
 const activeCalendar = JSON.parse(readFileSync(new URL("../config/active-calendar/celebration-bridge-long-term-active.json", import.meta.url), "utf8"));
-const genesisPrefix = JSON.parse(readFileSync(new URL("../fixtures/pilot-content/plan.json", import.meta.url), "utf8"));
+// This historical crossover scenario stays fixed while the real prepared prefix grows.
+const genesisPrefix = {...activeCalendar, entries: activeCalendar.entries.slice(0, 41)};
 const plan = {
   planVersion: "fabricated-protocol-plan/v1",
   entries: [1, 2, 3, 4].map((dayIndex) => ({

@@ -62,6 +62,20 @@ Every notable commentary claim in the orientation, main synthesis, and takeaway 
 
 The mobile interface divides this hierarchy into three comfortable reading pages. Page 1 contains the orientation. Page 2 contains the ESV chapter; on a dedicated book-introduction day, which intentionally has no chapter, it contains the book overview instead. Page 3 contains the unified commentary summary, the selected live ESV verse beside the concrete takeaway, and numbered source notes. The same reading-level comment form appears beneath each visible page. The optional comprehensive synthesis and research audit come after the discussion and page navigation so opening them never moves the comment box far below a long essay.
 
+## Devotional purpose and book introductions
+
+User clarification, September 16, 2026: traditional Christian commentary is the backbone of every synthesis. Matthew Henry supplies the foundational pastoral pass, developed through other strong Christian sources and close reading. Source breadth is a research aid, not a requirement to distribute the published devotional among competing schools. Jewish material belongs when it concretely illuminates the passage. Modern critical proposals belong only when highly relevant and highly substantiated, with the evidence, interpretive stakes, and responsible Christian assessment made explicit. Do not add speculative objections, vague interfaith comparisons, or scholarly disputes merely to demonstrate balance.
+
+A book-introduction day has three distinct purposes:
+
+1. Page 1 briefly orients the reader to the day's book and gives a useful reading focus.
+2. Page 2 provides a substantial introduction to the whole book: its overall content and narrative or argumentative movement, major divisions, themes, traditional Christian understanding, and relevant established historical setting. It must stand alone as a useful introduction, not a two-sentence teaser or a list of questions. Several developed paragraphs are normally appropriate; content and usefulness determine length.
+3. Page 3 characterizes the book's function within the whole Bible and explains its devotional significance. Develop the contribution it makes to understanding God, humanity, sin, covenant, redemption, worship, and fulfillment in Christ where supported by Scripture. State these connections concretely; do not replace exposition with generic comparisons between Christian and Jewish traditions.
+
+Historical details should serve this Christian reading while distinguishing artifacts and established facts from inferences. Unnecessary debates should be omitted, not automatically relocated into expanded sections. A substantive difficulty can receive focused treatment when it materially helps the reader understand the book.
+
+Direct editorial review must read all three pages as the user will encounter them. Confirm that Page 2 actually introduces the book, Page 3 explains its biblical role through positive Christian exposition, and every included historical or critical discussion earns its place. Formal validity, source counts, and a full bibliography do not establish devotional quality.
+
 ## Genesis 1 calibration (preserved)
 
 For this pilot, the ordinary-day reading is the starting assessment because the numbered *yom*, evening-and-morning refrain, sequence, and later Sabbath analogy give it a substantial natural claim. Framework, analogical, day-age, functional, and other influential readings are still presented from their strongest consulted sources and evaluated on their actual arguments. Literary structure, ancient cosmology, and modern scientific coordination are not assumed either to overturn or to prove the ordinary reading by themselves.

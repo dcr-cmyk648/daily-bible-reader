@@ -38,6 +38,8 @@ Move a source from `discovered` only after actual access. Notes should capture o
 
 ## 4. Draft in layers
 
+Apply the September 16 devotional-purpose and book-introduction contract in `EDITORIAL_STANCE.md`. Traditional Christian commentary provides the synthesis's backbone. On book-introduction days, `overview` must offer a substantial whole-book introduction on Page 2; the main synthesis on Page 3 must explain the book's function in the Bible and its Christian devotional significance. Direct review must assess those separate purposes. Include Jewish or modern critical material only under the stated relevance and evidence tests; do not pad the published study with a survey of competing traditions.
+
 Apply the confessional and steelman-and-assess method in `EDITORIAL_STANCE.md`. The ordinary grammatical, literary, and historical sense is the starting posture, while genre and textual signals determine when metaphor, symbolism, or other figures are present. Scripture's presentation of prophecy, miracle, divine action, and explicit attribution remains the working presumption unless very strong positive evidence independent of anti-supernatural assumptions displaces it. Present strong, widespread alternatives fairly before explaining the preferred assessment; do not manufacture neutrality or spend the reader's time on fringe catalogues.
 
 The daily surface is concise but not compressed, assumes expert readers, and appears in this order:

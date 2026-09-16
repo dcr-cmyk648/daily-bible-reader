@@ -859,3 +859,13 @@ the same ACTIVE status, 03:00 cadence and manager target. No Henry task or archi
 preference changed. The evaluator still selects the preserved Genesis 2 earliest
 gap. This maintenance generated and published nothing; the manager must resume
 that work through its normal complete editorial and exact-publication gates.
+
+
+## Daily preparation clock regression and devotional standard — September 16, 2026
+
+The user clarified that traditional Christian commentary is the devotional backbone. Book-introduction Page 2 must substantially introduce the whole book; Page 3 must explain its function within the Bible and its Christian devotional significance. The editorial stance and commentary workflow now make those separate duties explicit and exclude generic critical or interfaith surveys that do not materially help the reading.
+
+Private recovery has verified publication through September 21 (Matthew overview), including the revised Genesis introduction, Genesis 2, Psalms overview, and Psalm 1. Each published update passed all 433 tests, exact immutable-payload and manifest readback, restricted-sharing checks, and authenticated named-reading readiness. The current-through-September-23 window is not yet complete.
+
+The next Matthew 1 study passed source and private-content validation but stopped before publication when a regression test failed (432 passed, one failed). The test extended its temporary prefix to a simulated future day but validated it against the real wall clock, so reaching the preparation boundary incorrectly failed maintenance. Its test-only child process now uses the same simulated civil date for validation. Both successive extensions still run the unmodified production validator; each also must be rejected one day before it becomes eligible. The live clock and T+7 gate are unchanged. The focused three-test suite passes. The exact private draft and original failed-check log are preserved for resumption after full validation and installation of this maintenance release. No app/frontend/backend or Henry runtime behavior is changed by this repair.
+Full maintenance validation passed all 433 tests, source/private/schema/repository gates, builds, and exact Pages/PWA verification against the real 46-entry preparation candidate. Public frontend `94389a423eeb63cc` and PWA `56f0b385999bc686` remain unchanged. Publication remains stopped until this validated revision is accepted by the independent daily bootstrap; the preserved Matthew 1 work order must resume first, followed by Genesis 3 and full live-horizon verification.

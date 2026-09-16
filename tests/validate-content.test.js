@@ -27,6 +27,14 @@ test("content and historical protocol gates survive successive valid private-pre
     const planPath = path.join(root, "fixtures/pilot-content/plan.json");
     const config = JSON.parse(readFileSync(path.join(root, "fixtures/pilot-content/app-config.json"), "utf8"));
     const active = JSON.parse(readFileSync(path.join(root, "config/active-calendar/celebration-bridge-long-term-active.json"), "utf8"));
+    // The simulated extension date must also be the validator's clock. Otherwise
+    // filling the real T+7 buffer makes this test's next extension look premature.
+    const clockPath = path.join(root, "fabricated-validation-clock.cjs");
+    function validateOn(civilDate) {
+      const instant = `${civilDate}T16:00:00.000Z`; // Within this Detroit civil day across DST.
+      writeFileSync(clockPath, `const ActualDate = Date;\nconst instant = ${JSON.stringify(instant)};\nglobalThis.Date = class extends ActualDate {\n  constructor(...args) { super(...(args.length ? args : [instant])); }\n  static now() { return ActualDate.parse(instant); }\n};\n`);
+      return spawnSync(process.execPath, ["--require", clockPath, "scripts/validate-content.mjs"], {cwd: root, encoding: "utf8"});
+    }
     for (let step = 0; step < 2; step += 1) {
       const before = JSON.parse(readFileSync(planPath, "utf8"));
       const next = active.entries[before.entries.length];
@@ -34,9 +42,14 @@ test("content and historical protocol gates survive successive valid private-pre
       date.setUTCDate(date.getUTCDate() - config.futureLookaheadDays);
       const extended = spawnSync(process.execPath, ["scripts/extend-active-prefix.mjs", "--today", date.toISOString().slice(0, 10)], {cwd: root, encoding: "utf8"});
       assert.equal(extended.status, 0, extended.stderr);
-      const validation = spawnSync(process.execPath, ["scripts/validate-content.mjs"], {cwd: root, encoding: "utf8"});
+      const validation = validateOn(date.toISOString().slice(0, 10));
       assert.equal(validation.status, 0, validation.stderr);
       assert.match(validation.stdout, new RegExp(`${before.entries.length + 1} private-prefix readings, 39 scheduled bridge readings`));
+      const tooEarly = new Date(date);
+      tooEarly.setUTCDate(tooEarly.getUTCDate() - 1);
+      const rejected = validateOn(tooEarly.toISOString().slice(0, 10));
+      assert.equal(rejected.status, 1);
+      assert.match(rejected.stderr, /Tracked private prefix may not exceed the current Detroit T\+7 horizon/);
       const protocol = spawnSync(process.execPath, ["--test", "tests/protocol-refresh-backfill.test.js"], {cwd: root, encoding: "utf8"});
       assert.equal(protocol.status, 0, protocol.stdout + protocol.stderr);
     }

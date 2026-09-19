@@ -16,7 +16,7 @@ import {sparkModelUnavailable} from '../scripts/lib/mhc-v2-model-errors.mjs';
 
 const unavailableSparkEvents = () => JSON.stringify({type:'turn.failed',error:{message:JSON.stringify({type:'error',status:400,error:{type:'invalid_request_error',message:"The 'gpt-5.3-codex-spark' model is not supported when using Codex with a ChatGPT account."}})}})+'\n';
 
-test('retained unsupported-Spark failure recovers without repeating the model dispatch', async t=>{
+for(const expired of [false,true])test(`retained unsupported-Spark failure recovers without repeating dispatch (expired=${expired})`, async t=>{
   const {ctx,now}=await fixture(t,{verseCount:1}),normal=fabricatedModelRun();let calls=0;
   const run=(bin,args,options)=>{if(args[0]!=='exec')return normal.run(bin,args,options);calls++;return {status:1,stdout:unavailableSparkEvents()};};
   const options={lane:'spark',codexExecutable:process.execPath},deps={run,clock:()=>now};
@@ -24,9 +24,12 @@ test('retained unsupported-Spark failure recovers without repeating the model di
   const job=await loadJob(path.join(ctx.jobRoot,'FAB-1'));
   // Reproduce the previous runtime's generic queued checkpoint with the same real-shaped receipt.
   await appendState(job,'FABRICATED older runtime checkpoint',{...job.state,phase:'queued',blocker:{code:'V2_TRANSPORT_FAILED'},history:[]},now);
-  const result=await runAuthorSession(ctx,options,deps);
+  const result=await runAuthorSession(ctx,options,{...deps,clock:()=>expired?new Date(now.getTime()+2*60*60*1000):now});
   assert.equal(calls,1);assert.equal(result.code,'V2_SPARK_MODEL_UNAVAILABLE');
   assert.equal(result.totalSubmissions,0);
+  const after=await loadJob(job.directory);
+  assert.deepEqual(after.state.sessions,job.state.sessions);
+  assert.deepEqual(after.state.session,job.state.session);
 });
 
 

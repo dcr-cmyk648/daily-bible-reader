@@ -152,7 +152,7 @@ async function authorPacket(ctx,job,now) {
   const next=nextBatch(job);
   if(!next){const state={...job.state,phase:'review_pending',blocker:null};job=await appendState(job,'generation_complete',state,now);return report(ctx,job,{action:'review_handoff'});}
   if(next.lane!==job.state.session?.lane){job=await appendState(job,'chapter_model_handoff',{...job.state,session:null},now);return report(ctx,job,{action:'checkpointed',code:'V2_AWAITING_CHAPTER_OWNER'});}
-  if(new Date(now).getTime()>=Date.parse(job.state.session?.deadline_at)||job.state.session?.submissions>=32)return report(ctx,job,{action:'checkpointed',code:'V2_WAKE_BUDGET'});
+  const budgetExpired=new Date(now).getTime()>=Date.parse(job.state.session?.deadline_at)||job.state.session?.submissions>=32;
   const {packet,lane,key}=next,relative=`author/${packet.packet_id}/${lane}`;
   await atomicJson(job.directory,`${relative}/source-view.json`,packet,{immutable:true});
   await atomicJson(job.directory,`${relative}/candidate.schema.json`,candidateSchema,{immutable:true});
@@ -161,7 +161,7 @@ async function authorPacket(ctx,job,now) {
   // used for all private artifacts. No shell interpolation of source prose.
   const instructionsPath=await atomicJson(job.directory,`${relative}/instructions.json`,{model:MODELS[lane],reasoning_effort:lane==='spark'?'medium':'low',instructions},{immutable:true});
   const cmd=command(ctx,['advance','--reading',job.input.reading_id,'--session',job.state.session.id]);
-  return report(ctx,job,{action:(job.state.rejected[key]||[]).length?'repair_candidate':'author_candidate',candidatePath:await confined(job.directory,`${relative}/candidate.json`),sourcePath:await confined(job.directory,`${relative}/source-view.json`),schemaPath:await confined(job.directory,`${relative}/candidate.schema.json`),instructionsPath,validationPath:await confined(job.directory,`${relative}/validation.json`),deadlineAt:job.state.session.deadline_at,submissionsRemaining:MAX_SUBMISSIONS-(job.state.rejected[key]||[]).length,advanceCommand:cmd.command,advanceArgv:cmd.argv});
+  return report(ctx,job,{action:budgetExpired?'checkpointed':(job.state.rejected[key]||[]).length?'repair_candidate':'author_candidate',...(budgetExpired?{code:'V2_WAKE_BUDGET'}:{}),candidatePath:await confined(job.directory,`${relative}/candidate.json`),sourcePath:await confined(job.directory,`${relative}/source-view.json`),schemaPath:await confined(job.directory,`${relative}/candidate.schema.json`),instructionsPath,validationPath:await confined(job.directory,`${relative}/validation.json`),deadlineAt:job.state.session.deadline_at,submissionsRemaining:MAX_SUBMISSIONS-(job.state.rejected[key]||[]).length,advanceCommand:cmd.command,advanceArgv:cmd.argv});
 }
 
 export async function startV2(ctx,lane,now=new Date()) {

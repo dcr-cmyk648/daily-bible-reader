@@ -97,6 +97,19 @@ export async function runAuthorSession(ctx,{lane,codexExecutable},dependencies={
   let disabled;try{disabled=JSON.parse(check.stdout);}catch{throw Error('V2_TRANSPORT_MCP_PREFLIGHT_FAILED');}
   if(check.status!==0||!Array.isArray(disabled)||disabled.some(s=>s.enabled!==false))throw Error('V2_TRANSPORT_MCP_PREFLIGHT_FAILED');
   let work=await startV2(ctx,lane,clock());
+  // Classifying retained provider evidence is not a model dispatch. An expired
+  // session may transfer its proven refusal, but cannot get time or attempts back.
+  if(lane==='spark'&&work.code==='V2_WAKE_BUDGET'){
+    const {packet,proof}=await verifyPublicPacket(ctx,work,lane);
+    const session=work.advanceArgv.at(-1),root=await confined(ctx.jobRoot,work.readingId,{missing:false});
+    const key=digestObject({session,packet:packet.packet_id,submissions:work.totalSubmissions});
+    const record=await maybeJson(await confined(root,`model-executions/${key}/result.json`));
+    if(record?.status==='failed'&&record.error_code===null&&record.session===session&&isDeepStrictEqual(record.proof,proof)){
+      const stdout=await readFile(await confined(root,`model-executions/${key}/events.jsonl`,{missing:false}),'utf8');
+      return await handoffUnavailable(ctx,work,key,proof,{status:record.exit_code,stdout},clock())||work;
+    }
+    return work;
+  }
   for(let count=0;authorActions.has(work.action)&&count<32;count++){
     const {packet,instructions,proof}=await verifyPublicPacket(ctx,work,lane);
     const remaining=Date.parse(work.deadlineAt)-clock().getTime();

@@ -22,7 +22,8 @@ candidate records, paths and arbitrary properties are never transmitted. Author
 instructions must exactly match the hash-verified installed prompt before any call.
 
 The actual writer is gpt-5.3-codex-spark at medium reasoning for the spark lane,
-or gpt-5.6-luna at low only after controller-recorded eligible Spark exhaustion.
+or gpt-5.6-luna at low after controller-recorded eligible Spark exhaustion or the
+verified provider refusal that Spark is unsupported for this ChatGPT account.
 The coordinating task's model never substitutes its own prose. The installed
 code invokes one fresh noninteractive Codex process per bounded packet with a
 structured output schema, read-only sandbox, shell/apps/plugins/subagents/web
@@ -44,8 +45,10 @@ spark/luna work-order commands themselves remain local controllers.
 Wait on a running process and report its actual result. Never run another copy
 while one is active. One invocation drains at most one reading, keeps the existing
 session deadline and candidate budgets, and stops at handoff/checkpoint/blocker.
-A transport failure checkpoints without pretending candidate exhaustion or
-authorizing Luna. The same packet/attempt/session dispatch cannot be repeated.
+A generic transport failure checkpoints without pretending candidate exhaustion or
+authorizing Luna. Only the exact unsupported-Spark provider refusal permits the
+separate availability handoff, with persisted evidence checked again by Luna's
+controller. The same packet/attempt/session dispatch cannot be repeated.
 Source, auth, permission and runtime failures are not failed candidate submissions.
 
 Do not handwrite candidates, reset history, fabricate receipts, migrate-current,

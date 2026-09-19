@@ -5,10 +5,21 @@ import {isDeepStrictEqual} from 'node:util';
 import {startV2,advanceV2,sourceInput} from './mhc-v2-service.mjs';
 import {MODELS,digestObject} from './mhc-v2.mjs';
 import {atomicJson,confined,maybeJson,readJson,loadJob,appendState} from './mhc-v2-store.mjs';
+import {sparkModelUnavailable} from './mhc-v2-model-errors.mjs';
 
 const authorActions=new Set(['author_candidate','repair_candidate']);
 const effort=lane=>lane==='spark'?'medium':'low';
 const blocked=(work,code)=>({...work,action:'checkpointed',stage:'model_transport',code});
+async function handoffUnavailable(ctx,work,key,proof,result,now){
+  if(proof.model!==MODELS.spark||!sparkModelUnavailable(result))return null;
+  const root=await confined(ctx.jobRoot,work.readingId,{missing:false}),current=await loadJob(root),code='V2_SPARK_MODEL_UNAVAILABLE';
+  const packet=await readJson(work.sourcePath);
+  const refusal={code,stage:'model_availability',packet_id:packet.packet_id,lane:'spark',
+    execution_key:key,events_sha256:digestObject(result.stdout),proof_sha256:digestObject(proof)};
+  await appendState(current,'spark_provider_unavailable',{...current.state,phase:'fallback_pending',blocker:refusal,
+    history:[...current.state.history,{kind:'spark_provider_unavailable',...refusal,at:now.toISOString()}]},now);
+  return {...work,action:'checkpointed',state:'fallback_pending',stage:'model_availability',code};
+}
 async function checkpointTransport(ctx,work,code,now){
   const job=await loadJob(await confined(ctx.jobRoot,work.readingId,{missing:false}));
   if(job.state.phase==='generating')await appendState(job,'transport_checkpoint',{...job.state,phase:'queued',blocker:{stage:'model_transport',code}},now);
@@ -97,7 +108,14 @@ export async function runAuthorSession(ctx,{lane,codexExecutable},dependencies={
     const relative=`model-executions/${key}`,recordPath=await confined(root,`${relative}/result.json`);
     let record=await maybeJson(recordPath);
     if(record&&(!isDeepStrictEqual(record.proof,proof)||record.session!==session))throw Error('V2_TRANSPORT_RECEIPT_MISMATCH');
-    if(record&&record.status!=='completed')return checkpointTransport(ctx,work,'V2_TRANSPORT_ALREADY_ATTEMPTED',clock());
+    if(record&&record.status!=='completed'){
+      if(record.status==='failed'&&record.error_code===null){
+        const stdout=await readFile(await confined(root,`${relative}/events.jsonl`,{missing:false}),'utf8');
+        const handoff=await handoffUnavailable(ctx,work,key,proof,{status:record.exit_code,stdout},clock());
+        if(handoff)return handoff;
+      }
+      return checkpointTransport(ctx,work,'V2_TRANSPORT_ALREADY_ATTEMPTED',clock());
+    }
     const outputPath=await confined(root,`${relative}/response.json`);
     if(!record){
       const schemaPath=await atomicJson(root,`${relative}/transport.schema.json`,transportSchema(await readJson(work.schemaPath)),{immutable:true});
@@ -111,6 +129,8 @@ export async function runAuthorSession(ctx,{lane,codexExecutable},dependencies={
       await writeFile(await confined(root,`${relative}/stderr.txt`),result.stderr||'',{mode:0o600});
       if(!successfulModelResult(result)){
         await atomicJson(root,`${relative}/result.json`,{...record,status:'failed',finished_at:clock().toISOString(),exit_code:result.status,error_code:result.error?.code??null});
+        const handoff=await handoffUnavailable(ctx,work,key,proof,result,clock());
+        if(handoff)return handoff;
         return checkpointTransport(ctx,work,'V2_TRANSPORT_FAILED',clock());
       }
       let candidate;try{candidate=await readJson(outputPath);}catch{return checkpointTransport(ctx,work,'V2_TRANSPORT_OUTPUT_MISSING',clock());}

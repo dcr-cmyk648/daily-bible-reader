@@ -12,6 +12,62 @@ import {atomicJson,appendState,loadJob,readJson,bytesFor,createJob} from '../scr
 import {writeFileSync} from 'node:fs';
 import {runAuthorSession,transportSchema,authorArguments,successfulModelResult,verifyPublicPacket,publicRepairDiagnostics} from '../scripts/lib/mhc-v2-author-session.mjs';
 import {recoverUnstartedTransport} from '../scripts/lib/mhc-v2-transport-recovery.mjs';
+import {sparkModelUnavailable} from '../scripts/lib/mhc-v2-model-errors.mjs';
+
+const unavailableSparkEvents = () => JSON.stringify({type:'turn.failed',error:{message:JSON.stringify({type:'error',status:400,error:{type:'invalid_request_error',message:"The 'gpt-5.3-codex-spark' model is not supported when using Codex with a ChatGPT account."}})}})+'\n';
+
+test('retained unsupported-Spark failure recovers without repeating the model dispatch', async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1}),normal=fabricatedModelRun();let calls=0;
+  const run=(bin,args,options)=>{if(args[0]!=='exec')return normal.run(bin,args,options);calls++;return {status:1,stdout:unavailableSparkEvents()};};
+  const options={lane:'spark',codexExecutable:process.execPath},deps={run,clock:()=>now};
+  await runAuthorSession(ctx,options,deps);
+  const job=await loadJob(path.join(ctx.jobRoot,'FAB-1'));
+  // Reproduce the previous runtime's generic queued checkpoint with the same real-shaped receipt.
+  await appendState(job,'FABRICATED older runtime checkpoint',{...job.state,phase:'queued',blocker:{code:'V2_TRANSPORT_FAILED'},history:[]},now);
+  const result=await runAuthorSession(ctx,options,deps);
+  assert.equal(calls,1);assert.equal(result.code,'V2_SPARK_MODEL_UNAVAILABLE');
+  assert.equal(result.totalSubmissions,0);
+});
+
+
+test('verified Spark provider refusal hands off to Luna without spending or resetting candidates', async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1}),normal=fabricatedModelRun();
+  const run=(bin,args,options)=>args[0]==='exec'?{status:1,stdout:unavailableSparkEvents(),stderr:''}:normal.run(bin,args,options);
+  const result=await runAuthorSession(ctx,{lane:'spark',codexExecutable:process.execPath},{run,clock:()=>now});
+  assert.equal(result.code,'V2_SPARK_MODEL_UNAVAILABLE');assert.equal(result.state,'fallback_pending');
+  const before=await loadJob(path.join(ctx.jobRoot,'FAB-1'));
+  assert.equal(before.state.total_submissions,0);assert.equal(before.state.owners['TST.1'],'spark');
+  const order=await startV2(ctx,'luna',now);
+  assert.equal(order.requiredModel,MODELS.luna);assert.equal(order.submissionsRemaining,2);
+  const after=await loadJob(before.directory);
+  assert.deepEqual(after.state.sessions[before.state.session.id],before.state.session);
+  assert.equal(after.state.total_submissions,0);assert.equal(after.state.owners['TST.1'],'luna');
+  await writeCandidate(order);
+  const complete=await advanceV2(ctx,order.readingId,sessionId(order),now);
+  assert.equal(complete.action,'review_handoff');assert.equal(complete.totalSubmissions,1);
+});
+
+test('Spark availability handoff rejects tampered provider evidence', async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1}),normal=fabricatedModelRun();
+  const run=(bin,args,options)=>args[0]==='exec'?{status:1,stdout:unavailableSparkEvents()}:normal.run(bin,args,options);
+  await runAuthorSession(ctx,{lane:'spark',codexExecutable:process.execPath},{run,clock:()=>now});
+  const job=await loadJob(path.join(ctx.jobRoot,'FAB-1'));
+  await writeFile(path.join(job.directory,'model-executions',job.state.blocker.execution_key,'events.jsonl'),'FABRICATED altered refusal');
+  await assert.rejects(startV2(ctx,'luna',now),/AVAILABILITY_PROOF_INVALID/);
+});
+
+test('Spark refusal classifier excludes generic failure, different model, tool execution and completed responses', ()=>{
+  const stdout=unavailableSparkEvents();
+  assert.equal(sparkModelUnavailable({status:1,stdout}),true);
+  for(const result of [{status:0,stdout},{status:1,stdout,error:{code:'ETIMEDOUT'}},
+    {status:1,stdout:stdout.replace('gpt-5.3-codex-spark','gpt-5.6-luna')},
+    {status:1,stdout:'{"type":"turn.completed"}\n'+stdout},
+    {status:1,stdout:'{"type":"item.completed","item":{"type":"command_execution"}}\n'+stdout},
+    {status:1,stdout:'',stderr:'FABRICATED authentication error'},
+    {status:1,stdout:stdout.replace('invalid_request_error','rate_limit_error')}])
+    assert.equal(sparkModelUnavailable(result),false);
+});
+
 
 const repo=fileURLToPath(new URL('..',import.meta.url));
 const sourceManifest={source_id:'fabricated-henry',work_title:'FABRICATED TEST COMMENTARY',module_name:'MHC',module_version:'2.2',source_version_date:'2026-01-01',retrieved_at:'2026-01-01',license:'Public domain FABRICATED TEST',archive_sha256:'a'.repeat(64),source_format:'CrossWire SWORD zCom4 OSIS',versification:'KJV',source_url:'https://example.invalid/fabricated',download_url:'https://example.invalid/fabricated.zip'};

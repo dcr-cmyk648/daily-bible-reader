@@ -10,6 +10,7 @@ import {sha256,normalizedBatchHash,normalizeBookChapter,readSwordModule,findSour
 import {assertSchemaValid} from './schema-validator.mjs';
 import {applyNativeTransaction} from './mhc-native-transaction.mjs';
 import {finalizeReviewedLibrary} from './mhc-reviewed-library-finalize.mjs';
+import {sparkModelUnavailable} from './mhc-v2-model-errors.mjs';
 
 const HOUR=60*60*1000;
 const chapterKey=c=>`${c.book_id}.${c.chapter}`;
@@ -178,7 +179,22 @@ export async function startV2(ctx,lane,now=new Date()) {
   if(job){job=(await checkedJob(ctx,job.input.reading_id)).job;const next=nextBatch(job);if(next&&next.lane!==lane)return report(ctx,job,{code:'V2_OTHER_MODEL_OWNS_CHAPTER'});}
   if(!job&&lane==='luna') {
     job=jobs.filter(j=>j.state?.phase==='fallback_pending').sort((a,b)=>a.input.schedule_date.localeCompare(b.input.schedule_date))[0];
-    if(job){job=(await checkedJob(ctx,job.input.reading_id)).job;const next=nextBatch(job),state=clone(job.state);if(!next||next.lane!=='spark'||state.blocker?.code!=='V2_CANDIDATE_EXHAUSTED')throw new Error('V2_FALLBACK_NOT_ELIGIBLE');state.owners[chapterKey(next.chapter)]='luna';state.phase='generating';state.session=null;state.blocker=null;job=await appendState(job,'eligible_luna_transfer',state,now);}
+    if(job){
+      job=(await checkedJob(ctx,job.input.reading_id)).job;
+      const next=nextBatch(job),state=clone(job.state),blocker=state.blocker;
+      if(!next||next.lane!=='spark'||!['V2_CANDIDATE_EXHAUSTED','V2_SPARK_MODEL_UNAVAILABLE'].includes(blocker?.code))throw new Error('V2_FALLBACK_NOT_ELIGIBLE');
+      if(blocker.code==='V2_SPARK_MODEL_UNAVAILABLE'){
+        if(!/^[a-f0-9]{64}$/.test(blocker.execution_key||'')||blocker.packet_id!==next.packet.packet_id)throw new Error('V2_AVAILABILITY_PROOF_INVALID');
+        const base=`model-executions/${blocker.execution_key}`;
+        const execution=await readJson(await confined(job.directory,`${base}/result.json`,{missing:false}));
+        const events=await readFile(await confined(job.directory,`${base}/events.jsonl`,{missing:false}),'utf8');
+        if(execution.status!=='failed'||execution.proof?.model!==MODELS.spark||execution.proof.packet_sha256!==digestObject(next.packet)||
+          execution.error_code!==null||digestObject(execution.proof)!==blocker.proof_sha256||digestObject(events)!==blocker.events_sha256||
+          !sparkModelUnavailable({status:execution.exit_code,stdout:events}))throw new Error('V2_AVAILABILITY_PROOF_INVALID');
+      }
+      state.owners[chapterKey(next.chapter)]='luna';state.phase='generating';state.session=null;state.blocker=null;
+      job=await appendState(job,'eligible_luna_transfer',state,now);
+    }
   }
   if(!job) {
     const selected=await selection(ctx,jobs,now);

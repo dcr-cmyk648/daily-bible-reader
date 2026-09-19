@@ -75,7 +75,11 @@ rejected bytes do not spend another attempt. An authoring wake permits at most
 32 submissions and sixty minutes; restarting the same lane/slot preserves its
 deadline and spent budget. Successful packets are reused across wakes.
 
-Luna becomes eligible only after a recorded actual Spark candidate exhaustion.
+Luna becomes eligible after recorded actual Spark candidate exhaustion, or an exact
+provider refusal that Spark is unsupported with the current ChatGPT account.
+The latter requires a failed structured provider event, no successful response or
+tool activity, and checksum-bound execution evidence rechecked before the chapter
+transfers to Luna. Candidate counts and original events remain unchanged.
 A missing Spark run, source error, persistence failure or host authorization denial
 does not create fallback eligibility. This deliberately removes the ambiguous
 missed-primary inference from v2. Source/controller/permission failures require

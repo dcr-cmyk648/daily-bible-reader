@@ -400,7 +400,10 @@
       });
       return {...book, resources, prepared: resources.some((resource) => resource.prepared)};
     });
-    return {books, preparedReadingIds: [...prepared]};
+    const bibleOrder = Object.keys(BOOK_NAMES);
+    const preparedBooks = books.filter((book) => book.prepared).sort((a, b) =>
+      bibleOrder.indexOf(a.bookId) - bibleOrder.indexOf(b.bookId));
+    return {books: preparedBooks, preparedReadingIds: [...prepared]};
   }
 
   function catalogResourceByKey(catalog, resourceKey) {
@@ -430,6 +433,9 @@
   }
 
   function occurrencePositionLabel(entry, planLength, mode) {
+    if (mode === "selected") {
+      return `Day ${isActivatedLongTermOccurrence(entry) ? entry.dayIndex - 39 : entry.dayIndex}`;
+    }
     const generic = mode === "library"
       ? `day ${entry.dayIndex} of ${planLength}`
       : `Day ${entry.dayIndex} of ${planLength}`;
@@ -1154,7 +1160,7 @@
   function appendInlineCitedText(container, markdown, citationIndex) {
     const text = String(markdown || "");
     if (!citationIndex) {
-      container.textContent = text;
+      container.textContent = withoutInlineCitations(text);
       return 0;
     }
     const pattern = /\{\{cite:([A-Za-z0-9_.:-]+(?:\s*,\s*[A-Za-z0-9_.:-]+)*)\}\}/g;
@@ -5004,6 +5010,7 @@
     libraryPositionLabel,
     occurrencePositionLabel,
     registerHighlightEnhancer,
+    renderSafeMarkdown,
     safeExternalUrl,
     safeVersionedAppUrl,
     selectedDayVerseSelection,

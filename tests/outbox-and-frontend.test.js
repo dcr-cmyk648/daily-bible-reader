@@ -7,6 +7,31 @@ const vm = require("node:vm");
 
 const app = require("../app/frontend/app.js");
 
+test("plain devotional text hides citation markers while deep-study links retain their source targets", () => {
+  class Node {
+    constructor(tagName) { this.tagName = tagName; this.children = []; this.attributes = {}; this.value = ""; }
+    replaceChildren(...children) { this.children = children; this.value = ""; }
+    appendChild(child) { this.children.push(child); return child; }
+    set textContent(value) { this.value = value; this.children = []; }
+    get textContent() { return this.value + this.children.map(child => child.textContent).join(""); }
+    setAttribute(key, value) { this.attributes[key] = value; }
+    addEventListener() {}
+  }
+  const context = {document: {readyState: "loading", getElementById() { return null; }, addEventListener() {},
+    createElement(tag) { return new Node(tag); }, createTextNode(value) { const node = new Node("#text"); node.textContent = value; return node; }}};
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8"), context);
+  const text = "FABRICATED devotional application. {{cite:test_source,test_other}}";
+  const plain = new Node("div");
+  context.DailyBibleReader.renderSafeMarkdown(text, plain);
+  assert.equal(plain.textContent.trim(), "FABRICATED devotional application.");
+  const deep = new Node("div");
+  context.DailyBibleReader.renderSafeMarkdown(text, deep, {numberById: new Map([["test_source", 1], ["test_other", 2]]), noteIdPrefix: "deep-source-note", disclosureId: "deepSourceDisclosure"});
+  const links = deep.children[0].children.find(node => node.tagName === "sup").children.filter(node => node.tagName === "a");
+  assert.deepEqual(Array.from(links, link => link.href), ["#deep-source-note-1", "#deep-source-note-2"]);
+  assert.doesNotMatch(deep.textContent, /\{\{cite:/);
+});
+
+
 test("offline outbox compacts edits into an unsynced create", () => {
   const items = [
     {clientRequestId: "create:1234567890123456", localTempId: "temp:12345678901234567", eventType: "create", body: "first", queuedAt: "2026-08-08T10:00:00Z"},
@@ -63,7 +88,7 @@ test("cached-shell confirmation waits for authoritative bootstrap before depende
   assert.match(outbox, /retainedOutboxFailureStatus\(error\)/);
 });
 
-test("prepared-library catalog preserves plan order, grouped occurrences, exact partial coverage, and normal future locks", () => {
+test("prepared-library catalog uses Bible order and prepared books, preserving grouped coverage and future locks", () => {
   const plan = {
     planVersion: "library-test/v1",
     bookMetrics: {
@@ -89,7 +114,10 @@ test("prepared-library catalog preserves plan order, grouped occurrences, exact 
   assert.deepEqual(["GEN", "2SA", "ECC", "HAB", "MAT", "1CO", "3JN", "REV"].map(app.bookNameForId), [
     "Genesis", "2 Samuel", "Ecclesiastes", "Habakkuk", "Matthew", "1 Corinthians", "3 John", "Revelation"
   ]);
-  assert.deepEqual(catalog.books.map((book) => book.bookId), ["GEN", "PRO", "HAG"]);
+  assert.deepEqual(catalog.books.map((book) => book.bookId), ["GEN", "PRO"]);
+  const reordered = {...plan, entries: [...plan.entries].reverse().map((entry, index) => ({...entry, dayIndex: index + 1}))};
+  assert.deepEqual(app.buildPreparedLibraryCatalog(reordered, new Set(["intro-GEN", "PRO-001-A", "HAG-001"])).books.map(book => book.bookId), ["GEN", "PRO", "HAG"]);
+  assert.deepEqual(app.buildPreparedLibraryCatalog(plan, []).books, []);
   const genesis = catalog.books[0];
   assert.equal(genesis.prepared, true);
   assert.deepEqual(genesis.resources.filter((resource) => resource.prepared).map((resource) => [resource.label, resource.readingId]), [
@@ -99,7 +127,6 @@ test("prepared-library catalog preserves plan order, grouped occurrences, exact 
   assert.deepEqual(proverbs.resources.map((resource) => [resource.label, resource.prepared]), [
     ["Overview", false], ["Chapter 1:1–8", true], ["Chapter 1:9–16", true], ["Chapter 2", false]
   ]);
-  assert.equal(catalog.books[2].prepared, false);
   assert.equal(app.catalogResourceByKey(catalog, "GEN-001-002:passage:1").readingId, "GEN-001-002");
   assert.throws(() => app.buildPreparedLibraryCatalog(plan, ["not-in-plan"]), /Prepared library membership/);
 
@@ -120,8 +147,9 @@ test("prepared-library catalog preserves plan order, grouped occurrences, exact 
   assert.equal(app.occurrencePositionLabel(plan.entries[1], plan.entries.length, "library"), "day 2 of 6");
   assert.equal(app.occurrencePositionLabel(bridgeEntry, 1263, "library"), "bridge day 2 of 1263");
   assert.equal(app.occurrencePositionLabel(longTermEntry, 1263, "library"), "long-term day 1 of 1224");
-  assert.equal(app.occurrencePositionLabel(plan.entries[1], plan.entries.length, "selected"), "Day 2 of 6");
-  assert.equal(app.occurrencePositionLabel(bridgeEntry, 1263, "selected"), "Original plan day 55 of 92 · Bridge day 2 of 1263");
+  assert.equal(app.occurrencePositionLabel(plan.entries[1], plan.entries.length, "selected"), "Day 2");
+  assert.equal(app.occurrencePositionLabel(bridgeEntry, 1263, "selected"), "Day 2");
+  assert.equal(app.occurrencePositionLabel({...longTermEntry, dayIndex: 42}, 1263, "selected"), "Day 3");
   assert.equal(app.occurrencePositionLabel(longTermEntry, 1263, "reading"), "Four-stream plan · day 1 of 1224");
 
   const html = fs.readFileSync(path.join(__dirname, "../app/frontend/index.html"), "utf8");

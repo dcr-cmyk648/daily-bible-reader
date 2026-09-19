@@ -5,6 +5,7 @@ import process from "node:process";
 import {advanceRunner,startRunner,withRunnerLock} from "./lib/mhc-native-runner.mjs";
 import {serviceContext,startV2,advanceV2,reviewWorkOrderV2,applyReviewV2,statusV2,editorialRepairV2,requestEditorialV2,migrateCurrentV2,reopenReviewV2} from "./lib/mhc-v2-service.mjs";
 import {runAuthorSession} from './lib/mhc-v2-author-session.mjs';
+import {recoverClientUpgrade} from './lib/mhc-v2-client-upgrade.mjs';
 
 const json=async file=>JSON.parse(await readFile(file,"utf8"));
 let activePipeline=null;
@@ -32,6 +33,7 @@ async function main(){
     result=await withRunnerLock(ctx,async()=>{
       const service=await serviceContext(ctx);
       if(command==='author-run')return runAuthorSession(service,{lane:option(args,'--lane'),codexExecutable:option(args,'--codex-executable')});
+      if(command==='recover-client-upgrade')return recoverClientUpgrade(service,option(args,'--reading'),option(args,'--prior-codex'),option(args,'--codex-executable'));
       if(command==='spark'||command==='luna')return startV2(service,command);
       if(command==='advance')return advanceV2(service,option(args,'--reading'),option(args,'--session'));
       if(command==='status')return statusV2(service);

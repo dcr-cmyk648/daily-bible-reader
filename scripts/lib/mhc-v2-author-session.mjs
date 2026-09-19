@@ -6,6 +6,7 @@ import {startV2,advanceV2,sourceInput} from './mhc-v2-service.mjs';
 import {MODELS,digestObject} from './mhc-v2.mjs';
 import {atomicJson,confined,maybeJson,readJson,loadJob,appendState} from './mhc-v2-store.mjs';
 import {sparkModelUnavailable} from './mhc-v2-model-errors.mjs';
+import {sha256} from './mhc-pipeline.mjs';
 
 const authorActions=new Set(['author_candidate','repair_candidate']);
 const effort=lane=>lane==='spark'?'medium':'low';
@@ -116,7 +117,13 @@ export async function runAuthorSession(ctx,{lane,codexExecutable},dependencies={
     if(remaining<15000)return checkpointTransport(ctx,work,'V2_TRANSPORT_DEADLINE',clock());
     const session=work.advanceArgv.at(-1),root=await confined(ctx.jobRoot,work.readingId,{missing:false});
     const baseKey=digestObject({session,packet:packet.packet_id,submissions:work.totalSubmissions});
-    const job=await loadJob(root),recovery=job.state.history.findLast(e=>e.kind==='unstarted_transport_recovered'&&e.execution_key===baseKey);
+    const job=await loadJob(root),recovery=job.state.history.findLast(e=>['unstarted_transport_recovered','client_upgrade_recovered'].includes(e.kind)&&e.execution_key===baseKey);
+    if(recovery?.kind==='client_upgrade_recovered'&&(codexExecutable!==recovery.executable.path||sha256(await readFile(codexExecutable))!==recovery.executable.sha256))throw Error('V2_CLIENT_RECOVERY_EXECUTABLE_CHANGED');
+    if(recovery?.kind==='client_upgrade_recovered'){
+      const prior=await readJson(await confined(root,`model-executions/${baseKey}/result.json`,{missing:false}));
+      const events=await readFile(await confined(root,`model-executions/${baseKey}/events.jsonl`,{missing:false}),'utf8');
+      if(digestObject(prior)!==recovery.record_sha256||digestObject(events)!==recovery.events_sha256)throw Error('V2_CLIENT_RECOVERY_PROOF_CHANGED');
+    }
     const key=recovery?digestObject({original_execution:baseKey,recovery_sha256:digestObject(recovery)}):baseKey;
     const relative=`model-executions/${key}`,recordPath=await confined(root,`${relative}/result.json`);
     let record=await maybeJson(recordPath);

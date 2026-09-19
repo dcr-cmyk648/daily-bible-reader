@@ -85,6 +85,16 @@ does not create fallback eligibility. This deliberately removes the ambiguous
 missed-primary inference from v2. Source/controller/permission failures require
 repair of their own cause rather than model substitution.
 
+For an exact provider rejection requiring a newer Codex client, an explicitly
+authorized operator may run the installed `recover-client-upgrade --reading ID
+--prior-codex OLD_EXECUTABLE --codex-executable NEW_EXECUTABLE` command. It requires
+zero submitted/accepted candidates, no response output, the exact failed current
+packet/session receipt, a distinct newer CLI binary, and no earlier client recovery.
+It preserves the failed bytes, deadlines and budgets, recording both executable
+hashes/versions and failure evidence. The next author invocation must use that
+exact new binary and unchanged failure evidence. It receives one distinct dispatch;
+scheduled tasks must not invoke this operator recovery or choose another model.
+
 One model still owns a chapter. An eligible Luna transfer retains the original
 Spark artifacts but uses Luna for that chapter. On reaching a new chapter, the
 controller hands it to its assigned owner, rather than asking Luna to author under

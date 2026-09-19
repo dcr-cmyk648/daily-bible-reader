@@ -13,8 +13,35 @@ import {writeFileSync} from 'node:fs';
 import {runAuthorSession,transportSchema,authorArguments,successfulModelResult,verifyPublicPacket,publicRepairDiagnostics} from '../scripts/lib/mhc-v2-author-session.mjs';
 import {recoverUnstartedTransport} from '../scripts/lib/mhc-v2-transport-recovery.mjs';
 import {sparkModelUnavailable} from '../scripts/lib/mhc-v2-model-errors.mjs';
+import {recoverClientUpgrade} from '../scripts/lib/mhc-v2-client-upgrade.mjs';
 
 const unavailableSparkEvents = () => JSON.stringify({type:'turn.failed',error:{message:JSON.stringify({type:'error',status:400,error:{type:'invalid_request_error',message:"The 'gpt-5.3-codex-spark' model is not supported when using Codex with a ChatGPT account."}})}})+'\n';
+
+test('explicit client upgrade recovers only a retained exact refusal with a newer bound binary and unchanged budgets',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1}),model=fabricatedModelRun();
+  const events=unavailableSparkEvents().replace('is not supported when using Codex with a ChatGPT account.','requires a newer version of Codex. Please upgrade to the latest app or CLI and try again.');
+  const options={lane:'spark',codexExecutable:process.execPath};
+  const failed=await runAuthorSession(ctx,options,{clock:()=>now,run:(bin,args,opts)=>args[0]==='exec'?{status:1,stdout:events}:model.run(bin,args,opts)});
+  assert.equal(failed.code,'V2_TRANSPORT_FAILED');
+  const root=path.join(ctx.jobRoot,'FAB-1'),before=await loadJob(root),key=(await readdir(path.join(root,'model-executions')))[0];
+  const recordPath=path.join(root,'model-executions',key,'result.json'),recordBytes=await readFile(recordPath);
+  const old=path.join(ctx.projectRoot,'FABRICATED-old-cli.exe');await writeFile(old,'FABRICATED OLD CLI');
+  const version=file=>({status:0,stdout:file===old?'codex-cli 0.141.0':'codex-cli 0.153.4'});
+  await assert.rejects(recoverClientUpgrade(ctx,'FAB-1',old,process.execPath,now,()=>({status:0,stdout:'codex-cli 0.141.0'})),/UPGRADE_REQUIRED/);
+  const eventsPath=path.join(root,'model-executions',key,'events.jsonl');
+  await writeFile(eventsPath,events+'{"type":"turn.completed"}\n');
+  await assert.rejects(recoverClientUpgrade(ctx,'FAB-1',old,process.execPath,now,version),/RECOVERY_PROOF/);
+  await writeFile(eventsPath,events);
+  const result=await recoverClientUpgrade(ctx,'FAB-1',old,process.execPath,now,version);
+  assert.equal(result.budgetsUnchanged,true);
+  const after=await loadJob(root);assert.deepEqual(after.state.sessions,before.state.sessions);assert.equal(after.state.total_submissions,0);
+  await assert.rejects(recoverClientUpgrade(ctx,'FAB-1',old,process.execPath,now,version),/NOT_ELIGIBLE/);
+  await writeFile(eventsPath,events+'\n');
+  await assert.rejects(runAuthorSession(ctx,options,{run:model.run,clock:()=>now}),/PROOF_CHANGED/);
+  await writeFile(eventsPath,events);
+  const complete=await runAuthorSession(ctx,options,{run:model.run,clock:()=>now});
+  assert.equal(complete.action,'review_handoff');assert.equal(model.calls,1);assert.deepEqual(await readFile(recordPath),recordBytes);
+});
 
 for(const expired of [false,true])test(`retained unsupported-Spark failure recovers without repeating dispatch (expired=${expired})`, async t=>{
   const {ctx,now}=await fixture(t,{verseCount:1}),normal=fabricatedModelRun();let calls=0;

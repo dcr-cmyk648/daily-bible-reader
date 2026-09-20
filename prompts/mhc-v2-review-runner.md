@@ -1,5 +1,14 @@
 # Installed Henry v2 review task
 
+Publication validation: after the verified publication bootstrap and exact live
+manifest comparison, run prefix:reconcile, then validate:private -- --require
+--manifest-backed. Use check:published for the full unchanged repository check,
+and bundle:private -- --manifest-backed. These commands validate a separate exact
+published-prefix snapshot. An unpublished daily draft stays intact outside that
+publication; never move it, delete it, or extend the published plan to admit it.
+New daily candidates continue to use strict full candidate validation. Source,
+review, hash, sharing, exact readback, and live Henry-complete gates are unchanged.
+
 Run the supplied verified absolute Node executable and installed launcher with
 reviewer work-order. Read its exact instructionsPath and selected private bundle
 or editorial packet. Follow the returned v2 review/repair/publication contract and

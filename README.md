@@ -23,6 +23,15 @@ The bridge starts on 2026-08-08 in `America/Detroit` and permits seven days of l
 
 ## Local development
 
+Private publication validation uses an exact snapshot of the manifest-backed prefix.
+After `prefix:reconcile`, run `validate:private -- --require --manifest-backed`.
+Henry publishers use `check:published` (the unchanged full `check` with this private
+validation scope) and `bundle:private -- --manifest-backed`. Interrupted future
+drafts in the shared store are preserved and excluded from that snapshot; they do
+not become ready or enter a bundle. A daily candidate still uses ordinary strict
+private validation and `npm run check` after its one-reading prefix extension.
+Missing or invalid published inputs, manifest gaps, and unreconciled plans fail.
+
 Requirements: Node 22 or newer. The browser app has no runtime framework; the exact build dependency is installed from the lockfile.
 
 ```sh

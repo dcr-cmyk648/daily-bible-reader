@@ -66,7 +66,8 @@
     "validate:private": "node scripts/validate-private-content.mjs",
     "bundle:private": "node scripts/build-private-content-bundle.mjs",
     "test": "node --test tests/*.test.js",
-    "check": "npm run safety && npm run validate && npm run validate:sources && npm run validate:private && npm test && npm run build && npm run verify:pages"
+    "check": "npm run safety && npm run validate && npm run validate:sources && npm run validate:private && npm test && npm run build && npm run verify:pages",
+    "check:published": "node scripts/check-published-content.mjs"
   },
   "engines": {
     "node": ">=22"

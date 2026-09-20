@@ -1,5 +1,20 @@
 # Daily content automation runbook
 
+Current publication isolation: the initial manifest-backed audit uses
+`npm run validate:private -- --require --manifest-backed` after `prefix:reconcile`.
+Do not let a retained unpublished draft block unrelated already-published work.
+The command constructs an exact published-prefix snapshot and runs the same full
+private validator against it, preserving all excluded files. Henry-only publishers
+run `npm run check:published` and `npm run bundle:private -- --manifest-backed`;
+the wrapper invokes the unchanged complete `npm run check`. Daily candidates use
+ordinary strict validation and `npm run check` after their single prefix extension.
+Never widen the published prefix to make an unrelated pending draft pass.
+
+On Cortan, the installed manager-approved offline bootstrap replaces the historical
+Mac fetch/worktree instructions below. The daily lane attaches a reviewed Henry
+layer or a verified complete-commentary link; it never waits for or starts Henry
+generation. The separate installed Henry controller owns authoring and review.
+
 This runbook operates the authorized current-through-T+7 lane. Every work order still authorizes exactly one reading and one atomic publication. A caught-up run prepares only the newly entering T+7 reading; a recovery run reevaluates after each successful exact readback and may drain earlier missing or stale readings sequentially until the eight-reading horizon is complete. It never runs inside the reader and never uses an OpenAI API key. Work in an isolated task worktree. A scheduled run may begin in a dirty shared checkout; leave it untouched, fetch and verify `origin/main`, and create a temporary worktree from that ref. Resolve the canonical checkout from the absolute Git common directory, then link the ignored private directories to its existing stores. Verify those targets before creating the ignored links; never create empty substitute stores. Do not generate or publish from the dirty shared checkout.
 
 ## 1. Resolve the exact work order

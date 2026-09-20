@@ -1,5 +1,28 @@
 # Project state
 
+## Publication isolation repair — September 20, 2026
+
+Today's Psalm 1 Henry layer had already completed authoring and review, but every
+publisher stopped because an unrelated unpublished Matthew 1 pair remained in the
+shared bridge directory. Reconciliation selected 45 published readings while strict
+directory validation saw 46 pairs. The pending approved registry upload has now
+completed; Matthew 1 is live and its named-reading health is ready. Psalm 1's exact
+approved layer has also been published with immutable metadata, exact-byte manifest
+readback, and live ready/Henry-complete verification. The controller received the
+genuine publication receipt. This is verified recovery, not yet an unattended trial.
+
+The repair adds a separate exact manifest-backed content snapshot for initial daily
+audits and Henry publication. It preserves pending drafts without admitting them,
+retains the strict candidate validator, and fails for missing/corrupt published
+inputs, manifest gaps, or an unreconciled plan. The full-check wrapper invokes the
+existing complete check sequence. Regression tests reproduce the interrupted-draft
+case and exercise the real validator's rejection of corrupt admitted metadata.
+
+The preparation buffer currently reaches September 22; recovery through actual
+Detroit T+7 (September 27) is ongoing. Do not infer full-horizon readiness from
+today's Henry repair or these tests. Release installation and scheduled proof are
+recorded separately after their actual completion.
+
 ## Cortan Henry runner repair — 2026-09-12
 
 The dedicated Henry repair is implemented and validated in the isolated `a25e/BibleApp` worktree at base `c960e12`; it is not committed, pushed, installed in the canonical project, or activated. The canonical checkout and its six migration edits, the dirty migration snapshot, original unfinished implementation, real private content, reviewed library artifacts, historical leases, and daily devotional automation were not modified. Henry automations remain paused.

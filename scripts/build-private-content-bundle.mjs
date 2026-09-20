@@ -26,7 +26,9 @@ function sha256(text) {
 }
 
 function validatePrivateInputs() {
-  const result = spawnSync(process.execPath, ["scripts/validate-private-content.mjs", "--require"], {
+  const args = ["scripts/validate-private-content.mjs", "--require"];
+  if (process.argv.includes("--manifest-backed")) args.push("--manifest-backed");
+  const result = spawnSync(process.execPath, args, {
     cwd: ROOT,
     encoding: "utf8"
   });

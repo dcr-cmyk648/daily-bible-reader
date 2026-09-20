@@ -7,6 +7,7 @@ import process from "node:process";
 import {fileURLToPath} from "node:url";
 import {assertSchemaValid} from "./lib/schema-validator.mjs";
 import {supportsSourceSetVersion, validateRegistryProvenance} from "./validate-source-registry.mjs";
+import {withPublishedContentSnapshot} from "./lib/published-content-snapshot.mjs";
 
 const ROOT = process.cwd();
 const REQUIRE_PRIVATE = process.argv.includes("--require");
@@ -172,12 +173,20 @@ export function verseMetadataMatchesEntry(entry, commentary) {
     : selectedVerseMatchesEntry(entry, commentary && commentary.verseOfTheDay);
 }
 
-async function main() {
+export async function validatePrivateContent({contentDir = CONTENT_DIR, manifestBacked = false} = {}) {
+  const CONTENT_DIR = contentDir;
   const hasPrivate = await exists(CONTENT_DIR) && await exists(REGISTRY_PATH);
   if (!hasPrivate) {
     if (REQUIRE_PRIVATE) fail("Private bridge content or research registry is missing.");
     process.stdout.write("Private content validation skipped (ignored local drafts are absent).\n");
     return;
+  }
+
+  if (manifestBacked) {
+    return withPublishedContentSnapshot({root: ROOT, consume: async ({contentDir, excludedCount}) => {
+      await validatePrivateContent({contentDir});
+      process.stdout.write(`Published snapshot validated; ${excludedCount} unadmitted local files preserved outside this publication.\n`);
+    }});
   }
 
   const [schema, sourceSchema, mhcRuntimeSchema, registry, plan] = await Promise.all([
@@ -403,7 +412,9 @@ async function main() {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  main().catch((error) => {
+  const scope = process.env.DBR_PRIVATE_VALIDATION_SCOPE;
+  if (scope && scope !== "manifest") throw new Error("PRIVATE_VALIDATION_SCOPE_INVALID");
+  validatePrivateContent({manifestBacked: process.argv.includes("--manifest-backed") || scope === "manifest"}).catch((error) => {
     process.stderr.write(`Private content validation failed: ${error.message}\n`);
     process.exitCode = 1;
   });

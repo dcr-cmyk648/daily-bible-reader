@@ -126,6 +126,15 @@
     view: "home"
   };
 
+  const privatePayloadRequests = createPrivatePayloadRequestTracker();
+  const commentaryRefresh = createCommentaryRefreshController({
+    refresh: () => revalidateOpenReading(state.currentEntry),
+    isActive: (readingId) => state.view === "reading" && state.currentEntry &&
+      state.currentEntry.readingId === readingId &&
+      (!root.document || root.document.visibilityState !== "hidden"),
+    onChange: renderCommentaryRefreshStatus
+  });
+
   function startupNow() {
     return root.performance && typeof root.performance.now === "function"
       ? Math.max(0, Math.round(root.performance.now()))
@@ -2799,7 +2808,8 @@
       !/^[a-f0-9]{64}$/.test(String(generation.contentHash || ""));
   }
 
-  async function persistPrivatePayload(readingId, payload) {
+  async function persistPrivatePayload(readingId, payload, request) {
+    if (request && !privatePayloadRequests.isCurrent(readingId, request)) return false;
     const previous = state.privatePayloadByReadingId.get(readingId);
     state.privatePayloadByReadingId.set(readingId, payload);
     const maxAgeSeconds = Number(state.config && state.config.privateContentCacheMaxAgeSeconds || 0);
@@ -2814,6 +2824,8 @@
         payload
       });
     }
+    if (request && !privatePayloadRequests.isCurrent(readingId, request)) return false;
+    commentaryRefresh.confirm(readingId);
     if (previous && privatePayloadRevision(previous) !== privatePayloadRevision(payload) &&
         state.view === "reading" && state.currentEntry && state.currentEntry.readingId === readingId) {
       const commentary = payload && (payload.commentary || payload.metadata);
@@ -2823,6 +2835,7 @@
         setSyncStatus("Study updated to the newest version");
       }
     }
+    return true;
   }
 
   function mayUseOfflineFallback(error) {
@@ -2902,15 +2915,144 @@
       throw appError("This reading has not been downloaded and secure access is not yet confirmed.", "OFFLINE_CONTENT_UNAVAILABLE");
     }
     try {
+      const request = privatePayloadRequests.begin([readingId]);
       const payload = await state.adapter.getReadingPayload(readingId);
-      await persistPrivatePayload(readingId, payload);
-      return {payload, source: "network"};
+      const accepted = await persistPrivatePayload(readingId, payload, request);
+      return {payload: accepted ? payload : state.privatePayloadByReadingId.get(readingId) || payload,
+        source: accepted ? "network" : "cache"};
     } catch (error) {
       if (!mayUseOfflineFallback(error)) throw error;
       const fallback = await cachedPrivatePayload(readingId);
       if (!fallback) throw error;
       return {payload: fallback, source: "cache"};
     }
+  }
+
+  function createPrivatePayloadRequestTracker() {
+    const latest = new Map();
+    return {
+      begin(readingIds) {
+        const request = {};
+        for (const readingId of readingIds) latest.set(readingId, request);
+        return request;
+      },
+      isCurrent(readingId, request) { return latest.get(readingId) === request; },
+      clear() { latest.clear(); }
+    };
+  }
+
+  function createCommentaryRefreshController(options) {
+    const delays = options.retryDelays || [5000, 15000, 30000];
+    const now = options.now || Date.now;
+    const setTimer = options.setTimer || ((callback, delay) => root.setTimeout(callback, delay));
+    const clearTimer = options.clearTimer || ((timer) => root.clearTimeout(timer));
+    let current = {readingId: null, phase: "idle", attempt: 0, checkedAt: null};
+    let timer = null;
+    let pending = null;
+    let epoch = 0;
+    function emit(values) {
+      current = {...current, ...values};
+      options.onChange({...current});
+    }
+    function cancelTimer() {
+      if (timer !== null) clearTimer(timer);
+      timer = null;
+    }
+    function clear() {
+      epoch += 1;
+      cancelTimer();
+      pending = null;
+      current = {readingId: null, phase: "idle", attempt: 0, checkedAt: null};
+      options.onChange({...current});
+    }
+    function select(readingId) {
+      if (current.readingId === readingId) return;
+      clear();
+      if (readingId) emit({readingId, phase: "saved"});
+    }
+    function confirm(readingId) {
+      if (!readingId || current.readingId !== readingId) return;
+      epoch += 1;
+      cancelTimer();
+      emit({phase: "confirmed", attempt: 0, checkedAt: now()});
+    }
+    function pause() {
+      cancelTimer();
+      if (current.phase === "retrying") emit({phase: "saved"});
+    }
+    function request(restart = true) {
+      const readingId = current.readingId;
+      if (!readingId || !options.isActive(readingId)) return Promise.resolve({state: "inactive"});
+      if (pending) return pending;
+      cancelTimer();
+      const token = ++epoch;
+      emit({phase: "checking", attempt: restart ? 1 : current.attempt + 1});
+      const run = Promise.resolve().then(() => options.refresh(readingId)).catch(() => ({state: "failed"}))
+        .then((result) => {
+          if (token !== epoch || current.readingId !== readingId) return result;
+          if (result.state === "refreshed") confirm(readingId);
+          else if (result.state === "denied" || result.state === "inactive") clear();
+          else if (result.state === "retryable" && delays[current.attempt - 1] !== undefined &&
+              options.isActive(readingId)) {
+            emit({phase: "retrying"});
+            timer = setTimer(() => {
+              timer = null;
+              return request(false);
+            }, delays[current.attempt - 1]);
+          } else emit({phase: result.state === "retryable" && !options.isActive(readingId) ? "saved" : "failed"});
+          return result;
+        }).finally(() => { if (pending === run) pending = null; });
+      pending = run;
+      return run;
+    }
+    return {select, confirm, pause, clear, request, snapshot: () => ({...current})};
+  }
+
+  function commentaryRefreshPresentation(snapshot) {
+    const phases = {
+      saved: "Commentary update not yet checked",
+      checking: "Checking commentary for updates…",
+      retrying: "Saved commentary · retrying update check…",
+      failed: "Saved commentary · couldn’t check for updates"
+    };
+    const checkedTime = snapshot.checkedAt === null ? "" : new Intl.DateTimeFormat(undefined, {
+      hour: "numeric", minute: "2-digit"
+    }).format(new Date(snapshot.checkedAt));
+    return {
+      text: snapshot.phase === "confirmed" ? `Commentary checked at ${checkedTime}` :
+        (phases[snapshot.phase] || "") + (checkedTime ? ` · last checked at ${checkedTime}` : ""),
+      retryVisible: ["saved", "retrying", "failed"].includes(snapshot.phase)
+    };
+  }
+
+  function renderCommentaryRefreshStatus(snapshot) {
+    if (!root.document) return;
+    let container = element("commentaryRefreshStatus");
+    if (!container && snapshot.readingId) {
+      const rationale = element("readingRationale");
+      if (!rationale) return;
+      // Create this in code so the current reader also works in retained PWA HTML.
+      container = root.document.createElement("div");
+      container.id = "commentaryRefreshStatus";
+      container.className = "commentary-refresh-status";
+      const message = root.document.createElement("span");
+      message.id = "commentaryRefreshMessage";
+      message.setAttribute("role", "status");
+      message.setAttribute("aria-live", "polite");
+      const retry = root.document.createElement("button");
+      retry.id = "retryCommentaryRefresh";
+      retry.type = "button";
+      retry.textContent = "Retry commentary";
+      retry.addEventListener("click", () => retryOpenReadingSync().catch(() => {}));
+      container.append(message, retry);
+      rationale.insertAdjacentElement("afterend", container);
+    }
+    if (!container) return;
+    container.hidden = !snapshot.readingId;
+    container.dataset.state = snapshot.phase;
+    const presentation = commentaryRefreshPresentation(snapshot);
+    element("commentaryRefreshMessage").textContent = presentation.text;
+    element("retryCommentaryRefresh").hidden = !presentation.retryVisible;
   }
 
   async function revalidateOpenReading(entry) {
@@ -2924,20 +3066,21 @@
       if (access === null) return {state: "denied"};
       if (!access) return {state: "retryable"};
       try {
+        const request = privatePayloadRequests.begin([entry.readingId]);
         const payload = await state.adapter.getReadingPayload(entry.readingId);
         const commentary = payload && (payload.commentary || payload.metadata);
         if (!commentary || commentary.readingId !== entry.readingId) {
           throw appError("Private commentary did not match the selected reading.", "CONTENT_MISMATCH");
         }
-        await persistPrivatePayload(entry.readingId, payload);
-        return {state: "refreshed"};
+        const accepted = await persistPrivatePayload(entry.readingId, payload, request);
+        return {state: accepted ? "refreshed" : "retryable"};
       } catch (error) {
         if (explicitAccessFailure(error)) {
           state.serverAccessConfirmed = false;
           handleFatalError(error);
           return {state: "denied"};
         }
-        return {state: "retryable"};
+        return {state: transportFailure(error) ? "retryable" : "failed"};
       }
     };
     const pending = run();
@@ -3252,10 +3395,11 @@
       try {
         let pending = state.privatePayloadRequestByReadingId.get(day.entry.readingId);
         if (!pending) {
+          const request = privatePayloadRequests.begin([day.entry.readingId]);
           pending = state.adapter.getReadingPayload(day.entry.readingId)
             .then(async (result) => {
-              await persistPrivatePayload(day.entry.readingId, result);
-              return result;
+              const accepted = await persistPrivatePayload(day.entry.readingId, result, request);
+              return accepted ? result : state.privatePayloadByReadingId.get(day.entry.readingId) || result;
             })
             .finally(() => state.privatePayloadRequestByReadingId.delete(day.entry.readingId));
           state.privatePayloadRequestByReadingId.set(day.entry.readingId, pending);
@@ -3726,6 +3870,7 @@
 
   function showHome(options) {
     state.view = "home";
+    commentaryRefresh.clear();
     state.currentEntry = null;
     state.currentLibraryResource = null;
     state.scriptureRequestToken += 1;
@@ -3771,6 +3916,7 @@
   function renderReadingShell(schedule, options) {
     const entry = schedule.selectedEntry;
     state.currentEntry = entry;
+    commentaryRefresh.select(!schedule.locked && hasPreparedReading(entry) ? entry.readingId : null);
     state.currentLibraryResource = schedule.libraryMode && options && options.libraryResource || null;
     state.currentScripture = null;
     state.currentVerseCommentary = null;
@@ -3878,7 +4024,8 @@
       ? state.currentEntry
       : null;
     if (!entry) return Promise.resolve({state: "not_open"});
-    return revalidateOpenReading(entry).then((refresh) => {
+    commentaryRefresh.select(entry.readingId);
+    return commentaryRefresh.request().then((refresh) => {
       if (!state.currentEntry || state.currentEntry.readingId !== entry.readingId || refresh.state === "denied") return refresh;
       if (refresh.state === "refreshed") setSyncStatus("Reading synchronized");
       else if (refresh.state === "retryable") setSyncStatus("Saved reading shown · secure sync retry available");
@@ -3898,7 +4045,9 @@
       try {
         // Cached bytes paint immediately, but today and tomorrow are always revalidated
         // after authorization so a private-content revision cannot remain hidden behind the offline retention window.
-        const batch = await state.adapter.getReadingPayloads(entries.map((entry) => entry.readingId));
+        const readingIds = entries.map((entry) => entry.readingId);
+        const request = privatePayloadRequests.begin(readingIds);
+        const batch = await state.adapter.getReadingPayloads(readingIds);
         if (!batch || batch.planVersion !== state.plan.planVersion ||
             !batch.payloads || typeof batch.payloads !== "object") {
           throw appError("Priority reading batch did not match the active plan.", "CONTENT_MISMATCH");
@@ -3909,7 +4058,7 @@
           if (!commentary || commentary.readingId !== entry.readingId) {
             throw appError("Priority reading batch contained mismatched content.", "CONTENT_MISMATCH");
           }
-          await persistPrivatePayload(entry.readingId, payload);
+          await persistPrivatePayload(entry.readingId, payload, request);
         }
       } catch {
         // The cached priority payload and normal reading loader remain available offline.
@@ -3980,27 +4129,30 @@
         // authorization so a newly reviewed synthesis or Henry runtime replaces an
         // older cached placeholder without waiting for its retention age to expire.
         const readingIds = preparedEntries.map((entry) => entry.readingId);
+        const request = privatePayloadRequests.begin(readingIds);
         const batch = await state.adapter.getReadingPayloads(readingIds);
         if (!batch || batch.planVersion !== state.plan.planVersion ||
             !batch.payloads || typeof batch.payloads !== "object") {
           throw appError("Offline reading batch did not match the active plan.", "CONTENT_MISMATCH");
         }
         contentCount = 0;
+        let acceptedCompleteBatch = true;
         for (const entry of preparedEntries) {
           const payload = batch.payloads[entry.readingId];
           const commentary = payload && (payload.commentary || payload.metadata);
           if (!commentary || commentary.readingId !== entry.readingId) {
             throw appError("Offline reading batch contained mismatched content.", "CONTENT_MISMATCH");
           }
-          await persistPrivatePayload(entry.readingId, payload);
-          payloadByReadingId.set(entry.readingId, payload);
-          contentCount += 1;
+          const accepted = await persistPrivatePayload(entry.readingId, payload, request);
+          acceptedCompleteBatch = acceptedCompleteBatch && accepted;
+          const current = accepted ? payload : state.privatePayloadByReadingId.get(entry.readingId);
+          if (current) { payloadByReadingId.set(entry.readingId, current); contentCount += 1; }
         }
         // Only this complete authenticated batch may drive the preparation
         // warning. The priority warmer intentionally contains today and
         // tomorrow only, and a retained cache is an offline display fallback,
         // not publication-readiness authority.
-        authenticatedPayloadWindow = true;
+        authenticatedPayloadWindow = acceptedCompleteBatch;
       } catch {
         // A stale or partial retained pack is still available for offline reading,
         // but it cannot establish the live preparation horizon.
@@ -4489,6 +4641,8 @@
     button.textContent = "Clear downloaded data";
     button.removeAttribute("aria-label");
     const credential = await state.store.get("deviceCredentials", "reader-code");
+    privatePayloadRequests.clear();
+    commentaryRefresh.clear();
     await state.store.clearAll();
     if (credential && credential.readerCode) await state.store.put("deviceCredentials", credential);
     element("commentBody").value = "";
@@ -4543,7 +4697,8 @@
 
   function resumeOnlineWork() {
     if (state.adapter && state.adapter.kind === "apps-script" && !state.serverAccessConfirmed && state.plan && state.session) {
-      recoverServerAccess().then((access) => {
+      if (state.view === "reading") retryOpenReadingSync().catch(() => {});
+      else recoverServerAccess().then((access) => {
         if (access === true) resumeOnlineWork();
       }).catch(() => {});
       return;
@@ -4621,11 +4776,14 @@
     root.addEventListener("pageshow", resumeApplication);
     root.document.addEventListener("visibilitychange", () => {
       if (root.document.visibilityState === "visible") resumeApplication();
+      else commentaryRefresh.pause();
     });
     root.addEventListener("offline", () => setSyncStatus("Offline · drafts remain local"));
   }
 
   function showReaderCodeGate(error) {
+    privatePayloadRequests.clear();
+    commentaryRefresh.clear();
     if (root.DBRBoot && typeof root.DBRBoot.ready === "function") root.DBRBoot.ready();
     element("appMain").hidden = true;
     element("readerCodeGate").hidden = false;
@@ -4718,6 +4876,8 @@
   }
 
   async function clearPrivateDataAfterAccessFailure() {
+    privatePayloadRequests.clear();
+    commentaryRefresh.clear();
     await state.store.clearAll();
     state.readerCode = "";
     state.bootstrap = null;
@@ -4978,6 +5138,9 @@
     commentStoreFailure,
     createRequestId,
     createBrowserStore,
+    createCommentaryRefreshController,
+    createPrivatePayloadRequestTracker,
+    commentaryRefreshPresentation,
     dateOnlyForDay,
     datePartsInTimeZone,
     evaluateContentReadiness,

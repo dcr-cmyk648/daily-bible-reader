@@ -1,5 +1,42 @@
 # Project state
 
+## Commentary refresh recovery — September 20, 2026
+
+The reader now retries a transient open-reading commentary check after 5, 15 and
+30 seconds, with a limit of three automatic retries. Concurrent checks share one
+request. Leaving the reading or losing access cancels its work; a hidden reader
+pauses queued retries and checks again on resume. Integrity/content errors do not
+become transport retries. A separate indicator under the reading title reports
+the last successful commentary check, pending recovery or an unresolved failure,
+with a direct Retry commentary control. Discussion synchronization cannot replace
+that indicator. The element is created by the application code so retained PWA
+HTML remains compatible.
+
+Mobile browser fault injection exposed an additional race during this change:
+an earlier background download could arrive after a failed newer check, report
+itself as fresh and cancel the new retry. Every private-reading request now has an
+in-memory per-reading identity. Superseded responses cannot replace newer accepted
+content or confirm its freshness, and credential/cache resets invalidate pending
+downloads. This changes no IndexedDB schema, stored record format, retention
+policy, authentication, RPC contract, service-worker logic or Apps Script backend.
+
+The final local release gate passed **459 tests**, including 13 behavioral refresh
+regressions, source/private/schema/safety checks, all builds and exact immutable
+asset checks. Frontend `e5afc23ca3f9e514` and PWA `438d40c45f87e726` preserve
+all prior published releases. A 390-pixel authenticated candidate-browser check
+started with simulated missing Psalm 1 Henry, failed the update request, completed
+a fabricated discussion refresh, and then recovered all six Henry verse popups
+automatically without another user action. The warning remained visible until
+the fresh payload arrived, with no page errors or horizontal overflow. Private
+diagnostic evidence is under ignored automation staging; no discussion content
+was read or live private content changed.
+
+The ordinary devotional and Henry service runtimes remain pinned to their accepted
+`3b300b2` release. This is a reader-only delivery change; it does not require
+repinning those independent preparation services. September 20–27 preparation
+and today's published Psalm 1 layer were verified in the preceding recovery;
+older partial-horizon paragraphs below are historical.
+
 ## Publication isolation repair — September 20, 2026
 
 Today's Psalm 1 Henry layer had already completed authoring and review, but every

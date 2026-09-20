@@ -23,6 +23,11 @@ The bridge starts on 2026-08-08 in `America/Detroit` and permits seven days of l
 
 ## Local development
 
+An open reading checks its saved commentary against the private service and retries
+transient failures up to three times. Its separate commentary status records the
+last successful check and keeps an unresolved warning visible while discussion
+sync continues. Older overlapping responses cannot replace a newer accepted study.
+
 Private publication validation uses an exact snapshot of the manifest-backed prefix.
 After `prefix:reconcile`, run `validate:private -- --require --manifest-backed`.
 Henry publishers use `check:published` (the unchanged full `check` with this private

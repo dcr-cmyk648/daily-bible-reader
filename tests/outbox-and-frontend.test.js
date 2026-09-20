@@ -1071,7 +1071,8 @@ test("today and tomorrow are the only priority warm readings", () => {
     source.indexOf("async function warmPriorityWindow()"),
     source.indexOf("async function prefetchOfflineWindow()")
   );
-  assert.match(priorityWarmSource, /getReadingPayloads\(entries\.map\(\(entry\) => entry\.readingId\)\)/);
+  assert.match(priorityWarmSource, /const readingIds = entries\.map\(\(entry\) => entry\.readingId\)/);
+  assert.match(priorityWarmSource, /getReadingPayloads\(readingIds\)/);
   assert.match(priorityWarmSource, /private-content revision cannot remain hidden behind the offline retention window/);
   assert.doesNotMatch(priorityWarmSource, /renderContentReadiness\(/);
   assert.match(priorityWarmSource, /scripturePrefetchPassageIndex\(entry, state\.plan\.bookMetrics, state\.policy\)/);
@@ -1086,7 +1087,8 @@ test("today and tomorrow are the only priority warm readings", () => {
   assert.match(offlineWarmSource, /preparedEntries\.map\(\(entry\) => entry\.readingId\)/);
   assert.match(offlineWarmSource, /Revalidate the whole current-plus-seven window/);
   assert.match(offlineWarmSource, /let authenticatedPayloadWindow = false/);
-  assert.match(offlineWarmSource, /authenticatedPayloadWindow = true/);
+  assert.match(offlineWarmSource, /authenticatedPayloadWindow = acceptedCompleteBatch/);
+  assert.match(offlineWarmSource, /acceptedCompleteBatch = acceptedCompleteBatch && accepted/);
   assert.match(offlineWarmSource, /if \(authenticatedPayloadWindow\) \{\s*renderContentReadiness\(currentContentReadiness\(payloadByReadingId\)\)/);
   assert.match(offlineWarmSource, /scriptureRetentionTargetCount/);
   assert.match(offlineWarmSource, /keep the first chapter ready and stream later chapters/);
@@ -1420,7 +1422,7 @@ test("cached readings paint first, then use one confirmed recovery to rerender a
   assert.match(cacheFlow, /const access = await recoverServerAccess\(\);/);
   assert.doesNotMatch(revalidation, /navigator\.onLine/);
   assert.match(revalidation, /state\.readingRevalidationById\.get\(entry\.readingId\)/);
-  assert.match(revalidation, /await persistPrivatePayload\(entry\.readingId, payload\);/);
+  assert.match(revalidation, /await persistPrivatePayload\(entry\.readingId, payload, request\);/);
   assert.doesNotMatch(revalidation, /renderCommentary\(/);
   assert.match(revalidation, /if \(explicitAccessFailure\(error\)\) \{\s*state\.serverAccessConfirmed = false;\s*handleFatalError\(error\);\s*return \{state: "denied"\};/);
   assert.match(loadReading, /setSyncStatus\("Saved reading shown · checking for updates"\)/);
@@ -1447,6 +1449,7 @@ test("a synchronized Henry revision reaches the active verse panel after comment
   };
   const sandbox = {
     state, newPayload, privatePayloadRevision: app.privatePayloadRevision,
+    commentaryRefresh: {confirm() {}},
     renderCommentary(value) { rendered = value; },
     highlightContext() { return {readingId: rendered.readingId, verseCommentary: rendered.verseCommentary}; },
     setSyncStatus() {}

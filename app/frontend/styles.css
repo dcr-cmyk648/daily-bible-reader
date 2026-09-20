@@ -1880,3 +1880,18 @@ input[type="password"] {
     animation-iteration-count: 1 !important;
   }
 }
+
+.commentary-refresh-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-top: 0.75rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.commentary-refresh-status[hidden] { display: none; }
+.commentary-refresh-status button { min-height: 44px; padding: 0.4rem 0.65rem; font-size: inherit; }
+.commentary-refresh-status[data-state="failed"],
+.commentary-refresh-status[data-state="retrying"] { color: var(--accent); }

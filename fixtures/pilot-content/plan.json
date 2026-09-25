@@ -1064,6 +1064,629 @@
           ]
         }
       ]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 42,
+      "civilDate": "2026-09-18",
+      "readingId": "LTP-0003-GEN-002",
+      "kind": "chapter",
+      "bookId": "GEN",
+      "streamId": "old_testament",
+      "streamSequence": 3,
+      "unitLabel": "Genesis 2",
+      "chapter": 2,
+      "passages": [
+        {
+          "bookId": "GEN",
+          "chapter": 2,
+          "verseCount": 25
+        }
+      ],
+      "orderingRationale": "Genesis opens the plan because its creation, fall, flood, and patriarchal narrative supplies the canonical and historical frame for the remaining Bible.",
+      "chronologyBasis": "event",
+      "confidence": "high",
+      "notes": "One complete canonical chapter.",
+      "sourceIds": [
+        "bible_api_web_structure_2026_08_26",
+        "tgc_old_testament_order_2026_08_26",
+        "tgc_historical_books_2026_08_26"
+      ],
+      "streamContributions": [
+        {
+          "streamId": "old_testament",
+          "streamSequence": 3,
+          "kind": "chapter",
+          "bookId": "GEN",
+          "chapter": 2,
+          "passages": [
+            {
+              "bookId": "GEN",
+              "chapter": 2,
+              "verseCount": 25
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 43,
+      "civilDate": "2026-09-19",
+      "readingId": "LTP-0004-PSA-INTRO",
+      "kind": "book_intro",
+      "bookId": "PSA",
+      "streamId": "psalms",
+      "streamSequence": 1,
+      "unitLabel": "Psalms overview",
+      "representativeVerse": {
+        "bookId": "PSA",
+        "chapter": 23,
+        "verse": 1
+      },
+      "orderingRationale": "Psalms retain canonical order unless a later review adopts a well-supported historical placement.",
+      "chronologyBasis": "traditional",
+      "confidence": "medium",
+      "notes": "Review-only book introduction; page 2 is the portable overview and page 3 centers the book's historical, canonical, and contextual fit.",
+      "sourceIds": [
+        "bible_api_web_structure_2026_08_26",
+        "tgc_old_testament_order_2026_08_26"
+      ],
+      "streamContributions": [
+        {
+          "streamId": "psalms",
+          "streamSequence": 1,
+          "kind": "book_intro",
+          "bookId": "PSA",
+          "representativeVerse": {
+            "bookId": "PSA",
+            "chapter": 23,
+            "verse": 1
+          }
+        }
+      ]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 44,
+      "civilDate": "2026-09-20",
+      "readingId": "LTP-0005-PSA-001",
+      "kind": "chapter",
+      "bookId": "PSA",
+      "streamId": "psalms",
+      "streamSequence": 2,
+      "unitLabel": "Psalms 1",
+      "chapter": 1,
+      "passages": [
+        {
+          "bookId": "PSA",
+          "chapter": 1,
+          "verseCount": 6
+        }
+      ],
+      "orderingRationale": "Psalms retain canonical order unless a later review adopts a well-supported historical placement.",
+      "chronologyBasis": "traditional",
+      "confidence": "medium",
+      "notes": "One complete canonical chapter.",
+      "sourceIds": [
+        "bible_api_web_structure_2026_08_26",
+        "tgc_old_testament_order_2026_08_26"
+      ],
+      "contextReadingIds": [
+        "LTP-0004-PSA-INTRO"
+      ],
+      "streamContributions": [
+        {
+          "streamId": "psalms",
+          "streamSequence": 2,
+          "kind": "chapter",
+          "bookId": "PSA",
+          "chapter": 1,
+          "passages": [
+            {
+              "bookId": "PSA",
+              "chapter": 1,
+              "verseCount": 6
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 45,
+      "civilDate": "2026-09-21",
+      "readingId": "LTP-0006-MAT-INTRO",
+      "kind": "book_intro",
+      "bookId": "MAT",
+      "streamId": "new_testament",
+      "streamSequence": 1,
+      "unitLabel": "Matthew overview",
+      "representativeVerse": {
+        "bookId": "MAT",
+        "chapter": 28,
+        "verse": 19
+      },
+      "orderingRationale": "Matthew begins the NT stream with Jesus' life and commission.",
+      "chronologyBasis": "event",
+      "confidence": "high",
+      "notes": "Review-only book introduction; page 2 is the portable overview and page 3 centers the book's historical, canonical, and contextual fit.",
+      "sourceIds": [
+        "bible_api_web_structure_2026_08_26",
+        "tgc_new_testament_order_2026_08_26"
+      ],
+      "streamContributions": [
+        {
+          "streamId": "new_testament",
+          "streamSequence": 1,
+          "kind": "book_intro",
+          "bookId": "MAT",
+          "representativeVerse": {
+            "bookId": "MAT",
+            "chapter": 28,
+            "verse": 19
+          }
+        }
+      ]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 46,
+      "civilDate": "2026-09-22",
+      "readingId": "LTP-0007-MAT-001",
+      "kind": "chapter",
+      "bookId": "MAT",
+      "streamId": "new_testament",
+      "streamSequence": 2,
+      "unitLabel": "Matthew 1",
+      "chapter": 1,
+      "passages": [
+        {
+          "bookId": "MAT",
+          "chapter": 1,
+          "verseCount": 25
+        }
+      ],
+      "orderingRationale": "Matthew begins the NT stream with Jesus' life and commission.",
+      "chronologyBasis": "event",
+      "confidence": "high",
+      "notes": "One complete canonical chapter.",
+      "sourceIds": [
+        "bible_api_web_structure_2026_08_26",
+        "tgc_new_testament_order_2026_08_26"
+      ],
+      "contextReadingIds": [
+        "LTP-0006-MAT-INTRO"
+      ],
+      "streamContributions": [
+        {
+          "streamId": "new_testament",
+          "streamSequence": 2,
+          "kind": "chapter",
+          "bookId": "MAT",
+          "chapter": 1,
+          "passages": [
+            {
+              "bookId": "MAT",
+              "chapter": 1,
+              "verseCount": 25
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 47,
+      "civilDate": "2026-09-23",
+      "readingId": "LTP-0008-GEN-003",
+      "kind": "chapter",
+      "bookId": "GEN",
+      "streamId": "old_testament",
+      "streamSequence": 4,
+      "unitLabel": "Genesis 3",
+      "chapter": 3,
+      "passages": [
+        {
+          "bookId": "GEN",
+          "chapter": 3,
+          "verseCount": 24
+        }
+      ],
+      "orderingRationale": "Genesis opens the plan because its creation, fall, flood, and patriarchal narrative supplies the canonical and historical frame for the remaining Bible.",
+      "chronologyBasis": "event",
+      "confidence": "high",
+      "notes": "One complete canonical chapter.",
+      "sourceIds": [
+        "bible_api_web_structure_2026_08_26",
+        "tgc_old_testament_order_2026_08_26",
+        "tgc_historical_books_2026_08_26"
+      ],
+      "streamContributions": [
+        {
+          "streamId": "old_testament",
+          "streamSequence": 4,
+          "kind": "chapter",
+          "bookId": "GEN",
+          "chapter": 3,
+          "passages": [
+            {
+              "bookId": "GEN",
+              "chapter": 3,
+              "verseCount": 24
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 48,
+      "civilDate": "2026-09-24",
+      "readingId": "LTP-0009-GEN-004",
+      "kind": "chapter",
+      "bookId": "GEN",
+      "streamId": "old_testament",
+      "streamSequence": 5,
+      "unitLabel": "Genesis 4",
+      "chapter": 4,
+      "passages": [
+        {
+          "bookId": "GEN",
+          "chapter": 4,
+          "verseCount": 26
+        }
+      ],
+      "orderingRationale": "Genesis opens the plan because its creation, fall, flood, and patriarchal narrative supplies the canonical and historical frame for the remaining Bible.",
+      "chronologyBasis": "event",
+      "confidence": "high",
+      "notes": "One complete canonical chapter.",
+      "sourceIds": [
+        "bible_api_web_structure_2026_08_26",
+        "tgc_old_testament_order_2026_08_26",
+        "tgc_historical_books_2026_08_26"
+      ],
+      "streamContributions": [
+        {
+          "streamId": "old_testament",
+          "streamSequence": 5,
+          "kind": "chapter",
+          "bookId": "GEN",
+          "chapter": 4,
+          "passages": [
+            {
+              "bookId": "GEN",
+              "chapter": 4,
+              "verseCount": 26
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 49,
+      "civilDate": "2026-09-25",
+      "readingId": "LTP-0010-GEN-005",
+      "kind": "chapter",
+      "bookId": "GEN",
+      "streamId": "old_testament",
+      "streamSequence": 6,
+      "unitLabel": "Genesis 5",
+      "chapter": 5,
+      "passages": [
+        {
+          "bookId": "GEN",
+          "chapter": 5,
+          "verseCount": 32
+        }
+      ],
+      "orderingRationale": "Genesis opens the plan because its creation, fall, flood, and patriarchal narrative supplies the canonical and historical frame for the remaining Bible.",
+      "chronologyBasis": "event",
+      "confidence": "high",
+      "notes": "One complete canonical chapter.",
+      "sourceIds": [
+        "bible_api_web_structure_2026_08_26",
+        "tgc_old_testament_order_2026_08_26",
+        "tgc_historical_books_2026_08_26"
+      ],
+      "streamContributions": [
+        {
+          "streamId": "old_testament",
+          "streamSequence": 6,
+          "kind": "chapter",
+          "bookId": "GEN",
+          "chapter": 5,
+          "passages": [
+            {
+              "bookId": "GEN",
+              "chapter": 5,
+              "verseCount": 32
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 50,
+      "civilDate": "2026-09-26",
+      "readingId": "LTP-0011-PRO-INTRO",
+      "kind": "book_intro",
+      "bookId": "PRO",
+      "streamId": "proverbs",
+      "streamSequence": 1,
+      "unitLabel": "Proverbs overview",
+      "representativeVerse": {
+        "bookId": "PRO",
+        "chapter": 3,
+        "verse": 5
+      },
+      "orderingRationale": "Proverbs retain canonical chapter order as coherent bounded units.",
+      "chronologyBasis": "traditional",
+      "confidence": "medium",
+      "notes": "Review-only book introduction; page 2 is the portable overview and page 3 centers the book's historical, canonical, and contextual fit.",
+      "sourceIds": [
+        "bible_api_web_structure_2026_08_26",
+        "tgc_old_testament_order_2026_08_26"
+      ],
+      "streamContributions": [
+        {
+          "streamId": "proverbs",
+          "streamSequence": 1,
+          "kind": "book_intro",
+          "bookId": "PRO",
+          "representativeVerse": {
+            "bookId": "PRO",
+            "chapter": 3,
+            "verse": 5
+          }
+        }
+      ]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 51,
+      "civilDate": "2026-09-27",
+      "readingId": "LTP-0012-PSA-002",
+      "kind": "chapter",
+      "bookId": "PSA",
+      "streamId": "psalms",
+      "streamSequence": 3,
+      "unitLabel": "Psalms 2 + Proverbs 1:1–8",
+      "chapter": 2,
+      "passages": [
+        {
+          "bookId": "PSA",
+          "chapter": 2,
+          "verseCount": 12
+        },
+        {
+          "bookId": "PRO",
+          "chapter": 1,
+          "verseStart": 1,
+          "verseEnd": 8,
+          "verseCount": 8
+        }
+      ],
+      "orderingRationale": "Psalms retain canonical order unless a later review adopts a well-supported historical placement.",
+      "chronologyBasis": "traditional",
+      "confidence": "medium",
+      "notes": "One complete canonical chapter.",
+      "sourceIds": [
+        "bible_api_web_structure_2026_08_26",
+        "tgc_old_testament_order_2026_08_26"
+      ],
+      "streamContributions": [
+        {
+          "streamId": "psalms",
+          "streamSequence": 3,
+          "kind": "chapter",
+          "bookId": "PSA",
+          "chapter": 2,
+          "passages": [
+            {
+              "bookId": "PSA",
+              "chapter": 2,
+              "verseCount": 12
+            }
+          ]
+        },
+        {
+          "streamId": "proverbs",
+          "streamSequence": 2,
+          "kind": "chapter",
+          "bookId": "PRO",
+          "chapter": 1,
+          "passages": [
+            {
+              "bookId": "PRO",
+              "chapter": 1,
+              "verseStart": 1,
+              "verseEnd": 8,
+              "verseCount": 8
+            }
+          ]
+        }
+      ],
+      "contextReadingIds": [
+        "LTP-0011-PRO-INTRO"
+      ]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 52,
+      "civilDate": "2026-09-28",
+      "readingId": "LTP-0013-MAT-002",
+      "kind": "chapter",
+      "bookId": "MAT",
+      "streamId": "new_testament",
+      "streamSequence": 3,
+      "unitLabel": "Matthew 2",
+      "chapter": 2,
+      "passages": [
+        {
+          "bookId": "MAT",
+          "chapter": 2,
+          "verseCount": 23
+        }
+      ],
+      "orderingRationale": "Matthew begins the NT stream with Jesus' life and commission.",
+      "chronologyBasis": "event",
+      "confidence": "high",
+      "notes": "One complete canonical chapter.",
+      "sourceIds": [
+        "bible_api_web_structure_2026_08_26",
+        "tgc_new_testament_order_2026_08_26"
+      ],
+      "streamContributions": [
+        {
+          "streamId": "new_testament",
+          "streamSequence": 3,
+          "kind": "chapter",
+          "bookId": "MAT",
+          "chapter": 2,
+          "passages": [
+            {
+              "bookId": "MAT",
+              "chapter": 2,
+              "verseCount": 23
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 53,
+      "civilDate": "2026-09-29",
+      "readingId": "LTP-0014-GEN-006",
+      "kind": "chapter",
+      "bookId": "GEN",
+      "streamId": "old_testament",
+      "streamSequence": 7,
+      "unitLabel": "Genesis 6",
+      "chapter": 6,
+      "passages": [
+        {
+          "bookId": "GEN",
+          "chapter": 6,
+          "verseCount": 22
+        }
+      ],
+      "orderingRationale": "Genesis opens the plan because its creation, fall, flood, and patriarchal narrative supplies the canonical and historical frame for the remaining Bible.",
+      "chronologyBasis": "event",
+      "confidence": "high",
+      "notes": "One complete canonical chapter.",
+      "sourceIds": [
+        "bible_api_web_structure_2026_08_26",
+        "tgc_old_testament_order_2026_08_26",
+        "tgc_historical_books_2026_08_26"
+      ],
+      "streamContributions": [
+        {
+          "streamId": "old_testament",
+          "streamSequence": 7,
+          "kind": "chapter",
+          "bookId": "GEN",
+          "chapter": 6,
+          "passages": [
+            {
+              "bookId": "GEN",
+              "chapter": 6,
+              "verseCount": 22
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 54,
+      "civilDate": "2026-09-30",
+      "readingId": "LTP-0015-GEN-007",
+      "kind": "chapter",
+      "bookId": "GEN",
+      "streamId": "old_testament",
+      "streamSequence": 8,
+      "unitLabel": "Genesis 7",
+      "chapter": 7,
+      "passages": [
+        {
+          "bookId": "GEN",
+          "chapter": 7,
+          "verseCount": 24
+        }
+      ],
+      "orderingRationale": "Genesis opens the plan because its creation, fall, flood, and patriarchal narrative supplies the canonical and historical frame for the remaining Bible.",
+      "chronologyBasis": "event",
+      "confidence": "high",
+      "notes": "One complete canonical chapter.",
+      "sourceIds": [
+        "bible_api_web_structure_2026_08_26",
+        "tgc_old_testament_order_2026_08_26",
+        "tgc_historical_books_2026_08_26"
+      ],
+      "streamContributions": [
+        {
+          "streamId": "old_testament",
+          "streamSequence": 8,
+          "kind": "chapter",
+          "bookId": "GEN",
+          "chapter": 7,
+          "passages": [
+            {
+              "bookId": "GEN",
+              "chapter": 7,
+              "verseCount": 24
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 55,
+      "civilDate": "2026-10-01",
+      "readingId": "LTP-0016-GEN-008",
+      "kind": "chapter",
+      "bookId": "GEN",
+      "streamId": "old_testament",
+      "streamSequence": 9,
+      "unitLabel": "Genesis 8",
+      "chapter": 8,
+      "passages": [
+        {
+          "bookId": "GEN",
+          "chapter": 8,
+          "verseCount": 22
+        }
+      ],
+      "orderingRationale": "Genesis opens the plan because its creation, fall, flood, and patriarchal narrative supplies the canonical and historical frame for the remaining Bible.",
+      "chronologyBasis": "event",
+      "confidence": "high",
+      "notes": "One complete canonical chapter.",
+      "sourceIds": [
+        "bible_api_web_structure_2026_08_26",
+        "tgc_old_testament_order_2026_08_26",
+        "tgc_historical_books_2026_08_26"
+      ],
+      "streamContributions": [
+        {
+          "streamId": "old_testament",
+          "streamSequence": 9,
+          "kind": "chapter",
+          "bookId": "GEN",
+          "chapter": 8,
+          "passages": [
+            {
+              "bookId": "GEN",
+              "chapter": 8,
+              "verseCount": 22
+            }
+          ]
+        }
+      ]
     }
   ],
   "bookMetrics": {
@@ -1130,6 +1753,11 @@
     "GEN": {
       "verseCount": 1533,
       "chapterCount": 50,
+      "versification": "Protestant chapter and verse numbering; factual structural metadata only"
+    },
+    "MAT": {
+      "verseCount": 1071,
+      "chapterCount": 28,
       "versification": "Protestant chapter and verse numbering; factual structural metadata only"
     }
   }

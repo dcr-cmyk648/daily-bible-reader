@@ -51,7 +51,21 @@
     "CC-Y3Q4-D091",
     "CC-Y3Q4-D092",
     "LTP-0001-GEN-INTRO",
-    "LTP-0002-GEN-001"
+    "LTP-0002-GEN-001",
+    "LTP-0003-GEN-002",
+    "LTP-0004-PSA-INTRO",
+    "LTP-0005-PSA-001",
+    "LTP-0006-MAT-INTRO",
+    "LTP-0007-MAT-001",
+    "LTP-0008-GEN-003",
+    "LTP-0009-GEN-004",
+    "LTP-0010-GEN-005",
+    "LTP-0011-PRO-INTRO",
+    "LTP-0012-PSA-002",
+    "LTP-0013-MAT-002",
+    "LTP-0014-GEN-006",
+    "LTP-0015-GEN-007",
+    "LTP-0016-GEN-008"
   ],
   "displayTranslation": "ESV",
   "runtimeAI": false

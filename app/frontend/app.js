@@ -3531,9 +3531,6 @@
 
   function renderContentReadiness(readiness) {
     const alert = element("contentReadinessAlert");
-    const selected = element("selectedDayTitle");
-    const card = selected && selected.closest && selected.closest(".selected-day-card");
-    if (card && card.parentNode && alert.nextElementSibling !== card) card.parentNode.insertBefore(alert, card);
     const service = contentDiagnosticsArePrivateToOwner() && state.bootstrap && state.bootstrap.preparationStatus;
     if (service && ["approval_required", "blocked"].includes(service.state)) {
       alert.hidden = false;

@@ -17,7 +17,7 @@ Codex permission policy or disable automatic review. A real denial remains a blo
 
 The app computes missing publication directly from the authenticated prepared ID
 prefix on every home render, independent of commentary/ESV download success and
-selected calendar date. Its alert sits above today's reading. Full payload checks
+selected calendar date. Its alert sits directly below the calendar. Full payload checks
 continue to detect missing components; manifest membership is not a final health
 certificate. Ordinary gaps are amber; missing today/tomorrow and service failures
 are red. Dustin alone receives private operational approval details.

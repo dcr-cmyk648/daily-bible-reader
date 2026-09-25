@@ -3,7 +3,7 @@
   "planVersion": "celebration-y3q4-bridge-2026-v1",
   "title": "Celebration bridge and four-stream Protestant canon",
   "canonId": "protestant-66",
-  "calendarRevision": "24a3bba6883339e87fc91ec59f868642f094200e677b363c94999379ef2adb31",
+  "calendarRevision": "af726ac3862d3cd8db474d41bde83703b9da9e49fe889354c362e1b4e57015e3",
   "entries": [
     {
       "planVersion": "celebration-y3q4-bridge-2026-v1",
@@ -1529,7 +1529,7 @@
         {
           "bookId": "MAT",
           "chapter": 2,
-          "verseCount": 22
+          "verseCount": 23
         }
       ],
       "orderingRationale": "Matthew begins the NT stream with Jesus' life and commission.",
@@ -1551,7 +1551,7 @@
             {
               "bookId": "MAT",
               "chapter": 2,
-              "verseCount": 22
+              "verseCount": 23
             }
           ]
         }
@@ -5443,7 +5443,7 @@
         {
           "bookId": "MAT",
           "chapter": 22,
-          "verseCount": 45
+          "verseCount": 46
         }
       ],
       "orderingRationale": "Matthew begins the NT stream with Jesus' life and commission.",
@@ -5465,7 +5465,7 @@
             {
               "bookId": "MAT",
               "chapter": 22,
-              "verseCount": 45
+              "verseCount": 46
             }
           ]
         }
@@ -6165,7 +6165,7 @@
         {
           "bookId": "MAT",
           "chapter": 26,
-          "verseCount": 74
+          "verseCount": 75
         }
       ],
       "orderingRationale": "Matthew begins the NT stream with Jesus' life and commission.",
@@ -6187,7 +6187,7 @@
             {
               "bookId": "MAT",
               "chapter": 26,
-              "verseCount": 74
+              "verseCount": 75
             }
           ]
         }
@@ -56905,7 +56905,7 @@
       "versification": "Factual Protestant chapter metrics for bridge policy calculations"
     },
     "MAT": {
-      "verseCount": 1068,
+      "verseCount": 1071,
       "chapterCount": 28,
       "versification": "Protestant chapter and verse numbering; factual structural metadata only"
     },

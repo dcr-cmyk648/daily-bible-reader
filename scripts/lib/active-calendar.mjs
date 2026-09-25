@@ -8,7 +8,7 @@ function digest(value) {
 
 export function buildActiveCalendar({bridge, candidate}) {
   if (!bridge || !candidate || bridge.entries.length !== 39 || candidate.entries.length !== 1224 ||
-      candidate.candidateMetadata?.scheduleSha256 !== "79b9dfd88851fdf4e852490cae8ff9e9605af7c3a081309d96a94077a44d0be8") {
+      candidate.candidateMetadata?.scheduleSha256 !== "b42d5dfc614e24188cc216cfc6872789f483e87f95e0c18dc33d6634f295206b") {
     throw new Error("The locked long-term candidate or bridge schedule is invalid.");
   }
   const bridgeEntries = bridge.entries.map((entry) => structuredClone(entry));
@@ -55,7 +55,7 @@ export function extendActivePrefix({privatePlan, activePlan, appConfig, today, l
   const result = structuredClone(privatePlan);
   result.entries.push(structuredClone(next));
   result.bookMetrics ||= {};
-  (next.passages || []).forEach((passage) => { if (!result.bookMetrics[passage.bookId] && activePlan.bookMetrics[passage.bookId]) result.bookMetrics[passage.bookId] = structuredClone(activePlan.bookMetrics[passage.bookId]); });
+  (next.passages || []).forEach((passage) => { if (activePlan.bookMetrics[passage.bookId]) result.bookMetrics[passage.bookId] = structuredClone(activePlan.bookMetrics[passage.bookId]); });
   return result;
 }
 

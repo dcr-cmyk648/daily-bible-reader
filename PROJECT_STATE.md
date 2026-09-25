@@ -1,5 +1,16 @@
 # Project state
 
+## September 24 recovery in progress
+
+The user explicitly authorized the prepared Matthew metric correction, code
+delivery/runtime installation, recovery through actual T+7, visible preparation
+warnings and fewer routine approvals. The candidate preserves the September 20
+commentary-retry release and corrects Matthew 2/22/26 numeric counts. A direct
+manifest-prefix home warning no longer waits for background content downloads;
+owner-only private operational notices can show a red specific approval block.
+See `docs/SERVICE_AUTHORITY.md`. Release and publication remain in progress;
+this paragraph is not a readiness or deployment claim.
+
 ## Commentary refresh recovery — September 20, 2026
 
 The reader now retries a transient open-reading commentary check after 5, 15 and

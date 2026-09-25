@@ -46,7 +46,7 @@
     "startDate": "2026-09-16",
     "sundayPolicy": "proportional_psalm_days_with_proverbs_pairing",
     "inputSha256": "ed6de26290f0f7bb30cc4881d51a5ce1462d3c1ccefbbdd69358139c581a0fe7",
-    "scheduleSha256": "79b9dfd88851fdf4e852490cae8ff9e9605af7c3a081309d96a94077a44d0be8",
+    "scheduleSha256": "b42d5dfc614e24188cc216cfc6872789f483e87f95e0c18dc33d6634f295206b",
     "nonSundayMinorExceptions": [
       {
         "dayIndex": 4,
@@ -775,7 +775,7 @@
         {
           "bookId": "MAT",
           "chapter": 2,
-          "verseCount": 22
+          "verseCount": 23
         }
       ],
       "orderingRationale": "Matthew begins the NT stream with Jesus' life and commission.",
@@ -797,7 +797,7 @@
             {
               "bookId": "MAT",
               "chapter": 2,
-              "verseCount": 22
+              "verseCount": 23
             }
           ]
         }
@@ -4689,7 +4689,7 @@
         {
           "bookId": "MAT",
           "chapter": 22,
-          "verseCount": 45
+          "verseCount": 46
         }
       ],
       "orderingRationale": "Matthew begins the NT stream with Jesus' life and commission.",
@@ -4711,7 +4711,7 @@
             {
               "bookId": "MAT",
               "chapter": 22,
-              "verseCount": 45
+              "verseCount": 46
             }
           ]
         }
@@ -5411,7 +5411,7 @@
         {
           "bookId": "MAT",
           "chapter": 26,
-          "verseCount": 74
+          "verseCount": 75
         }
       ],
       "orderingRationale": "Matthew begins the NT stream with Jesus' life and commission.",
@@ -5433,7 +5433,7 @@
             {
               "bookId": "MAT",
               "chapter": 26,
-              "verseCount": 74
+              "verseCount": 75
             }
           ]
         }
@@ -56151,7 +56151,7 @@
       "versification": "Protestant chapter and verse numbering; factual structural metadata only"
     },
     "MAT": {
-      "verseCount": 1068,
+      "verseCount": 1071,
       "chapterCount": 28,
       "versification": "Protestant chapter and verse numbering; factual structural metadata only"
     },

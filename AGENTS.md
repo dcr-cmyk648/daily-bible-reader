@@ -1,5 +1,9 @@
 # Daily Bible Reader agent instructions
 
+Current recurring service authority is in `docs/SERVICE_AUTHORITY.md`; its explicit
+September 24 user authorization covers routine service repairs and their validated
+commit/push/deployment without another approval request. Preserve release gates.
+
 Read `README.md`, `PROJECT_STATE.md`, and the documents linked there before making changes. Repository files are durable project memory.
 
 - Keep real commentary, source extracts, ESV passage text, credentials, private Google resource IDs, user emails, and comment exports out of Git. The only endpoint exception is the Pages token canary's necessarily public Apps Script web-app URL in `config/pages-pwa-public.json` and its generated `web/pwa-canary/` config/client; the safety scanner confines it to those exact paths. Reader codes and hashes remain private.

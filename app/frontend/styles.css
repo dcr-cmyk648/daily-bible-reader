@@ -405,7 +405,8 @@ h3 {
   background: #2d281d;
 }
 
-.content-readiness-alert[data-state="critical"] {
+.content-readiness-alert[data-state="critical"],
+.content-readiness-alert[data-state="approval"] {
   border-color: #965d5d;
   color: #ffd1d1;
   background: #3c2424;

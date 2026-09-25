@@ -31,7 +31,7 @@ test("v2 long-term candidate is deterministic, inactive, and exactly matches its
   assert.equal(first.plan.entries.length, 1224);
   assert.equal(first.plan.entries[0].civilDate, "2026-09-16");
   assert.equal(first.plan.entries.at(-1).civilDate, "2030-01-21");
-  assert.equal(first.plan.candidateMetadata.scheduleSha256, "79b9dfd88851fdf4e852490cae8ff9e9605af7c3a081309d96a94077a44d0be8");
+  assert.equal(first.plan.candidateMetadata.scheduleSha256, "b42d5dfc614e24188cc216cfc6872789f483e87f95e0c18dc33d6634f295206b");
   assert.equal(first.plan.candidateMetadata.reviewOnly, true);
   assert.equal(first.plan.candidateMetadata.sundayPolicy, "proportional_psalm_days_with_proverbs_pairing");
 });

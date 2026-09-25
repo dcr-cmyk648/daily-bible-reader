@@ -2697,6 +2697,17 @@
     };
   }
 
+  function publicationReadiness(entries, schedule, preparedIds) {
+    const start = schedule.status === "pilot_complete" ? entries.length : Math.max(0, schedule.calendarDayIndex - 1);
+    const horizon = entries.slice(start, start + 8);
+    const gapIndex = horizon.findIndex((entry) => !preparedIds.has(entry.readingId));
+    const count = gapIndex < 0 ? horizon.length : gapIndex;
+    return {target: horizon.length, consecutiveReady: count, publicationOnly: true,
+      nextGapEntry: gapIndex < 0 ? null : horizon[gapIndex],
+      readyThroughEntry: count ? horizon[count - 1] : null,
+      state: gapIndex < 0 ? "green" : gapIndex < 2 ? "critical" : "warning"};
+  }
+
   function currentContentReadiness(payloadsInput) {
     const entries = state.plan && Array.isArray(state.plan.entries) ? state.plan.entries : [];
     if (!entries.length || !state.schedule) {
@@ -2753,6 +2764,7 @@
       config: bootstrap.config,
       plan: bootstrap.plan,
       preparedReadingIds: bootstrap.preparedReadingIds,
+      preparationStatus: bootstrap.preparationStatus,
       providerPolicy: bootstrap.providerPolicy,
       session: {authorId: session.authorId, displayName: session.displayName},
       participants: (bootstrap.participants || []).map((participant) => ({
@@ -3519,16 +3531,41 @@
 
   function renderContentReadiness(readiness) {
     const alert = element("contentReadinessAlert");
+    const selected = element("selectedDayTitle");
+    const card = selected && selected.closest && selected.closest(".selected-day-card");
+    if (card && card.parentNode && alert.nextElementSibling !== card) card.parentNode.insertBefore(alert, card);
+    const service = contentDiagnosticsArePrivateToOwner() && state.bootstrap && state.bootstrap.preparationStatus;
+    if (service && ["approval_required", "blocked"].includes(service.state)) {
+      alert.hidden = false;
+      alert.dataset.state = service.state === "approval_required" ? "approval" : "critical";
+      alert.setAttribute("role", "alert");
+      element("contentReadinessTitle").textContent = service.state === "approval_required"
+        ? "Approval needed to prepare studies" : "Study preparation is blocked";
+      element("contentReadinessMessage").textContent = [service.summary, service.action,
+        service.state === "approval_required" ? "Open BibleApp Manager in Codex to review and approve the request." : "",
+        `Status recorded ${new Date(service.updatedAt).toLocaleString()}.`].filter(Boolean).join(" ");
+      return;
+    }
+    alert.setAttribute("role", "status");
     if (!readiness || readiness.state === "green" || readiness.target === 0) {
       alert.hidden = true;
       return;
     }
     alert.hidden = false;
     alert.dataset.state = readiness.state;
+    if (readiness.publicationOnly) {
+      element("contentReadinessTitle").textContent = "The week ahead is not fully prepared";
+      const through = readiness.readyThroughEntry && preparationDateForEntry(readiness.readyThroughEntry);
+      element("contentReadinessMessage").textContent =
+        `${readiness.consecutiveReady} of ${readiness.target} studies prepared for today through seven days ahead. ` +
+        (through ? `Prepared through ${fullCalendarDate(through)}. ` : "") +
+        `The first missing study is ${preparationEntryDescription(readiness.nextGapEntry)}.`;
+      return;
+    }
     const firstReady = Boolean(readiness.firstReport && readiness.firstReport.prepared);
     const firstLabel = readiness.startsTomorrow ? "Tomorrow's study" : "The first scheduled study";
     element("contentReadinessTitle").textContent = firstReady
-      ? `${firstLabel} is ready`
+      ? "The week ahead is not fully prepared"
       : `${firstLabel} needs attention`;
     if (contentDiagnosticsArePrivateToOwner()) {
       const gap = readiness.nextGapEntry;
@@ -3589,6 +3626,8 @@
 
   function renderCalendar() {
     if (!state.plan || !state.config) return;
+    renderContentReadiness(publicationReadiness(state.plan.entries,
+      calculateSchedule(state.plan, state.config, new Date()), state.preparedReadingIds));
     if (!state.calendarMonthDate) {
       const today = datePartsInTimeZone(new Date(), state.config.timezone);
       state.calendarMonthDate = dateOnlyFromParts({...today, day: 1});
@@ -5152,6 +5191,7 @@
     init,
     parseDateOnly,
     preparedReadingIdSet,
+    publicationReadiness,
     priorityReadingEntries,
     privatePayloadNeedsBlockingRefresh,
     privatePayloadRevision,

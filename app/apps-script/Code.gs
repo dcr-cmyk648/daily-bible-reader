@@ -143,6 +143,7 @@ function getBootstrapData(readerCode) {
       participants: context.participants,
       readerEnrollmentRemembered: context.readerEnrollmentRemembered,
       preparedReadingIds: DBRServerCore.manifestPreparedReadingIds(privateState.plan, privateState.manifest),
+      preparationStatus: DBRServerCore.preparationServiceStatus(privateState.manifest, context.identity),
       sources: []
     };
   });

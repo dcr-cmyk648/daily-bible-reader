@@ -6,7 +6,7 @@
 - Civil range: 2026-09-16 through 2030-01-21 (America/Detroit)
 - Daily slots: 1224
 - Ordinary combined Psalm/Proverbs target: 20 raw verses
-- Schedule SHA-256: `79b9dfd88851fdf4e852490cae8ff9e9605af7c3a081309d96a94077a44d0be8`
+- Schedule SHA-256: `b42d5dfc614e24188cc216cfc6872789f483e87f95e0c18dc33d6634f295206b`
 
 Combined Psalm/Proverbs rows are one daily article with two labeled exegetical movements. Load is raw verse count; Proverbs boundaries remain review-only pragmatic ranges rather than asserted literary pericopes.
 
@@ -26,7 +26,7 @@ Combined Psalm/Proverbs rows are one daily article with two labeled exegetical m
 | 2026-09-25 | 10 | Old Testament | Genesis 5 | 32 |
 | 2026-09-26 | 11 | Proverbs | Proverbs overview | — |
 | 2026-09-27 | 12 | Psalms + Proverbs | Psalms 2 + Proverbs 1:1–8 | 20 |
-| 2026-09-28 | 13 | New Testament | Matthew 2 | 22 |
+| 2026-09-28 | 13 | New Testament | Matthew 2 | 23 |
 | 2026-09-29 | 14 | Old Testament | Genesis 6 | 22 |
 | 2026-09-30 | 15 | Old Testament | Genesis 7 | 24 |
 
@@ -126,7 +126,7 @@ Combined Psalm/Proverbs rows are one daily article with two labeled exegetical m
 | 2026-12-19 | 95 | Old Testament | Job 8 | 22 |
 | 2026-12-20 | 96 | Psalms + Proverbs | Psalms 12 + Proverbs 3:16–27 | 20 |
 | 2026-12-21 | 97 | Old Testament | Job 9 | 35 |
-| 2026-12-22 | 98 | New Testament | Matthew 22 | 45 |
+| 2026-12-22 | 98 | New Testament | Matthew 22 | 46 |
 | 2026-12-23 | 99 | Old Testament | Job 10 | 22 |
 | 2026-12-24 | 100 | Old Testament | Job 11 | 20 |
 | 2026-12-25 | 101 | New Testament | Matthew 23 | 39 |
@@ -147,7 +147,7 @@ Combined Psalm/Proverbs rows are one daily article with two labeled exegetical m
 | 2027-01-04 | 111 | Old Testament | Job 18 | 21 |
 | 2027-01-05 | 112 | Old Testament | Job 19 | 29 |
 | 2027-01-06 | 113 | Old Testament | Job 20 | 29 |
-| 2027-01-07 | 114 | New Testament | Matthew 26 | 74 |
+| 2027-01-07 | 114 | New Testament | Matthew 26 | 75 |
 | 2027-01-08 | 115 | Old Testament | Job 21 | 34 |
 | 2027-01-09 | 116 | Old Testament | Job 22 | 30 |
 | 2027-01-10 | 117 | Psalms + Proverbs | Psalms 14 + Proverbs 4:1–13 | 20 |

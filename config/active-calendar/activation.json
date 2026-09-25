@@ -3,6 +3,6 @@
   "activePlanVersion": "celebration-y3q4-bridge-2026-v1",
   "bridgeEntryCount": 39,
   "activatedSourcePlanVersion": "four-stream-protestant-66-candidate-2026-09-16-v2",
-  "activatedSourceScheduleSha256": "79b9dfd88851fdf4e852490cae8ff9e9605af7c3a081309d96a94077a44d0be8",
-  "activeScheduleSha256": "24a3bba6883339e87fc91ec59f868642f094200e677b363c94999379ef2adb31"
+  "activatedSourceScheduleSha256": "b42d5dfc614e24188cc216cfc6872789f483e87f95e0c18dc33d6634f295206b",
+  "activeScheduleSha256": "af726ac3862d3cd8db474d41bde83703b9da9e49fe889354c362e1b4e57015e3"
 }

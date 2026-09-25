@@ -5,7 +5,7 @@
 - Plan version: `four-stream-protestant-66-candidate-2026-09-16-v2`
 - Civil start/end: 2026-09-16 through 2030-01-21 (America/Detroit)
 - Daily slots: 1224
-- Schedule SHA-256: `79b9dfd88851fdf4e852490cae8ff9e9605af7c3a081309d96a94077a44d0be8`
+- Schedule SHA-256: `b42d5dfc614e24188cc216cfc6872789f483e87f95e0c18dc33d6634f295206b`
 - Input SHA-256: `ed6de26290f0f7bb30cc4881d51a5ce1462d3c1ccefbbdd69358139c581a0fe7`
 
 ## Logical stream contributions

@@ -128,6 +128,17 @@
     return participants;
   }
 
+  function preparationServiceStatus(manifest, identity) {
+    if (!identity || identity.authorId !== "dustin") return null;
+    const value = manifest && manifest.preparationStatus;
+    if (!value || value.schemaVersion !== "preparation-status/v1" ||
+        !["running", "blocked", "approval_required", "ready"].includes(value.state) ||
+        !Number.isFinite(Date.parse(value.updatedAt))) return null;
+    const text = (input) => typeof input === "string" && input.length <= 240 && !/[\u0000-\u001f]/.test(input) ? input : "";
+    return {schemaVersion: value.schemaVersion, state: value.state, updatedAt: value.updatedAt,
+      summary: text(value.summary), action: text(value.action)};
+  }
+
   function parseManifest(manifest) {
     if (!manifest || manifest.schemaVersion !== "private-manifest/v1" ||
         !manifest.appConfigFileId || !manifest.planFileId || !manifest.sourceRegistryFileId ||
@@ -859,6 +870,7 @@
     normalizeCommentBody,
     normalizeEmail,
     parseManifest,
+    preparationServiceStatus,
     passageContainsVerse,
     participantCommentActivity,
     publicParticipants,

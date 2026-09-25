@@ -317,9 +317,13 @@ export async function verifyLiveHorizon(credentials, options = {}) {
   const startIndex = schedule.status === "before_start" ? 0 : schedule.status === "pilot_complete"
     ? entries.length : Math.max(0, schedule.calendarDayIndex - 1);
   const horizonIds = entries.slice(startIndex, startIndex + 8).map((entry) => entry.readingId);
+  // Unpublished entries are an expected preparation gap, not an RPC failure.
+  // Inspect every horizon entry below, but request only manifest-backed payloads.
+  const prepared = readerApp.preparedReadingIdSet(bootstrap, bootstrap.plan);
+  const availableIds = horizonIds.filter((readingId) => prepared.has(readingId));
   const requestedBatches = [];
-  for (let index = 0; index < horizonIds.length; index += HORIZON_PAYLOAD_BATCH_SIZE) {
-    requestedBatches.push(horizonIds.slice(index, index + HORIZON_PAYLOAD_BATCH_SIZE));
+  for (let index = 0; index < availableIds.length; index += HORIZON_PAYLOAD_BATCH_SIZE) {
+    requestedBatches.push(availableIds.slice(index, index + HORIZON_PAYLOAD_BATCH_SIZE));
   }
   const payloadBatches = [];
   for (const readingIds of requestedBatches) {

@@ -254,3 +254,35 @@ test("single-reading live health does not fetch inaccessible readings and preser
   };
   await assert.rejects(() => verifyLiveReading(credentials, "TST-001", {fetchImpl:backendReject,randomBytesFn:(length)=>Buffer.alloc(length, 5)}), {code:"LIVE_HEALTH_BACKEND_REJECTED"});
 });
+
+
+test("live horizon reports unpublished gaps without requesting forbidden payloads", async () => {
+  const {verifyLiveHorizon, liveHealthCredentialsFromStores} = await healthModule;
+  const credentials = liveHealthCredentialsFromStores({schemaVersion:"dbr-pages-public-config/v2",enabled:true,backendWebAppUrl:FABRICATED_ENDPOINT}, [{authorId:"dustin",readerCode:"DBR-DUSTIN-fabricated_reader_code_123456789"}]);
+  for (const preparedCount of [0, 4, 7]) {
+    const boot = bootstrap();
+    boot.preparedReadingIds = boot.preparedReadingIds.slice(0, preparedCount + 1);
+    const requested = [];
+    const fetchImpl = async (_url, request) => {
+      const fields = Object.fromEntries(request.body.entries());
+      let data = boot;
+      if (fields.method === "getReadingPayloads") {
+        const ids = JSON.parse(fields.args_json)[1];
+        assert.ok(ids.every(id => boot.preparedReadingIds.includes(id)), "must not request unpublished readings");
+        requested.push(...ids);
+        data = {planVersion:boot.plan.planVersion,payloads:Object.fromEntries(ids.map(id=>[id,payload(boot.plan.entries.find(entry=>entry.readingId===id))]))};
+      }
+      const response = {channel:"dbr-rpc-response/v1",requestId:fields.request_id,responseNonce:fields.response_nonce,ok:true,result:{ok:true,data}};
+      return {ok:true,url:"https://script.googleusercontent.com/macros/echo",text:async()=>'<script>window.top.postMessage('+JSON.stringify(response)+',"https://dcr-cmyk648.github.io");</script>'};
+    };
+    const result = await verifyLiveHorizon(credentials, {fetchImpl,now:new Date("2026-09-05T16:00:00.000Z")});
+    const missing = boot.plan.entries.slice(preparedCount + 1,9).map(entry=>entry.readingId);
+    assert.equal(result.status,"not_ready");
+    assert.equal(result.target,8);
+    assert.equal(result.preparedCount,preparedCount);
+    assert.deepEqual(result.missingPreparedReadingIds,missing);
+    assert.deepEqual(result.missingPayloadReadingIds,missing);
+    assert.deepEqual(result.currentHorizonHenryLayer.unavailableReadingIds,missing);
+    assert.deepEqual(requested,boot.preparedReadingIds.slice(1));
+  }
+});

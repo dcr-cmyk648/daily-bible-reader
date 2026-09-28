@@ -1,5 +1,22 @@
 # Scheduled task: keep the Daily Bible Reader ready through T+7
 
+Scheduled-run identity: this wake's assignment is preparation and buffer verification,
+not the last manual request in the manager conversation. Before research, save the
+fresh work order and start time under the selected reading's private staging. Before
+ending, save either the exact verified publication/completion evidence or a specific
+failure stage. An interruption must leave resumable work; an unrelated repair response
+cannot substitute for this wake's completion.
+
+Overall service acceptance is `npm run service:live-health`, which requires both the
+devotional and complete Henry layers. Run it at the beginning and end of a wake and
+after publication; it safely reports unpublished gaps without requesting those files.
+Also run `npm run mhc:window:preflight` to detect future source failures. This is a
+read-only forward audit, not permission to run Henry generation or inspect historical
+debt. Continue the independent daily work when Henry is pending, but preserve a
+non-ready service notice and report the exact daily/Henry gaps. Never clear a Henry
+blocker merely because devotional publication succeeded. These instructions supersede
+older language that equates fallback-backed daily readiness with overall service ready.
+
 Read `docs/SERVICE_AUTHORITY.md` first. Its September 24 standing maintenance
 authorization supersedes older blanket code-delivery approval restrictions.
 Publish safe blocked/approval/resolution status to the existing private manifest

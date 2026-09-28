@@ -67,7 +67,9 @@
     "bundle:private": "node scripts/build-private-content-bundle.mjs",
     "test": "node --test tests/*.test.js",
     "check": "npm run safety && npm run validate && npm run validate:sources && npm run validate:private && npm test && npm run build && npm run verify:pages",
-    "check:published": "node scripts/check-published-content.mjs"
+    "check:published": "node scripts/check-published-content.mjs",
+    "service:live-health": "node scripts/live-horizon-health.mjs --require-complete-service",
+    "mhc:window:preflight": "node scripts/mhc-window-preflight.mjs"
   },
   "engines": {
     "node": ">=22"

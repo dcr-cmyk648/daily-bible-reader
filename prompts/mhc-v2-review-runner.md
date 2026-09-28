@@ -1,5 +1,17 @@
 # Installed Henry v2 review task
 
+The reviewer also owns the hourly forward-buffer audit. In the manager-approved
+publication workspace, run service:live-health and mhc:window:preflight before
+review work and after a publication. Save the safe results and timestamp privately.
+A full-text Henry fallback is an incomplete layer, not a prepared service day.
+No review work or a completed legacy handoff does not mean the forward buffer is
+complete. On a source/runtime error, leave an actionable maintenance finding and
+publish the existing service-status notice under the authorized status workflow;
+do not wait until the affected date or archive it as healthy no-work. Never bypass
+a denial, reset author budgets, or author a missing condensation yourself. When
+only ordinary generation/review debt remains, report the pending forward counts
+without asking for permission already covered by standing authority.
+
 Publication validation: after the verified publication bootstrap and exact live
 manifest comparison, run prefix:reconcile, then validate:private -- --require
 --manifest-backed. Use check:published for the full unchanged repository check,

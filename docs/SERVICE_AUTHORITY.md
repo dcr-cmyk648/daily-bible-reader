@@ -40,9 +40,16 @@ silently. Tell the user to open BibleApp Manager in Codex; the reader cannot gra
 Codex tool approvals. If status publication itself is blocked, report directly in
 the task and do not claim the in-app notice was delivered.
 
-After approval, publish `running`; after the exact full horizon health gate passes,
-publish `ready`. Preserve this field in every reading manifest promotion and verify
+After approval, publish `running`; publish `ready` only after
+`npm run service:live-health` passes both the devotional and complete Henry
+current-through-T+7 gates. A full-commentary fallback does not complete the service
+buffer. Preserve this field in every reading manifest promotion and verify
 the resolved state through live bootstrap. A shortfall remains visible even when
 an operational receipt says ready. Do not suppress a shrinking buffer: report new
 failures, unresolved required action and worsening coverage, especially fewer than
 four future prepared days. Healthy unchanged maintenance remains quiet.
+
+## Recurring Henry source handoff — September 28, 2026
+
+Standing authorization confirmed by the user in BibleApp Manager on September 28, 2026: send the existing worker’s verified public-domain Matthew Henry (CrossWire MHC 2.2) commentary/headings, public verse references, evidence IDs/hashes and condensation instructions to OpenAI through the existing Codex/ChatGPT login. This explicitly covers today’s study and recurring current-through-seven-days-ahead preparation, including the existing Spark-medium author and eligible Luna-low fallback. The user answered the precise payload-and-destination question with: “Okay I approve that, and also today’s.” Do not ask for this same bounded handoff again. The earlier September 28 export-authorization denial is resolved by this subsequent explicit user answer. Exclude private devotional content, reader comments, Google resource IDs, credentials and embedded Scripture transcription; retain installed source verification, tool restrictions, budgets, independent review and the existing separately authorized private publication gates. This is not a change to global permission policy; any new actual denial must still be reported honestly.
+

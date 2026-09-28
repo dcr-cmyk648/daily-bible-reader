@@ -287,3 +287,7 @@ and `util.isDeepStrictEqual`. Old publication receipts, staging manifest candida
 visual inspection of IDs and normalized connector text are not comparison evidence.
 A semantic-conflict report must identify differing field paths from an executed
 comparison. Re-fetch the live manifest immediately before its final pointer update.
+
+## Ranged daily passages — September 27, 2026
+
+Source normalization verifies the complete source chapter independently of the scheduled passage. An explicit verseStart/verseEnd is validated within that chapter, and its count must match the range. Author requests, evidence targeting and the assembled runtime use those exact verse numbers. Full-chapter inputs retain their existing hashes. The regression suite covers beginning, middle and ending ranges through independent approval and immutable library finalization; malformed ranges and out-of-bounds source requests fail closed. This fixes the Psalm 2/Proverbs 1:1–8 source blocker without generating commentary beyond the assigned range or changing author/reviewer budgets.

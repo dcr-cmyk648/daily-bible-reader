@@ -1,6 +1,6 @@
 import {readFile,readdir,mkdir} from 'node:fs/promises';
 import path from 'node:path';
-import {VERSION,MODELS,MAX_SUBMISSIONS,REVIEW_ASSERTIONS,candidateSchema,compileReading,validateCandidate,chapterRuntime,digestObject} from './mhc-v2.mjs';
+import {VERSION,MODELS,MAX_SUBMISSIONS,REVIEW_ASSERTIONS,candidateSchema,passageScope,compileReading,validateCandidate,chapterRuntime,digestObject} from './mhc-v2.mjs';
 import {appendState,atomicJson,bytesFor,confined,createJob,loadJob,maybeJson,readJson} from './mhc-v2-store.mjs';
 import {loadHenryPlan,henryPriorityWindow,hasHenryPublicationReceipt,pendingHenryHandoffs} from './mhc-priority.mjs';
 import {selectMhcBackfillCandidate,isVerifiedHenryFallback} from './mhc-backfill-work-order.mjs';
@@ -33,12 +33,14 @@ export async function sourceInput(ctx,entry) {
   const chapters=[];let decoded;
   for(const p of entry.passages) {
     let units;
+    passageScope(p);
     const stem=`normalized/${p.bookId}/${String(p.chapter).padStart(3,'0')}`;
     try {
       const normalizedFile=await confined(ctx.mhcRoot,`${stem}.jsonl`,{missing:false});
       units=(await readFile(normalizedFile,'utf8')).trim().split('\n').filter(Boolean).map(JSON.parse);
       const manifest=await readJson(await confined(ctx.mhcRoot,`${stem}.manifest.json`,{missing:false}));
-      if(manifest.source_archive_sha256!==sourceManifest.archive_sha256||manifest.book_id!==p.bookId||manifest.chapter!==p.chapter||manifest.indexed_verse_count!==p.verseCount||manifest.normalized_batch_sha256!==normalizedBatchHash(units))throw new Error('V2_NORMALIZED_SOURCE_MISMATCH');
+      if(manifest.source_archive_sha256!==sourceManifest.archive_sha256||manifest.book_id!==p.bookId||manifest.chapter!==p.chapter||manifest.normalized_batch_sha256!==normalizedBatchHash(units))throw new Error('V2_NORMALIZED_SOURCE_MISMATCH');
+      passageScope(p,manifest.indexed_verse_count);
       if(units.length&&units.every(u=>['mhc-normalized-source/v1','mhc-normalized-source/v2'].includes(u.schema_version)))throw Object.assign(new Error('V2_LEGACY_NORMALIZATION'),{code:'V2_LEGACY_NORMALIZATION'});
     } catch(error) {
       if(!['ENOENT','V2_LEGACY_NORMALIZATION'].includes(error.code))throw error;
@@ -49,7 +51,7 @@ export async function sourceInput(ctx,entry) {
       if(sha256(archive)!==sourceManifest.archive_sha256)throw new Error('V2_SOURCE_ARCHIVE_MISMATCH');
       if(!decoded){const extracted=await confined(raw,'MHC-2.2',{missing:false}),moduleRoot=await confined(extracted,'modules/comments/zcom4/mhc',{missing:false});for(const name of ['ot.bzs','ot.bzv','ot.bzz','nt.bzs','nt.bzv','nt.bzz','mhc.conf']){const file=await confined(extracted,name==='mhc.conf'?'mods.d/mhc.conf':`modules/comments/zcom4/mhc/${name}`,{missing:false});if(sha256(await readFile(file))!==sourceManifest.module_file_sha256?.[name])throw new Error('V2_SOURCE_MODULE_MISMATCH');}decoded=await readSwordModule(moduleRoot);}
       const normalized=normalizeBookChapter({decodedModule:decoded,sourceManifest,bookId:p.bookId,chapter:p.chapter,includeBookIntro:false});
-      if(normalized.chapterIndex.verseEntries.length!==p.verseCount)throw new Error('V2_SOURCE_VERSE_COUNT');
+      passageScope(p,normalized.chapterIndex.verseEntries.length);
       units=normalized.units;
     }
     const sourceSchema=await readJson(path.join(ctx.releaseRoot,'schemas/mhc-normalized-source.schema.json'));

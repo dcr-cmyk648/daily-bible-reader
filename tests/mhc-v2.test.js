@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {VERSION,MODELS,REVIEW_ASSERTIONS,compileReading,validateCandidate,digestObject} from '../scripts/lib/mhc-v2.mjs';
+import {VERSION,MODELS,REVIEW_ASSERTIONS,passageScope,compileReading,validateCandidate,digestObject} from '../scripts/lib/mhc-v2.mjs';
 import {sha256,normalizedBatchHash} from '../scripts/lib/mhc-pipeline.mjs';
 import {serviceContext,startV2,advanceV2,buildReview,reviewWorkOrderV2,applyReviewV2,editorialRepairV2,requestEditorialV2,migrateCurrentV2,reopenReviewV2} from '../scripts/lib/mhc-v2-service.mjs';
 import {atomicJson,appendState,loadJob,readJson,bytesFor,createJob} from '../scripts/lib/mhc-v2-store.mjs';
@@ -383,4 +383,28 @@ test('installed v2 launcher executes actual modules and cannot silently reinstal
   assert.equal(invoke(['reviewer','reopen','--reading','FAB-1','--approved-sha256',applied.approvedSha256,'--reviewer','FABRICATED independent reviewer','--reason','FABRICATED material source issue after approval']).action,'review_reopened');
   assert.notEqual((await readJson(invoke(['reviewer','work-order']).bundlePath)).review_basis_sha256,bundle.review_basis_sha256);
   const downgrade=spawnSync(process.execPath,[...args.slice(0,-1),'v1'],{cwd:ctx.releaseRoot,encoding:'utf8',windowsHide:true});assert.notEqual(downgrade.status,0);assert.match(downgrade.stderr,/V2 jobs exist/);
+});
+
+for (const [start,end] of [[1,8],[9,16],[25,33]]) test('ranged passage '+start+'-'+end+' completes generation, review and library finalization',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:33,chapterCount:2});
+  ctx.plan.entries[0].passages[1]={bookId:'TST',chapter:2,verseStart:start,verseEnd:end,verseCount:end-start+1};
+  const {report}=await drain(ctx,now);
+  assert.equal(report.action,'review_handoff');
+  const {bundle}=await buildReview(ctx,'FAB-1');
+  const wanted=Array.from({length:end-start+1},(_,i)=>'TST.2.'+(start+i));
+  assert.deepEqual(Object.keys(bundle.results[1].runtime.records),wanted);
+  assert.equal(bundle.results[0].verse_count,33);
+  assert.equal((await approve(ctx,'FAB-1',now)).action,'publish_required');
+  const pointer=await readJson(path.join(ctx.mhcRoot,'stores/library/current.json'));
+  const catalog=await readJson(path.join(ctx.mhcRoot,'stores/library',pointer.catalog_file));
+  const portable=await readJson(path.join(ctx.mhcRoot,'stores/library',catalog.readings[0].file));
+  assert.deepEqual(Object.keys(portable.chapters[1].runtime.records),wanted);
+  assert.equal(portable.chapters[1].verse_count,wanted.length);
+});
+test('passage scope accepts a range inside a full source chapter but rejects malformed or out-of-bounds ranges',()=>{
+  assert.deepEqual(passageScope({verseStart:9,verseEnd:16,verseCount:8},33),{start:9,end:16,ranged:true});
+  for (const passage of [{verseCount:8},{verseStart:1,verseEnd:34,verseCount:34}])
+    assert.throws(()=>passageScope(passage,33),/V2_SOURCE_VERSE_COUNT/);
+  for (const passage of [{verseStart:9,verseEnd:16,verseCount:7},{verseStart:0,verseEnd:7,verseCount:8},{verseEnd:8,verseCount:8},{verseStart:8,verseEnd:1,verseCount:8}])
+    assert.throws(()=>passageScope(passage,33),/V2_PASSAGE_RANGE_INVALID/);
 });

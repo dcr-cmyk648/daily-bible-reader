@@ -28,14 +28,29 @@ export const candidateSchema = {
 const includesTerm = (text,term) => new RegExp(`(?:^|[^\\p{L}\\p{N}])${term.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}(?:$|[^\\p{L}\\p{N}])`,'iu').test(text.normalize('NFKC'));
 export const digestObject = value => sha256(stableJson(value));
 
+// A daily passage can be a chapter or an explicit contiguous verse range.
+export function passageScope(passage, indexedVerseCount) {
+  const ranged = passage.verseStart !== undefined || passage.verseEnd !== undefined;
+  const start = ranged ? passage.verseStart : 1;
+  const end = ranged ? passage.verseEnd : passage.verseCount;
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 ||
+      end < start || end > 500 || !Number.isInteger(passage.verseCount) ||
+      passage.verseCount !== end - start + 1) throw new Error('V2_PASSAGE_RANGE_INVALID');
+  if (indexedVerseCount !== undefined && (!Number.isInteger(indexedVerseCount) ||
+      indexedVerseCount < end || (!ranged && indexedVerseCount !== end)))
+    throw new Error('V2_SOURCE_VERSE_COUNT');
+  return {start, end, ranged};
+}
+
 // Inputs contain commentary atoms only. Never expose normalized source_text,
 // which also accounts for the source module's excluded Scripture transcription.
 export function compileReading({entry,planVersion,scheduleDate,sourceManifest,chapters}) {
   const output=[];
   for(const passage of entry.passages) {
+    const scope=passageScope(passage);
     const units=chapters.find(c=>c.bookId===passage.bookId&&c.chapter===passage.chapter)?.units;
     if(!units)throw new Error('V2_SOURCE_MISSING');
-    const spec=buildChapterJobSpec({units,sourceManifest,model:MODELS.spark,bookId:passage.bookId,chapter:passage.chapter,verseCount:passage.verseCount,generatedAt:'1970-01-01T00:00:00.000Z',promptVersion:VERSION});
+    const spec=buildChapterJobSpec({units,sourceManifest,model:MODELS.spark,bookId:passage.bookId,chapter:passage.chapter,verseCount:passage.verseCount,verseStart:scope.start,generatedAt:'1970-01-01T00:00:00.000Z',promptVersion:VERSION});
     const evidence=spec.sourceUnits.flatMap(u=>u.source_atoms.map(a=>({evidence_id:a.source_atom_id,source_unit_id:u.source_unit_id,reference_label:u.reference_label,text:a.text,text_sha256:a.text_sha256})));
     if(new Set(evidence.map(e=>e.evidence_id)).size!==evidence.length||evidence.some(e=>!e.text||sha256(e.text)!==e.text_sha256))throw new Error('V2_SOURCE_INTEGRITY');
     const byId=new Map(evidence.map(e=>[e.evidence_id,e]));
@@ -49,7 +64,7 @@ export function compileReading({entry,planVersion,scheduleDate,sourceManifest,ch
       if(requirements.some(r=>!r.evidence_ids.length))throw new Error('V2_REQUIREMENT_EVIDENCE_MISSING');
       return {verse_id:r.verse_id,coverage_type:r.required_coverage_type,source_unit_ids:r.allowed_source_unit_ids,source_reference_label:r.source_reference_labels.join('; '),evidence_ids:visible,target_evidence_ids:r.target_marked_source_atom_ids,requirements};
     });
-    const chapter={book_id:passage.bookId,chapter:passage.chapter,verse_count:passage.verseCount,source_hash:spec.metadata.source_hash,normalized_hash:digestObject(units),batches:[]};
+    const chapter={book_id:passage.bookId,chapter:passage.chapter,verse_count:passage.verseCount,...(scope.ranged?{verse_start:scope.start,verse_end:scope.end}:{}),source_hash:spec.metadata.source_hash,normalized_hash:digestObject(units),batches:[]};
     const packetFor=records=>{
       const wanted=new Set(records.flatMap(r=>r.evidence_ids));
       const payload={schema_version:'mhc-evidence-packet/v2',author_version:VERSION,reading_id:entry.readingId,plan_version:planVersion,book_id:passage.bookId,chapter:passage.chapter,source_hash:chapter.source_hash,requests:records,evidence:evidence.filter(e=>wanted.has(e.evidence_id))};
@@ -101,9 +116,10 @@ export function validateCandidate(candidate,packet) {
 
 export function chapterRuntime({chapter,records,units,sourceManifest,model,createdAt}) {
   if(!Object.values(MODELS).includes(model))throw new Error('V2_MODEL_NOT_ALLOWED');
-  const wanted=Array.from({length:chapter.verse_count},(_,i)=>`${chapter.book_id}.${chapter.chapter}.${i+1}`);
+  const scope=passageScope({verseCount:chapter.verse_count,...(chapter.verse_start===undefined?{}:{verseStart:chapter.verse_start,verseEnd:chapter.verse_end})});
+  const wanted=Array.from({length:chapter.verse_count},(_,i)=>`${chapter.book_id}.${chapter.chapter}.${scope.start+i}`);
   if(records.length!==wanted.length||records.some((r,i)=>r.verse_id!==wanted[i]))throw new Error('V2_CHAPTER_INCOMPLETE');
-  const spec=buildChapterJobSpec({units,sourceManifest,model,bookId:chapter.book_id,chapter:chapter.chapter,verseCount:chapter.verse_count,generatedAt:createdAt,promptVersion:VERSION});
+  const spec=buildChapterJobSpec({units,sourceManifest,model,bookId:chapter.book_id,chapter:chapter.chapter,verseCount:chapter.verse_count,verseStart:scope.start,generatedAt:createdAt,promptVersion:VERSION});
   if(spec.metadata.source_hash!==chapter.source_hash||digestObject(units)!==chapter.normalized_hash)throw new Error('V2_SOURCE_CHANGED');
   return exportChapterRuntime({...spec.metadata,records},sourceManifest,{valid:true},spec.sourceUnits);
 }

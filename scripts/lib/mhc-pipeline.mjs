@@ -976,6 +976,7 @@ export function buildChapterJobSpec({
   bookId,
   chapter,
   verseCount,
+  verseStart = 1,
   generatedAt,
   promptVersion = PROMPT_VERSION,
   schemaVersion = COMMENTARY_SCHEMA_VERSION
@@ -985,14 +986,14 @@ export function buildChapterJobSpec({
   const selectedUnits = selectedNormalizedUnits.map(workerSourceUnit);
   const sourceHash = normalizedBatchHash(selectedUnits);
   const jobId = `${bookId}-${String(chapter).padStart(3, "0")}`;
-  const requestedRecords = expectedVerseIds(bookId, chapter, verseCount).map((verseId, index) => {
-    const coverage = chapterCoverageForVerse(selectedUnits, index + 1);
+  const requestedRecords = Array.from({length: verseCount}, (_, index) => bookId+'.'+chapter+'.'+(verseStart+index)).map((verseId, index) => {
+    const coverage = chapterCoverageForVerse(selectedUnits, verseStart + index);
     if (!coverage.sourceUnits.length) {
       throw new Error(`${verseId} has no normalized source unit or deterministic surrounding treatment.`);
     }
     const markedAtoms = coverage.sourceUnits.flatMap((unit) =>
       unit.source_atoms
-        .map((atom) => ({atom, specificity: atomVerseMarkerSpecificity(atom, index + 1)}))
+        .map((atom) => ({atom, specificity: atomVerseMarkerSpecificity(atom, verseStart + index)}))
         .filter(({specificity}) => specificity !== null)
     );
     // A broad block heading such as “vv. 8–11” should not become an additional
@@ -1013,7 +1014,7 @@ export function buildChapterJobSpec({
       required_explicit_identity_terms: [...new Set(targetMarkedAtoms.flatMap(explicitIdentityTermsForAtom))],
       required_explicit_relations: targetMarkedAtoms.flatMap(explicitRelationsForAtom),
       verse_anchor_terms: coverage.sourceUnits.flatMap((unit) =>
-        (unit.verse_anchors || []).filter((anchor) => anchor.verse === index + 1).flatMap((anchor) => anchor.anchor_terms)
+        (unit.verse_anchors || []).filter((anchor) => anchor.verse === verseStart + index).flatMap((anchor) => anchor.anchor_terms)
       ),
       source_reference_labels: coverage.sourceUnits.map((unit) => unit.reference_label)
     };

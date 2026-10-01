@@ -1,25 +1,25 @@
 {
   "schemaVersion": "dbr-static-release/v1",
   "loaderVersion": 1,
-  "releaseId": "73d249a84bbb284e",
+  "releaseId": "844ce06fb805f5f4",
   "assets": {
     "styles": {
       "name": "styles",
-      "path": "releases/73d249a84bbb284e/styles.css",
-      "integrity": "sha384-IDENZbos0V549Ey1rO4E6bbzZN5ivhASpXNtNl0IV0TKQQcvrRU+9aRi7EMRhKem",
-      "bytes": 27673
+      "path": "releases/844ce06fb805f5f4/styles.css",
+      "integrity": "sha384-Qx4s/1HBYPu0PQmYqcxQ1XD+3TFCNoddEaNUWoekKySjY0z7iY24hzwlYByP7yWw",
+      "bytes": 27783
     },
     "core": {
       "name": "core",
-      "path": "releases/73d249a84bbb284e/app.js",
-      "integrity": "sha384-MUPw8k4aVTwtYjU5DKei8CgXi0oGALmxa3UNe3FitniLgyKpK/pkdG5Oxe6l+P5X",
+      "path": "releases/844ce06fb805f5f4/app.js",
+      "integrity": "sha384-qIp+C/2W+j1ZLl+2wsgvpPhXjN0m+VlhbkZCWDJtlzcfu9lHpZr4g2sv4EcW3umF",
       "bytes": 129150
     },
     "highlights": {
       "name": "highlights",
-      "path": "releases/73d249a84bbb284e/highlights.js",
-      "integrity": "sha384-TFuJSFwezxVzuSOwoCC64aiBIHmeWWgOzU6yTjxA9um+RiPT3nVMTVlz9oaWxD95",
-      "bytes": 9579
+      "path": "releases/844ce06fb805f5f4/highlights.js",
+      "integrity": "sha384-cX+w1uOLarE/KW7Ung6iMb/us9Czq7KIaCaWhz7jYkNTvn/a0UPQDv68GJi6MHBz",
+      "bytes": 9504
     }
   }
 }

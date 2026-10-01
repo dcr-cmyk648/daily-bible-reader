@@ -219,7 +219,7 @@
     element("highlightStatus").textContent = writing
       ? "Saving this change…"
       : statusMessage || (context.online
-        ? "Highlights are shared with both readers; each person keeps their own color."
+        ? ""
         : canRetryAccess
           ? "Shared highlights need to reconnect. Tap to retry."
         : "Shared highlights require a confirmed connection.");

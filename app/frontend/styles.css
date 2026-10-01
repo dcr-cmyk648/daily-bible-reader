@@ -1038,6 +1038,18 @@ h3 {
   margin: 0.45rem 0 0.75rem;
 }
 
+.highlight-popover-list > p {
+  margin: 0;
+}
+
+#highlightStatus {
+  margin: 0 0 0.75rem;
+}
+
+#highlightStatus:empty {
+  display: none;
+}
+
 .verse-commentary-card,
 .book-commentary-resource {
   padding: 0.8rem;

@@ -1,3 +1,12 @@
+## Highlight popup cleanup — October 1, 2026
+
+Removed the routine shared-color explanation below verse highlights. The empty
+status element now occupies no space, and the highlight list's paragraph margin
+is reset so the action follows at a compact, consistent distance. Saving,
+connection and error messages retain their live status region. This is a
+frontend-only change; preparation, private content and backend contracts are
+unchanged. The local fabricated-reader popup was visually checked.
+
 # Project state
 
 ## September 24 recovery in progress

@@ -16,10 +16,10 @@ source review, atomic publication, access/sharing, immutable rollback and releas
 
 - WO-1 native fd5922d is installed. Both configured ChatGPT author preflights passed
   at 18:10 UTC; both Henry definitions remain ACTIVE; manager owns exact pin updates.
-- WO-3 C 7835744 cap1 is installed; all four BibleApp lanes remain ACTIVE.
+- WO-3 C df536b7 cap1 is installed; all four BibleApp lanes remain ACTIVE.
   GEN15's one manager exception succeeded and its full layer is published.
-  GEN16's bibliography privacy false positive has a checked source correction
-  and one manager-only zero-dispatch recovery; real retry and D remain gated. [Authoring](docs/SUPERVISOR_AUTHORING.md).
+  GEN16's zero-dispatch recovery is consumed; actual research is running.
+  Keep fd5922d installed until that wake completes; D remains gated. [Authoring](docs/SUPERVISOR_AUTHORING.md).
 - WO-2 466058d remains an unselected canary; backend/installed-phone promotion
   is held. Stored preparation heartbeats reach the private store, but the old
   backend drops the new fields. Scheduled-wake readback remains required.
@@ -30,24 +30,24 @@ source review, atomic publication, access/sharing, immutable rollback and releas
 Installed `requested-reading/v1` supports read-only native lane selection,
 actual preflight before exact one-reading mutation and a hash-bound unpublished
 rolling daily dependency. Its same-journal EDF observation, `waiting_henry`
-state and accepted synthesis evidence are mandatory. Native defaults are retained.
+state and accepted synthesis evidence are mandatory. Default historical admission
+now checks actual eight-reading health before historical maintenance or claims;
+incomplete buffers permit only forward work, with truthful preparation-pending output.
 
 The separate `historical-selection/v1` source extension requires native authenticated
 complete current-through-T+7 health before historical target/lane discovery.
 Its in-process reference expires after five minutes; one-reading dispatch rechecks
 actual health and the original manifest-backed selector after author preflight.
 Cooldowns, current priority, owners, attempts, sessions and leases remain authoritative.
-The immutable runtime includes the existing allowlisted public backend config.
-Manager owns installation, live preflight, source pins and C/D acceptance.
-C/D check: 733 fabricated/local tests, safety, 46 schemas, builds and asset
+The immutable runtime includes the allowlisted public backend config; manager owns
+installation, live preflight, source pins and C/D acceptance.
+Native/C/D check: 739 fabricated/local tests, safety, 46 schemas, builds and asset
 verification passed. Exact native mechanical rejection may request only a genuinely
 unused packet repair; exhausted review responses and all native budgets persist.
 GEN15's audited exception is consumed; no fourth review is authorized.
-GEN16 recovery/import/dispatch and D proof remain manager-owned; budgets persist.
-Interface and policy: [Henry operations](docs/HENRY_V2_OPERATIONS.md#one-reading-lifecycle).
-
-The author remains gpt-6-luna at medium; retained gpt-5.6-luna fallback is low
-and controller-proven. Runs are ephemeral and ChatGPT-only, with no API fallback.
+Native source repin follows the active GEN16 wake; D proof remains manager-owned.
+Authors remain gpt-6-luna/medium and proven gpt-5.6-luna/low; runs are ephemeral
+and ChatGPT-only. [Henry operations](docs/HENRY_V2_OPERATIONS.md) apply; no API fallback.
 
 ## Reader releases and durable policy
 

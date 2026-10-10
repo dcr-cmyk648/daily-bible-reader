@@ -76,8 +76,11 @@ for(const stdout of ['FABRICATED malformed events','{"type":"turn.started"}\n','
   const job=await loadJob(path.join(ctx.jobRoot,'FAB-1'));assert.equal(job.state.total_submissions,0);assert.deepEqual(job.state.accepted,{});assert.equal((await readJson(second.statusCandidatePath)).preparationStatus.state,'blocked');
 });
 test('lease expires within 24 hours and the next forward reading can advance',async t=>{
-  const {ctx,now}=await fixture(t,{verseCount:1,readingCount:2});await startV2(ctx,'spark',now);const before=await loadJob(path.join(ctx.jobRoot,'FAB-1'));
-  const result=await startV2(ctx,'spark',new Date(now.getTime()+24*60*60*1000));assert.equal(result.readingId,'FAB-2');
+  const {ctx,now}=await fixture(t,{verseCount:1,readingCount:9});await startV2(ctx,'spark',now);const before=await loadJob(path.join(ctx.jobRoot,'FAB-1'));
+  const later=new Date(now.getTime()+24*60*60*1000),health={status:'ready',effectiveDate:'2026-09-14',target:8,
+    readingIds:ctx.plan.entries.slice(1).map(e=>e.readingId),missingPreparedReadingIds:[],missingPayloadReadingIds:[],componentFailures:[],
+    currentHorizonHenryLayer:{status:'complete',fallbackReadingIds:[],unavailableReadingIds:[]}};
+  const result=await startV2(ctx,'spark',later,{}, {health:async()=>health});assert.equal(result.readingId,'FAB-2');
   const after=await loadJob(before.directory);assert.equal(after.state.blocker.code,'V2_AUTHOR_LEASE_EXPIRED');assert.deepEqual(after.state.sessions,before.state.sessions);assert.equal(after.state.lease.released,true);
 });
 test('other-model ownership escalates within two wakes',async t=>{
@@ -687,13 +690,87 @@ test('historical dispatch rechecks original current selection without mutation a
   assert.equal(work.readingId,'FAB-2');assert.equal(work.reason,'native_selection_differs');assert.deepEqual(await jobBytes(ctx.jobRoot),before);
 });
 test('historical actual fallback selection retains native attempts and sessions and rejects wrong owner without ownership wakes',async t=>{
-  const {ctx,now,verify}=await historicalFixture(t);let work=await startV2(ctx,'spark',now);
+  const {ctx,now,verify}=await historicalFixture(t);let work=await startV2(ctx,'spark',now,{}, {health:verify});
   for(let i=0;i<2;i++){await writeCandidate(work,c=>({...c,packet_id:'MHP2-'+String(i).repeat(32)}));work=await advanceV2(ctx,'FAB-1',sessionId(work),now);}
   const prior=await loadJob(path.join(ctx.jobRoot,'FAB-1')),before=await jobBytes(ctx.jobRoot);
   assert.equal((await selectHistoricalAuthorWorkV2(ctx,{requestedReadingId:'FAB-1',lane:'spark'},now,{health:verify})).reason,'chapter_owner_differs');assert.deepEqual(await jobBytes(ctx.jobRoot),before);
   const selected=await selectHistoricalAuthorWorkV2(ctx,{},now,{health:verify});assert.equal(selected.authorLane,'luna');
   work=await startV2(ctx,'luna',now,{requestedReadingId:'FAB-1',requestedHistoricalAuthorization:selected.historicalAuthorization});assert.equal(work.totalSubmissions,2);assert.equal(work.action,'author_candidate');
   const after=await loadJob(prior.directory);assert.deepEqual(after.state.rejected,prior.state.rejected);for(const [id,session] of Object.entries(prior.state.sessions))assert.deepEqual(after.state.sessions[id],session);
+});
+
+async function defaultPriorityFixture(t) {
+  const historicalCount=32,{ctx,now:initial}=await fixture(t,{verseCount:1,readingCount:historicalCount+8}),
+    now=new Date(initial.getTime()+historicalCount*86400000),forward=ctx.plan.entries.slice(historicalCount),
+    historical=ctx.plan.entries.slice(0,historicalCount);
+  for(const entry of forward)await atomicJson(ctx.privateRoot,`bridge/celebration-y3q4/${entry.readingId}.metadata.json`,{readingId:entry.readingId});
+  const ready={status:'ready',effectiveDate:now.toISOString().slice(0,10),target:8,readingIds:forward.map(e=>e.readingId),
+    missingPreparedReadingIds:[],missingPayloadReadingIds:[],componentFailures:[],currentHorizonHenryLayer:{status:'complete',fallbackReadingIds:[],unavailableReadingIds:[]}},
+    incomplete={...structuredClone(ready),status:'not_ready',missingPreparedReadingIds:forward.slice(3).map(e=>e.readingId),
+      missingPayloadReadingIds:forward.slice(3).map(e=>e.readingId),currentHorizonHenryLayer:{status:'unavailable',fallbackReadingIds:[],unavailableReadingIds:forward.slice(3).map(e=>e.readingId)}};
+  const prepare=async full=>atomicJson(ctx.privateRoot,'private-manifest.json',{readings:Object.fromEntries(
+    [...historical,...forward.slice(0,full?8:3)].map(e=>[e.readingId,{}]))});
+  await prepare(false);return {ctx,now,forward,historical,ready,incomplete,prepare};
+}
+for(const lane of ['spark','luna'])test(`default ${lane} cannot claim 32 historical candidates behind five missing daily readings`,async t=>{
+  const f=await defaultPriorityFixture(t);
+  if(lane==='luna') {
+    await f.prepare(true);let work=await startV2(f.ctx,'spark',f.now,{}, {health:async()=>f.ready});
+    for(let i=0;i<2;i++){await writeCandidate(work,c=>({...c,packet_id:'MHP2-'+String(i).repeat(32)}));work=await advanceV2(f.ctx,work.readingId,sessionId(work),f.now);}
+    assert.equal(work.state,'fallback_pending');await f.prepare(false);
+  }
+  const before=await jobBytes(f.ctx.jobRoot),ledger=Buffer.from(bytesFor({schemaVersion:'mhc-backfill-attempt-state/v1',planVersion:f.ctx.plan.planVersion,attempts:{}}));
+  await writeFile(path.join(f.ctx.privateRoot,'automation/mhc-backfill-attempt-state.json'),ledger);
+  const model=fabricatedModelRun(),result=await runAuthorSession(f.ctx,{lane,codexExecutable:process.execPath},
+    {run:model.run,clock:()=>f.now,historicalHealth:async()=>structuredClone(f.incomplete)});
+  assert.equal(result.action,'none');assert.equal(result.state,'forward_preparation_pending');assert.equal(result.code,null);
+  assert.equal(result.buffer.completeConsecutiveReadings,3);assert.equal(result.buffer.devotionalGaps.length,5);assert.equal(model.calls,0);
+  assert.deepEqual(await jobBytes(f.ctx.jobRoot),before);assert.deepEqual(await readFile(path.join(f.ctx.privateRoot,'automation/mhc-backfill-attempt-state.json')),ledger);
+});
+test('incomplete default buffer preserves historical expiry and model-rebind heads while forward maintenance remains allowed',async t=>{
+  const f=await defaultPriorityFixture(t),past=await sourceInput(f.ctx,f.historical[0]);
+  let historicalJob=await createJob(f.ctx.jobRoot,past.input,new Date(f.now.getTime()-25*60*60*1000),{spark:'gpt-5.3-codex-spark',luna:'gpt-5.6-luna'});
+  await appendState(historicalJob,'FABRICATED retained queue',{...historicalJob.state,phase:'queued'},f.now);
+  const historicalBefore=await jobBytes(path.join(f.ctx.jobRoot,f.historical[0].readingId));
+  const next=await sourceInput(f.ctx,f.forward[0]),forwardJob=await createJob(f.ctx.jobRoot,next.input,f.now,{spark:'gpt-5.3-codex-spark',luna:'gpt-5.6-luna'});
+  await appendState(forwardJob,'FABRICATED forward queue',{...forwardJob.state,phase:'queued'},f.now);
+  const result=await startV2(f.ctx,'spark',f.now,{}, {health:async()=>f.incomplete});assert.equal(result.readingId,f.forward[0].readingId);
+  const current=await loadJob(path.join(f.ctx.jobRoot,result.readingId));assert.equal(current.state.models.spark,'gpt-6-luna');
+  assert.ok(current.state.history.some(h=>h.kind==='author_configuration_rebound'));assert.deepEqual(await jobBytes(path.join(f.ctx.jobRoot,f.historical[0].readingId)),historicalBefore);
+});
+test('incomplete default buffer preserves a historical active writer without another ownership wake or forward writer',async t=>{
+  const f=await defaultPriorityFixture(t);await f.prepare(true);
+  await startV2(f.ctx,'spark',f.now,{}, {health:async()=>f.ready});await f.prepare(false);
+  const before=await jobBytes(f.ctx.jobRoot);
+  const result=await startV2(f.ctx,'luna',f.now,{}, {health:async()=>f.incomplete});
+  assert.equal(result.action,'none');assert.equal(result.state,'forward_preparation_pending');assert.deepEqual(await jobBytes(f.ctx.jobRoot),before);
+});
+test('default historical admission rechecks authenticated scope immediately before mutation and accepts only all eight complete',async t=>{
+  const f=await defaultPriorityFixture(t);await f.prepare(true);const before=await jobBytes(f.ctx.jobRoot);let checks=0;
+  const denied=await startV2(f.ctx,'spark',f.now,{}, {health:async()=>++checks===1?f.ready:f.incomplete});
+  assert.equal(checks,2);assert.equal(denied.state,'forward_preparation_pending');assert.deepEqual(await jobBytes(f.ctx.jobRoot),before);
+  const ledger={schemaVersion:'mhc-backfill-attempt-state/v1',planVersion:f.ctx.plan.planVersion,attempts:{[f.historical[0].readingId]:{
+    attemptedAt:f.now.toISOString(),outcome:'model_failure',stage:'generate',code:'FABRICATED_FAILURE'}}};
+  await atomicJson(f.ctx.privateRoot,'automation/mhc-backfill-attempt-state.json',ledger);checks=0;
+  const model=fabricatedModelRun(),result=await runAuthorSession(f.ctx,{lane:'spark',codexExecutable:process.execPath},
+    {run:model.run,clock:()=>f.now,historicalHealth:async()=>{checks++;return structuredClone(f.ready);}});
+  assert.equal(checks,2);assert.equal(result.readingId,f.historical[1].readingId);assert.equal(result.action,'review_handoff');assert.equal(model.calls,1);
+  assert.equal(result.readings.length,1);const job=await loadJob(path.join(f.ctx.jobRoot,result.readingId));
+  assert.equal(job.state.total_submissions,1);assert.equal(job.state.session.submissions,1);
+  assert.equal(Date.parse(job.state.session.deadline_at)-Date.parse(job.state.session.started_at),60*60*1000);
+  const proof=job.state.history.find(h=>h.kind==='default_historical_authorization_admitted');assert.match(proof.health_sha256,/^[a-f0-9]{64}$/);
+  assert.deepEqual(await readJson(path.join(f.ctx.privateRoot,'automation/mhc-backfill-attempt-state.json')),ledger);
+});
+test('eight complete permits original default fallback transfer without replenishing primary submissions or sessions',async t=>{
+  const f=await defaultPriorityFixture(t);await f.prepare(true);let work=await startV2(f.ctx,'spark',f.now,{}, {health:async()=>f.ready});
+  for(let i=0;i<2;i++){await writeCandidate(work,c=>({...c,packet_id:'MHP2-'+String(i).repeat(32)}));work=await advanceV2(f.ctx,work.readingId,sessionId(work),f.now);}
+  const before=await loadJob(path.join(f.ctx.jobRoot,work.readingId)),model=fabricatedModelRun(x=>x,{model:MODELS.luna});let checks=0;
+  const result=await runAuthorSession(f.ctx,{lane:'luna',codexExecutable:process.execPath},
+    {run:model.run,clock:()=>f.now,historicalHealth:async()=>{checks++;return f.ready;}});
+  assert.equal(checks,2);assert.equal(result.readingId,before.input.reading_id);assert.equal(result.action,'review_handoff');assert.equal(model.calls,1);
+  const after=await loadJob(before.directory);assert.deepEqual(after.state.rejected,before.state.rejected);assert.equal(after.state.total_submissions,3);
+  for(const [id,session]of Object.entries(before.state.sessions))assert.deepEqual(after.state.sessions[id],session);
+  assert.equal(after.state.owners['TST.1'],'luna');
 });
 test('historical reference cannot combine with daily admission or a multi-reading author run',async t=>{
   const {ctx,now,verify}=await historicalFixture(t),selected=await selectHistoricalAuthorWorkV2(ctx,{},now,{health:verify}),before=await jobBytes(ctx.jobRoot);

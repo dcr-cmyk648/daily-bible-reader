@@ -105,6 +105,19 @@ mutation. Missing/stale health, changed selection or owner, invalid references
 and unpublished/nonhistorical targets reject without job or ownership-counter
 writes. Historical and daily dependency admission cannot be combined.
 
+The default legacy `author-run` / `startV2` route now enforces the same actual
+forward-buffer prerequisite before historical author admission. It projects the
+original selector and maintenance without writes, then authenticates current
+through T+7 health twice before any historical job initialization, model rebind,
+lease/owner transition, session or candidate work. Only eight complete devotional
+and Henry readings admit the original historical selector, cooldowns and owner.
+Incomplete health restricts both selection and maintenance to forward chapters;
+with no eligible forward author it returns `none` / `forward_preparation_pending`,
+without approval status, a healthy claim, an author failure or historical mutation.
+An existing historical writer also stays untouched while preparation is pending.
+All packet, reading, run and deadline budgets remain unchanged. The exact requested
+forward/daily and in-process historical interfaces retain their existing gates.
+
 Accepted historical dispatch records the fresh measurement hash and timestamp
 in `historical_authorization_admitted` history. Existing attempts, sessions,
 leases, per-packet submissions, review and publication gates remain authoritative;

@@ -144,15 +144,15 @@ export async function runAuthorSession(ctx,{lane,codexExecutable,maxReadings=3,r
   const run=dependencies.run||spawnSync,clock=dependencies.clock||(()=>new Date()),{mcpNames,options}=preflight.transport;
   const results=[],runDeadline=clock().getTime()+60*60*1000;
   for(let readingCount=0;readingCount<maxReadings&&clock().getTime()<runDeadline;readingCount++){
-    const work=await drainReading(readingCount?{...ctx,forwardOnly:true}:ctx,{lane,codexExecutable,run,clock,mcpNames,options,runDeadline,requestedReadingId,requestedDailyWorkOrder,requestedHistoricalAuthorization});
+    const work=await drainReading(readingCount?{...ctx,forwardOnly:true}:ctx,{lane,codexExecutable,run,clock,mcpNames,options,runDeadline,requestedReadingId,requestedDailyWorkOrder,requestedHistoricalAuthorization,historicalHealth:dependencies.historicalHealth});
     results.push(work);
     if(work.action!=='review_handoff'||work.scheduleDate<henryToday(ctx,clock()))break;
   }
   return {...results.at(-1),readings:results,preflightReceiptPath:preflight.receiptPath};
 }
 const henryToday=(ctx,now)=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Detroit',year:'numeric',month:'2-digit',day:'2-digit'}).format(now);
-async function drainReading(ctx,{lane,codexExecutable,run,clock,mcpNames,options,runDeadline,requestedReadingId,requestedDailyWorkOrder,requestedHistoricalAuthorization}) {
-  let work=await startV2(ctx,lane,clock(),{requestedReadingId,requestedDailyWorkOrder,requestedHistoricalAuthorization});
+async function drainReading(ctx,{lane,codexExecutable,run,clock,mcpNames,options,runDeadline,requestedReadingId,requestedDailyWorkOrder,requestedHistoricalAuthorization,historicalHealth}) {
+  let work=await startV2(ctx,lane,clock(),{requestedReadingId,requestedDailyWorkOrder,requestedHistoricalAuthorization},{health:historicalHealth});
   // Classifying retained provider evidence is not a model dispatch. An expired
   // session may transfer its proven refusal, but cannot get time or attempts back.
   if(lane==='spark'&&work.code==='V2_WAKE_BUDGET'){

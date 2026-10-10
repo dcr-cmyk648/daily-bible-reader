@@ -48,6 +48,11 @@ models with a trivial request through the existing ChatGPT login and stages bloc
 status on deterministic failures. One invocation drains at most three forward
 readings under a shared one-hour deadline, retaining each reading's candidate
 budgets and independent review handoff. Report every readings[] outcome.
+Default historical authoring requires authenticated completion of all eight
+current-through-T+7 devotionals and Henry layers. `action:none` with
+`state:forward_preparation_pending` means daily preparation has priority and no
+historical work was claimed. Report that pending outcome without labeling it
+healthy, approval-required or an author failure; never override the native gate.
 Generic transport checkpoints release ownership as blocked fallback-retained debt
 after two consecutive wakes; owner conflicts escalate after two wakes and leases
 expire within 24 hours. Provider/configuration failures block immediately and never

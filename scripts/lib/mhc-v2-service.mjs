@@ -331,17 +331,54 @@ export async function selectAuthorWorkV2(ctx,{requestedReadingId,lane,requestedD
     requiredModel:(job?jobModels(job):configuredModels(ctx))[authorLane],selectionKind:selected.kind,...(daily?{dailyDependency:daily.proof}:{})};
 }
 
-export async function startV2(ctx,lane,now=new Date(),{requestedReadingId,requestedDailyWorkOrder,requestedHistoricalAuthorization}={}) {
+async function defaultAuthorAdmission(ctx,lane,now,health) {
+  const window=henryPriorityWindow(ctx.appConfig,now),raw=await allJobs(ctx,{readOnly:true});
+  // Project original maintenance and selection without initializing partial jobs,
+  // rebinding models, expiring leases or consuming an ownership wake.
+  const projected=raw.map(job=>{
+    let value=job.state?job:{...job,state:initialJobState(job.input,now)};
+    for(const transition of authorMaintenance(ctx,value,now))value={...value,state:transition.state};
+    return value;
+  });
+  const selected=await selectAuthorJob(ctx,projected,lane,now),id=selected.job?.input.reading_id??selected.entry?.readingId,
+    entry=ctx.plan.entries.find(e=>e.readingId===id),historical=entry&&entry.dayIndex<window.currentDay;
+  let buffer,proof;
+  const retainedHistoricalWriter=raw.some(j=>j.state?.phase==='generating'&&j.input.schedule_date<window.today);
+  if((historical||retainedHistoricalWriter)&&!ctx.forwardOnly) {
+    let measurement=await health(ctx,now);buffer=measuredBuffer(ctx.plan,ctx.appConfig,measurement,now);
+    if(buffer.status==='ready'&&buffer.targetReadings===8) {
+      // A first ready observation is discovery only. Recheck actual authenticated
+      // health immediately before the original mutating admission path.
+      measurement=await health(ctx,now);buffer=measuredBuffer(ctx.plan,ctx.appConfig,measurement,now);
+      if(buffer.status==='ready'&&buffer.targetReadings===8)proof={checked_at:new Date(now).toISOString(),health_sha256:digestObject(measurement)};
+    }
+  }
+  if(proof)return {ctx,proof};
+  const pending={pipeline:VERSION,action:'none',state:'forward_preparation_pending',published:false,code:null,
+    reason:'forward_preparation_precedes_historical_authoring',...(buffer?{buffer}:{}),queue:selected.queue};
+  // A retained historical writer must not be resumed or coexist with a new
+  // forward writer while its required service buffer is incomplete.
+  if(retainedHistoricalWriter)return {pending};
+  return {ctx:{...ctx,forwardOnly:true},restricted:true,pending:buffer?pending:null};
+}
+
+export async function startV2(ctx,lane,now=new Date(),{requestedReadingId,requestedDailyWorkOrder,requestedHistoricalAuthorization}={},
+  {health=historicalForwardHealth}={}) {
   if(!MODELS[lane])throw new Error('V2_MODEL_NOT_ALLOWED');
   if(requestedDailyWorkOrder!==undefined&&requestedReadingId===undefined)throw new Error('V2_DAILY_DEPENDENCY_READING_REQUIRED');
   if(requestedHistoricalAuthorization!==undefined&&(requestedReadingId===undefined||requestedDailyWorkOrder!==undefined))throw new Error('V2_HISTORICAL_ARGUMENTS_INVALID');
   let exact;
   if(requestedReadingId!==undefined){exact=requestedHistoricalAuthorization===undefined?await selectAuthorWorkV2(ctx,{requestedReadingId,lane,requestedDailyWorkOrder},now):await checkedHistoricalSelection(ctx,requestedReadingId,lane,requestedHistoricalAuthorization,now);if(exact.action!=='selected')return exact;ctx={...ctx,forwardOnly:!exact.historical};}
-  let jobs=await allJobs(ctx,{readOnly:requestedReadingId!==undefined});const window=henryPriorityWindow(ctx.appConfig,now);
-  for(const partial of jobs.filter(j=>!j.state&&(requestedReadingId===undefined||j.input.reading_id===requestedReadingId))){const entry=ctx.plan.entries.find(e=>e.readingId===partial.input.reading_id);if(!entry)throw new Error('V2_PARTIAL_JOB_PLAN_CHANGED');const sources=await sourceInput(ctx,entry);if(sources.input.input_sha256!==partial.input.input_sha256)throw new Error('V2_PARTIAL_JOB_SOURCE_CHANGED');await createJob(ctx.jobRoot,partial.input,now);}
-  jobs=await allJobs(ctx,{readOnly:requestedReadingId!==undefined});
+  const admission=requestedReadingId===undefined?await defaultAuthorAdmission(ctx,lane,now,health):null;
+  if(admission?.pending&&!admission.ctx)return admission.pending;
+  if(admission)ctx=admission.ctx;
+  const window=henryPriorityWindow(ctx.appConfig,now),allowed=job=>!admission?.restricted||
+    job.input.schedule_date>=window.today&&job.input.schedule_date<=window.horizonDate;
+  let jobs=await allJobs(ctx,{readOnly:true});
+  for(const partial of jobs.filter(j=>!j.state&&allowed(j)&&(requestedReadingId===undefined||j.input.reading_id===requestedReadingId))){const entry=ctx.plan.entries.find(e=>e.readingId===partial.input.reading_id);if(!entry)throw new Error('V2_PARTIAL_JOB_PLAN_CHANGED');const sources=await sourceInput(ctx,entry);if(sources.input.input_sha256!==partial.input.input_sha256)throw new Error('V2_PARTIAL_JOB_SOURCE_CHANGED');await createJob(ctx.jobRoot,partial.input,now);}
+  jobs=await allJobs(ctx,{readOnly:true});
   for(let old of jobs){
-    if(!old.state||(requestedReadingId!==undefined&&old.input.reading_id!==requestedReadingId))continue;
+    if(!old.state||!allowed(old)||(requestedReadingId!==undefined&&old.input.reading_id!==requestedReadingId))continue;
     // The October replacement may rebind only never-authored work. Original
     // receipts, event history, session deadlines and budgets remain intact.
     for(const transition of authorMaintenance(ctx,old,now)){
@@ -349,7 +386,7 @@ export async function startV2(ctx,lane,now=new Date(),{requestedReadingId,reques
       if(transition.kind==='author_lease_expired')await stageAuthorBlock(ctx,{model:jobModels(old)[old.state.session?.lane||'spark'],reason:'Author lease expired; fallback retained',code:'V2_AUTHOR_LEASE_EXPIRED'},now);
     }
   }
-  jobs=await allJobs(ctx,{readOnly:requestedReadingId!==undefined});
+  jobs=(await allJobs(ctx,{readOnly:true})).filter(allowed);
   const selected=await selectAuthorJob(ctx,jobs,exact?.historical?undefined:lane,now,{dailyEntry:exact?.selectionKind==='daily_dependency'?ctx.plan.entries.find(e=>e.readingId===requestedReadingId):undefined,edf:Boolean(exact)&&!exact.historical});let job=selected.job;
   if(selected.kind==='queued'){job=(await checkedJob(ctx,job.input.reading_id)).job;const next=nextBatch(job);if(next&&next.lane!==lane)return ownershipWake(ctx,job,now);job=await appendState(job,'queued_authoring_resumed',{...job.state,phase:'generating'},now);}
   if(job&&selected.kind!=='fallback_pending'){job=(await checkedJob(ctx,job.input.reading_id)).job;const next=nextBatch(job);if(next&&next.lane!==lane)return ownershipWake(ctx,job,now);}
@@ -360,7 +397,8 @@ export async function startV2(ctx,lane,now=new Date(),{requestedReadingId,reques
       job=await appendState(job,'eligible_luna_transfer',state,now);
   }
   if(!job) {
-    if(!selected.entry)return {pipeline:VERSION,action:'none',state:'no_eligible_reading',queue:selected.queue};
+    if(!selected.entry)return admission?.pending||{pipeline:VERSION,action:'none',state:'no_eligible_reading',queue:selected.queue};
+    if(ctx.forwardOnly&&selected.entry.dayIndex<window.currentDay)return admission?.pending||{pipeline:VERSION,action:'none',state:'forward_drain_complete',queue:selected.queue};
     // Only Spark starts new v2 work. Luna needs a recorded actual Spark candidate
     // failure; absence or a host authorization denial never creates eligibility.
     if(lane==='luna')return {pipeline:VERSION,action:'none',state:'awaiting_primary',readingId:selected.entry.readingId};
@@ -371,6 +409,8 @@ export async function startV2(ctx,lane,now=new Date(),{requestedReadingId,reques
     if(selected.kind==='daily_dependency')job=await appendState(job,'daily_dependency_admitted',{...job.state,history:[...job.state.history,{kind:'daily_dependency_admitted',...exact.dailyDependency}]},now);
   }
   if(exact?.historical)job=await appendState(job,'historical_authorization_admitted',{...job.state,history:[...job.state.history,{kind:'historical_authorization_admitted',...exact.historicalProof}]},now);
+  if(admission?.proof&&job.input.schedule_date<window.today)job=await appendState(job,'default_historical_authorization_admitted',
+    {...job.state,history:[...job.state.history,{kind:'default_historical_authorization_admitted',...admission.proof}]},now);
   job=await beginSession(ctx,job,lane,now);
   if(job.state.pending_attempt)return advanceV2(ctx,job.input.reading_id,job.state.session.id,now);
   return authorPacket(ctx,job,now);

@@ -135,6 +135,8 @@ export async function executeBoundedChild(ctx,{journal,lease,jobId,readingId,kin
   }
   const previous=new Map([...all.entries()].filter(([,e])=>e.jobId===jobId&&e.kind===kind));
   const values=[...previous.values()];
+  if(values.some(e=>['reserved','uncertain'].includes(e.phase)))throw fault('SUPERVISOR_CHILD_DISPATCH_UNCERTAIN');
+  if(values.some(e=>e.phase==='blocked'))throw fault('SUPERVISOR_CHILD_CAPABILITY_BLOCK_RETAINED');
   const accepted=values.find(e=>e.phase==='accepted'&&(e.inputSha256===inputSha256||e.repairOfInputSha256===inputSha256));
   if(accepted) {
     const raw=await readFile(await confined(ctx.stateRoot,accepted.output.path,false));
@@ -147,8 +149,6 @@ export async function executeBoundedChild(ctx,{journal,lease,jobId,readingId,kin
     }
     return {execution:accepted,output:JSON.parse(raw),admission};
   }
-  if(values.some(e=>['reserved','uncertain'].includes(e.phase)))throw fault('SUPERVISOR_CHILD_DISPATCH_UNCERTAIN');
-  if(values.some(e=>e.phase==='blocked'))throw fault('SUPERVISOR_CHILD_CAPABILITY_BLOCK_RETAINED');
   if(values.length>=2)throw fault('SUPERVISOR_CHILD_REPAIR_EXHAUSTED');
   const remaining=deadline-clock().getTime()-5*60*1000;
   if(remaining<60000)throw fault('SUPERVISOR_CHILD_DEADLINE');
@@ -159,11 +159,20 @@ export async function executeBoundedChild(ctx,{journal,lease,jobId,readingId,kin
     reservedAt:clock().toISOString(),deadline:new Date(deadline).toISOString()};
   if(packet.repairPlan?.schemaVersion==='supervisor-structural-repair/v1') {
     const {repairPlan,...original}=packet,prior=values.find(v=>v.id===repairPlan.failedExecutionId);
-    if(!prior||prior.phase!=='failed'||prior.ordinal!==1||prior.code!=='SUPERVISOR_CHILD_OUTPUT_INVALID'||
+    const nativeRejected=kind==='henry-editorial-repair'&&prior?.code==='SUPERVISOR_HENRY_EDITORIAL_REPAIR_INVALID';
+    if(!prior||prior.phase!=='failed'||prior.ordinal!==1||(!nativeRejected&&prior.code!=='SUPERVISOR_CHILD_OUTPUT_INVALID')||
       prior.inputSha256!==digest(jsonBytes(original)))throw fault('SUPERVISOR_CHILD_REPAIR_BINDING_CHANGED');
     const originalRaw=await readFile(await confined(ctx.stateRoot,`executions/${prior.id}/output.json`,false));
     if(digest(originalRaw)!==repairPlan.failedOutputSha256||originalRaw.toString()!==repairPlan.failedOutput)
       throw fault('SUPERVISOR_CHILD_REPAIR_BINDING_CHANGED');
+    if(nativeRejected) {
+      if(!prior.admissionRejected||repairPlan.admissionRejectedSha256!==prior.admissionRejected.sha256||
+        prior.output?.sha256!==repairPlan.failedOutputSha256)throw fault('SUPERVISOR_CHILD_REPAIR_BINDING_CHANGED');
+      const rejectionBytes=await readFile(await confined(ctx.stateRoot,prior.admissionRejected.path,false)),rejection=JSON.parse(rejectionBytes);
+      if(digest(rejectionBytes)!==prior.admissionRejected.sha256||rejection.executionId!==prior.id||
+        rejection.inputSha256!==prior.inputSha256||rejection.failedOutputSha256!==repairPlan.failedOutputSha256||
+        digest(jsonBytes(rejection.diagnostics))!==digest(jsonBytes(repairPlan.findings)))throw fault('SUPERVISOR_CHILD_REPAIR_BINDING_CHANGED');
+    }
     execution.repairOfInputSha256=prior.inputSha256;
   }
   await durableWrite(ctx.stateRoot,`${base}/packet.json`,jsonBytes(packet));
@@ -189,6 +198,8 @@ export async function executeBoundedChild(ctx,{journal,lease,jobId,readingId,kin
       execution.refusedOutputSha256=digest(raw);await unlink(await confined(ctx.stateRoot,`${base}/output.json`,false));throw e;
     }
     const output=JSON.parse(raw);assertSchemaValid(output,schema,{label:'Bounded child output'});
+    execution.output={path:`${base}/output.json`,sha256:digest(raw)};
+    execution.threadId=proof.threadId;execution.eventsSha256=proof.eventsSha256;
     const admission=dependencies.admit?await dependencies.admit(output,{packet,execution,sourceEvidence:proof.opened}):null;
     if(admission) {
       const admissionBytes=jsonBytes(admission),relative=`${base}/admission.json`;

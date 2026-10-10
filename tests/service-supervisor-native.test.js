@@ -217,6 +217,114 @@ test('two legitimate native packet repairs permit a third fresh exact-basis revi
   const accepted=(await f.journal.load()).filter(e=>e.kind==='execution_state'&&e.data.execution.kind==='independent-review'&&e.data.execution.phase==='accepted').map(e=>e.data.execution);
   assert.equal(new Set(accepted.map(e=>e.jobId)).size,3);assert.equal(new Set(accepted.map(e=>e.threadId)).size,3);
 });
+async function rejectedLegacyRepair(t,{legacy=true,second='valid'}={}) {
+  const f=await fixture(t),[executor,contracts,model]=await Promise.all(['service-supervisor-exec','service-supervisor-contracts','mhc-v2']
+    .map(n=>import(`../scripts/lib/${n}.mjs`))),options={journal:f.journal,lease:f.lease,wakeId:'d'.repeat(32),readingId:f.readingId,deadline:f.now.getTime()+90*60000},
+    dependency=await f.henry.prepareHenryDependency(f.ctx,{...options,order:f.order},f.deps);
+  await f.henry.runHenryWork(f.ctx,{...options,dailyDependency:dependency.authorization},f.deps);
+  const {bundle}=await f.binding.service.buildReview(f.native,f.readingId),packet=bundle.source_packets[0];
+  await f.nativeStore.atomicJson(path.join(f.native.jobRoot,f.readingId),'review.json',{schema_version:'mhc-evidence-review-decision/v2',
+    reading_id:f.readingId,review_basis_sha256:bundle.review_basis_sha256,reviewer:'FABRICATED initial independent reviewer',reviewed_at:f.now.toISOString(),
+    findings:['FABRICATED retained source-bound changes'],status:'changes_requested',packet_id:packet.packet_id});
+  await f.binding.runner.withRunnerLock(f.native,()=>f.binding.service.requestEditorialV2(f.native,f.readingId,f.now));
+  const job=await f.nativeStore.loadJob(path.join(f.native.jobRoot,f.readingId)),key=`${packet.packet_id}:spark`,rejectedSha256=job.state.blocker.candidate_sha256,
+    original=JSON.parse((await f.store.readPrivate(job.directory,`attempts/${rejectedSha256}.json`)).bytes),
+    input={schemaVersion:'supervisor-henry-editorial-input/v1',readingId:f.readingId,inputSha256:job.input.input_sha256,rejectedSha256,packet,original,
+      findings:job.state.blocker.findings||[],allowedRepairCount:1},bad=structuredClone(original);
+  bad.records.forEach(r=>r.sentences[0].text=packet.evidence[0].text);
+  assert.ok(model.validateCandidate(bad,packet).diagnostics.some(d=>d.code==='V2_SOURCE_COPY'));
+  let calls=0;
+  const exec={clock:()=>f.now,transport:async()=>({env:{},mcpNames:[],proof:{billingRoute:'FABRICATED local fixture'}}),execute:async(_exe,args,opts)=>{
+    calls++;const schema=JSON.parse(await fs.readFile(args[args.indexOf('--output-schema')+1])),p=JSON.parse(opts.input.slice(opts.input.indexOf('\n')+1));
+    if(calls>1) {
+      if(!initial)initial={execution:(await f.journal.load()).findLast(e=>e.kind==='execution_state'&&e.data.execution.kind==='henry-editorial-repair'&&e.data.execution.ordinal===1).data.execution};
+      assert.equal(p.repairPlan.failedOutput, (await fs.readFile(path.join(f.ctx.stateRoot,`executions/${initial.execution.id}/output.json`))).toString());
+      assert.ok(p.repairPlan.findings.some(d=>d.code==='V2_SOURCE_COPY'));
+      if(second==='provider')return {status:1,stdout:'',stderr:'FABRICATED provider failure'};
+      if(second==='uncertain')throw Error('FABRICATED host dispatch uncertainty');
+    }
+    const candidate=calls===1||second==='invalid'?bad:original,output={schemaVersion:'henry-editorial-repair/v1',readingId:f.readingId,
+      inputSha256:schema.properties.inputSha256.const,verdict:'repaired',candidateJson:JSON.stringify(candidate),findings:['FABRICATED source-bound repair']};
+    await fs.writeFile(args[args.indexOf('--output-last-message')+1],f.store.jsonBytes(output));
+    return {status:0,stderr:'',stdout:`{"type":"thread.started","thread_id":"FABRICATED-repair-${calls}"}\n{"type":"turn.completed"}\n`};
+  }};
+  let initial;
+  if(legacy)initial=await executor.executeBoundedChild(f.ctx,{...options,jobId:`henry-editorial-${job.input.input_sha256}-${packet.packet_id}`,
+    kind:'henry-editorial-repair',packet:input,schema:contracts.henryRepairContract(input),prompt:`FABRICATED old envelope-only admission\n${JSON.stringify(input)}`},exec);
+  return {...f,options,job,input,packet,exec,getRepairCalls:()=>calls,getInitial:()=>initial,
+    setInitial:value=>{initial=value;},key};
+}
+test('old envelope-only accepted source-copy repair is reclassified without refund, corrected at ordinal two, applied once and independently reviewed',async t=>{
+  const f=await rejectedLegacyRepair(t),initial=f.getInitial(),raw=await fs.readFile(path.join(f.ctx.stateRoot,initial.execution.output.path));
+  assert.equal((await f.henry.repairHenryWork(f.ctx,f.options,{...f.deps,exec:f.exec})).action,'review_handoff');
+  const events=await f.journal.load(),states=events.filter(e=>e.kind==='execution_state'&&e.data.execution.kind==='henry-editorial-repair').map(e=>e.data.execution);
+  assert.equal(states.filter(e=>e.id===initial.execution.id&&e.phase==='accepted').length,1);
+  const rejected=states.find(e=>e.id===initial.execution.id&&e.phase==='failed'),corrected=states.find(e=>e.ordinal===2&&e.phase==='accepted');
+  assert.ok(rejected.admissionRejected);assert.ok(corrected.admission);assert.equal(corrected.repairOfInputSha256,initial.execution.inputSha256);
+  assert.deepEqual(await fs.readFile(path.join(f.ctx.stateRoot,initial.execution.output.path)),raw);assert.equal(f.getRepairCalls(),2);
+  const job=await f.nativeStore.loadJob(f.job.directory);assert.equal(job.state.total_submissions,1);assert.equal(job.state.history.filter(e=>e.kind==='editorial_repair').length,1);
+  let reviewCalls=0;const exec={...f.exec,execute:async(_exe,args)=>{
+    reviewCalls++;const schema=JSON.parse(await fs.readFile(args[args.indexOf('--output-schema')+1]));
+    await fs.writeFile(args[args.indexOf('--output-last-message')+1],f.store.jsonBytes({schemaVersion:'independent-review/v1',readingId:f.readingId,
+      inputSha256:schema.properties.inputSha256.const,verdict:'approved',assertions:Object.fromEntries(Object.keys(schema.properties.assertions.properties).map(k=>[k,true])),
+      findings:['FABRICATED fresh complete source comparison'],corrections:[],repairPacketId:null,coverageLimits:[]}));
+    return {status:0,stdout:`{"type":"thread.started","thread_id":"${reviewCalls===1?'FABRICATED-repair-1':'FABRICATED-fresh-full-review'}"}\n{"type":"turn.completed"}\n`,stderr:''};
+  }};
+  await assert.rejects(f.henry.reviewHenryWork(f.ctx,f.options,{...f.deps,exec}),/REVIEW_NOT_INDEPENDENT/);
+  assert.equal((await f.henry.reviewHenryWork(f.ctx,f.options,{...f.deps,exec})).action,'publish_required');
+  assert.equal((await f.nativeStore.loadJob(f.job.directory)).state.total_submissions,1);
+  await assert.rejects(f.henry.repairHenryWork(f.ctx,f.options,{...f.deps,exec:f.exec}),/EDITORIAL_PHASE_CHANGED/);assert.equal(f.getRepairCalls(),2);
+});
+test('new repair validates its embedded native candidate before acceptance and guides only its second transport attempt',async t=>{
+  const f=await rejectedLegacyRepair(t,{legacy:false});
+  assert.equal((await f.henry.repairHenryWork(f.ctx,f.options,{...f.deps,exec:f.exec})).action,'review_handoff');
+  const states=(await f.journal.load()).filter(e=>e.kind==='execution_state'&&e.data.execution.kind==='henry-editorial-repair').map(e=>e.data.execution);
+  assert.equal(states.filter(e=>e.ordinal===1&&e.phase==='accepted').length,0);
+  assert.ok(states.some(e=>e.ordinal===1&&e.phase==='failed'&&e.admissionRejected));
+  assert.ok(states.some(e=>e.ordinal===2&&e.phase==='accepted'&&e.admission));assert.equal(f.getRepairCalls(),2);
+});
+for(const changed of ['none','proof','native-head'])test(`reclassified legacy repair restart retains guided second slot and rejects ${changed} changes`,async t=>{
+  const f=await rejectedLegacyRepair(t),exec={...f.exec,transport:async()=>{throw Error('FABRICATED pre-dispatch capability check stopped');}};
+  await assert.rejects(f.henry.repairHenryWork(f.ctx,f.options,{...f.deps,exec}),/pre-dispatch/);assert.equal(f.getRepairCalls(),1);
+  const failed=(await f.journal.load()).findLast(e=>e.kind==='execution_state'&&e.data.execution.kind==='henry-editorial-repair').data.execution;
+  assert.equal(failed.phase,'failed');assert.ok(failed.admissionRejected);
+  if(changed==='proof')await fs.appendFile(path.join(f.ctx.stateRoot,failed.admissionRejected.path),' ');
+  if(changed==='native-head')await f.nativeStore.appendState(f.job,'FABRICATED new native head',f.job.state,f.now);
+  if(changed==='none')assert.equal((await f.henry.repairHenryWork(f.ctx,f.options,{...f.deps,exec:f.exec})).action,'review_handoff');
+  else await assert.rejects(f.henry.repairHenryWork(f.ctx,f.options,{...f.deps,exec:f.exec}));
+  assert.equal(f.getRepairCalls(),changed==='none'?2:1);
+});
+for(const changed of [false,true])test(`accepted corrected repair resumes only its exact native head without a third child (changed=${changed})`,async t=>{
+  const f=await rejectedLegacyRepair(t),binding={...f.binding,service:{...f.binding.service,editorialRepairV2:async()=>{throw Error('FABRICATED before native application');}}};
+  await assert.rejects(f.henry.repairHenryWork(f.ctx,f.options,{...f.deps,binding:async()=>binding,exec:f.exec}),/before native/);
+  assert.equal(f.getRepairCalls(),2);assert.equal((await f.nativeStore.loadJob(f.job.directory)).state.phase,'editorial_attention');
+  if(changed) {
+    await f.nativeStore.appendState(f.job,'FABRICATED changed native head after child admission',f.job.state,f.now);
+    await assert.rejects(f.henry.repairHenryWork(f.ctx,f.options,{...f.deps,exec:f.exec}),/EDITORIAL_BASIS_CHANGED/);
+    assert.equal(f.getRepairCalls(),2);return;
+  }
+  assert.equal((await f.henry.repairHenryWork(f.ctx,f.options,{...f.deps,exec:f.exec})).action,'review_handoff');assert.equal(f.getRepairCalls(),2);
+  assert.equal((await f.nativeStore.loadJob(f.job.directory)).state.history.filter(e=>e.kind==='editorial_repair').length,1);
+});
+for(const mutation of ['output','original','basis','uncertain'])test(`retained invalid repair ${mutation} cannot reclassify or dispatch another author`,async t=>{
+  const f=await rejectedLegacyRepair(t),initial=f.getInitial();
+  if(mutation==='output')await fs.appendFile(path.join(f.ctx.stateRoot,initial.execution.output.path),' ');
+  if(mutation==='original')await fs.appendFile(path.join(f.job.directory,`attempts/${f.input.rejectedSha256}.json`),'FABRICATED tamper');
+  if(mutation==='basis')await f.nativeStore.appendState(f.job,'FABRICATED changed basis',{...f.job.state,blocker:{...f.job.state.blocker,findings:['FABRICATED different basis']}},f.now);
+  if(mutation==='uncertain')await f.journal.append('execution_state',{execution:{...initial.execution,phase:'uncertain'}},f.now,f.lease);
+  await assert.rejects(f.henry.repairHenryWork(f.ctx,f.options,{...f.deps,exec:f.exec}));assert.equal(f.getRepairCalls(),1);
+  assert.equal((await f.nativeStore.loadJob(f.job.directory)).state.total_submissions,1);
+  assert.equal((await f.journal.load()).filter(e=>e.kind==='execution_state'&&e.data.execution.admissionRejected).length,0);
+});
+for(const second of ['invalid','provider','uncertain'])test(`remaining Henry candidate correction ${second} blocks without a third execution or native application`,async t=>{
+  const f=await rejectedLegacyRepair(t,{second});
+  await assert.rejects(f.henry.repairHenryWork(f.ctx,f.options,{...f.deps,exec:f.exec}));assert.equal(f.getRepairCalls(),2);
+  await assert.rejects(f.henry.repairHenryWork(f.ctx,f.options,{...f.deps,exec:f.exec}));assert.equal(f.getRepairCalls(),2);
+  const job=await f.nativeStore.loadJob(f.job.directory);assert.equal(job.state.phase,'editorial_attention');assert.equal(job.state.total_submissions,1);
+  assert.equal(job.state.history.filter(e=>e.kind==='editorial_repair').length,0);
+  const latest=new Map();for(const e of await f.journal.load())if(e.kind==='execution_state'&&e.data.execution.kind==='henry-editorial-repair')latest.set(e.data.execution.id,e.data.execution);
+  assert.equal(latest.size,2);assert.equal([...latest.values()].filter(e=>e.phase==='accepted').length,0);
+});
 for(const losesHealth of [false,true])test(`D adapter invokes the real native historical guard and its post-preflight health check (losesHealth=${losesHealth})`,async t=>{
   const f=await fixture(t,{readingCount:10}),now=new Date(f.now.getTime()+86400000);f.ctx.config.stage='D';
   await f.journal.release(f.lease,f.now);const lease=await f.journal.acquire('preparation',{now,durationMs:90*60000});

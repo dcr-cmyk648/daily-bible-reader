@@ -16,9 +16,9 @@ source review, atomic publication, access/sharing, immutable rollback and releas
 
 - WO-1 native fd5922d is installed. Both configured ChatGPT author preflights passed
   at 18:10 UTC; both Henry definitions remain ACTIVE; manager owns exact pin updates.
-- WO-3 publisher B fd5922d is installed. Genuine Genesis 14 and Psalm 3/Proverbs
-  publication transactions are terminal with exact release proof. C/D integration
-  remains under review. [Publication](docs/SUPERVISOR_PUBLICATION.md), [authoring](docs/SUPERVISOR_AUTHORING.md).
+- WO-3 C 23ab95f cap1 trial is installed; daily/review thin routes remain ACTIVE.
+  Both fd Henry lanes remain ACTIVE. GEN15 source-copy rejection is under bounded
+  correction; GEN16/D held. [Publication](docs/SUPERVISOR_PUBLICATION.md), [authoring](docs/SUPERVISOR_AUTHORING.md).
 - WO-2 466058d remains an unselected canary; backend/installed-phone promotion
   is held. Stored preparation heartbeats reach the private store, but the old
   backend drops the new fields. Scheduled-wake readback remains required.
@@ -38,10 +38,10 @@ actual health and the original manifest-backed selector after author preflight.
 Cooldowns, current priority, owners, attempts, sessions and leases remain authoritative.
 The immutable runtime includes the existing allowlisted public backend config.
 Manager owns installation, live preflight, source pins and C/D acceptance.
-C/D check: 626 fabricated/local tests, safety, 45 schemas, builds and asset
-verification passed. Interrupted native approval finalization resumes its exact
-retained decision under the native lock before daily attachment or publication.
-Live GEN15/GEN16 C proof and D routing remain manager-owned.
+C/D check: 648 fabricated/local tests, safety, 45 schemas, builds and asset
+verification passed. Native approval recovery and semantic repair admission retain
+exact native basis/budgets; verified publication success clears only its own lane.
+GEN15 C hit source-copy rejection; its bounded correction and GEN16/D proof are manager-owned.
 Interface and policy: [Henry operations](docs/HENRY_V2_OPERATIONS.md#one-reading-lifecycle).
 
 The author remains gpt-6-luna at medium; retained gpt-5.6-luna fallback is low

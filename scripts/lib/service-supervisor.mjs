@@ -71,7 +71,7 @@ export async function supervisorContext(config, releaseRoot) {
   if(['C','D'].includes(config.stage)&&publicationInputRoot!==projectRoot)throw fault('SUPERVISOR_PUBLICATION_INPUT_ROOT_INVALID');
   return {config, projectRoot, runtimeRoot, stateRoot, publicationInputRoot, releaseRoot: path.resolve(releaseRoot)};
 }
-export async function runSupervisor(ctx, {role, now = new Date(), runId} = {}, dependencies = {}) {
+export async function runSupervisor(ctx, {role, now = new Date(), runId, wakeId} = {}, dependencies = {}) {
   if (!ROLES.includes(role)) throw fault('SUPERVISOR_ROLE_INVALID');
   const journal = await openJournal(ctx.stateRoot, dependencies.journalOptions);
   const lease = await journal.acquire(role, {now, runId, durationMs: 90 * 60 * 1000});
@@ -111,14 +111,18 @@ export async function runSupervisor(ctx, {role, now = new Date(), runId} = {}, d
     try {
       const manifestBytes = await readFile(await confined(ctx.projectRoot, 'private-content/private-manifest.json', false));
       const manifest = JSON.parse(manifestBytes), buffer = result.buffer;
-      const retained = ['blocked', 'approval_required'].includes(manifest.preparationStatus?.state);
+      const verifiedCompletedReadingIds=['C','D'].includes(ctx.config.stage)&&result.outcome!=='blocked'?
+        await (await import('./service-supervisor-work.mjs')).verifiedWakePublications(ctx,{wakeId,role}):[],
+        recovered=verifiedCompletedReadingIds.length>0;
+      if(recovered)result={...result,verifiedCompletedReadingIds};
+      const retained = !recovered&&['blocked', 'approval_required'].includes(manifest.preparationStatus?.state);
       const state = retained ? manifest.preparationStatus.state : result.outcome === 'blocked' ? failureClass(result.code).state : result.forwardComplete ? 'ready' : 'running';
       if (retained && result.outcome !== 'blocked') result = {...result, outcome: 'blocked', code: 'SUPERVISOR_RETAINED_SERVICE_BLOCK'};
       const status = await (dependencies.status || defaultStatus)(ctx, manifest.preparationStatus, {state,
         now: new Date(now).toISOString(), summary: retained ? manifest.preparationStatus.summary : result.outcome === 'blocked' ? `Preparation blocked: ${result.code}` :
           result.forwardComplete ? 'Complete forward buffer verified' : 'Forward devotional or Henry work remains',
         action: retained ? manifest.preparationStatus.action : result.outcome === 'blocked' ? 'Open BibleApp Manager in Codex' : '',
-        heartbeat: {lane: logicalLane, lastOutcome: result.outcome === 'blocked' ? 'blocked' : result.outcome === 'healthy_noop' ? 'no_op' : 'running',
+        heartbeat: {lane: logicalLane, lastOutcome: recovered?'success':result.outcome === 'blocked' ? 'blocked' : result.outcome === 'healthy_noop' ? 'no_op' : 'running',
           lastErrorCode: result.code || '', ...(buffer ? {buffer} : {})}});
       if (['blocked', 'approval_required'].includes(status.state) && result.outcome !== 'blocked') {
         result = {...result, outcome: 'blocked', code: 'SUPERVISOR_RETAINED_SERVICE_BLOCK'};

@@ -47,17 +47,18 @@ async function main() {
           }
         }
         if(!result) {
-        const observation=await runSupervisor(ctx,{role});
+        const observation=await runSupervisor(ctx,{role,wakeId:work?.wakeId});
         const events=await (await openJournal(ctx.stateRoot)).load(),staged=events.findLast(e=>e.kind==='status_staged'&&e.data.role===role);
         if(!staged)throw fault('SUPERVISOR_STATUS_STAGING_FAILED');
         const status=(await readPrivate(ctx.stateRoot,staged.data.candidate)).preparationStatus;
         const lane=role==='preparation'?'daily':'review';
-        const blocked=work?.outcome==='blocked'||observation.outcome==='blocked',code=work?.code||observation.code||'';
+        const blocked=work?.outcome==='blocked'||observation.outcome==='blocked',code=work?.code||observation.code||'',
+          ownedSuccess=observation.verifiedCompletedReadingIds?.length>0&&status.lanes?.[lane]?.lastOutcome==='success';
         result=await publisher.beginPublication(ctx,{role,...(work?{workCompletion:{wakeId:work.wakeId,outcome:work.outcome,code:work.code}}:{}),heartbeat:{state:blocked?'blocked':status.state,
           summary:work?.outcome==='blocked'?`Preparation blocked: ${code}`:status.summary,
           action:blocked?'Open BibleApp Manager in Codex':status.action,
-          heartbeat:{lane,lastOutcome:blocked?'blocked':observation.forwardComplete?'no_op':'running',
-            lastErrorCode:code,...(observation.buffer?{buffer:observation.buffer}:{})}}});
+          heartbeat:{lane,lastOutcome:ownedSuccess?'success':blocked?'blocked':observation.forwardComplete?'no_op':'running',
+            lastErrorCode:ownedSuccess?'':code,...(observation.buffer?{buffer:observation.buffer}:{})}}});
         }
       }
     } else throw fault('SUPERVISOR_ARGUMENTS_INVALID');

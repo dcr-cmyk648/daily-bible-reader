@@ -103,6 +103,58 @@ test('terminal C wake completion survives every status connector handoff and is 
   assert.equal(handoff.outcome,'complete');assert.equal(handoff.runComplete,true);assert.equal(handoff.workOutcome,'checkpointed');
   assert.equal((await f.publisher.publicationHandoff(f.ctx,handoff.transactionId)).runComplete,true);
 });
+async function completedWake(f,{other=false,legacy=false,incomplete=false,phase='complete'}={}) {
+  f.ctx.config.stage='C';const initial=original();
+  initial.preparationStatus={...initial.preparationStatus,state:'blocked',summary:'FABRICATED prior failure',action:'FABRICATED manager action',
+    ...(legacy?{blockerRequiresResolution:true}:{}),lanes:{daily:{lastAttemptAt:now.toISOString(),lastOutcome:'blocked',lastErrorCode:'SUPERVISOR_HENRY_EDITORIAL_REPAIR_INVALID'},
+      ...(other?initial.preparationStatus.lanes:{})}};
+  await f.write('private-content/private-manifest.json',initial);f.setLive(f.store.jsonBytes(initial));
+  const published=await f.drain(await f.publisher.beginPublication(f.ctx,{role:'preparation',request:f.request,now},f.dependencies));
+  assert.equal(published.published,true);const journal=await f.store.openJournal(f.ctx.stateRoot),wakeId='c'.repeat(32),
+    transaction=(await journal.load()).findLast(e=>e.kind==='publication_state').data.transaction;
+  await journal.append('wake_state',{wake:{id:wakeId,role:'preparation',sourceRevision:f.ctx.config.sourceRevision,phase,
+    code:phase==='complete'?null:'SUPERVISOR_WORK_CHECKPOINTED',pending:null,completed:[ids[0]],
+    completedPublications:[{readingId:ids[0],transactionId:transaction.id}]}},now);
+  const mapping=[];for(const lane of ['daily','review','henry_primary','henry_recovery']) {
+    const file=path.join(f.root,`automations/${lane}.toml`);
+    await f.write(`automations/${lane}.toml`,Buffer.from(`name = "FABRICATED ${lane}"\nkind = "cron"\nstatus = "ACTIVE"\nrrule = "FREQ=DAILY;BYHOUR=3"\nmodel = "gpt-6-luna"\nreasoning_effort = "low"\nexecution_environment = "local"\nprompt = "FABRICATED thin prompt"\ncwds = ["FABRICATED"]\ntarget = { type = "project", project_id = "FABRICATED-project" }\n`));mapping.push({lane,file});
+  }
+  f.ctx.config.automations=await f.runtime.captureInventory(mapping);
+  const supervisor=await import('../scripts/lib/service-supervisor.mjs'),helper=await import('../scripts/lib/preparation-status.mjs'),
+    proof=JSON.parse(await fs.readFile(path.join(f.ctx.stateRoot,transaction.health.path),'utf8'));
+  if(incomplete){proof.health.missingPreparedReadingIds=[ids[7]];proof.health.currentHorizonHenryLayer.unavailableReadingIds=[ids[7]];}
+  return {journal,wakeId,transaction,run:async(options={})=>supervisor.runSupervisor(f.ctx,{role:'preparation',now,wakeId,...options},
+    {clock:()=>now,health:async()=>proof.health,jobs:async()=>[],status:async(_ctx,prior,args)=>helper.preparationStatusCandidate(prior,args)})};
+}
+for(const blocker of ['own','other','legacy','incomplete'])test(`verified completed publication clears only owned failure and retains ${blocker} blockers appropriately`,async t=>{
+  const f=await fixture(t),c=await completedWake(f,{other:blocker==='other',legacy:blocker==='legacy',incomplete:blocker==='incomplete'}),observed=await c.run();
+  assert.deepEqual(observed.verifiedCompletedReadingIds,[ids[0]]);
+  const staged=(await c.journal.load()).findLast(e=>e.kind==='status_staged'),status=(await f.store.readPrivate(f.ctx.stateRoot,staged.data.candidate)).preparationStatus;
+  assert.equal(status.lanes.daily.lastOutcome,'success');assert.equal(status.lanes.daily.lastErrorCode,'');assert.equal(status.lastSuccessAt,now.toISOString());
+  assert.equal(status.state,blocker==='own'?'ready':blocker==='incomplete'?'running':'blocked');
+  if(blocker==='other')assert.equal(status.lanes.review.lastErrorCode,'FABRICATED_REVIEW_FAILURE');
+  if(blocker==='legacy')assert.equal(status.blockerRequiresResolution,true);
+  const result=await f.drain(await f.publisher.beginPublication(f.ctx,{role:'preparation',now,
+    heartbeat:{state:status.state,summary:status.summary,action:status.action,heartbeat:{lane:'daily',lastOutcome:'success',lastErrorCode:'',buffer:observed.buffer}},
+    workCompletion:{wakeId:c.wakeId,outcome:'complete',code:null}}));
+  assert.equal(result.outcome,'complete');const delivered=JSON.parse(f.getLive()).preparationStatus;
+  assert.equal(delivered.lanes.daily.lastOutcome,'success');assert.equal(delivered.lanes.daily.lastErrorCode,'');assert.equal(delivered.state,status.state);
+  if(blocker==='other')assert.equal(delivered.lanes.review.lastErrorCode,'FABRICATED_REVIEW_FAILURE');
+  if(blocker==='legacy')assert.equal(delivered.blockerRequiresResolution,true);
+});
+for(const phase of ['checkpointed','blocked','handoff'])test(`completed publication in ${phase} wake cannot clear an owned lane error`,async t=>{
+  const f=await fixture(t),c=await completedWake(f,{phase}),observed=await c.run();assert.equal(observed.verifiedCompletedReadingIds,undefined);
+  const staged=(await c.journal.load()).findLast(e=>e.kind==='status_staged'),status=(await f.store.readPrivate(f.ctx.stateRoot,staged.data.candidate)).preparationStatus;
+  assert.equal(status.state,'blocked');assert.equal(status.lanes.daily.lastErrorCode,'SUPERVISOR_RETAINED_SERVICE_BLOCK');
+});
+test('mere no-op and tampered publication proof cannot clear the owned lane error',async t=>{
+  const f=await fixture(t),c=await completedWake(f),noop=await c.run({wakeId:undefined});assert.equal(noop.verifiedCompletedReadingIds,undefined);
+  const staged=(await c.journal.load()).findLast(e=>e.kind==='status_staged'),status=(await f.store.readPrivate(f.ctx.stateRoot,staged.data.candidate)).preparationStatus;
+  assert.equal(status.state,'blocked');assert.notEqual(status.lanes.daily.lastOutcome,'success');
+  await fs.appendFile(path.join(f.ctx.stateRoot,c.transaction.health.path),' ');
+  const changed=await c.run();assert.equal(changed.outcome,'blocked');assert.equal(changed.code,'SUPERVISOR_WAKE_PROOF_CHANGED');
+  assert.equal(changed.verifiedCompletedReadingIds,undefined);
+});
 test('content-first immutable versions require metadata/raw checks; upload acknowledgement alone is unpublished',async t=>{
   const f=await fixture(t);let next=await f.publisher.beginPublication(f.ctx,{role:'review-audit',request:f.request,now},f.dependencies);
   while(next.action==='dispatch_required') {

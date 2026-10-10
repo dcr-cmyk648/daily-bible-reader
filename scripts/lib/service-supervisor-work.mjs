@@ -72,8 +72,14 @@ export async function runStageC(ctx,{role,now=new Date()},dependencies={}) {
         }
         const transaction=publications.get(wake.pending.transactionId);
         if(!transaction||transaction.phase!=='complete')throw fault('SUPERVISOR_WAKE_PUBLICATION_PENDING');
+        if(transaction.sourceRevision!==wake.sourceRevision||transaction.role!==role)throw fault('SUPERVISOR_WAKE_BINDING_CHANGED');
         if(transaction.kind==='reading') {
+          const request=await readPrivate(ctx.projectRoot,wake.pending.requestPath);
+          if(transaction.readingId!==request.readingId||transaction.component!==request.component||
+            transaction.approval?.sha256!==request.approvalSha256)throw fault('SUPERVISOR_WAKE_BINDING_CHANGED');
           if(!wake.completed.includes(transaction.readingId))wake.completed.push(transaction.readingId);
+          wake.completedPublications=[...(wake.completedPublications||[]).filter(p=>p.readingId!==transaction.readingId),
+            {readingId:transaction.readingId,transactionId:transaction.id}];
           if(transaction.component==='daily') {
             const job=await latestDailyJob(journal,transaction.readingId);
             if(job&&job.approvalSha256===transaction.approval.sha256)await journal.append('daily_state',
@@ -159,11 +165,45 @@ export async function runStageC(ctx,{role,now=new Date()},dependencies={}) {
     if(finalInventory.findings.length)throw fault(finalInventory.findings[0].code);
     await saveWake(journal,lease,wake,clock);
     return result||{schemaVersion:'supervisor-work-result/v1',role,wakeId:wake.id,action:wake.phase,outcome:wake.phase,
-      code:wake.code,published:false,runComplete:true};
+      code:wake.code,published:false,runComplete:true,completedReadingIds:[...wake.completed]};
   } catch(e) {
     wake.phase='blocked';wake.code=safeCode(e.code);await saveWake(journal,lease,wake,clock);
     return {schemaVersion:'supervisor-work-result/v1',role,wakeId:wake.id,action:'blocked',outcome:'blocked',code:wake.code,published:false,runComplete:true};
   } finally {if(workLease)await journal.release(workLease,clock());await journal.release(lease,clock());}
+}
+export async function verifiedWakePublications(ctx,{wakeId,role}) {
+  if(!wakeId)return [];
+  const events=await (await openJournal(ctx.stateRoot)).load(),wake=events.findLast(e=>e.kind==='wake_state'&&e.data.wake.id===wakeId)?.data.wake;
+  if(!wake||wake.role!==role||wake.sourceRevision!==ctx.config.sourceRevision||wake.phase!=='complete'||wake.code||wake.pending)return [];
+  if(!wake.completed?.length||wake.completedPublications?.length!==wake.completed.length||
+    new Set(wake.completedPublications.map(p=>p.readingId)).size!==wake.completed.length)return [];
+  const publications=new Map();for(const e of events)if(e.kind==='publication_state')publications.set(e.data.transaction.id,e.data.transaction);
+  const verified=[];
+  for(const completed of wake.completedPublications||[]) {
+    const t=publications.get(completed.transactionId);
+    if(!wake.completed.includes(completed.readingId)||!t||t.kind!=='reading'||t.phase!=='complete'||t.sourceRevision!==ctx.config.sourceRevision||
+      t.role!==role||t.readingId!==completed.readingId||t.code&&t.code!=='SUPERVISOR_HEARTBEAT_NOT_READER_VISIBLE'||!t.health||!t.manifestReadback||!t.candidate||
+      !['content','metadata'].every(slot=>t.artifacts?.some(a=>a.slot===slot&&a.readback)))return [];
+    const bytes=async ref=>{
+      if(!ref.path?.startsWith(`publications/${t.id}/`))throw fault('SUPERVISOR_WAKE_PROOF_CHANGED');
+      const raw=await readFile(await confined(ctx.stateRoot,ref.path,false));
+      if(digest(raw)!==ref.sha256)throw fault('SUPERVISOR_WAKE_PROOF_CHANGED');return raw;
+    };
+    const health=JSON.parse(await bytes(t.health));
+    if(health.named?.readingId!==t.readingId||health.named.status!=='ready'||
+      (t.component==='henry'||t.approvalAuthority?.henry)&&health.named.henryLayerStatus!=='complete')throw fault('SUPERVISOR_WAKE_PROOF_CHANGED');
+    if(digest(await bytes(t.manifestReadback))!==digest(await bytes(t.candidate)))throw fault('SUPERVISOR_WAKE_PROOF_CHANGED');
+    for(const a of t.artifacts)if(['content','metadata'].includes(a.slot)) {
+      if(digest(await bytes(a.readback))!==a.sha256||digest(await bytes({path:a.snapshot,sha256:a.sha256}))!==a.sha256)
+        throw fault('SUPERVISOR_WAKE_PROOF_CHANGED');
+    }
+    const receipt=await readPrivate(ctx.stateRoot,`publications/${t.id}/publication-receipt.json`);
+    if(receipt.status!=='published_verified'||receipt.transactionId!==t.id||receipt.readingId!==t.readingId||
+      receipt.healthSha256!==t.health.sha256||receipt.metadataReadback!=='exact_bytes'||receipt.manifestReadback!=='exact_bytes'||
+      receipt.liveReadingStatus!=='ready'||receipt.payloadSha256!==t.artifacts.find(a=>a.slot==='metadata').sha256)throw fault('SUPERVISOR_WAKE_PROOF_CHANGED');
+    verified.push(t.readingId);
+  }
+  return verified;
 }
 export async function bindWakePublication(ctx,wakeId,transactionId,now=new Date()) {
   const journal=await openJournal(ctx.stateRoot),wake=(await journal.load()).findLast(e=>e.kind==='wake_state'&&e.data.wake.id===wakeId)?.data.wake;

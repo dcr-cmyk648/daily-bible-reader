@@ -56,6 +56,16 @@ Henry editorial repair also retains its one-packet repair limit. Review thread I
 must differ from all actual author and repair threads. Machine validation alone
 never approves prose.
 
+Henry repair envelopes admit their embedded candidate through the unchanged native
+validator before execution acceptance. An old envelope-only accepted result that
+fails that validator can be reclassified only against the same unapplied native
+editorial basis, exact original candidate and saved raw output. A hash-bound native
+admission rejection is appended beside the original acceptance. Ordinal one stays
+spent; the sole second transport attempt receives those exact failed bytes and
+validator findings. It remains one native applied repair followed by fresh source
+review. Changed proof/basis, uncertain dispatch, provider blocks and an invalid
+second candidate cannot create another execution or reset native submissions.
+
 When a new daily draft lacks a reviewed Henry library entry, C records
 `waiting_henry`; it does not invent a fallback. The native read-only exact-reading
 selector admits a dependency only from the same canonical journal's current EDF
@@ -81,9 +91,18 @@ Henry dependency in one publication. A fallback-only transaction never emits tha
 receipt. Terminal wake metadata survives all status connector handoffs, and
 `runComplete` becomes true only after the status transaction completes.
 
-Thin prompts must finish the shell handoff/dispatch cell, then finish the one
-authorized native connector cell, then materialize its receipt and resume in a
-later cell. Never repeat a dispatched upload/update because receipt/resume was
+A completed wake records its exact reading transactions. Status recovery rechecks
+current-source, same-role terminal transactions, raw content/metadata/manifest
+readbacks, named authenticated health and durable publication receipts before
+reporting owning-lane `success`. This clears only that lane's error and updates
+last success; other lane failures and `blockerRequiresResolution` remain. A partial
+forward buffer stays running. Checkpointed, blocked, pending and mere no-op wakes
+cannot clear a lane failure, and no LLM Boolean grants recovery authority.
+
+Thin prompts must finish four separate tool cells: shell handoff/dispatch, the one
+authorized native connector call, native-result receipt materialization, and then
+receipt resume. Never combine materialization and resume in a yielded cell.
+Never repeat a dispatched upload/update because receipt/resume was
 rejected or interrupted: recover the retained native result and exact operation
 receipt through the existing reconciliation protocol. A rejected resume conveys
 no new authority and does not erase the durable dispatch.

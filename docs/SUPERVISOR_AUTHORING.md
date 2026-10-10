@@ -267,6 +267,41 @@ actual punctuation; excerpt matching never folds quotes, case or punctuation.
 Quotation totals use the strictest encountered rights cap per work and returned
 page in either record order. Synthesis may include only consulted source IDs.
 
+Bounded HTTPS consultations now journal each logical source attempt and its
+individual reserved/dispatched/terminal redirect hops. The 64 ceiling remains
+per job across wakes and counts logical source reservations; redirects stay at
+three per source and do not silently redefine that ceiling. Old GEN16 attempts
+have four logical debts and unknown physical hop count (4–16 is a bound only).
+Safe observations retain recognized MIME/status, actual byte count/hash when
+known, body-completion flag, public final URL/redirects, normalization/parser pins
+and typed failure stage. Unavailable fields are null. No headers, DNS addresses,
+modern bodies or parser exception prose are stored; hostile/unknown MIME is null.
+
+Passing immutable source checkpoints bind execution, original input/output,
+source/work/citation/access identity and verified source/manifest/config pins.
+They contain selected-excerpt hashes and a literal-match result, with no approval
+or publication authority. Quotes share per-work/page limits across checkpoints;
+mixed-rights inputs conservatively use 25 words while future redirects are unknown.
+If a selection cannot fit, store match/hash metadata with `quoteOmitted:true`,
+never a clipped/replaced excerpt. Final original-response admission still applies
+the unchanged strictest 25/200-word limits and all coverage/review gates.
+Earlier checkpoints survive a later source failure but grant no automatic reuse.
+
+Manager-only `diagnose-genesis16-source --receipt
+private-content/automation/service-supervisor/<receipt>.json` accepts only
+`genesis16-source-diagnostic/v1` authority for NET's original URL and the exact
+original incident, four debts and failed receipt/event. It requires Stage C cap1,
+code-consultation mode, quiescence, current immutable pins and a fresh maximum
+15-minute window. One diagnostic consumes another slot in the same 64 ceiling.
+It appends observations only: no research/model dispatch, block clearing, failed
+receipt reopening, aggregate admission, review or publication. Exact completed
+replay verifies response, attempt and referenced checkpoint hashes/identity and
+sends nothing. Replacement grants are refused; a reservation without a durable
+completion stays uncertain even if an orphan result/checkpoint file exists.
+Thin coordinators must never issue or run diagnostic authority. The manager owns
+its actual request after source review/release. Append-only continuation is a
+separate future contract requiring acceptance after the actual NET diagnostic.
+
 Thin prompts must finish four separate tool cells: shell handoff/dispatch, the one
 authorized native connector call, native-result receipt materialization, and then
 receipt resume. Never combine materialization and resume in a yielded cell.

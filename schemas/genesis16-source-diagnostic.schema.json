@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daily-bible-reader.local/schemas/genesis16-source-diagnostic.schema.json",
+  "title": "One manager-authorized NET original URL diagnostic, without research admission",
+  "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion", "managerAccepted", "purpose", "jobId", "executionId", "threadId", "blockedEventSha256", "inputSha256", "outputSha256", "failedReceiptSha256", "failedEventSha256", "sourceId", "sourceWorkSha256", "urlOrCitation", "accessedUrl", "sourceRevision", "manifestSha256", "configSha256", "issuedAt", "expiresAt"],
+  "properties": {
+    "schemaVersion": {"const": "genesis16-source-diagnostic/v1"}, "managerAccepted": {"const": true},
+    "purpose": {"const": "net_original_url_diagnostic_only"},
+    "jobId": {"type": "string", "pattern": "^[a-f0-9]{32}$"}, "executionId": {"type": "string", "pattern": "^[a-f0-9]{32}$"},
+    "threadId": {"type": "string", "minLength": 1, "maxLength": 160},
+    "blockedEventSha256": {"$ref": "#/$defs/hash"}, "inputSha256": {"$ref": "#/$defs/hash"}, "outputSha256": {"$ref": "#/$defs/hash"},
+    "failedReceiptSha256": {"$ref": "#/$defs/hash"}, "failedEventSha256": {"$ref": "#/$defs/hash"},
+    "sourceId": {"type": "string", "minLength": 1, "maxLength": 100}, "sourceWorkSha256": {"$ref": "#/$defs/hash"},
+    "urlOrCitation": {"type": "string", "minLength": 1, "maxLength": 4000}, "accessedUrl": {"type": "string", "minLength": 1, "maxLength": 4000},
+    "sourceRevision": {"type": "string", "pattern": "^[a-f0-9]{40}$"}, "manifestSha256": {"$ref": "#/$defs/hash"}, "configSha256": {"$ref": "#/$defs/hash"},
+    "issuedAt": {"type": "string", "format": "date-time"}, "expiresAt": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {"hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

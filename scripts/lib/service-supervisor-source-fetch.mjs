@@ -39,14 +39,16 @@ async function publicLookup(host,{signal}) {
 }
 export async function anonymousRequest(url,address,{timeout,maxBytes,signal}) {
   return new Promise((resolve,reject)=>{
+    let count=0,responseMeta=null;
+    const failed=error=>{error.sourceStage=responseMeta?'body':'transport';error.sourceObservation=responseMeta?{...responseMeta,bytes:count,bodyComplete:false,contentSha256:null}:null;reject(error);};
     const req=request(url,{method:'GET',agent:false,signal,headers:{Accept:'text/html,text/plain;q=0.9,application/pdf;q=0.8','User-Agent':'DailyBibleReader source verifier'},
       lookup:(_host,options,callback)=>options.all?callback(null,[address]):callback(null,address.address,address.family)},res=>{
-      const chunks=[];let count=0;
+      const chunks=[];responseMeta={status:res.statusCode,mimeType:String(res.headers['content-type']||'').split(';')[0].toLowerCase()};
       res.on('data',chunk=>{count+=chunk.length;if(count>maxBytes)res.destroy(fault('SUPERVISOR_SOURCE_SIZE_LIMIT'));else chunks.push(chunk);});
-      res.on('error',reject);res.on('end',()=>resolve({status:res.statusCode,mimeType:String(res.headers['content-type']||'').split(';')[0].toLowerCase(),
+      res.on('error',failed);res.on('end',()=>resolve({status:res.statusCode,mimeType:String(res.headers['content-type']||'').split(';')[0].toLowerCase(),
         location:res.headers.location||null,bytes:Buffer.concat(chunks)}));
     });
-    req.setTimeout(timeout,()=>req.destroy(fault('SUPERVISOR_SOURCE_TRANSPORT_TIMEOUT')));req.on('error',reject);req.end();
+    req.setTimeout(timeout,()=>req.destroy(fault('SUPERVISOR_SOURCE_TRANSPORT_TIMEOUT')));req.on('error',failed);req.end();
   });
 }
 async function bounded(operation,signal) {
@@ -55,34 +57,51 @@ async function bounded(operation,signal) {
   const aborted=new Promise((_,reject)=>{cancel=()=>reject(fault('SUPERVISOR_SOURCE_TRANSPORT_TIMEOUT'));signal.addEventListener('abort',cancel,{once:true});});
   try{return await Promise.race([operation(signal),aborted]);}finally{signal.removeEventListener('abort',cancel);}
 }
-export async function fetchLawfulSource(value,{deadline=Date.now()+30000,maxBytes=2*1024*1024,resolve=publicLookup,fetch=anonymousRequest,pdfExtractor=null}={}) {
+export async function fetchLawfulSource(value,{deadline=Date.now()+30000,maxBytes=2*1024*1024,resolve=publicLookup,fetch=anonymousRequest,pdfExtractor=null,onHop=async()=>{}}={}) {
   let url=allowedUrl(value);const original=url.href,redirects=[];
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),Math.max(1,deadline-Date.now()));
   try {
   for(let count=0;count<=3;count++) {
+    let stage='dns',observation={finalUrl:url.href,redirects:[...redirects]},hopCompleted=false;
+    await onHop({phase:'reserved',hop:count+1,url:url.href,stage});
+    try {
     const remaining=deadline-Date.now();if(remaining<=0)throw fault('SUPERVISOR_SOURCE_TRANSPORT_TIMEOUT');
     const addresses=await bounded(signal=>resolve(url.hostname,{all:true,signal}),controller.signal);
     if(!Array.isArray(addresses)||!addresses.length||addresses.some(a=>!publicAddress(a.address)))throw fault('SUPERVISOR_SOURCE_PRIVATE_ADDRESS_REFUSED');
+    stage='transport';await onHop({phase:'dispatched',hop:count+1,url:url.href,stage});
     const address=addresses.find(a=>a.family===4)||addresses[0],result=await bounded(signal=>fetch(url,address,
       {timeout:Math.min(15000,deadline-Date.now()),maxBytes,signal}),controller.signal);
+    stage='response';observation={...observation,status:result.status,mimeType:result.mimeType,bytes:Buffer.isBuffer(result.bytes)?result.bytes.length:null,
+      bodyComplete:Buffer.isBuffer(result.bytes),contentSha256:Buffer.isBuffer(result.bytes)?digest(result.bytes):null,accessedAt:new Date().toISOString()};
+    await onHop({phase:'outcome',hop:count+1,url:url.href,stage,observation,code:null});hopCompleted=true;
     if([301,302,303,307,308].includes(result.status)&&result.location) {
       if(count===3)throw fault('SUPERVISOR_SOURCE_REDIRECT_LIMIT');
       url=allowedUrl(new URL(result.location,url).href);redirects.push(url.href);continue;
     }
     if(result.status!==200||!['text/html','text/plain',...(pdfExtractor?['application/pdf']:[])].includes(result.mimeType)||!Buffer.isBuffer(result.bytes)||
-      !result.bytes.length||result.bytes.length>maxBytes)throw fault('SUPERVISOR_SOURCE_ACCESS_UNAVAILABLE');
+      !result.bytes.length||result.bytes.length>maxBytes)throw Object.assign(fault('SUPERVISOR_SOURCE_ACCESS_UNAVAILABLE'),{
+        sourceFailureClass:result.status!==200?'http_status':!['text/html','text/plain',...(pdfExtractor?['application/pdf']:[])].includes(result.mimeType)?'mime':
+          !Buffer.isBuffer(result.bytes)?'invalid_body':!result.bytes.length?'empty_body':'size_limit'});
+    stage=result.mimeType==='application/pdf'?'extraction':'normalization';
     const pdf=result.mimeType==='application/pdf'?await bounded(signal=>extractSourcePdf(result.bytes,pdfExtractor,{deadline,signal}),controller.signal):null,
       text=pdf?pdf.text.replace(/\s+/g,' ').trim():plainSourceText(result.bytes,result.mimeType);
-    if(!text)throw fault('SUPERVISOR_SOURCE_ACCESS_UNAVAILABLE');
-    return {kind:'bounded_anonymous_https',url:original,finalUrl:url.href,redirects,mimeType:result.mimeType,
+    observation={...observation,normalization:pdf?'pypdf-plain-whitespace/v1':'html-text/v1',normalizedTextSha256:digest(Buffer.from(text)),
+      ...(pdf?{extraction:pdf.extraction}: {})};
+    if(!text)throw Object.assign(fault('SUPERVISOR_SOURCE_ACCESS_UNAVAILABLE'),{sourceFailureClass:'empty_text'});
+    return {kind:'bounded_anonymous_https',status:result.status,bodyComplete:true,url:original,finalUrl:url.href,redirects,mimeType:result.mimeType,
       contentSha256:digest(result.bytes),normalizedTextSha256:digest(Buffer.from(text)),normalization:pdf?'pypdf-plain-whitespace/v1':'html-text/v1',
       ...(pdf?{extraction:pdf.extraction}:{}),
       bytes:result.bytes.length,returnedContent:text,accessedAt:new Date().toISOString(),rawBodyStored:false};
+    } catch(error) {
+      error.sourceStage ||= stage;error.sourceObservation={...observation,...error.sourceObservation,finalUrl:url.href,redirects:[...redirects]};
+      if(!hopCompleted)await onHop({phase:'outcome',hop:count+1,url:url.href,stage:error.sourceStage,observation:error.sourceObservation,code:error.code||'SUPERVISOR_SOURCE_TRANSPORT_FAILED'});
+      throw error;
+    }
   }
   throw fault('SUPERVISOR_SOURCE_REDIRECT_LIMIT');
   } finally {clearTimeout(timer);controller.abort();}
 }
-export async function verifiedResearchSources(output,eventEvidence,{foundation=null,deadline,fetchSource=fetchLawfulSource,maxSources=64,reserve=async()=>{}}={}) {
+export async function verifiedResearchSources(output,eventEvidence,{foundation=null,deadline,fetchSource=fetchLawfulSource,maxSources=64,reserve=async()=>{},checkpoint=async()=>{},matchFailed=async()=>{}}={}) {
   const evidence=[...eventEvidence,...(foundation?[foundation.sourceEvidence]:[])];let fetched=0;
   for(const record of output.records) {
     if(record.source.summaryUseStatus!=='consulted'||foundation&&record.source.sourceId===foundation.sourceId||
@@ -91,18 +110,21 @@ export async function verifiedResearchSources(output,eventEvidence,{foundation=n
     const opened=eventEvidence.find(e=>e.url===record.accessedUrl);
     if(!opened)throw fault('SUPERVISOR_SOURCE_NOT_OPENED_BY_RESEARCH');
     await reserve({sourceId:record.source.sourceId,url:record.accessedUrl,eventId:opened.eventId});
-    const proof=await fetchSource(record.accessedUrl,{deadline:Math.min(deadline??Date.now()+30000,Date.now()+30000)});
+    const proof=await fetchSource(record.accessedUrl,{deadline:Math.min(deadline??Date.now()+30000,Date.now()+30000),sourceId:record.source.sourceId});
     const excerpt=record.evidenceExcerpt.replace(/\s+/g,' ').trim();assertChildPrivacy(excerpt);
-    if(!excerpt||!proof.returnedContent.includes(excerpt))throw fault('SUPERVISOR_SOURCE_ACCESS_BINDING_FAILED');
+    if(!excerpt||!proof.returnedContent.includes(excerpt)){await matchFailed(record,'SUPERVISOR_SOURCE_ACCESS_BINDING_FAILED');throw fault('SUPERVISOR_SOURCE_ACCESS_BINDING_FAILED');}
     record.evidenceExcerpt=excerpt;record.source.accessDate=proof.accessedAt.slice(0,10);
     record.source.accessMethod='Bounded anonymous HTTPS verification of the returned page and selected excerpt';
     record.limitations.push('Source access proof covers the returned page and selected excerpt; no full-book consultation is claimed.');
-    evidence.push({...proof,eventId:opened.eventId,fetchProofId:`anonymous-https-${proof.contentSha256}`,sourceId:record.source.sourceId});
+    const boundProof={...proof,eventId:opened.eventId,fetchProofId:`anonymous-https-${proof.contentSha256}`,sourceId:record.source.sourceId};
+    await checkpoint(record,boundProof);evidence.push(boundProof);
   }
   return evidence;
 }
-export async function consultResearchSources(output,{foundation=null,deadline,fetchSource=fetchLawfulSource,maxSources=64,reserve=async()=>{},mappings=[],pdfExtractor=null}={}) {
+export async function consultResearchSources(output,{foundation=null,deadline,fetchSource=fetchLawfulSource,maxSources=64,reserve=async()=>{},mappings=[],pdfExtractor=null,
+  checkpoint=async()=>{},matchFailed=async()=>{}}={}) {
   const evidence=[],seen=new Set(),map=new Map();let fetched=0;
+  const quoteCeiling=output.records.some(r=>r.source.summaryUseStatus==='consulted'&&!['public_domain','open_license'].includes(r.source.rightsStatus))?25:200;
   for(const binding of mappings) {
     if(map.has(binding.sourceId)||!Array.isArray(binding.identityTerms)||binding.identityTerms.length<2||
       new Set(binding.identityTerms).size!==binding.identityTerms.length||
@@ -112,7 +134,7 @@ export async function consultResearchSources(output,{foundation=null,deadline,fe
   async function fetchPage(record,url,purpose) {
     allowedUrl(url);if(++fetched>maxSources)throw fault('SUPERVISOR_SOURCE_FETCH_BUDGET_EXHAUSTED');
     await reserve({sourceId:record.source.sourceId,url,purpose,eventId:null});
-    return fetchSource(url,{deadline:Math.min(deadline??Date.now()+30000,Date.now()+30000),pdfExtractor});
+    return fetchSource(url,{deadline:Math.min(deadline??Date.now()+30000,Date.now()+30000),pdfExtractor,sourceId:record.source.sourceId});
   }
   for(const record of output.records) {
     const source=record.source;if(source.summaryUseStatus!=='consulted')continue;
@@ -128,16 +150,18 @@ export async function consultResearchSources(output,{foundation=null,deadline,fe
         throw fault('SUPERVISOR_DAILY_HENRY_SOURCE_CHANGED');
       record.accessedUrl=publicSourceUrl(foundation.sourceUrl);record.evidenceExcerpt=excerpt;
       source.accessDate=foundation.verifiedAt.slice(0,10);source.accessMethod='Code-verified local Henry archive, atoms, locator and literal excerpt';
-      evidence.push({...proof,returnedContent:proof.returnedContent.replace(/\s+/g,' '),archiveSha256:foundation.archiveSha256,
-        atomHashes:foundation.atoms.map(a=>({id:a.id,sha256:a.sha256})),accessKind:'local_verified_henry'});continue;
+      const localProof={...proof,returnedContent:proof.returnedContent.replace(/\s+/g,' '),archiveSha256:foundation.archiveSha256,
+        atomHashes:foundation.atoms.map(a=>({id:a.id,sha256:a.sha256})),accessKind:'local_verified_henry'};
+      await checkpoint(record,localProof,{quoteCeiling});evidence.push(localProof);continue;
     }
     const url=publicSourceUrl(record.accessedUrl),binding=map.get(source.sourceId),workSha256=sourceWorkBinding(source);
     if(binding&&(binding.sourceWorkSha256!==workSha256||binding.urlOrCitation!==source.urlOrCitation||binding.accessedUrl!==url))
       throw fault('SUPERVISOR_SOURCE_MAPPING_INVALID');
     let citationUrl;try{citationUrl=publicSourceUrl(source.urlOrCitation);}catch{if(!binding)throw fault('SUPERVISOR_SOURCE_CITATION_BINDING_FAILED');}
     const proof=await fetchPage(record,url,'selected_source_consultation');
-    if(proof.kind!=='bounded_anonymous_https'||proof.url!==url||proof.rawBodyStored!==false||!proof.returnedContent.includes(excerpt))
-      throw fault('SUPERVISOR_SOURCE_ACCESS_BINDING_FAILED');
+    if(proof.kind!=='bounded_anonymous_https'||proof.url!==url||proof.rawBodyStored!==false||!proof.returnedContent.includes(excerpt)) {
+      await matchFailed(record,'SUPERVISOR_SOURCE_ACCESS_BINDING_FAILED');throw fault('SUPERVISOR_SOURCE_ACCESS_BINDING_FAILED');
+    }
     let citationKind='exact_url';
     if(citationUrl!==url) {
       if(binding) {
@@ -155,9 +179,10 @@ export async function consultResearchSources(output,{foundation=null,deadline,fe
     source.accessMethod=proof.extraction?'Code consultation: bounded anonymous HTTPS PDF bytes, pinned local pypdf extraction and literal normalized selected excerpt':
       'Code consultation: bounded anonymous HTTPS returned bytes and literal normalized selected excerpt';
     record.limitations.push('CLI activity and selected URLs are discovery only; code consultation verifies this returned page and excerpt, not prior child opens or a full book.');
-    evidence.push({...proof,eventId:null,sourceId:source.sourceId,fetchProofId:`anonymous-https-${proof.contentSha256}`,
+    const boundProof={...proof,eventId:null,sourceId:source.sourceId,fetchProofId:`anonymous-https-${proof.contentSha256}`,
       citationBinding:{kind:citationKind,sourceWorkSha256:workSha256,urlOrCitation:source.urlOrCitation,accessedUrl:url,
-        ...(binding?{identityTerms:binding.identityTerms}: {})}});
+        ...(binding?{identityTerms:binding.identityTerms}: {})}};
+    await checkpoint(record,boundProof,{quoteCeiling});evidence.push(boundProof);
   }
   if([...map.keys()].some(id=>!seen.has(id)))throw fault('SUPERVISOR_SOURCE_MAPPING_INVALID');
   return evidence;

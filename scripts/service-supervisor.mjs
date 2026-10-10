@@ -9,6 +9,7 @@ async function main() {
   const args = process.argv.slice(2), command = args.shift();
   let role, extra={};
   if (command === 'tick' && args.length === 2 && args[0] === '--role') role = args[1];
+  else if(command==='diagnose-genesis16-source'&&args.length===2&&args[0]==='--receipt')extra={receiptPath:args[1]};
   else if(command==='revalidate-genesis16-research'&&args.length===2&&args[0]==='--receipt')extra={receiptPath:args[1]};
   else if(command==='recover-genesis16-preflight'&&args.length===6&&args[0]==='--job'&&args[2]==='--blocked-event'&&args[4]==='--packet-sha256')
     extra={jobId:args[1],blockedEventSha256:args[3],packetSha256:args[5]};
@@ -25,7 +26,9 @@ async function main() {
   const config = JSON.parse(await readFile(configPath, 'utf8'));
   const ctx = await supervisorContext(config, releaseRoot);
   let result;
-  if(command==='revalidate-genesis16-research') {
+  if(command==='diagnose-genesis16-source') {
+    result=await (await import('./lib/service-supervisor-source-diagnostic.mjs')).diagnoseGenesis16Source(ctx,extra);
+  } else if(command==='revalidate-genesis16-research') {
     result=await (await import('./lib/service-supervisor-research-revalidation.mjs')).revalidateGenesis16Research(ctx,extra);
   } else if(command==='recover-genesis16-preflight') {
     result=await (await import('./lib/service-supervisor-preflight-recovery.mjs')).recoverGenesis16Preflight(ctx,extra);

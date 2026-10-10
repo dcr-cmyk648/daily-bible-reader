@@ -2,7 +2,7 @@ const test=require('node:test'),assert=require('node:assert/strict'),fs=require(
 const modules=Promise.all(['work','store','runtime','contracts'].map(name=>import(`../scripts/lib/service-supervisor-${name}.mjs`)));
 const now=new Date('2026-10-10T16:00:00Z'),repo=path.resolve(__dirname,'..'),
   sourceIds=['FABRICATED-henry','FABRICATED-independent'],urls=['https://example.invalid/FABRICATED-henry','https://example.invalid/FABRICATED-independent'];
-async function fixture(t,{changes=false,alwaysChanges=false,malformed=false,prefixShape=false,retainedReady=null,legacyBibliography=false,sourceMode='cli_content',unconsultedCitation=false}={}) {
+async function fixture(t,{changes=false,alwaysChanges=false,malformed=false,prefixShape=false,retainedReady=null,legacyBibliography=false,sourceMode='cli_content',unconsultedCitation=false,priorSourceBudget=false}={}) {
   const [work,store,runtime,contracts]=await modules,root=await fs.mkdtemp(path.join(os.tmpdir(),'dbr-work-fabricated-'));
   t.after(async()=>{assert.equal(path.dirname(root),path.resolve(os.tmpdir()));assert.ok(path.basename(root).startsWith('dbr-work-fabricated-'));await fs.rm(root,{recursive:true,force:true});});
   const releaseRoot=path.join(root,'release'),write=async(relative,value)=>store.durableWrite(root,relative,Buffer.isBuffer(value)?value:store.jsonBytes(value));
@@ -81,7 +81,10 @@ async function fixture(t,{changes=false,alwaysChanges=false,malformed=false,pref
         {type:'turn.completed'}].map(JSON.stringify).join('\n')+'\n'};
     }};
   const dependencies={clock:()=>now,health:async()=>health,jobs:async()=>[],henryJob:async()=>({state:{phase:'review_pending'}}),
-    dailyDependencies:{foundation:async()=>foundation,exec,fetchSource:async value=>({kind:'bounded_anonymous_https',url:value,finalUrl:value,
+    dailyDependencies:{sourceRuntime:async()=>({releaseRoot,config,pointer:{sourceRevision:config.sourceRevision,manifestSha256:'f'.repeat(64),configSha256:store.digest(store.jsonBytes(config))}}),foundation:async(_ctx)=>{
+      if(priorSourceBudget){const journal=await store.openJournal(_ctx.stateRoot),job=(await journal.load()).findLast(e=>e.kind==='daily_state').data.job;
+        for(let i=0;i<64;i++)await journal.append('source_fetch_reserved',{jobId:job.id,wakeId:'FABRICATED-prior-wake',ordinal:i+1},now);}
+      return foundation;},exec,fetchSource:async value=>({kind:'bounded_anonymous_https',url:value,finalUrl:value,
       redirects:[],contentSha256:store.digest(Buffer.from('FABRICATED source evidence')),normalizedTextSha256:store.digest(Buffer.from('FABRICATED source evidence')),
       normalization:'html-text/v1',returnedContent:'FABRICATED source evidence',rawBodyStored:false,accessedAt:now.toISOString()}),
       attachment:async()=>{if(!libraryReady)throw Object.assign(Error('FABRICATED library absent'),{code:'MHC_READING_ABSENT'});
@@ -108,6 +111,13 @@ test('explicit code consultation handles actual-shaped discovery through the com
   const events=await (await f.store.openJournal(f.ctx.stateRoot)).load(),reservations=events.filter(e=>e.kind==='source_fetch_reserved');
   assert.equal(events.findLast(e=>e.kind==='daily_state').data.job.readingId,'LTP-0028-GEN-016');
   assert.equal(reservations.length,1);assert.equal(reservations[0].data.eventId,null);
+});
+
+test('normal daily source budget retains the same job counts across previous wakes before another source request',async t=>{
+  const f=await fixture(t,{sourceMode:'code_consultation',priorSourceBudget:true}),r=await f.work.runStageC(f.ctx,{role:'preparation',now},f.dependencies);
+  assert.equal(r.outcome,'blocked');assert.equal(r.code,'SUPERVISOR_SOURCE_FETCH_BUDGET_EXHAUSTED');assert.equal(f.counts().syntheses,0);
+  const events=await (await f.store.openJournal(f.ctx.stateRoot)).load();assert.equal(events.filter(e=>e.kind==='source_fetch_reserved').length,64);
+  assert.equal(events.filter(e=>e.kind==='source_attempt_reserved').length,0);
 });
 test('synthesis cannot turn an unconsulted discovery record into an included source reference',async t=>{
   const f=await fixture(t,{sourceMode:'code_consultation',unconsultedCitation:true}),result=await f.work.runStageC(f.ctx,{role:'preparation',now},f.dependencies);

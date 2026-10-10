@@ -13,6 +13,7 @@ import {executeBoundedChild} from './service-supervisor-exec.mjs';
 import {researchContract,synthesisContract,independentReviewContract,decodeResearch,admitResearch,assertChildPrivacy,assertResearchPacketPrivacy,assertDailyReviewPacketPrivacy} from './service-supervisor-contracts.mjs';
 import {verifiedResearchSources,consultResearchSources} from './service-supervisor-source-fetch.mjs';
 import {PDF_LIMITS,PDF_VERSION,PDF_PACKAGE_SHA} from './service-supervisor-pdf.mjs';
+import {sourceAttemptRecorder,checkedSourceRuntime} from './service-supervisor-source-journal.mjs';
 import {sourceInput} from './mhc-v2-service.mjs';
 import {loadLatestHenryReading} from './mhc-library-sync.mjs';
 import {loadJob} from './mhc-v2-store.mjs';
@@ -241,10 +242,14 @@ export async function runDailyWork(ctx,{journal,lease,order,deadline,wakeId=leas
       packet=>researchContract(packet,sourceSchema),{...dependencies.exec,clock,admit:async(output,proof)=>{
         const decoded=decodeResearch(output,{packet:proof.packet,sourceSchema});
         const consult=ctx.config.children.sourceAccessMode==='code_consultation',
-          verifier=consult?(_output,_events,options)=>consultResearchSources(_output,options):verifiedResearchSources;
+          verifier=consult?(_output,_events,options)=>consultResearchSources(_output,options):verifiedResearchSources,
+          runtime=await checkedSourceRuntime(ctx,dependencies.sourceRuntime),
+          recorder=sourceAttemptRecorder(ctx,{journal,lease,jobId:job.id,wakeId,clock,fetchSource:dependencies.fetchSource,runtime,
+            executionId:proof.execution.id,inputSha256:proof.execution.inputSha256,outputSha256:proof.execution.output.sha256});
         const evidence=await verifier(decoded,proof.sourceEvidence,{foundation,deadline,
-          fetchSource:dependencies.fetchSource,...(consult?{pdfExtractor:ctx.config.children.pdfExtractor}:{}),reserve:async proof=>{
-            const reservations=(await journal.load()).filter(e=>e.kind==='source_fetch_reserved'&&e.data.wakeId===wakeId);
+          fetchSource:recorder.fetchSource,checkpoint:recorder.checkpoint,matchFailed:recorder.matchFailed,
+          ...(consult?{pdfExtractor:ctx.config.children.pdfExtractor}:{}),reserve:async proof=>{
+            const reservations=(await journal.load()).filter(e=>e.kind==='source_fetch_reserved'&&e.data.jobId===job.id);
             if(reservations.length>=64)throw fault('SUPERVISOR_SOURCE_FETCH_BUDGET_EXHAUSTED');
             await journal.append('source_fetch_reserved',{wakeId,jobId:job.id,readingId:entry.readingId,
               ordinal:reservations.length+1,...proof},clock(),lease);

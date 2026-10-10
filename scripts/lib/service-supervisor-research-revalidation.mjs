@@ -7,6 +7,7 @@ import {checkedThreadIdentity,analyzeChildEvents} from './service-supervisor-exe
 import {decodeResearch,admitResearch,assertChildPrivacy,researchContract} from './service-supervisor-contracts.mjs';
 import {dailyFoundation,dailyResearchPacket,admitDailyOrder,latestDailyJob} from './service-supervisor-daily.mjs';
 import {consultResearchSources} from './service-supervisor-source-fetch.mjs';
+import {sourceAttemptRecorder} from './service-supervisor-source-journal.mjs';
 
 const incident={jobId:'e1e14cd7fff6655f15cf4991db575d1b',executionId:'af1469b581e29f1ac8850dc2509a4a4f',
   threadId:'01a127d0-c8fa-7ed2-8932-d0968ce870d1',readingId:'LTP-0028-GEN-016',
@@ -84,7 +85,10 @@ export async function revalidateGenesis16Research(ctx,{receiptPath,clock=()=>new
       const receiptRef={path:`research-revalidation/${receiptSha256}/manager-receipt.json`,sha256:receiptSha256};await durableWrite(ctx.stateRoot,receiptRef.path,rawReceipt);
       await journal.append('research_revalidation_reserved',{executionId:target.executionId,receiptSha256,receipt:receiptRef,blockedJobEventSha256:jobEvent.sha256},clock(),lease);
       try {
-        const sourceEvidence=await consultResearchSources(decoded,{foundation,deadline:expires,mappings:receipt.mappings,fetchSource:dependencies.fetchSource,
+        const recorder=sourceAttemptRecorder(ctx,{journal,lease,jobId:target.jobId,executionId:target.executionId,inputSha256:target.inputSha256,outputSha256:target.outputSha256,
+          runtime:installed.pointer,authoritySha256:receiptSha256,clock,fetchSource:dependencies.fetchSource}),
+          sourceEvidence=await consultResearchSources(decoded,{foundation,deadline:expires,mappings:receipt.mappings,fetchSource:recorder.fetchSource,
+          checkpoint:recorder.checkpoint,matchFailed:recorder.matchFailed,
           pdfExtractor:ctx.config.children.pdfExtractor,
           reserve:async request=>{
             const reservations=(await journal.load()).filter(e=>e.kind==='source_fetch_reserved'&&e.data.jobId===target.jobId);

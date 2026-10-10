@@ -14,13 +14,13 @@ access/sharing, immutable rollback and release gates in the policies below.
 
 ## Current sequencing
 
-- WO-1 owns the Henry runtime/model repair. The manager owns author-lane activation
-  after WO-1's installed runtime and model preflight are verified.
-- WO-2 owns buffer-aware reader warnings; installed-iPhone promotion gate applies.
-- WO-3 design is accepted; staged supervisor implementation is authorized.
-  The manager sequences its implementation and releases.
-- WO-4 owns documentation hygiene. Keep both Henry author lanes paused; daily
-  preparation and review/audit remain active. Leave non-BibleApp automations alone.
+- WO-1 fe7bb36 is installed; manager verified both models at 15:13 UTC and resumed
+  both Henry author lanes. Accepted post-WO-1 rollback snapshot stays private.
+- WO-2 466058d is released as an unselected canary; phone/backend promotion pending.
+- WO-3 stages A–D accepted. Stage A kernel/EDF/status/install/rollback passes 14
+  fabricated regressions; post-WO-2 full check passes 508 tests. Manager review pending.
+  See [operations](docs/SUPERVISOR_OPERATIONS.md). No supervisor activated.
+- WO-4 owns documentation hygiene. Non-BibleApp automations remain untouched.
 
 The 2026-10-01 highlight cleanup supplies selected production assets.
 Earlier checkpoints: [archive](docs/reports/state-archive-2026-09.md).
@@ -28,7 +28,7 @@ Historical evidence: [reliability report](docs/reports/service-reliability-2026-
 
 ## WO-2 checked unselected canary
 
-Local candidate based on WO-1 fe7bb36: heartbeat/buffer status, shared short notices,
+Released 466058d based on WO-1 fe7bb36: heartbeat/buffer status, shared short notices,
 Dustin operational detail and one manifest-plus-payload evaluator are implemented.
 Daily/no-op/retry receipts retain other-lane and legacy blockers; downloaded
 payloads cannot hide known manifest/Henry gaps. Fabricated October 6/8/10,
@@ -55,6 +55,6 @@ drain and independent review. Legacy provenance/budgets survive explicit rebinds
 runtime packaging verifies exact status/health dependencies. Manager's 14:55 UTC
 preflight verified both models on CLI 0.162.1 through ChatGPT; private proof is
 preserved. WO-1 check passed 485 tests with public assets unchanged. Manager owns
-installed preflight, live health and author-lane resumption. WO-1 reports runtime
-installed at fe7bb36; verify hashes separately. Commands and WO-2/WO-3 interfaces:
+live health and release sequencing. Installed exact fe7bb36 model probes passed
+at 15:13 UTC; both Henry author lanes resumed. Commands and WO-2/WO-3 interfaces:
 [Henry recovery release](docs/execplans/henry-recovery-release-2026-10-10.md).

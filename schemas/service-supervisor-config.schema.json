@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daily-bible-reader.local/schemas/service-supervisor-config.schema.json",
+  "title": "Private installed supervisor configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "stage", "sourceRevision", "projectRoot", "runtimeRoot", "automations"],
+  "properties": {
+    "schemaVersion": {"const": "service-supervisor-config/v1"},
+    "stage": {"const": "A"},
+    "sourceRevision": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+    "projectRoot": {"type": "string", "minLength": 1},
+    "runtimeRoot": {"type": "string", "minLength": 1},
+    "automations": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"$ref": "#/$defs/automation"}}
+  },
+  "$defs": {
+    "automation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["lane", "file", "name", "kind", "status", "rrule", "model", "reasoning_effort", "execution_environment", "target", "cwds", "promptSha256"],
+      "properties": {
+        "lane": {"enum": ["daily", "henry_primary", "henry_recovery", "review"]},
+        "file": {"type": "string", "minLength": 1},
+        "name": {"type": "string", "minLength": 1, "maxLength": 200},
+        "kind": {"const": "cron"},
+        "status": {"enum": ["ACTIVE", "PAUSED"]},
+        "rrule": {"type": "string", "minLength": 1, "maxLength": 500},
+        "model": {"type": "string", "minLength": 1, "maxLength": 120},
+        "reasoning_effort": {"type": "string", "minLength": 1, "maxLength": 20},
+        "execution_environment": {"const": "local"},
+        "target": {"type": "object", "additionalProperties": false, "required": ["type", "project_id"], "properties": {
+          "type": {"const": "project"}, "project_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,200}$"}
+        }},
+        "cwds": {"type": "array", "minItems": 1, "maxItems": 8, "items": {"type": "string", "minLength": 1}},
+        "promptSha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    }
+  }
+}

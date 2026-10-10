@@ -117,7 +117,14 @@ function report(ctx,job,extra={}) {
 async function selection(ctx,jobs,now) {
   const manifest=await readJson(await confined(ctx.privateRoot,'private-manifest.json',{missing:false}));
   const pending=await pendingHenryHandoffs({privateRoot:ctx.privateRoot,plan:ctx.plan,manifest,handoffSchema:await readJson(path.join(ctx.releaseRoot,'schemas/mhc-native-review-handoff.schema.json'))});
-  for(const job of jobs)pending.add(job.input.reading_id);
+  for(const job of jobs){
+    // Retained directories are lifecycle evidence, not unfinished debt. Only
+    // exact verified publication clears this view; stale or unreadable proof
+    // stays pending for the existing reviewer/recovery gates.
+    let published=false;
+    if(job.state?.phase==='published')try{published=await publicationMatches(ctx,job);}catch{}
+    if(!published)pending.add(job.input.reading_id);
+  }
   const metadata=new Map();
   for(const entry of ctx.plan.entries.filter(e=>manifest.readings?.[e.readingId]))metadata.set(entry.readingId,await maybeJson(await confined(ctx.privateRoot,`bridge/celebration-y3q4/${entry.readingId}.metadata.json`)));
   const attemptState=await maybeJson(await confined(ctx.privateRoot,'automation/mhc-backfill-attempt-state.json'));

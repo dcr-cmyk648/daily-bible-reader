@@ -118,6 +118,12 @@ An existing historical writer also stays untouched while preparation is pending.
 All packet, reading, run and deadline budgets remain unchanged. The exact requested
 forward/daily and in-process historical interfaces retain their existing gates.
 
+The queue keeps immutable published job directories as evidence without treating
+them as pending debt when the existing exact publication check verifies the
+receipt, current metadata, approved artifact and attached runtimes. Stale,
+unreadable, unresolved and reopened jobs remain pending. This read-only view
+changes no event heads, budgets or cooldowns and grants no forward-health authority.
+
 Accepted historical dispatch records the fresh measurement hash and timestamp
 in `historical_authorization_admitted` history. Existing attempts, sessions,
 leases, per-packet submissions, review and publication gates remain authoritative;

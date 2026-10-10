@@ -772,6 +772,81 @@ test('eight complete permits original default fallback transfer without replenis
   for(const [id,session]of Object.entries(before.state.sessions))assert.deepEqual(after.state.sessions[id],session);
   assert.equal(after.state.owners['TST.1'],'luna');
 });
+
+async function publishPriorityForward(f,count) {
+  await f.prepare(count===8);
+  for(const entry of f.forward.slice(0,count)) {
+    const metadataPath=`bridge/celebration-y3q4/${entry.readingId}.metadata.json`,
+      fallback=await readJson(path.join(f.ctx.privateRoot,`bridge/celebration-y3q4/${f.historical[0].readingId}.metadata.json`));
+    await atomicJson(f.ctx.privateRoot,metadataPath,{...fallback,readingId:entry.readingId});
+    let work=await startV2(f.ctx,'spark',f.now,{requestedReadingId:entry.readingId});
+    assert.equal(work.readingId,entry.readingId);await writeCandidate(work);
+    work=await advanceV2(f.ctx,entry.readingId,sessionId(work),f.now);assert.equal(work.action,'review_handoff');
+    await approve(f.ctx,entry.readingId,f.now);
+    const job=await loadJob(path.join(f.ctx.jobRoot,entry.readingId)),
+      approved=await readJson(path.join(job.directory,`approved/${job.state.review.approved_sha256}.json`)),
+      metadataFile=await atomicJson(f.ctx.privateRoot,metadataPath,{readingId:entry.readingId,verseCommentaries:approved.results.map(r=>r.runtime)}),
+      manifest=await readJson(path.join(f.ctx.privateRoot,'private-manifest.json')),pointer=`FABRICATED_POINTER_${entry.readingId}`;
+    manifest.readings[entry.readingId].metadataFileId=pointer;await atomicJson(f.ctx.privateRoot,'private-manifest.json',manifest);
+    await atomicJson(f.ctx.privateRoot,`automation/staging/${entry.readingId}/manager-publication-result.json`,{
+      schemaVersion:'mhc-manager-publication-result/v1',readingId:entry.readingId,status:'published_verified',
+      metadataReadback:'exact_bytes',manifestReadback:'exact_bytes',liveReadingStatus:'ready',henryLayerStatus:'complete',
+      metadataFileId:pointer,payloadSha256:sha256(await readFile(metadataFile))});
+    assert.equal((await reviewWorkOrderV2(f.ctx,f.now)).state,'no_review_work');
+    assert.equal((await loadJob(job.directory)).state.phase,'published');
+  }
+}
+async function priorityCooldown(f) {
+  const file=await atomicJson(f.ctx.privateRoot,'automation/mhc-backfill-attempt-state.json',{
+    schemaVersion:'mhc-backfill-attempt-state/v1',planVersion:f.ctx.plan.planVersion,attempts:{[f.historical[0].readingId]:{
+      attemptedAt:f.now.toISOString(),outcome:'model_failure',stage:'generate',code:'FABRICATED_FAILURE'}}});
+  return {file,bytes:await readFile(file)};
+}
+for(const lane of ['spark','luna'])test(`verified published forward jobs clear ${lane} queue debt but three of eight still cannot claim historical work`,async t=>{
+  const f=await defaultPriorityFixture(t);await publishPriorityForward(f,3);const ledger=await priorityCooldown(f),before=await jobBytes(f.ctx.jobRoot);
+  const model=fabricatedModelRun(x=>x,{model:MODELS[lane]});let checks=0;
+  const result=await runAuthorSession(f.ctx,{lane,codexExecutable:process.execPath},
+    {run:model.run,clock:()=>f.now,historicalHealth:async()=>{checks++;return f.incomplete;}});
+  assert.equal(result.action,'none');assert.equal(result.state,'forward_preparation_pending');assert.equal(result.code,null);
+  assert.equal(checks,1);assert.equal(model.calls,0);assert.equal(result.buffer.completeConsecutiveReadings,3);
+  assert.equal(result.queue.forwardDebtCount,0);assert.equal(result.queue.awaitingReviewCount,0);assert.equal(result.queue.historicalDebtCount,32);
+  assert.deepEqual(await jobBytes(f.ctx.jobRoot),before);assert.deepEqual(await readFile(ledger.file),ledger.bytes);
+});
+test('eight verified published forward jobs admit the original historical selector without changing retained heads or cooldowns',async t=>{
+  const f=await defaultPriorityFixture(t);await publishPriorityForward(f,8);const ledger=await priorityCooldown(f),before=await jobBytes(f.ctx.jobRoot);
+  const selected=await selectHistoricalAuthorWorkV2(f.ctx,{},f.now,{health:async()=>f.ready});
+  assert.equal(selected.action,'selected');assert.equal(selected.readingId,f.historical[1].readingId);assert.equal(selected.authorLane,'spark');
+  assert.deepEqual(await jobBytes(f.ctx.jobRoot),before);
+  const retained=await Promise.all(f.forward.map(e=>jobBytes(path.join(f.ctx.jobRoot,e.readingId))));let checks=0;
+  const work=await startV2(f.ctx,'spark',f.now,{}, {health:async()=>{checks++;return f.ready;}});
+  assert.equal(checks,2);assert.equal(work.action,'author_candidate');assert.equal(work.readingId,selected.readingId);
+  assert.equal(work.totalSubmissions,0);assert.equal(work.submissionsRemaining,2);
+  assert.deepEqual(await Promise.all(f.forward.map(e=>jobBytes(path.join(f.ctx.jobRoot,e.readingId)))),retained);
+  assert.deepEqual(await readFile(ledger.file),ledger.bytes);
+});
+for(const mode of ['stale_receipt','changed_runtime','reopened_review','unresolved_publication','changed_approval','missing_approval'])test(`published queue retains ${mode} as pending without claims or historical budget changes`,async t=>{
+  const f=await defaultPriorityFixture(t);await publishPriorityForward(f,8);
+  const id=f.forward[0].readingId,job=await loadJob(path.join(f.ctx.jobRoot,id)),
+    metadataPath=`bridge/celebration-y3q4/${id}.metadata.json`,receiptPath=`automation/staging/${id}/manager-publication-result.json`,
+    approvedPath=path.join(job.directory,`approved/${job.state.review.approved_sha256}.json`);
+  if(mode==='stale_receipt'){const receipt=await readJson(path.join(f.ctx.privateRoot,receiptPath));receipt.payloadSha256='0'.repeat(64);await atomicJson(f.ctx.privateRoot,receiptPath,receipt);}
+  if(mode==='changed_runtime') {
+    const metadata=await readJson(path.join(f.ctx.privateRoot,metadataPath));metadata.verseCommentaries[0].worker_model=MODELS.luna;
+    const file=await atomicJson(f.ctx.privateRoot,metadataPath,metadata),receipt=await readJson(path.join(f.ctx.privateRoot,receiptPath));
+    receipt.payloadSha256=sha256(await readFile(file));await atomicJson(f.ctx.privateRoot,receiptPath,receipt);
+  }
+  if(mode==='reopened_review')await reopenReviewV2(f.ctx,id,job.state.review.approved_sha256,'FABRICATED reviewer','FABRICATED newly discovered source omission',f.now);
+  if(mode==='unresolved_publication')await appendState(job,'FABRICATED unresolved publication',{...job.state,phase:'publishing',publication:null},f.now);
+  if(mode==='changed_approval'){const approved=await readJson(approvedPath);approved.results[0].runtime.worker_model=MODELS.luna;await writeFile(approvedPath,bytesFor(approved));}
+  if(mode==='missing_approval')await rm(approvedPath);
+  const ledger=await priorityCooldown(f),before=await jobBytes(f.ctx.jobRoot);let checks=0;
+  const verify=async()=>{checks++;return f.ready;},work=await startV2(f.ctx,'spark',f.now,{}, {health:verify});
+  assert.equal(work.action,'none');assert.equal(work.state,'no_eligible_reading');assert.equal(checks,0);
+  assert.equal(work.queue.forwardDebtCount,1);assert.equal(work.queue.awaitingReviewCount,1);assert.equal(work.queue.selectableCount,0);
+  const historical=await selectHistoricalAuthorWorkV2(f.ctx,{},f.now,{health:verify});
+  assert.equal(checks,1);assert.equal(historical.action,'none');assert.equal(historical.readingId,null);
+  assert.deepEqual(await jobBytes(f.ctx.jobRoot),before);assert.deepEqual(await readFile(ledger.file),ledger.bytes);
+});
 test('historical reference cannot combine with daily admission or a multi-reading author run',async t=>{
   const {ctx,now,verify}=await historicalFixture(t),selected=await selectHistoricalAuthorWorkV2(ctx,{},now,{health:verify}),before=await jobBytes(ctx.jobRoot);
   for(const options of [{maxReadings:2},{maxReadings:1,requestedDailyWorkOrder:{}},{maxReadings:1,requestedReadingId:undefined}])await assert.rejects(runAuthorSession(ctx,{lane:'spark',codexExecutable:process.execPath,requestedReadingId:'FAB-1',requestedHistoricalAuthorization:selected.historicalAuthorization,...options},{run:()=>assert.fail('no probe'),clock:()=>now}),/V2_AUTHOR_.*CAP_INVALID/);

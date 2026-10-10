@@ -132,6 +132,13 @@ the allowlisted public backend config needed for its authenticated health closur
 Tests inject fabricated health transports and authors; source validation never
 performs a live model/API probe. Manager owns installation and live acceptance.
 
+The verified launcher reports child spawn errors, signals, missing exit status
+and silent nonzero exits as stdout-only `mhc-native-launch-result/v1` failures.
+`runtime_launch` / `launch_failed` preserves only allowlisted spawn-error and
+signal enums plus the actual exit status. It suppresses interrupted child output
+and leaves dispatch unverified; it grants no replay or budget reset. Normal
+structured controller results retain their original bytes and exit status.
+
 The ignored `private-content/automation/mhc-v2/<readingId>/` directory contains:
 
 - immutable `input.json` with source, plan, scope and packet hashes;

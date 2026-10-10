@@ -15,12 +15,19 @@ import {sparkModelUnavailable} from './mhc-v2-model-errors.mjs';
 import {configuredModels,jobModels} from './mhc-v2-author-config.mjs';
 import {stageAuthorBlock} from './mhc-v2-author-status.mjs';
 import {openJournal} from './service-supervisor-store.mjs';
+import {measuredBuffer} from './service-supervisor-policy.mjs';
 
 const HOUR=60*60*1000;
 const chapterKey=c=>`${c.book_id}.${c.chapter}`;
 const artifactKey=(packet,lane)=>`${packet.packet_id}:${lane}`;
 const validReading=id=>/^[A-Za-z0-9][A-Za-z0-9._:-]{2,159}$/.test(String(id||''));
 const clone=value=>structuredClone(value);
+export const historicalSelectionBindingVersion='historical-selection/v1';
+const historicalReferences=new WeakMap(),HISTORICAL_REFERENCE_MS=5*60*1000;
+async function historicalForwardHealth(ctx,now) {
+  const {authenticatedForwardHealth}=await import('./service-supervisor-scope.mjs');
+  return authenticatedForwardHealth(ctx,now);
+}
 const command=(ctx,args)=>{const argv=[process.execPath,ctx.launcher,...args];return {argv,command:process.platform==='win32'?'& '+argv.map(v=>`'${v.replaceAll("'","''")}'`).join(' '):argv.map(v=>`'${v.replaceAll("'","'\\''")}'`).join(' ')};};
 
 export async function serviceContext(ctx) {
@@ -259,6 +266,51 @@ async function assertFallbackEligible(ctx,job,{exact=false}={}) {
       !sparkModelUnavailable({status:execution.exit_code,stdout:events}))throw new Error('V2_AVAILABILITY_PROOF_INVALID');
   }
 }
+async function projectedAuthorJobs(ctx,requestedReadingId,now) {
+  const jobs=await allJobs(ctx,{readOnly:true});
+  for(let i=0;i<jobs.length;i++){
+    let job=jobs[i];
+    if(!job.state){const entry=ctx.plan.entries.find(e=>e.readingId===job.input.reading_id);if(!entry)throw new Error('V2_PARTIAL_JOB_PLAN_CHANGED');const sources=await sourceInput(ctx,entry);if(sources.input.input_sha256!==job.input.input_sha256)throw new Error('V2_PARTIAL_JOB_SOURCE_CHANGED');job={...job,partial:true,state:initialJobState(job.input,now)};}
+    if(job.input.reading_id===requestedReadingId)for(const transition of authorMaintenance(ctx,job,now))job={...job,state:transition.state};
+    jobs[i]=job;
+  }
+  return jobs;
+}
+// References are native in-process capabilities, never serialized model claims.
+// Hold the existing native lock across this read-only call and author dispatch.
+export async function selectHistoricalAuthorWorkV2(ctx,{requestedReadingId,lane}={},now=new Date(),{health=historicalForwardHealth}={}) {
+  if(requestedReadingId!==undefined&&!validReading(requestedReadingId))throw new Error('V2_REQUESTED_READING_INVALID');
+  if(lane!==undefined&&!MODELS[lane])throw new Error('V2_MODEL_NOT_ALLOWED');
+  const window=henryPriorityWindow(ctx.appConfig,now),measurement=await health(ctx,now),buffer=measuredBuffer(ctx.plan,ctx.appConfig,measurement,now);
+  if(buffer.status!=='ready'||buffer.targetReadings!==8)throw new Error('V2_HISTORICAL_FORWARD_INCOMPLETE');
+  const historicalCtx={...ctx,forwardOnly:false};
+  let jobs=await projectedAuthorJobs(ctx,requestedReadingId,now),selected=await selectAuthorJob(historicalCtx,jobs,undefined,now);
+  const id=selected.job?.input.reading_id??selected.entry?.readingId??null;
+  const mismatch=reason=>({pipeline:VERSION,action:'none',state:'requested_reading_mismatch',code:'V2_REQUESTED_READING_MISMATCH',published:false,requestedReadingId,readingId:id,reason});
+  if(requestedReadingId!==undefined&&id!==requestedReadingId)return mismatch('native_selection_differs');
+  const entry=ctx.plan.entries.find(e=>e.readingId===id),manifest=await readJson(await confined(ctx.privateRoot,'private-manifest.json',{missing:false}));
+  if(!entry||entry.kind!=='chapter'||entry.dayIndex>=window.currentDay||!manifest.readings?.[id])return mismatch('outside_historical_scope');
+  // If discovery omitted an ID, project this target's maintenance before minting.
+  if(requestedReadingId===undefined){jobs=await projectedAuthorJobs(ctx,id,now);selected=await selectAuthorJob(historicalCtx,jobs,undefined,now);if((selected.job?.input.reading_id??selected.entry?.readingId??null)!==id)return mismatch('native_selection_changed');}
+  const job=selected.job,next=job&&nextBatch(job),authorLane=selected.kind==='fallback_pending'?'luna':next?.lane??job?.state.session?.lane??'spark';
+  if(lane!==undefined&&lane!==authorLane)return mismatch('chapter_owner_differs');
+  if(job&&!job.partial)await checkedJob(ctx,id);
+  if(selected.kind==='fallback_pending')await assertFallbackEligible(ctx,job,{exact:true});
+  const reference=Object.freeze({schemaVersion:historicalSelectionBindingVersion,readingId:id,authorLane,issuedAt:new Date(now).toISOString()});
+  historicalReferences.set(reference,{projectRoot:ctx.projectRoot,releaseRoot:ctx.releaseRoot,planSha256:digestObject(ctx.plan),configSha256:digestObject(ctx.config),appConfigSha256:digestObject(ctx.appConfig),manifestSha256:ctx.manifestSha256,effectiveDate:window.today,health});
+  return {pipeline:VERSION,action:'selected',state:'selection_ready',published:false,readingId:id,requestedReadingId:id,authorLane,
+    requiredModel:(job?jobModels(job):configuredModels(ctx))[authorLane],selectionKind:selected.kind,historicalAuthorization:reference,
+    historicalProof:{checked_at:reference.issuedAt,health_sha256:digestObject(measurement)}};
+}
+async function checkedHistoricalSelection(ctx,readingId,lane,reference,now) {
+  const basis=reference&&typeof reference==='object'&&historicalReferences.get(reference),time=new Date(now).getTime(),issued=Date.parse(reference?.issuedAt);
+  if(!basis||reference.readingId!==readingId||reference.authorLane!==lane||!Number.isFinite(time)||time<issued||time-issued>HISTORICAL_REFERENCE_MS||
+    basis.projectRoot!==ctx.projectRoot||basis.releaseRoot!==ctx.releaseRoot||basis.planSha256!==digestObject(ctx.plan)||basis.configSha256!==digestObject(ctx.config)||
+    basis.appConfigSha256!==digestObject(ctx.appConfig)||basis.manifestSha256!==ctx.manifestSha256||basis.effectiveDate!==henryPriorityWindow(ctx.appConfig,now).today)
+    throw new Error('V2_HISTORICAL_REFERENCE_INVALID');
+  const selected=await selectHistoricalAuthorWorkV2(ctx,{requestedReadingId:readingId,lane},now,{health:basis.health});
+  return {...selected,historical:true};
+}
 // Caller holds the native runner lock through selection, preflight and dispatch.
 // Omitted lane means report the actual owner, or Luna for proven fallback work.
 export async function selectAuthorWorkV2(ctx,{requestedReadingId,lane,requestedDailyWorkOrder}={},now=new Date()) {
@@ -268,13 +320,7 @@ export async function selectAuthorWorkV2(ctx,{requestedReadingId,lane,requestedD
   const mismatch=extra=>({pipeline:VERSION,action:'none',state:'requested_reading_mismatch',code:'V2_REQUESTED_READING_MISMATCH',published:false,requestedReadingId,...extra});
   if(!entry||entry.kind!=='chapter'||entry.dayIndex<window.currentDay||entry.dayIndex>window.horizonDay)return mismatch({reason:'outside_forward_window',readingId:null});
   const daily=requestedDailyWorkOrder===undefined?null:await requestedDailyDependency(ctx,requestedReadingId,requestedDailyWorkOrder,now);
-  const jobs=await allJobs(ctx,{readOnly:true});
-  for(let i=0;i<jobs.length;i++){
-    let job=jobs[i];
-    if(!job.state){const entry=ctx.plan.entries.find(e=>e.readingId===job.input.reading_id);if(!entry)throw new Error('V2_PARTIAL_JOB_PLAN_CHANGED');const sources=await sourceInput(ctx,entry);if(sources.input.input_sha256!==job.input.input_sha256)throw new Error('V2_PARTIAL_JOB_SOURCE_CHANGED');job={...job,partial:true,state:initialJobState(job.input,now)};}
-    if(job.input.reading_id===requestedReadingId)for(const transition of authorMaintenance(ctx,job,now))job={...job,state:transition.state};
-    jobs[i]=job;
-  }
+  const jobs=await projectedAuthorJobs(ctx,requestedReadingId,now);
   const selected=await selectAuthorJob({...ctx,forwardOnly:true},jobs,lane,now,{dailyEntry:daily?.entry,edf:true}),id=selected.job?.input.reading_id??selected.entry?.readingId??null;
   if(id!==requestedReadingId)return mismatch({reason:'native_selection_differs',readingId:id,selectionKind:selected.kind});
   const job=selected.job,next=job&&nextBatch(job),authorLane=selected.kind==='fallback_pending'?'luna':next?.lane??job?.state.session?.lane??'spark';
@@ -285,11 +331,12 @@ export async function selectAuthorWorkV2(ctx,{requestedReadingId,lane,requestedD
     requiredModel:(job?jobModels(job):configuredModels(ctx))[authorLane],selectionKind:selected.kind,...(daily?{dailyDependency:daily.proof}:{})};
 }
 
-export async function startV2(ctx,lane,now=new Date(),{requestedReadingId,requestedDailyWorkOrder}={}) {
+export async function startV2(ctx,lane,now=new Date(),{requestedReadingId,requestedDailyWorkOrder,requestedHistoricalAuthorization}={}) {
   if(!MODELS[lane])throw new Error('V2_MODEL_NOT_ALLOWED');
   if(requestedDailyWorkOrder!==undefined&&requestedReadingId===undefined)throw new Error('V2_DAILY_DEPENDENCY_READING_REQUIRED');
+  if(requestedHistoricalAuthorization!==undefined&&(requestedReadingId===undefined||requestedDailyWorkOrder!==undefined))throw new Error('V2_HISTORICAL_ARGUMENTS_INVALID');
   let exact;
-  if(requestedReadingId!==undefined){exact=await selectAuthorWorkV2(ctx,{requestedReadingId,lane,requestedDailyWorkOrder},now);if(exact.action!=='selected')return exact;ctx={...ctx,forwardOnly:true};}
+  if(requestedReadingId!==undefined){exact=requestedHistoricalAuthorization===undefined?await selectAuthorWorkV2(ctx,{requestedReadingId,lane,requestedDailyWorkOrder},now):await checkedHistoricalSelection(ctx,requestedReadingId,lane,requestedHistoricalAuthorization,now);if(exact.action!=='selected')return exact;ctx={...ctx,forwardOnly:!exact.historical};}
   let jobs=await allJobs(ctx,{readOnly:requestedReadingId!==undefined});const window=henryPriorityWindow(ctx.appConfig,now);
   for(const partial of jobs.filter(j=>!j.state&&(requestedReadingId===undefined||j.input.reading_id===requestedReadingId))){const entry=ctx.plan.entries.find(e=>e.readingId===partial.input.reading_id);if(!entry)throw new Error('V2_PARTIAL_JOB_PLAN_CHANGED');const sources=await sourceInput(ctx,entry);if(sources.input.input_sha256!==partial.input.input_sha256)throw new Error('V2_PARTIAL_JOB_SOURCE_CHANGED');await createJob(ctx.jobRoot,partial.input,now);}
   jobs=await allJobs(ctx,{readOnly:requestedReadingId!==undefined});
@@ -303,7 +350,7 @@ export async function startV2(ctx,lane,now=new Date(),{requestedReadingId,reques
     }
   }
   jobs=await allJobs(ctx,{readOnly:requestedReadingId!==undefined});
-  const selected=await selectAuthorJob(ctx,jobs,lane,now,{dailyEntry:exact?.selectionKind==='daily_dependency'?ctx.plan.entries.find(e=>e.readingId===requestedReadingId):undefined,edf:Boolean(exact)});let job=selected.job;
+  const selected=await selectAuthorJob(ctx,jobs,exact?.historical?undefined:lane,now,{dailyEntry:exact?.selectionKind==='daily_dependency'?ctx.plan.entries.find(e=>e.readingId===requestedReadingId):undefined,edf:Boolean(exact)&&!exact.historical});let job=selected.job;
   if(selected.kind==='queued'){job=(await checkedJob(ctx,job.input.reading_id)).job;const next=nextBatch(job);if(next&&next.lane!==lane)return ownershipWake(ctx,job,now);job=await appendState(job,'queued_authoring_resumed',{...job.state,phase:'generating'},now);}
   if(job&&selected.kind!=='fallback_pending'){job=(await checkedJob(ctx,job.input.reading_id)).job;const next=nextBatch(job);if(next&&next.lane!==lane)return ownershipWake(ctx,job,now);}
   if(selected.kind==='fallback_pending') {
@@ -323,6 +370,7 @@ export async function startV2(ctx,lane,now=new Date(),{requestedReadingId,reques
     const sources=await sourceInput(ctx,entry);job=await createJob(ctx.jobRoot,sources.input,now,configuredModels(ctx));
     if(selected.kind==='daily_dependency')job=await appendState(job,'daily_dependency_admitted',{...job.state,history:[...job.state.history,{kind:'daily_dependency_admitted',...exact.dailyDependency}]},now);
   }
+  if(exact?.historical)job=await appendState(job,'historical_authorization_admitted',{...job.state,history:[...job.state.history,{kind:'historical_authorization_admitted',...exact.historicalProof}]},now);
   job=await beginSession(ctx,job,lane,now);
   if(job.state.pending_attempt)return advanceV2(ctx,job.input.reading_id,job.state.session.id,now);
   return authorPacket(ctx,job,now);

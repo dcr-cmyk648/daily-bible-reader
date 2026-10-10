@@ -8,7 +8,7 @@ import {fileURLToPath,pathToFileURL} from 'node:url';
 import {createRequire} from 'node:module';
 import {VERSION,MODELS,REVIEW_ASSERTIONS,passageScope,compileReading,validateCandidate,digestObject} from '../scripts/lib/mhc-v2.mjs';
 import {sha256,normalizedBatchHash} from '../scripts/lib/mhc-pipeline.mjs';
-import {serviceContext,startV2,selectAuthorWorkV2,sourceInput,advanceV2,buildReview,reviewWorkOrderV2,applyReviewV2,editorialRepairV2,requestEditorialV2,migrateCurrentV2,reopenReviewV2} from '../scripts/lib/mhc-v2-service.mjs';
+import {serviceContext,startV2,selectAuthorWorkV2,selectHistoricalAuthorWorkV2,historicalSelectionBindingVersion,sourceInput,advanceV2,buildReview,reviewWorkOrderV2,applyReviewV2,editorialRepairV2,requestEditorialV2,migrateCurrentV2,reopenReviewV2} from '../scripts/lib/mhc-v2-service.mjs';
 import {atomicJson,appendState,loadJob,readJson,bytesFor,createJob} from '../scripts/lib/mhc-v2-store.mjs';
 import {writeFileSync,readdirSync} from 'node:fs';
 import {runAuthorSession,selectionBindingVersion,transportSchema,authorArguments,successfulModelResult,verifyPublicPacket,publicRepairDiagnostics} from '../scripts/lib/mhc-v2-author-session.mjs';
@@ -566,16 +566,18 @@ test('tampered or wrong approved runtime cannot be completed by a locally valid 
 });
 test('installed v2 launcher executes actual modules and cannot silently reinstall v1 over live v2 jobs',async t=>{
   const {ctx,now}=await fixture(t,{verseCount:1});await cp(path.join(repo,'scripts'),path.join(ctx.releaseRoot,'scripts'),{recursive:true});
-  for(const file of ['app/shared/server-core.js','app/frontend/app.js']){await mkdir(path.dirname(path.join(ctx.releaseRoot,file)),{recursive:true});await cp(path.join(repo,file),path.join(ctx.releaseRoot,file));}
+  for(const file of ['app/shared/server-core.js','app/frontend/app.js','config/pages-pwa-public.json']){await mkdir(path.dirname(path.join(ctx.releaseRoot,file)),{recursive:true});await cp(path.join(repo,file),path.join(ctx.releaseRoot,file));}
   await atomicJson(ctx.releaseRoot,'fixtures/pilot-content/app-config.json',{sharedStartDate:new Intl.DateTimeFormat('en-CA',{timeZone:'America/Detroit'}).format(new Date()),futureLookaheadDays:7});
   const run=(bin,args,options={})=>{const r=spawnSync(bin,args,{cwd:ctx.releaseRoot,encoding:'utf8',windowsHide:true,maxBuffer:2*1024*1024,...options});assert.equal(r.status,0,`${bin} failed: ${r.stderr}`);return r.stdout.trim();};
-  run('git',['init','-q']);run('git',['add','scripts','schemas','prompts','fixtures','app']);run('git',['-c','user.name=FABRICATED Test','-c','user.email=fabricated@example.invalid','-c','core.hooksPath=.no-test-hooks','commit','-qm','FABRICATED runtime test only']);const revision=run('git',['rev-parse','HEAD']);
+  run('git',['init','-q']);run('git',['add','scripts','schemas','prompts','fixtures','app','config']);run('git',['-c','user.name=FABRICATED Test','-c','user.email=fabricated@example.invalid','-c','core.hooksPath=.no-test-hooks','commit','-qm','FABRICATED runtime test only']);const revision=run('git',['rev-parse','HEAD']);
   const installer=path.join(ctx.releaseRoot,'scripts/install-mhc-native-runtime.mjs'),args=[installer,'--project-root',ctx.projectRoot,'--revision',revision,'--spark-automation-id','fabricated-spark','--luna-automation-id','fabricated-luna','--pipeline','v2'];
   const installed=JSON.parse(run(process.execPath,args));const invoke=(args)=>JSON.parse(run(process.execPath,[installed.launcher,...args],{cwd:os.tmpdir()}));
   const runtimePointer=await readJson(path.join(ctx.runtimeRoot,'current.json')),installedRelease=path.join(ctx.runtimeRoot,'releases',runtimePointer.release),requireInstalled=createRequire(path.join(installedRelease,'scripts/prepare-service-status.mjs'));
   assert.equal(typeof requireInstalled('../app/shared/server-core.js').preparationServiceStatus,'function');
   assert.equal(typeof requireInstalled('../app/frontend/app.js').evaluateContentReadiness,'function');
   const installedHealth=await import(pathToFileURL(path.join(installedRelease,'scripts/lib/live-horizon-health.mjs')).href);assert.equal(typeof installedHealth.verifyLiveHorizon,'function');
+  assert.deepEqual(await readFile(path.join(installedRelease,'config/pages-pwa-public.json')),await readFile(path.join(repo,'config/pages-pwa-public.json')));
+  const installedService=await import(pathToFileURL(path.join(installedRelease,'scripts/lib/mhc-v2-service.mjs')).href);assert.equal(installedService.historicalSelectionBindingVersion,'historical-selection/v1');assert.equal(typeof installedService.selectHistoricalAuthorWorkV2,'function');
   run(process.execPath,[path.join(installedRelease,'scripts/prepare-service-status.mjs'),'blocked','FABRICATED local closure test','FABRICATED staged only'],{cwd:ctx.projectRoot});
   assert.equal((await readJson(path.join(ctx.privateRoot,'automation/staging/service-status/manifest-candidate.json'))).preparationStatus.state,'blocked');
   // Actual installed selection, packet preparation, admission and review
@@ -613,4 +615,101 @@ test('passage scope accepts a range inside a full source chapter but rejects mal
     assert.throws(()=>passageScope(passage,33),/V2_SOURCE_VERSE_COUNT/);
   for (const passage of [{verseStart:9,verseEnd:16,verseCount:7},{verseStart:0,verseEnd:7,verseCount:8},{verseEnd:8,verseCount:8},{verseStart:8,verseEnd:1,verseCount:8}])
     assert.throws(()=>passageScope(passage,33),/V2_PASSAGE_RANGE_INVALID/);
+});
+
+async function historicalFixture(t) {
+  const {ctx,now:initial}=await fixture(t,{verseCount:1,readingCount:10}),now=new Date(initial.getTime()+86400000);
+  for(const entry of ctx.plan.entries.slice(1))await atomicJson(ctx.privateRoot,`bridge/celebration-y3q4/${entry.readingId}.metadata.json`,{readingId:entry.readingId});
+  const health={status:'ready',effectiveDate:'2026-09-14',target:8,readingIds:ctx.plan.entries.slice(1,9).map(e=>e.readingId),
+    missingPreparedReadingIds:[],missingPayloadReadingIds:[],componentFailures:[],currentHorizonHenryLayer:{status:'complete',fallbackReadingIds:[],unavailableReadingIds:[]}};
+  return {ctx,now,health,verify:async()=>structuredClone(health)};
+}
+test('historical native discovery selects original manifest target without mutation and exact one-reading author preserves provenance',async t=>{
+  const {ctx,now,verify}=await historicalFixture(t),before=await jobBytes(ctx.jobRoot);let checks=0;
+  assert.equal(historicalSelectionBindingVersion,'historical-selection/v1');
+  const selected=await selectHistoricalAuthorWorkV2(ctx,{},now,{health:async(...args)=>{checks++;return verify(...args);}});
+  assert.equal(selected.readingId,'FAB-1');assert.equal(selected.authorLane,'spark');assert.deepEqual(await jobBytes(ctx.jobRoot),before);
+  assert.equal((await selectAuthorWorkV2(ctx,{requestedReadingId:'FAB-1'},now)).reason,'outside_forward_window');
+  const model=fabricatedModelRun();let probes=0;
+  const run=(...args)=>{if(args[2].input?.startsWith('Availability preflight')){probes++;assert.deepEqual(readdirSync(ctx.jobRoot),[]);}return model.run(...args);};
+  const work=await runAuthorSession(ctx,{lane:selected.authorLane,codexExecutable:process.execPath,maxReadings:1,requestedReadingId:selected.readingId,requestedHistoricalAuthorization:selected.historicalAuthorization},{run,clock:()=>now});
+  assert.equal(probes,2);assert.equal(checks,2);assert.equal(model.calls,1);assert.equal(work.action,'review_handoff');assert.deepEqual(await readdir(ctx.jobRoot),['FAB-1']);
+  const job=await loadJob(path.join(ctx.jobRoot,'FAB-1')),proof=job.state.history.find(h=>h.kind==='historical_authorization_admitted');
+  assert.match(proof.health_sha256,/^[a-f0-9]{64}$/);assert.equal(proof.checked_at,now.toISOString());assert.equal(job.state.total_submissions,1);
+});
+for(const mode of ['devotional_gap','henry_fallback','missing_measurement','wrong_date','wrong_scope','short_horizon'])test(`historical discovery rejects ${mode} with no job writes`,async t=>{
+  const {ctx,now,health}=await historicalFixture(t),before=await jobBytes(ctx.jobRoot);
+  if(mode==='devotional_gap')health.missingPreparedReadingIds=['FAB-2'];
+  if(mode==='henry_fallback'){health.currentHorizonHenryLayer.status='debt';health.currentHorizonHenryLayer.fallbackReadingIds=['FAB-2'];}
+  if(mode==='missing_measurement')delete health.currentHorizonHenryLayer;
+  if(mode==='wrong_date')health.effectiveDate='2026-09-13';
+  if(mode==='wrong_scope')health.readingIds.reverse();
+  if(mode==='short_horizon'){health.readingIds.pop();health.target=7;}
+  await assert.rejects(selectHistoricalAuthorWorkV2(ctx,{},now,{health:async()=>health}),/V2_HISTORICAL_FORWARD_INCOMPLETE|SUPERVISOR_HEALTH_SCOPE_INVALID/);
+  assert.deepEqual(await jobBytes(ctx.jobRoot),before);
+});
+for(const mode of ['copied','forged','stale','future','owner','reading','root','config','plan','runtime'])test(`historical dispatch rejects ${mode} reference before counters or job writes`,async t=>{
+  const {ctx,now,verify}=await historicalFixture(t),selected=await selectHistoricalAuthorWorkV2(ctx,{},now,{health:verify}),before=await jobBytes(ctx.jobRoot);
+  let reference=selected.historicalAuthorization,time=now,target='FAB-1',lane='spark',context=ctx;
+  if(mode==='copied')reference=structuredClone(reference);
+  if(mode==='forged')reference={schemaVersion:historicalSelectionBindingVersion,readingId:target,authorLane:lane,issuedAt:now.toISOString(),forwardComplete:true};
+  if(mode==='stale')time=new Date(now.getTime()+300001);
+  if(mode==='future')time=new Date(now.getTime()-1);
+  if(mode==='owner')lane='luna';
+  if(mode==='reading')target='FAB-2';
+  if(mode==='root')context={...ctx,projectRoot:path.join(ctx.projectRoot,'other')};
+  if(mode==='config')context={...ctx,config:{...ctx.config,source_revision:'a'.repeat(40)}};
+  if(mode==='plan')context={...ctx,plan:{...ctx.plan,planVersion:'FABRICATED-changed'}};
+  if(mode==='runtime')context={...ctx,manifestSha256:'b'.repeat(64)};
+  await assert.rejects(startV2(context,lane,time,{requestedReadingId:target,requestedHistoricalAuthorization:reference}),/V2_HISTORICAL_REFERENCE_INVALID/);
+  assert.deepEqual(await jobBytes(ctx.jobRoot),before);
+});
+test('historical dispatch repeats actual health after preflight and rejects deterioration without claiming',async t=>{
+  const {ctx,now,health}=await historicalFixture(t);let checks=0;
+  const verify=async()=>{checks++;const result=structuredClone(health);if(checks>1){result.currentHorizonHenryLayer.status='debt';result.currentHorizonHenryLayer.fallbackReadingIds=['FAB-2'];}return result;};
+  const selected=await selectHistoricalAuthorWorkV2(ctx,{},now,{health:verify}),before=await jobBytes(ctx.jobRoot),model=fabricatedModelRun();
+  await assert.rejects(runAuthorSession(ctx,{lane:'spark',codexExecutable:process.execPath,maxReadings:1,requestedReadingId:'FAB-1',requestedHistoricalAuthorization:selected.historicalAuthorization},{run:model.run,clock:()=>now}),/V2_HISTORICAL_FORWARD_INCOMPLETE/);
+  assert.equal(checks,2);assert.equal(model.calls,0);assert.deepEqual(await jobBytes(ctx.jobRoot),before);
+});
+test('historical native selector honors original cooldown and forward fallback priority',async t=>{
+  const {ctx,now,verify}=await historicalFixture(t);
+  await atomicJson(ctx.privateRoot,'automation/mhc-backfill-attempt-state.json',{schemaVersion:'mhc-backfill-attempt-state/v1',planVersion:ctx.plan.planVersion,attempts:{'FAB-1':{attemptedAt:now.toISOString(),outcome:'model_failure',stage:'generate',code:'FABRICATED_FAILURE'}}});
+  const before=await jobBytes(ctx.jobRoot),cooling=await selectHistoricalAuthorWorkV2(ctx,{requestedReadingId:'FAB-1'},now,{health:verify});
+  assert.equal(cooling.action,'none');assert.equal(cooling.readingId,null);assert.deepEqual(await jobBytes(ctx.jobRoot),before);
+  await atomicJson(ctx.privateRoot,'automation/mhc-backfill-attempt-state.json',{schemaVersion:'mhc-backfill-attempt-state/v1',planVersion:ctx.plan.planVersion,attempts:{}});
+  const forward=await readJson(path.join(ctx.privateRoot,'bridge/celebration-y3q4/FAB-1.metadata.json'));forward.readingId='FAB-2';await atomicJson(ctx.privateRoot,'bridge/celebration-y3q4/FAB-2.metadata.json',forward);
+  const selected=await selectHistoricalAuthorWorkV2(ctx,{requestedReadingId:'FAB-1'},now,{health:verify});assert.equal(selected.readingId,'FAB-2');assert.equal(selected.reason,'native_selection_differs');assert.deepEqual(await jobBytes(ctx.jobRoot),before);
+});
+test('historical dispatch rechecks original current selection without mutation after a new queue appears',async t=>{
+  const {ctx,now,verify}=await historicalFixture(t),selected=await selectHistoricalAuthorWorkV2(ctx,{},now,{health:verify});
+  const source=await sourceInput(ctx,ctx.plan.entries[1]);await createJob(ctx.jobRoot,source.input,now);const before=await jobBytes(ctx.jobRoot);
+  const work=await startV2(ctx,'spark',now,{requestedReadingId:'FAB-1',requestedHistoricalAuthorization:selected.historicalAuthorization});
+  assert.equal(work.readingId,'FAB-2');assert.equal(work.reason,'native_selection_differs');assert.deepEqual(await jobBytes(ctx.jobRoot),before);
+});
+test('historical actual fallback selection retains native attempts and sessions and rejects wrong owner without ownership wakes',async t=>{
+  const {ctx,now,verify}=await historicalFixture(t);let work=await startV2(ctx,'spark',now);
+  for(let i=0;i<2;i++){await writeCandidate(work,c=>({...c,packet_id:'MHP2-'+String(i).repeat(32)}));work=await advanceV2(ctx,'FAB-1',sessionId(work),now);}
+  const prior=await loadJob(path.join(ctx.jobRoot,'FAB-1')),before=await jobBytes(ctx.jobRoot);
+  assert.equal((await selectHistoricalAuthorWorkV2(ctx,{requestedReadingId:'FAB-1',lane:'spark'},now,{health:verify})).reason,'chapter_owner_differs');assert.deepEqual(await jobBytes(ctx.jobRoot),before);
+  const selected=await selectHistoricalAuthorWorkV2(ctx,{},now,{health:verify});assert.equal(selected.authorLane,'luna');
+  work=await startV2(ctx,'luna',now,{requestedReadingId:'FAB-1',requestedHistoricalAuthorization:selected.historicalAuthorization});assert.equal(work.totalSubmissions,2);assert.equal(work.action,'author_candidate');
+  const after=await loadJob(prior.directory);assert.deepEqual(after.state.rejected,prior.state.rejected);for(const [id,session] of Object.entries(prior.state.sessions))assert.deepEqual(after.state.sessions[id],session);
+});
+test('historical reference cannot combine with daily admission or a multi-reading author run',async t=>{
+  const {ctx,now,verify}=await historicalFixture(t),selected=await selectHistoricalAuthorWorkV2(ctx,{},now,{health:verify}),before=await jobBytes(ctx.jobRoot);
+  for(const options of [{maxReadings:2},{maxReadings:1,requestedDailyWorkOrder:{}},{maxReadings:1,requestedReadingId:undefined}])await assert.rejects(runAuthorSession(ctx,{lane:'spark',codexExecutable:process.execPath,requestedReadingId:'FAB-1',requestedHistoricalAuthorization:selected.historicalAuthorization,...options},{run:()=>assert.fail('no probe'),clock:()=>now}),/V2_AUTHOR_.*CAP_INVALID/);
+  assert.deepEqual(await jobBytes(ctx.jobRoot),before);
+});
+for(const mode of ['unpublished','owner_changed','expired_lease','transport_failure'])test(`historical retained guard rejects ${mode} without job or counter mutation`,async t=>{
+  const {ctx,now,verify}=await historicalFixture(t);
+  const selected=await selectHistoricalAuthorWorkV2(ctx,{},now,{health:verify});
+  if(mode==='unpublished'){const manifest=await readJson(path.join(ctx.privateRoot,'private-manifest.json'));delete manifest.readings['FAB-1'];await atomicJson(ctx.privateRoot,'private-manifest.json',manifest);}
+  if(mode==='owner_changed'||mode==='expired_lease'){
+    const source=await sourceInput(ctx,ctx.plan.entries[0]);let job=await createJob(ctx.jobRoot,source.input,now);
+    await appendState(job,'FABRICATED retained guard fixture',{...job.state,...(mode==='owner_changed'?{owners:{'TST.1':'luna'}}:{lease:{id:'FABRICATED expired lease',expires_at:new Date(now.getTime()-1).toISOString()}})},now);
+  }
+  const before=await jobBytes(ctx.jobRoot);
+  if(mode==='transport_failure')await assert.rejects(selectHistoricalAuthorWorkV2(ctx,{},now,{health:async()=>{throw Error('FABRICATED health transport unavailable');}}),/FABRICATED health transport/);
+  else {const result=await startV2(ctx,'spark',now,{requestedReadingId:'FAB-1',requestedHistoricalAuthorization:selected.historicalAuthorization});assert.equal(result.action,'none');}
+  assert.deepEqual(await jobBytes(ctx.jobRoot),before);
 });

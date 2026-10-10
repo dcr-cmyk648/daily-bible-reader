@@ -1,70 +1,57 @@
 # Project state — October 10, 2026
 
-## Service recovery status
+## Latest verified service checkpoint
 
-Authenticated service health recorded in the recovery plan is **not ready**: 3/8
-devotionals prepared (October 10–12), 0/8 complete Henry verse layers, two
-devotional future days, and no complete future days. October 13–17 is missing;
-Genesis 14, Psalm 3/Proverbs, and Genesis 15 have fallback-only Henry layers.
-This is the latest verified checkpoint; rerun live health before any service claim.
+Manager's authenticated service health at **17:59 UTC** is **not ready**:
+3/8 devotionals and 2/8 complete Henry layers; two devotional future days and
+one complete future day. Genesis 14 and Psalm 3/Proverbs are published with
+complete Henry layers. Genesis 15 retains its fallback; Genesis 16, Matthew 6,
+and Genesis 17–19 are missing. Rerun authenticated health before any readiness claim.
 
-Recovery findings and work orders: [recovery plan](docs/execplans/service-recovery-2026-10-10.md).
-Apply standing authority while preserving privacy, source review, atomic publication,
-access/sharing, immutable rollback and release gates in the policies below.
+Recovery scope and standing authority: [recovery plan](docs/execplans/service-recovery-2026-10-10.md)
+and [service authority](docs/SERVICE_AUTHORITY.md). Preserve privacy, independent
+source review, atomic publication, access/sharing, immutable rollback and release gates.
 
 ## Current sequencing
 
-- WO-1 e9a2740 is installed; manager verified both ChatGPT author models at 16:19
-  UTC. Both Henry lanes ACTIVE; exact e9 inventory/rollback remain private.
-- WO-2 466058d is released as an unselected canary; phone/backend promotion pending.
-- WO-3 A–D accepted. Stage A ea80c52 installed; B publication/source/revocation
-  gates pass 526 combined tests and real read-only Genesis 14 authority proof.
-  Manager sequences B install/publication; daily/review ACTIVE. [B protocol](docs/SUPERVISOR_PUBLICATION.md).
+- WO-1 native 7068de0 is installed. Both configured ChatGPT author preflights passed
+  at 17:35 UTC; both Henry definitions are ACTIVE and pinned to that runtime.
+- WO-3 publisher B 7068de0 is installed. Genuine Genesis 14 and Psalm 3/Proverbs
+  publication transactions are terminal with exact release proof. C/D integration
+  remains under review. [Publication protocol](docs/SUPERVISOR_PUBLICATION.md).
+- WO-2 466058d remains an unselected canary; backend/installed-phone promotion
+  is held. Stored preparation heartbeats reach the private store, but the old
+  backend drops the new fields. Scheduled-wake readback remains required.
 - WO-4 owns documentation hygiene. Non-BibleApp automations remain untouched.
 
-The 2026-10-01 highlight cleanup supplies selected production assets.
-Earlier checkpoints: [archive](docs/reports/state-archive-2026-09.md).
-Historical evidence: [reliability report](docs/reports/service-reliability-2026-09-28.md).
+## Native author interfaces
 
-## WO-2 checked unselected canary
+Installed `requested-reading/v1` supports read-only native lane selection,
+actual preflight before exact one-reading mutation and a hash-bound unpublished
+rolling daily dependency. Its same-journal EDF observation, `waiting_henry`
+state and accepted synthesis evidence are mandatory. Native defaults are retained.
 
-Released 466058d based on WO-1 fe7bb36: heartbeat/buffer status, shared short notices,
-Dustin operational detail and one manifest-plus-payload evaluator are implemented.
-Daily/no-op/retry receipts retain other-lane and legacy blockers; downloaded
-payloads cannot hide known manifest/Henry gaps. Fabricated October 6/8/10,
-cross-lane, CLI and cache-isolation regressions pass. Combined check: 494 tests.
+The separate `historical-selection/v1` source extension requires native authenticated
+complete current-through-T+7 health before historical target/lane discovery.
+Its in-process reference expires after five minutes; one-reading dispatch rechecks
+actual health and the original manifest-backed selector after author preflight.
+Cooldowns, current priority, owners, attempts, sessions and leases remain authoritative.
+The immutable runtime includes the existing allowlisted public backend config.
+Manager owns installation, live preflight, source pins and C/D acceptance.
+Historical source check: 585 fabricated/local tests, safety, builds and asset
+verification passed; selected production files are unchanged.
+Interface and policy: [Henry operations](docs/HENRY_V2_OPERATIONS.md#one-reading-lifecycle).
 
-Canary 26cd630fe1ea0afa pins frontend 530161d86a2c1df1; selected frontend
-844ce06fb805f5f4 / PWA 8fcefb5ae56b5def remain byte-identical. See
-[contract](docs/PREPARATION_HEARTBEAT.md) and [phone/release procedure](docs/execplans/wo2-reader-canary-acceptance.md).
-Manager cleared safe source/unselected-assets push. No backend deployment,
-private publication or saved automation change. The old backend strips heartbeat:
-live delivery needs the manager's backend/phone gate and scheduled-wake readback.
+The author remains gpt-6-luna at medium; retained gpt-5.6-luna fallback is low
+and controller-proven. Runs are ephemeral and ChatGPT-only, with no API fallback.
 
-## Required policy references
+## Reader releases and durable policy
 
-WO-1 Stage C native extension adds the `requested-reading/v1` capability marker,
-read-only native lane selection and a preflight-before-mutation exact-reading
-guard. A hash-bound rolling daily dependency can prepare one private Henry library
-before remote devotional publication, only with the same journal's EDF selection,
-`waiting_henry` state and accepted synthesis evidence. Default backfill behavior
-is retained. Manager owns runtime installation, pin updates, real preflight and
-service acceptance; this source change makes no live readiness claim. Interface:
-[Henry operations](docs/HENRY_V2_OPERATIONS.md#one-reading-lifecycle).
+Selected frontend 844ce06fb805f5f4 / PWA 8fcefb5ae56b5def remain unchanged.
+WO-2 canary 26cd630fe1ea0afa pins frontend 530161d86a2c1df1. Preserve the
+[phone/release gate](docs/execplans/wo2-reader-canary-acceptance.md) and immutable rollback.
 
 `AGENTS.md`, `README.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md`,
 `docs/CONTENT_AND_RIGHTS.md`, `docs/EDITORIAL_STANCE.md`,
-`docs/COMMENTARY_WORKFLOW.md`, and `docs/RELEASE_STABILITY.md` remain authoritative.
-Do not treat archived operational reports as current permission or readiness.
-
-## WO-1 current accepted runtime
-
-e9a2740 preserves approved gpt-6-luna primary (medium), gpt-5.6-luna fallback
-(low), ChatGPT-only preflight, bounded retries, 24-hour leases, three-reading
-drain and independent review; author/probe execs now use --ephemeral. Legacy
-provenance/budgets survive explicit rebinds; status/health dependencies are pinned.
-Manager's 16:19 UTC installed CLI 0.162.1 probe verified both models via ChatGPT,
-with no API fallback. Only Henry prompt pins changed; all four definitions ACTIVE.
-Genesis 14 has five reviewed batches, six submissions and a publishing-phase
-approved job; manager owns remaining attachment/publication and live health.
-Commands/interfaces: [Henry recovery release](docs/execplans/henry-recovery-release-2026-10-10.md).
+`docs/COMMENTARY_WORKFLOW.md` and `docs/RELEASE_STABILITY.md` are authoritative.
+Earlier checkpoints: [archive](docs/reports/state-archive-2026-09.md).

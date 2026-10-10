@@ -82,6 +82,37 @@ write. Remote devotional publication retains its independent review, prefix and
 content-first/manifest-last gates. This reference requires an exact reading and
 one-reading cap; the ordinary backfill callers never consult it.
 
+Stage D uses the separate `historicalSelectionBindingVersion =
+"historical-selection/v1"` marker (exported by both native service and author
+modules). Under the same native lock, call
+`selectHistoricalAuthorWorkV2(ctx, {}, now)` for the original manifest-backed
+target and lane. Optional `{requestedReadingId, lane}` constrain that selection;
+they cannot choose a different target or owner. Native code performs authenticated
+live health itself and requires all eight current-through-T+7 devotional and Henry
+layers complete. It uses the original selector's cooldowns, forward-debt priority,
+active owner, queue-first ordering and controller-proven fallback eligibility.
+
+For action `selected`, pass `requestedReadingId: selected.readingId`,
+`lane: selected.authorLane`, `maxReadings: 1` and
+`requestedHistoricalAuthorization: selected.historicalAuthorization` to
+`runAuthorSession`. Keep the exact object in the same loaded native module/process:
+it is a native in-memory reference, not a JSON work order. Copies, serialized
+receipts and model-provided health Booleans confer no authority. The reference
+expires after five minutes and binds the reading, owner, Detroit day, project,
+release, runtime manifest, configuration and plan. After actual author preflight,
+dispatch repeats authenticated health and the original selection before any job
+mutation. Missing/stale health, changed selection or owner, invalid references
+and unpublished/nonhistorical targets reject without job or ownership-counter
+writes. Historical and daily dependency admission cannot be combined.
+
+Accepted historical dispatch records the fresh measurement hash and timestamp
+in `historical_authorization_admitted` history. Existing attempts, sessions,
+leases, per-packet submissions, review and publication gates remain authoritative;
+this reference does not renew them. The native immutable installer now includes
+the allowlisted public backend config needed for its authenticated health closure.
+Tests inject fabricated health transports and authors; source validation never
+performs a live model/API probe. Manager owns installation and live acceptance.
+
 The ignored `private-content/automation/mhc-v2/<readingId>/` directory contains:
 
 - immutable `input.json` with source, plan, scope and packet hashes;

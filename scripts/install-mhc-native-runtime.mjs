@@ -11,7 +11,7 @@ import {recoverUnstartedTransport} from './lib/mhc-v2-transport-recovery.mjs';
 import {AUTHOR_MODEL} from './lib/mhc-v2-author-config.mjs';
 
 const sha=value=>createHash("sha256").update(value).digest("hex");
-const runtimeAppFiles=['app/shared/server-core.js','app/frontend/app.js'];
+const runtimeAppFiles=['app/shared/server-core.js','app/frontend/app.js','config/pages-pwa-public.json'];
 const scopes=["scripts","schemas","prompts","fixtures/pilot-content/plan.json","fixtures/pilot-content/app-config.json","config/active-calendar/celebration-bridge-long-term-active.json",...runtimeAppFiles];
 const usage="Usage: node scripts/install-mhc-native-runtime.mjs --project-root PATH --revision 40HEX --spark-automation-id ID --luna-automation-id ID";
 function options(args){const value={};for(let i=0;i<args.length;i+=2){if(!["--project-root","--revision","--spark-automation-id","--luna-automation-id","--pipeline","--recover-unstarted-transport"].includes(args[i])||!args[i+1])throw Error(usage);value[args[i].slice(2).replace(/-([a-z])/g,(_,c)=>c.toUpperCase())]=args[i+1];}if(value.pipeline&&!['v1','v2'].includes(value.pipeline))throw Error(usage);if(value.recoverUnstartedTransport&&value.pipeline!=='v2')throw Error(usage);return value;}

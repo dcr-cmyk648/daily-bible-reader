@@ -1,7 +1,7 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os');
 const modules=Promise.all(['source-diagnostic','source-journal','source-fetch','store','contracts'].map(n=>import(`../scripts/lib/service-supervisor-${n}.mjs`)));
-const repo=path.resolve(__dirname,'..'),now=new Date('2026-10-10T23:20:00Z'),url='https://example.invalid/FABRICATED-NET',excerpt='FABRICATED selected source evidence.';
-async function fixture(t,{answer={status:200,mimeType:'text/html',bytes:Buffer.from('<p>'+excerpt+'</p>')},defaultRuntime=false}={}) {
+const repo=path.resolve(__dirname,'..'),url='https://example.invalid/FABRICATED-NET',excerpt='FABRICATED selected source evidence.';
+async function fixture(t,{answer={status:200,mimeType:'text/html',bytes:Buffer.from('<p>'+excerpt+'</p>')},defaultRuntime=false,now=new Date()}={}) {
   const [diagnostic,recording,fetcher,store,contracts]=await modules,root=await fs.mkdtemp(path.join(os.tmpdir(),'FABRICATED-source-diagnostic-'));
   t.after(()=>{assert.equal(path.dirname(root),path.resolve(os.tmpdir()));assert.ok(path.basename(root).startsWith('FABRICATED-source-diagnostic-'));return fs.rm(root,{recursive:true,force:true});});const stateRoot=path.join(root,'private-content/automation/service-supervisor/state'),runtimeRoot=path.join(root,'private-content/automation/service-supervisor/runtime'),
     config={stage:'C',maxReadingsPerWake:1,sourceRevision:'b'.repeat(40),runtimeRoot,children:{sourceAccessMode:'code_consultation'}},
@@ -46,7 +46,7 @@ async function fixture(t,{answer={status:200,mimeType:'text/html',bytes:Buffer.f
   await store.durableWrite(root,receiptPath,store.jsonBytes(receipt));let requests=0;
   const dependencies={incident,...(!defaultRuntime?{runtime:async()=>({releaseRoot,config,pointer})}:{}),
     fetchSource:(value,options)=>fetcher.fetchLawfulSource(value,{...options,resolve:async()=>[{address:'93.184.216.34',family:4}],fetch:async()=>{requests++;return typeof answer==='function'?answer(requests):answer;}})};
-  return {ctx,pointer,diagnostic,recording,fetcher,store,contracts,journal,receipt,receiptPath,dependencies,options:{receiptPath,clock:()=>now},incident,output,packet,source,requests:()=>requests};
+  return {ctx,pointer,diagnostic,recording,fetcher,store,contracts,journal,receipt,receiptPath,dependencies,options:{receiptPath,clock:()=>now},now,incident,output,packet,source,requests:()=>requests};
 }
 test('NET diagnostic captures real-shaped response and excerpt checkpoint without research admission, model or block clearing; exact replay sends nothing',async t=>{
   const f=await fixture(t),before=await f.journal.load(),result=await f.diagnostic.diagnoseGenesis16Source(f.ctx,f.options,f.dependencies);
@@ -58,6 +58,14 @@ test('NET diagnostic captures real-shaped response and excerpt checkpoint withou
   assert.equal(checkpoint.observation.status,200);assert.equal(checkpoint.observation.bytes,Buffer.byteLength('<p>'+excerpt+'</p>'));assert.equal(checkpoint.returnedContent,undefined);
   assert.equal((await f.diagnostic.diagnoseGenesis16Source(f.ctx,f.options,f.dependencies)).outcome,'already_completed');assert.equal(f.requests(),1);
   await fs.appendFile(path.join(f.ctx.projectRoot,f.receiptPath),' ');await assert.rejects(f.diagnostic.diagnoseGenesis16Source(f.ctx,f.options,f.dependencies),/ALREADY_USED/);assert.equal(f.requests(),1);
+});
+test('a stale injected authority clock cannot extend the real absolute transport deadline or dispatch a request',async t=>{
+  const f=await fixture(t,{now:new Date(Date.now()-16*60*1000)}),r=await f.diagnostic.diagnoseGenesis16Source(f.ctx,f.options,f.dependencies);
+  assert.equal(r.outcome,'complete');assert.equal(r.diagnostic.passed,false);assert.equal(r.diagnostic.checkpoint,null);
+  assert.equal(r.diagnostic.attempt.code,'SUPERVISOR_SOURCE_TRANSPORT_TIMEOUT');assert.equal(r.diagnostic.attempt.stage,'dns');assert.equal(f.requests(),0);
+  const events=await f.journal.load();assert.equal(events.filter(e=>e.kind==='source_fetch_reserved').length,5);
+  assert.equal(events.filter(e=>e.kind==='source_hop_dispatched').length,0);assert.equal(events.some(e=>e.kind==='research_revalidation_complete'),false);
+  assert.equal((await f.diagnostic.diagnoseGenesis16Source(f.ctx,f.options,f.dependencies)).outcome,'already_completed');assert.equal(f.requests(),0);
 });
 for(const [name,answer,stage,status,mime,match]of [
   ['non-200',{status:404,mimeType:'text/html',bytes:Buffer.from('FABRICATED failure body NEVER STORED')},'response',404,'text/html',null],
@@ -93,23 +101,23 @@ test('transport failure retains null unknown fields and never retains error pros
   assert.equal(safe.finalUrl,null);assert.equal(JSON.stringify(safe).includes('FABRICATED'),false);
 });
 test('incremental passing-source checkpoint survives later-source failure and stores no full modern body',async t=>{
-  const f=await fixture(t),lease=await f.journal.acquire('installation',{now}),recorder=f.recording.sourceAttemptRecorder(f.ctx,{journal:f.journal,lease,jobId:f.incident.jobId,clock:()=>now,
+  const f=await fixture(t),lease=await f.journal.acquire('installation',{now:f.now}),recorder=f.recording.sourceAttemptRecorder(f.ctx,{journal:f.journal,lease,jobId:f.incident.jobId,clock:()=>f.now,
     executionId:f.incident.executionId,inputSha256:f.incident.inputSha256,outputSha256:f.incident.outputSha256,runtime:f.pointer,
     fetchSource:(value,options)=>f.fetcher.fetchLawfulSource(value,{...options,resolve:async()=>[{address:'93.184.216.34',family:4}],
       fetch:async()=>value===url?{status:200,mimeType:'text/html',bytes:Buffer.from(excerpt+' FABRICATED FULL BODY NOT RETAINED')}:{status:403,mimeType:'text/html',bytes:Buffer.from('FABRICATED denied body')}})}),
     decoded=f.contracts.decodeResearch(f.output,{packet:f.packet,sourceSchema:JSON.parse(await fs.readFile(path.join(repo,'schemas/source.schema.json')))}),other=structuredClone(decoded.records[0]);
   other.source.sourceId='FABRICATED-later';other.source.urlOrCitation=other.accessedUrl=url+'-later';decoded.records.push(other);
   await assert.rejects(f.fetcher.consultResearchSources(decoded,{fetchSource:recorder.fetchSource,checkpoint:recorder.checkpoint,
-    reserve:request=>f.journal.append('source_fetch_reserved',{...request,jobId:f.incident.jobId},now,lease)}),/ACCESS_UNAVAILABLE/);
+    reserve:request=>f.journal.append('source_fetch_reserved',{...request,jobId:f.incident.jobId},f.now,lease)}),/ACCESS_UNAVAILABLE/);
   const checkpoints=(await f.journal.load()).filter(e=>e.kind==='source_checkpoint_written');assert.equal(checkpoints.length,1);
   const saved=await f.store.readPrivate(f.ctx.stateRoot,checkpoints[0].data.checkpoint.path);assert.equal(saved.excerpt,excerpt);assert.equal(JSON.stringify(saved).includes('FULL BODY'),false);
-  await f.journal.release(lease,now);
+  await f.journal.release(lease,f.now);
 });
 test('reservation without terminal result is permanently uncertain; a missing completion cannot repeat even with saved response evidence',async t=>{
   for(const cut of ['source_hop_outcome','source_diagnostic_complete']) {
     const f=await fixture(t),r=await f.diagnostic.diagnoseGenesis16Source(f.ctx,f.options,f.dependencies),events=await f.journal.load(),boundary=events.find(e=>e.kind===cut),lease=events.findLast(e=>e.kind==='lease_acquired').data;
     for(let i=events.length;i>=boundary.sequence;i--)await fs.unlink(path.join(f.ctx.stateRoot,'events',String(i).padStart(9,'0')+'.json'));
-    await f.journal.release(lease,now);
+    await f.journal.release(lease,f.now);
     const replay=await f.diagnostic.diagnoseGenesis16Source(f.ctx,f.options,f.dependencies);assert.equal(replay.outcome,'uncertain');assert.equal(f.requests(),1);
     const saved=await f.store.readPrivate(f.ctx.stateRoot,r.result.path);assert.equal(saved.passed,true);
   }
@@ -124,7 +132,7 @@ for(const [name,alter,code]of [
   assert.equal((await f.journal.load()).filter(e=>e.kind==='source_fetch_reserved').length,4);
 });
 test('64 logical reservations remain exhausted; production constants reject fabricated incident overrides absent explicit fixture injection',async t=>{
-  const f=await fixture(t);for(let i=4;i<64;i++)await f.journal.append('source_fetch_reserved',{jobId:f.incident.jobId,ordinal:i+1},now);
+  const f=await fixture(t);for(let i=4;i<64;i++)await f.journal.append('source_fetch_reserved',{jobId:f.incident.jobId,ordinal:i+1},f.now);
   await assert.rejects(f.diagnostic.diagnoseGenesis16Source(f.ctx,f.options,f.dependencies),/FETCH_BUDGET_EXHAUSTED/);assert.equal(f.requests(),0);
   const g=await fixture(t),{incident,...dependencies}=g.dependencies;await assert.rejects(g.diagnostic.diagnoseGenesis16Source(g.ctx,g.options,dependencies),/RECEIPT_INVALID/);assert.equal(g.requests(),0);
 });
@@ -158,15 +166,15 @@ test('checkpoints bind manifest, config, response, execution and original select
   assert.deepEqual(saved.runtime,{sourceRevision:f.pointer.sourceRevision,manifestSha256:f.pointer.manifestSha256,configSha256:f.pointer.configSha256});
   assert.equal(saved.outputSha256,f.incident.outputSha256);assert.equal(saved.inputSha256,f.incident.inputSha256);assert.equal(saved.executionId,f.incident.executionId);
   assert.equal(saved.originalExcerptSha256,f.store.digest(Buffer.from(excerpt)));
-  const lease=await f.journal.acquire('installation',{now}),recorder=f.recording.sourceAttemptRecorder(f.ctx,{journal:f.journal,lease,jobId:f.incident.jobId,
-    executionId:f.incident.executionId,inputSha256:f.incident.inputSha256,outputSha256:f.incident.outputSha256,runtime:f.pointer,clock:()=>now}),
+  const lease=await f.journal.acquire('installation',{now:f.now}),recorder=f.recording.sourceAttemptRecorder(f.ctx,{journal:f.journal,lease,jobId:f.incident.jobId,
+    executionId:f.incident.executionId,inputSha256:f.incident.inputSha256,outputSha256:f.incident.outputSha256,runtime:f.pointer,clock:()=>f.now}),
     record={source:f.source,accessedUrl:url,evidenceExcerpt:excerpt},proof={kind:'bounded_anonymous_https',finalUrl:url,url,returnedContent:excerpt};
   const duplicate=await recorder.checkpoint(record,proof);assert.equal((await f.store.readPrivate(f.ctx.stateRoot,duplicate.path)).quotedWords,0);
   const long=Array(22).fill('FABRICATED').join(' ');record.source={...f.source,sourceId:'FABRICATED-other-work',title:'FABRICATED other title',rightsStatus:'public_domain'};record.evidenceExcerpt=long;
   const other=await recorder.checkpoint(record,proof,{quoteCeiling:25}),cp=await f.store.readPrivate(f.ctx.stateRoot,other.path);
   assert.equal(cp.quoteOmitted,true);assert.equal(cp.excerpt,null);assert.equal(cp.originalExcerptWords,22);assert.equal(cp.originalExcerptSha256,f.store.digest(Buffer.from(long)));
   const stored=(await f.journal.load()).filter(e=>e.kind==='source_checkpoint_written');let words=0;for(const e of stored)words+=(await f.store.readPrivate(f.ctx.stateRoot,e.data.checkpoint.path)).quotedWords;
-  assert.equal(words,4);await f.journal.release(lease,now);
+  assert.equal(words,4);await f.journal.release(lease,f.now);
 });
 test('default source runtime binding awaits launcher bytes; changed manifest/config and missing response pins refuse recorder',async t=>{
   const f=await fixture(t,{defaultRuntime:true});assert.equal((await f.recording.checkedSourceRuntime(f.ctx)).manifestSha256,f.pointer.manifestSha256);

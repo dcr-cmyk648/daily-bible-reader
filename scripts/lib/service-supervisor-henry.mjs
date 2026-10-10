@@ -50,7 +50,8 @@ export async function verifiedHenryContext(ctx) {
   if(!launcherEntry||digest(await readFile(launcher))!==launcherEntry.sha256)throw fault('SUPERVISOR_HENRY_PIN_CHANGED');
   const native=await service.serviceContext({config,projectRoot:ctx.projectRoot,releaseRoot,runtimeRoot,
     launcher,manifestSha256:expected.manifestSha256});
-  return {native,service,author,runner,pointer};
+  const pipeline=await load('scripts/lib/mhc-pipeline.mjs');
+  return {native,service,author,runner,pointer,pipeline};
 }
 export async function runHenryWork(ctx,{journal,lease,wakeId,readingId,deadline,dailyDependency=null,historical=false},dependencies={}) {
   const clock=dependencies.clock||(()=>new Date()),binding=await (dependencies.binding||verifiedHenryContext)(ctx);
@@ -337,6 +338,119 @@ export async function repairHenryWork(ctx,{journal,lease,readingId,deadline},dep
     return result;
   });
 }
+async function checkedReviewAction(output,{packet,job,bundle,pipeline,runtimeSchema}) {
+  const invalid=(code,details={})=>{const e=fault('SUPERVISOR_HENRY_REVIEW_ACTION_INVALID');e.diagnostics=[{code,...details}];throw e;};
+  try{assertSchemaValid(output,independentReviewContract(packet,{henryAssertions:REVIEW_ASSERTIONS}),{label:'Henry review action'});}
+  catch{invalid('V2_REVIEW_OUTPUT_INVALID');}
+  assertChildPrivacy(output);
+  if(output.verdict==='blocked') {
+    if(output.corrections.length||output.repairPacketId!==null)invalid('V2_REVIEW_BLOCKED_ACTION_INVALID');return;
+  }
+  if(output.verdict==='changes_requested') {
+    if(output.corrections.length)invalid('V2_REVIEW_REPAIR_CORRECTIONS_INVALID');
+    if(!bundle.source_packets.some(p=>p.packet_id===output.repairPacketId))invalid('V2_REVIEW_REPAIR_BINDING');
+    if(job.state.history.some(e=>e.kind==='editorial_repair'&&e.packet_id===output.repairPacketId))
+      invalid('V2_EDITORIAL_REPAIR_ALREADY_USED',{packetId:output.repairPacketId});
+    return;
+  }
+  if(output.repairPacketId!==null||!REVIEW_ASSERTIONS.every(k=>output.assertions[k]===true))invalid('V2_REVIEW_APPROVAL_INVALID');
+  const corrections=new Map(output.corrections.map(c=>[c.verseId,c]));
+  if(corrections.size!==output.corrections.length)invalid('V2_DUPLICATE_REVIEW_CORRECTION');
+  for(const result of structuredClone(bundle.results)) {
+    for(const [verseId,record] of Object.entries(result.runtime.records)) {
+      const correction=corrections.get(verseId);
+      if(correction){record.blurb=correction.replacement;corrections.delete(verseId);}
+      if(pipeline.findSourceReportingPhrase(record.blurb))invalid('V2_REVIEW_SOURCE_REPORTING',{verseId});
+      const copy=pipeline.validateSourceCopyRisk({records:[record],sourceAtoms:result.runtime.source_atoms,requireCitedSource:true});
+      if(!copy.valid)invalid('V2_REVIEW_SOURCE_COPY',{verseId,findings:copy.errors});
+    }
+    result.runtime.review_status='approved';
+    try{assertSchemaValid(result.runtime,runtimeSchema,{label:'Native corrected runtime'});}catch{invalid('V2_REVIEW_CORRECTION_INVALID');}
+  }
+  if(corrections.size)invalid('V2_UNKNOWN_REVIEW_CORRECTION',{verseIds:[...corrections.keys()]});
+}
+async function boundedHenryReview(ctx,binding,{journal,lease,readingId,deadline,job,entry,bundle,threadIds,clock},dependencies) {
+  // Keep the original packet/job key byte-identical so an existing first review
+  // remains in its original budget. Current eligible actions live in the prompt.
+  const packet={schemaVersion:'supervisor-henry-review-input/v1',readingId,reading:entry,reviewBasis:bundle},
+    jobId=`henry-${job.input.input_sha256}-${bundle.review_basis_sha256}`,inputSha256=digest(jsonBytes(packet)),
+    pipeline=binding.pipeline||await import('./mhc-pipeline.mjs'),
+    runtimeSchema=JSON.parse(await readFile(path.join(binding.native.releaseRoot,'schemas/mhc-runtime.schema.json'))),
+    repaired=bundle.source_packets.filter(p=>job.state.history.some(e=>e.kind==='editorial_repair'&&e.packet_id===p.packet_id)).map(p=>p.packet_id),
+    actions={eligibleRepairPacketIds:bundle.source_packets.filter(p=>!repaired.includes(p.packet_id)).map(p=>p.packet_id),alreadyRepairedPacketIds:repaired,
+      approvedProseCorrections:{uniqueExistingVerseIds:true,replacementLength:[20,1200],reasonMinimumLength:3,
+        allRequiredAssertionsTrue:true,preserveSourceMeaningScopeAndQualification:true,noSourceReportingOrSourceCopy:true,repairPacketId:null},
+      blockedWhenNeitherEligibleRepairNorSafeApprovedCorrectionsSuffice:true};
+  assertChildPrivacy(packet);
+  const executions=async()=>[...(await journal.load()).filter(e=>e.kind==='execution_state'&&e.data.execution.jobId===jobId&&e.data.execution.kind==='independent-review')
+    .reduce((m,e)=>m.set(e.data.execution.id,e.data.execution),new Map()).values()],prior=await executions(),
+    executionBasis={schemaVersion:'supervisor-henry-review-execution-basis/v1',nativeInputSha256:job.input.input_sha256,
+      nativeEventSha256:job.previous,reviewBasisSha256:bundle.review_basis_sha256,actionPolicySha256:digest(jsonBytes(actions))};
+  if(prior.some(e=>e.inputSha256!==inputSha256&&e.repairOfInputSha256!==inputSha256))throw fault('SUPERVISOR_HENRY_REVIEW_BASIS_CHANGED');
+  if(prior.some(e=>e.executionBasis&&digest(jsonBytes(e.executionBasis))!==digest(jsonBytes(executionBasis))))
+    throw fault('SUPERVISOR_HENRY_REVIEW_BASIS_CHANGED');
+  if(prior.some(e=>['reserved','uncertain'].includes(e.phase)))throw fault('SUPERVISOR_CHILD_DISPATCH_UNCERTAIN');
+  if(prior.some(e=>e.phase==='blocked'))throw fault('SUPERVISOR_CHILD_CAPABILITY_BLOCK_RETAINED');
+  const assertBasis=async()=>{
+    await journal.assertLease(lease,clock());const current=await binding.service.buildReview(binding.native,readingId);
+    if(current.job.previous!==job.previous||current.job.state.phase!=='review_pending'||current.job.input.input_sha256!==job.input.input_sha256||
+      current.bundle.review_basis_sha256!==bundle.review_basis_sha256)throw fault('SUPERVISOR_HENRY_REVIEW_BASIS_CHANGED');
+  },admit=async(output,p)=>{await assertBasis();await checkedReviewAction(output,{packet:p,job,bundle,pipeline,runtimeSchema});
+    return {schemaVersion:'supervisor-henry-review-action-admission/v1',nativeInputSha256:job.input.input_sha256,nativeEventSha256:job.previous,
+      reviewBasisSha256:bundle.review_basis_sha256,outputSha256:digest(jsonBytes(output)),actionPolicySha256:digest(jsonBytes(actions))};},
+    execute=dependencies.child||executeBoundedChild,
+    call=async p=>{await assertBasis();return execute(ctx,{journal,lease,jobId,readingId,kind:'independent-review',packet:p,schema:independentReviewContract(p,{henryAssertions:REVIEW_ASSERTIONS}),
+      deadline,authorThreadIds:[...threadIds,...(await executions()).map(e=>e.threadId).filter(Boolean)],
+      prompt:`Independently compare every requested verse and sentence with its exact cited public-domain atoms. Preserve identities, relationships, qualifications, alternatives and verse scope. Never approve merely because JSON validates. Code-owned current action policy: ${JSON.stringify(actions)}. changes_requested may name only an eligibleRepairPacketId and must have empty corrections. Never request another full repair of an already repaired packet. Approved prose corrections are permitted only if every required substantive assertion is true after those exact source-supported changes; otherwise return blocked with null repairPacketId and empty corrections. No tools or outside material. A repairPlan is only the sole remaining response/action correction against its exact saved output/diagnostics, not a new reviewer budget or native repair. Return inputSha256 ${digest(jsonBytes(p))}.\n${JSON.stringify(p)}`},
+      {...dependencies.exec,executionBasis,admit:output=>admit(output,p)});},
+    finish=async result=>{await assertBasis();
+      const saved=await readFile(await confined(ctx.stateRoot,`executions/${result.execution.id}/packet.json`,false)),savedPacket=JSON.parse(saved),
+        {repairPlan,...original}=savedPacket;
+      if(digest(saved)!==result.execution.inputSha256)throw fault('SUPERVISOR_CHILD_ACCEPTED_OUTPUT_CHANGED');
+      if(digest(jsonBytes(original))!==inputSha256)throw fault('SUPERVISOR_HENRY_REVIEW_BASIS_CHANGED');
+      await checkedReviewAction(result.output,{packet:savedPacket,job,bundle,pipeline,runtimeSchema});
+      const a=result.admission;
+      if(a&&(a.schemaVersion!=='supervisor-henry-review-action-admission/v1'||a.nativeInputSha256!==job.input.input_sha256||a.nativeEventSha256!==job.previous||
+        a.reviewBasisSha256!==bundle.review_basis_sha256||a.outputSha256!==digest(jsonBytes(result.output))||a.actionPolicySha256!==digest(jsonBytes(actions)))||
+        result.execution.ordinal===2&&!a)throw fault('SUPERVISOR_HENRY_REVIEW_BASIS_CHANGED');return result;};
+  const correct=async error=>{
+    if(!['SUPERVISOR_HENRY_REVIEW_ACTION_INVALID','SUPERVISOR_CHILD_OUTPUT_INVALID'].includes(error.code))throw error;
+    const values=await executions(),first=values.find(e=>e.ordinal===1);
+    if(values.length!==1||!first||!['accepted','failed'].includes(first.phase)||first.admission||first.inputSha256!==inputSha256)throw error;
+    await assertBasis();
+    const originalPacket=await readFile(await confined(ctx.stateRoot,`executions/${first.id}/packet.json`,false)),
+      raw=await readFile(await confined(ctx.stateRoot,`executions/${first.id}/output.json`,false));
+    if(digest(originalPacket)!==inputSha256||digest(raw)!==first.output?.sha256)throw fault('SUPERVISOR_CHILD_ACCEPTED_OUTPUT_CHANGED');
+    assertChildPrivacy(raw.toString());let diagnostics;
+    try{await checkedReviewAction(JSON.parse(raw),{packet,job,bundle,pipeline,runtimeSchema});}
+    catch(e){if(e instanceof SyntaxError)diagnostics=[{code:'V2_REVIEW_OUTPUT_INVALID'}];
+      else if(e.code==='SUPERVISOR_HENRY_REVIEW_ACTION_INVALID')diagnostics=e.diagnostics;else throw e;}
+    if(!diagnostics)throw fault('SUPERVISOR_HENRY_REVIEW_BASIS_CHANGED');
+    const proof={schemaVersion:'supervisor-henry-review-action-rejected/v1',executionId:first.id,inputSha256,nativeInputSha256:job.input.input_sha256,
+      nativeEventSha256:job.previous,reviewBasisSha256:bundle.review_basis_sha256,actionPolicySha256:digest(jsonBytes(actions)),failedOutputSha256:digest(raw),diagnostics},
+      proofBytes=jsonBytes(proof),proofPath=`executions/${first.id}/native-review-action-rejected.json`,admissionRejected={path:proofPath,sha256:digest(proofBytes)};
+    if(first.admissionRejected&&first.admissionRejected.sha256!==admissionRejected.sha256)throw fault('SUPERVISOR_HENRY_REVIEW_BASIS_CHANGED');
+    await durableWrite(ctx.stateRoot,proofPath,proofBytes);
+    if(!first.admissionRejected)await journal.append('execution_state',{execution:{...first,phase:'failed',code:'SUPERVISOR_HENRY_REVIEW_ACTION_INVALID',admissionRejected}},clock(),lease);
+    const p={...packet,repairPlan:{schemaVersion:'supervisor-structural-repair/v1',failedExecutionId:first.id,failedOutputSha256:digest(raw),
+      failedOutput:raw.toString(),admissionRejectedSha256:admissionRejected.sha256,findings:diagnostics,allowedRepairCount:1}};
+    return finish(await call(p));
+  };
+  const failed=prior.find(e=>e.phase==='failed');
+  if(failed&&!prior.some(e=>e.phase==='accepted')) {
+    if(prior.length!==1||failed.ordinal!==1)throw fault('SUPERVISOR_CHILD_REPAIR_EXHAUSTED');
+    if(failed.code==='SUPERVISOR_CHILD_REVIEW_NOT_INDEPENDENT')return finish(await call(packet));
+    return correct(fault(failed.code||'SUPERVISOR_HENRY_SUBSTANTIVE_REVIEW_BLOCKED'));
+  }
+  try{return await finish(await call(packet));}catch(e){
+    if(!e.code) {
+      const values=await executions();
+      if(values.length===1&&values[0].ordinal===1&&values[0].phase==='failed'&&values[0].code==='SUPERVISOR_CHILD_OUTPUT_INVALID')
+        e=fault('SUPERVISOR_CHILD_OUTPUT_INVALID');
+    }
+    return correct(e);
+  }
+}
 export async function reviewHenryWork(ctx,{journal,lease,readingId,deadline},dependencies={}) {
   const clock=dependencies.clock||(()=>new Date()),binding=await (dependencies.binding||verifiedHenryContext)(ctx);
   return binding.runner.withRunnerLock(binding.native,async()=>{
@@ -348,12 +462,7 @@ export async function reviewHenryWork(ctx,{journal,lease,readingId,deadline},dep
       if(event.kind==='execution_state'&&event.data.execution.kind==='henry-editorial-repair'&&
         event.data.execution.readingId===readingId&&event.data.execution.threadId)threadIds.push(event.data.execution.threadId);
     }
-    const packet={
-      schemaVersion:'supervisor-henry-review-input/v1',readingId,reading:entry,reviewBasis:bundle};
-    assertChildPrivacy(packet);
-    const review=await (dependencies.child||executeBoundedChild)(ctx,{journal,lease,jobId:`henry-${job.input.input_sha256}-${bundle.review_basis_sha256}`,
-      readingId,kind:'independent-review',packet,schema:independentReviewContract(packet,{henryAssertions:REVIEW_ASSERTIONS}),deadline,
-      authorThreadIds:threadIds,prompt:`Independently compare every requested verse and every sentence with its exact cited public-domain source atoms. Preserve scope, identities, qualifications, alternatives and direct readable prose. No tools or outside material. Never approve merely because JSON validates. If changes require another author pass, identify one exact repairPacketId from source_packets. Approved prose corrections must name real verse IDs. Return inputSha256 ${digest(jsonBytes(packet))}.\n${JSON.stringify(packet)}`},dependencies.exec);
+    const review=await boundedHenryReview(ctx,binding,{journal,lease,readingId,deadline,job,entry,bundle,threadIds,clock},dependencies);
     await journal.assertLease(lease,clock());
     const base={reading_id:readingId,review_basis_sha256:bundle.review_basis_sha256,reviewer:`Sol 6.1 high independent execution ${review.execution.id}`,
       reviewed_at:clock().toISOString(),findings:review.output.findings};
@@ -369,7 +478,8 @@ export async function reviewHenryWork(ctx,{journal,lease,readingId,deadline},dep
     if(review.output.verdict==='changes_requested'&&bundle.source_packets.some(p=>p.packet_id===review.output.repairPacketId)) {
       const decision={schema_version:'mhc-evidence-review-decision/v2',...base,status:'changes_requested',packet_id:review.output.repairPacketId};
       await durableWrite(ctx.projectRoot,`private-content/automation/mhc-v2/${readingId}/review.json`,jsonBytes(decision),{immutable:false});
-      return binding.service.requestEditorialV2(binding.native,readingId,clock());
+      try{return await binding.service.requestEditorialV2(binding.native,readingId,clock());}
+      catch(e){if(e.message==='V2_EDITORIAL_REPAIR_ALREADY_USED')throw fault('SUPERVISOR_HENRY_REVIEW_ACTION_INVALID');throw e;}
     }
     throw fault('SUPERVISOR_HENRY_SUBSTANTIVE_REVIEW_BLOCKED');
   });

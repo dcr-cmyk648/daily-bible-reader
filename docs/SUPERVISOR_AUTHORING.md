@@ -66,6 +66,19 @@ validator findings. It remains one native applied repair followed by fresh sourc
 review. Changed proof/basis, uncertain dispatch, provider blocks and an invalid
 second candidate cannot create another execution or reset native submissions.
 
+Henry review action admission checks the exact source/native basis and repair
+history before accepting a response or writing a native decision. The prompt lists
+eligible and already repaired packets. A changes request cannot reuse a packet's
+native repair; approved prose corrections must name unique existing verses, pass
+the unchanged native schema/copy/reporting checks and satisfy every substantive
+assertion. The reviewer must return blocked when those permitted actions cannot
+resolve its findings. An old envelope-only accepted ineligible action retains its
+raw output and historical acceptance, with an appended hash-bound rejection.
+Only its original remaining second transport attempt may correct that exact
+response using the native diagnostic and same source/job head. No new review job,
+author submission or native packet repair is granted. Changed source/head/proof,
+uncertainty, capability blocks and an unsuccessful second response stay blocked.
+
 When a new daily draft lacks a reviewed Henry library entry, C records
 `waiting_henry`; it does not invent a fallback. The native read-only exact-reading
 selector admits a dependency only from the same canonical journal's current EDF

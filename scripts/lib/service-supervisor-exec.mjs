@@ -157,9 +157,11 @@ export async function executeBoundedChild(ctx,{journal,lease,jobId,readingId,kin
   await durableWrite(ctx.stateRoot,`${base}/prompt.txt`,Buffer.from(prompt));
   const execution={id,jobId,readingId,kind,inputSha256,phase:'reserved',ordinal:values.length+1,proof:transport.proof,
     reservedAt:clock().toISOString(),deadline:new Date(deadline).toISOString()};
+  if(dependencies.executionBasis)execution.executionBasis=structuredClone(dependencies.executionBasis);
   if(packet.repairPlan?.schemaVersion==='supervisor-structural-repair/v1') {
     const {repairPlan,...original}=packet,prior=values.find(v=>v.id===repairPlan.failedExecutionId);
-    const nativeRejected=kind==='henry-editorial-repair'&&prior?.code==='SUPERVISOR_HENRY_EDITORIAL_REPAIR_INVALID';
+    const nativeRejected=kind==='henry-editorial-repair'&&prior?.code==='SUPERVISOR_HENRY_EDITORIAL_REPAIR_INVALID'||
+      kind==='independent-review'&&prior?.code==='SUPERVISOR_HENRY_REVIEW_ACTION_INVALID';
     if(!prior||prior.phase!=='failed'||prior.ordinal!==1||(!nativeRejected&&prior.code!=='SUPERVISOR_CHILD_OUTPUT_INVALID')||
       prior.inputSha256!==digest(jsonBytes(original)))throw fault('SUPERVISOR_CHILD_REPAIR_BINDING_CHANGED');
     const originalRaw=await readFile(await confined(ctx.stateRoot,`executions/${prior.id}/output.json`,false));
@@ -197,9 +199,9 @@ export async function executeBoundedChild(ctx,{journal,lease,jobId,readingId,kin
       // Remove only its confined owned last-message file; retain the hash/code.
       execution.refusedOutputSha256=digest(raw);await unlink(await confined(ctx.stateRoot,`${base}/output.json`,false));throw e;
     }
-    const output=JSON.parse(raw);assertSchemaValid(output,schema,{label:'Bounded child output'});
     execution.output={path:`${base}/output.json`,sha256:digest(raw)};
     execution.threadId=proof.threadId;execution.eventsSha256=proof.eventsSha256;
+    const output=JSON.parse(raw);assertSchemaValid(output,schema,{label:'Bounded child output'});
     const admission=dependencies.admit?await dependencies.admit(output,{packet,execution,sourceEvidence:proof.opened}):null;
     if(admission) {
       const admissionBytes=jsonBytes(admission),relative=`${base}/admission.json`;

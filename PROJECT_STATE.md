@@ -5,8 +5,7 @@
 Manager's October 10 authenticated service health is **not ready**:
 3/8 devotionals and 3/8 complete Henry layers; two complete future days.
 Genesis 14, Genesis 15 and Psalm 3/Proverbs are published with complete layers.
-Genesis 16 failed before any child reservation; Matthew 6,
-and Genesis 17–19 are missing. Rerun authenticated health before any readiness claim.
+Genesis 16's research is retained but source access is unverified; Matthew 6 and Genesis 17–19 are missing. Rerun authenticated health before any readiness claim.
 
 Recovery scope and standing authority: [recovery plan](docs/execplans/service-recovery-2026-10-10.md)
 and [service authority](docs/SERVICE_AUTHORITY.md). Preserve privacy, independent
@@ -14,12 +13,13 @@ source review, atomic publication, access/sharing, immutable rollback and releas
 
 ## Current sequencing
 
-- WO-1 native fd5922d is installed. Both configured ChatGPT author preflights passed
-  at 18:10 UTC; both Henry definitions remain ACTIVE; manager owns exact pin updates.
-- WO-3 C df536b7 cap1 is installed; all four BibleApp lanes remain ACTIVE.
+- WO-1 native eb7a2bb is installed; both actual author preflights passed.
+  Historical admission correctly returned no eligible target while the buffer is incomplete.
+- WO-3 C eb7a2bb cap1 is installed; all four BibleApp lanes remain ACTIVE.
   GEN15's one manager exception succeeded and its full layer is published.
-  GEN16's zero-dispatch recovery is consumed; actual research is running.
-  Keep fd5922d installed until that wake completes; D remains gated. [Authoring](docs/SUPERVISOR_AUTHORING.md).
+  GEN16's zero-dispatch recovery is consumed; one real research response hit
+  a CLI telemetry/source-proof mismatch. Accepted code consultation/revalidation
+  preserves that response and budgets; pinned PDF source admission and D remain gated. [Authoring](docs/SUPERVISOR_AUTHORING.md).
 - WO-2 466058d remains an unselected canary; backend/installed-phone promotion
   is held. Stored preparation heartbeats reach the private store, but the old
   backend drops the new fields. Scheduled-wake readback remains required.
@@ -30,8 +30,8 @@ source review, atomic publication, access/sharing, immutable rollback and releas
 Installed `requested-reading/v1` supports read-only native lane selection,
 actual preflight before exact one-reading mutation and a hash-bound unpublished
 rolling daily dependency. Its same-journal EDF observation, `waiting_henry`
-state and accepted synthesis evidence are mandatory. Default historical admission
-now checks actual eight-reading health before historical maintenance or claims;
+state and accepted synthesis evidence are mandatory. Released default historical admission
+checks actual eight-reading health before historical maintenance or claims;
 incomplete buffers permit only forward work, with truthful preparation-pending output.
 
 The separate `historical-selection/v1` source extension requires native authenticated
@@ -41,11 +41,11 @@ actual health and the original manifest-backed selector after author preflight.
 Cooldowns, current priority, owners, attempts, sessions and leases remain authoritative.
 The immutable runtime includes the allowlisted public backend config; manager owns
 installation, live preflight, source pins and C/D acceptance.
-Native/C/D check: 739 fabricated/local tests, safety, 46 schemas, builds and asset
+Native/C/D check: fabricated/local tests, safety, schemas, builds and asset
 verification passed. Exact native mechanical rejection may request only a genuinely
 unused packet repair; exhausted review responses and all native budgets persist.
 GEN15's audited exception is consumed; no fourth review is authorized.
-Native source repin follows the active GEN16 wake; D proof remains manager-owned.
+Native repin and GEN16 source admission/import remain manager-owned; D is gated.
 Authors remain gpt-6-luna/medium and proven gpt-5.6-luna/low; runs are ephemeral
 and ChatGPT-only. [Henry operations](docs/HENRY_V2_OPERATIONS.md) apply; no API fallback.
 

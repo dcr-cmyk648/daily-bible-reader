@@ -203,6 +203,70 @@ and refunds no budget. Exact reimport is a no-op even after a later child failur
 replacement authority and other jobs are refused. Normal accepted ticks own the
 first child dispatch. Thin scheduled coordinators must never invoke this recovery.
 
+The first real GEN16 research response later completed through CLI 0.162.1 but
+failed source admission. Retained completed actions were five searches, five
+`other` actions and four finds; the redacted stream contains no opened URLs or
+page bodies. Hashes cannot reconstruct missing access evidence. It remains one
+consumed response, rather than an author retry opportunity.
+
+The manager accepted explicit `children.sourceAccessMode: "code_consultation"`.
+Legacy `cli_content` and `bounded_https` retain their original open/result gates.
+The new mode requires completed permitted web activity as discovery only; neither
+an `other` action nor a candidate URL proves an open. Code independently retrieves
+the selected public page with existing anonymous HTTPS, DNS/SSRF, TLS, redirect,
+MIME, 2 MiB, 30-second and 64-fetch guards. It admits only a literal normalized
+selected excerpt in actual returned text with fresh method/date/byte hashes,
+rights, cumulative quotation, source/citation and independent-work gates. It
+stores only allowed excerpts and proof metadata, never raw modern page bodies.
+Future logs retain checked public action URLs when exposed by actual telemetry,
+marked as discovery and without result bodies, search queries or private values.
+
+An exact local Henry source may use `accessedUrl:null`. Code verifies the supplied
+source ID/locator, public-domain archive and atom hashes and literal excerpt before
+deriving local access metadata. This records no network consultation. New source
+citations should be exact page URLs. Differing citations require either actual
+matching final URL and returned bytes, or an explicit per-record manager mapping
+bound to the original source/work/citation/access URL plus at least two distinct
+literal returned-page identity terms. Annotated citations and cross-site mirrors
+receive no implicit substitution or discarded-record exemption.
+
+Manager-only `revalidate-genesis16-research --receipt
+private-content/automation/service-supervisor/<receipt>.json` requires the receipt
+schema `schemas/genesis16-research-revalidation.schema.json`, corrected immutable
+Stage C cap1 runtime pins, explicit code-consultation mode, no writers/pending work
+and the exact retained GEN16 job/execution/thread/input/output/blocked-event hashes.
+The receipt expires within 15 minutes. One durable reservation precedes every
+consultation; failed requests remain counted against the same job's 64-fetch cap.
+Any invalid access, excerpt, identity, rights, citation or coverage leaves the job
+blocked and permanently ends this receipt. Exact failed reimport is a no-op;
+replacement receipts and a later research response are refused.
+
+Successful consultation saves immutable receipt/admission/proof artifacts and
+appends an accepted state for the same execution and ordinal 1. Original blocked
+events, raw response, transport proof and two-response cap remain unchanged. The
+same job receives one audited queued event; subsequent tick reuses the checked
+admission under its corrected packet binding without a new research child.
+Saved-proof crash completion fetches nothing again; a reservation without a proof
+stays uncertain. Exact completed reimport validates retained artifact hashes and
+cannot reopen a later job failure. Other blockers and publication gates remain.
+Thin scheduled coordinators must never invoke this receipt command or construct
+source mappings. Manager owns real consultations, receipt/import and live trial.
+
+PDF consultation is opt-in through the pinned `children.pdfExtractor` binding:
+an existing absolute Python executable and its SHA-256, pypdf 6.10.0 and the
+fixed Python-source package-tree SHA-256. Legacy modes retain their MIME refusal.
+Code streams actual returned PDF bytes to isolated `-I -B` Python with an absent
+bytecode-cache prefix; it verifies the package before import. The audited parser
+refuses subprocesses, sockets, file writes, encryption and unsupported filters,
+including JBIG2. No PDF body or extracted full text is written to disk.
+Limits are 2 MiB input/per-stream decode, 4 MiB cumulative decoded processing,
+32 pages, 512 KiB text, 1 MiB output and five seconds inside the HTTPS deadline.
+Proof retains byte/text/extractor/runtime hashes, actual page/decode counts and
+literal selected excerpts only. Named HTML punctuation entities decode to their
+actual punctuation; excerpt matching never folds quotes, case or punctuation.
+Quotation totals use the strictest encountered rights cap per work and returned
+page in either record order. Synthesis may include only consulted source IDs.
+
 Thin prompts must finish four separate tool cells: shell handoff/dispatch, the one
 authorized native connector call, native-result receipt materialization, and then
 receipt resume. Never combine materialization and resume in a yielded cell.

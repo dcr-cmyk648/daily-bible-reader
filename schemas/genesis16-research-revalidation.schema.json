@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daily-bible-reader.local/schemas/genesis16-research-revalidation.schema.json",
+  "title": "One manager-accepted retained GEN16 research consultation",
+  "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion", "managerAccepted", "jobId", "executionId", "blockedEventSha256", "outputSha256", "inputSha256", "threadId", "sourceRevision", "manifestSha256", "configSha256", "issuedAt", "expiresAt", "mappings"],
+  "properties": {
+    "schemaVersion": {"const": "genesis16-research-revalidation/v1"}, "managerAccepted": {"const": true},
+    "jobId": {"type": "string", "pattern": "^[a-f0-9]{32}$"}, "executionId": {"type": "string", "pattern": "^[a-f0-9]{32}$"},
+    "threadId": {"type": "string", "minLength": 1, "maxLength": 160},
+    "blockedEventSha256": {"$ref": "#/$defs/hash"}, "outputSha256": {"$ref": "#/$defs/hash"}, "inputSha256": {"$ref": "#/$defs/hash"},
+    "sourceRevision": {"type": "string", "pattern": "^[a-f0-9]{40}$"}, "manifestSha256": {"$ref": "#/$defs/hash"}, "configSha256": {"$ref": "#/$defs/hash"},
+    "issuedAt": {"type": "string", "format": "date-time"}, "expiresAt": {"type": "string", "format": "date-time"},
+    "mappings": {"type": "array", "maxItems": 64, "items": {"type": "object", "additionalProperties": false,
+      "required": ["sourceId", "sourceWorkSha256", "urlOrCitation", "accessedUrl", "identityTerms"], "properties": {
+        "sourceId": {"type": "string", "minLength": 1, "maxLength": 100}, "sourceWorkSha256": {"$ref": "#/$defs/hash"},
+        "urlOrCitation": {"type": "string", "minLength": 1, "maxLength": 4000}, "accessedUrl": {"type": "string", "minLength": 1, "maxLength": 4000},
+        "identityTerms": {"type": "array", "minItems": 2, "maxItems": 8, "items": {"type": "string", "minLength": 4, "maxLength": 300}}
+      }}}
+  },
+  "$defs": {"hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

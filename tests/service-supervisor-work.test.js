@@ -2,7 +2,7 @@ const test=require('node:test'),assert=require('node:assert/strict'),fs=require(
 const modules=Promise.all(['work','store','runtime','contracts'].map(name=>import(`../scripts/lib/service-supervisor-${name}.mjs`)));
 const now=new Date('2026-10-10T16:00:00Z'),repo=path.resolve(__dirname,'..'),
   sourceIds=['FABRICATED-henry','FABRICATED-independent'],urls=['https://example.invalid/FABRICATED-henry','https://example.invalid/FABRICATED-independent'];
-async function fixture(t,{changes=false,alwaysChanges=false,malformed=false,prefixShape=false,retainedReady=null,legacyBibliography=false}={}) {
+async function fixture(t,{changes=false,alwaysChanges=false,malformed=false,prefixShape=false,retainedReady=null,legacyBibliography=false,sourceMode='cli_content',unconsultedCitation=false}={}) {
   const [work,store,runtime,contracts]=await modules,root=await fs.mkdtemp(path.join(os.tmpdir(),'dbr-work-fabricated-'));
   t.after(async()=>{assert.equal(path.dirname(root),path.resolve(os.tmpdir()));assert.ok(path.basename(root).startsWith('dbr-work-fabricated-'));await fs.rm(root,{recursive:true,force:true});});
   const releaseRoot=path.join(root,'release'),write=async(relative,value)=>store.durableWrite(root,relative,Buffer.isBuffer(value)?value:store.jsonBytes(value));
@@ -36,7 +36,7 @@ async function fixture(t,{changes=false,alwaysChanges=false,malformed=false,pref
       '\ntarget = { type = "project", project_id = "FABRICATED-project" }\n'));mapping.push({lane,file});
   }
   const config={stage:'C',sourceRevision:'a'.repeat(40),maxReadingsPerWake:1,automations:await runtime.captureInventory(mapping),
-    children:{codexExecutable:path.join(root,'FABRICATED-codex.exe'),sourceAccessMode:'cli_content'}},
+    children:{codexExecutable:path.join(root,'FABRICATED-codex.exe'),sourceAccessMode:sourceMode}},
     ctx={projectRoot:root,releaseRoot,stateRoot:path.join(root,'private-content/automation/service-supervisor/state'),config};
   const window=prefixShape?plan.entries.slice(63,71):plan.entries,missing=window.filter(e=>!prepared.some(p=>p.readingId===e.readingId)).map(e=>e.readingId),
     health={effectiveDate:'2026-10-10',target:8,readingIds:window.map(e=>e.readingId),missingPreparedReadingIds:missing,
@@ -44,6 +44,7 @@ async function fixture(t,{changes=false,alwaysChanges=false,malformed=false,pref
   const validationPlans=[];
   let libraryReady=false,authors=0,reviews=0,researches=0,syntheses=0,validated=0;
   const foundation={sourceId:sourceIds[0],sourceUrl:urls[0],locator:`${urls[0]} [FABRICATED chapter 1]`,verifiedAt:now.toISOString(),
+    license:'FABRICATED public domain',archiveSha256:'f'.repeat(64),
     atoms:[{id:'FABRICATED-atom',text:'FABRICATED source evidence',sha256:store.digest(Buffer.from('FABRICATED source evidence'))}],
     sourceEvidence:{kind:'local_verified_henry',sourceId:sourceIds[0],locator:`${urls[0]} [FABRICATED chapter 1]`,eventId:'FABRICATED-local',
       url:urls[0],returnedContent:'FABRICATED source evidence',contentSha256:store.digest(Buffer.from('FABRICATED source evidence'))}};
@@ -64,10 +65,13 @@ async function fixture(t,{changes=false,alwaysChanges=false,malformed=false,pref
         eventId:null,accessedUrl:urls[i],evidenceExcerpt:'FABRICATED source evidence',claimNotes:['FABRICATED supported claim'],inclusionReason:'FABRICATED fixture',
         independenceKey:`FABRICATED work ${i}`,limitations:['FABRICATED only']})),claims:[{claimId:'FABRICATED-claim',claim:'FABRICATED supported claim',sourceIds}],
         representedCategories:['FABRICATED historical'],missingCategories:[],stoppingReason:'FABRICATED no real research',limitations:['FABRICATED only']};
-        items=[{id:'FABRICATED-open',type:'web_search',action:{type:'open_page',url:urls[1]},results:[{url:urls[1],content:'FABRICATED source evidence'}]}];
+        if(unconsultedCitation)output.records.push({...output.records[1],sourceJson:JSON.stringify({...source(1),sourceId:'FABRICATED-unconsulted',
+          urlOrCitation:'https://example.invalid/FABRICATED-unconsulted',summaryUseStatus:'discovered'})});
+        items=sourceMode==='code_consultation'?['search','other','find_in_page'].map((type,i)=>({id:`FABRICATED-web-${i}`,type:'web_search',action:{type}})):
+          [{id:'FABRICATED-open',type:'web_search',action:{type:'open_page',url:urls[1]},results:[{url:urls[1],content:'FABRICATED source evidence'}]}];
       } else if(kind==='daily-synthesis/v1') {syntheses++;output={...fields,metadataJson:JSON.stringify({schemaVersion:'commentary/v3',readingId:fields.readingId,
         generation:{humanReviewStatus:'unreviewed'},label:`FABRICATED study ${syntheses}`}),markdown:`FABRICATED non-Scripture study ${syntheses}`,
-        includedSourceIds:sourceIds,coverageLimits:['FABRICATED only']};if(malformed&&syntheses===1)output={label:'FABRICATED malformed first response'};
+          includedSourceIds:unconsultedCitation?[...sourceIds,'FABRICATED-unconsulted']:sourceIds,coverageLimits:['FABRICATED only']};if(malformed&&syntheses===1)output={label:'FABRICATED malformed first response'};
       } else {reviews++;output={...fields,verdict:alwaysChanges||changes&&reviews===1?'changes_requested':'approved',
         assertions:Object.fromEntries(Object.keys(schema.properties.assertions.properties).map(k=>[k,true])),
         findings:['FABRICATED independent substantive fixture review'],corrections:[],repairPacketId:null,coverageLimits:['FABRICATED only']};}
@@ -77,7 +81,10 @@ async function fixture(t,{changes=false,alwaysChanges=false,malformed=false,pref
         {type:'turn.completed'}].map(JSON.stringify).join('\n')+'\n'};
     }};
   const dependencies={clock:()=>now,health:async()=>health,jobs:async()=>[],henryJob:async()=>({state:{phase:'review_pending'}}),
-    dailyDependencies:{foundation:async()=>foundation,exec,attachment:async()=>{if(!libraryReady)throw Object.assign(Error('FABRICATED library absent'),{code:'MHC_READING_ABSENT'});
+    dailyDependencies:{foundation:async()=>foundation,exec,fetchSource:async value=>({kind:'bounded_anonymous_https',url:value,finalUrl:value,
+      redirects:[],contentSha256:store.digest(Buffer.from('FABRICATED source evidence')),normalizedTextSha256:store.digest(Buffer.from('FABRICATED source evidence')),
+      normalization:'html-text/v1',returnedContent:'FABRICATED source evidence',rawBodyStored:false,accessedAt:now.toISOString()}),
+      attachment:async()=>{if(!libraryReady)throw Object.assign(Error('FABRICATED library absent'),{code:'MHC_READING_ABSENT'});
       return {verseCommentaries:[{label:'FABRICATED independently reviewed Henry layer'}]};},validate:async(_ctx,plan)=>{validated++;validationPlans.push({root:_ctx.publicationInputRoot,plan});}},
     dependency:async(_ctx,{journal})=>{
       const job=(await journal.load()).findLast(e=>e.kind==='daily_state').data.job;
@@ -93,6 +100,18 @@ test('retained copyright bibliography survives full research, synthesis, Henry d
   assert.equal(result.action,'publish_required',result.code);assert.deepEqual(f.counts(),{authors:1,reviews:1,researches:1,syntheses:1,validated:1});
   const registry=JSON.parse(await fs.readFile(path.join(f.ctx.projectRoot,'research/working/bridge-source-registry.json')));
   assert.deepEqual(registry.sources.find(s=>s.sourceId===f.legacy.sourceId),f.legacy);
+});
+test('explicit code consultation handles actual-shaped discovery through the complete GEN16 daily dependency and independent review',async t=>{
+  const f=await fixture(t,{sourceMode:'code_consultation',prefixShape:true,legacyBibliography:true}),result=await f.work.runStageC(f.ctx,{role:'preparation',now},f.dependencies);
+  assert.equal(result.action,'publish_required',result.code);
+  assert.deepEqual(f.counts(),{authors:1,reviews:1,researches:1,syntheses:1,validated:1});
+  const events=await (await f.store.openJournal(f.ctx.stateRoot)).load(),reservations=events.filter(e=>e.kind==='source_fetch_reserved');
+  assert.equal(events.findLast(e=>e.kind==='daily_state').data.job.readingId,'LTP-0028-GEN-016');
+  assert.equal(reservations.length,1);assert.equal(reservations[0].data.eventId,null);
+});
+test('synthesis cannot turn an unconsulted discovery record into an included source reference',async t=>{
+  const f=await fixture(t,{sourceMode:'code_consultation',unconsultedCitation:true}),result=await f.work.runStageC(f.ctx,{role:'preparation',now},f.dependencies);
+  assert.equal(result.code,'SUPERVISOR_DAILY_CITATION_UNCONSULTED');assert.deepEqual(f.counts(),{authors:0,reviews:0,researches:1,syntheses:1,validated:0});
 });
 test('new unpublished reading reaches reviewed daily handoff through one bound Henry dependency without research replay',async t=>{
   const f=await fixture(t),result=await f.work.runStageC(f.ctx,{role:'preparation',now},f.dependencies);

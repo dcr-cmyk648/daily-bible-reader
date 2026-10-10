@@ -18,7 +18,14 @@
         "model": {"const": "gpt-6.1-sol"}, "reasoningEffort": {"const": "high"},
         "codexExecutable": {"type": "string", "minLength": 1}, "executableSha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
         "version": {"type": "string", "pattern": "^codex-cli [0-9]+\\.[0-9]+\\.[0-9]+$"},
-        "sourceAccessMode": {"enum": ["cli_content", "bounded_https"]}
+        "sourceAccessMode": {"enum": ["cli_content", "bounded_https", "code_consultation"]},
+        "pdfExtractor": {"type": "object", "additionalProperties": false,
+          "required": ["pythonExecutable", "executableSha256", "pypdfVersion", "packageSha256"], "properties": {
+            "pythonExecutable": {"type": "string", "minLength": 1},
+            "executableSha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+            "pypdfVersion": {"const": "6.10.0"},
+            "packageSha256": {"const": "47b3f5a16613a2a7898e649f1dcd1a08a9069b2118bc460efb17b9fa8d407476"}
+          }}
       }},
     "henryRuntime": {"type": "object", "additionalProperties": false,
       "required": ["sourceRevision", "manifestSha256", "configSha256"], "properties": {

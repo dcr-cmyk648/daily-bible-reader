@@ -606,6 +606,22 @@ recovery import, real GEN16 dispatch and exact publication. Full fabricated flow
 covers research, synthesis, waiting-Henry and independent review with immutable
 legacy bibliography. Live Stage D and sustained scheduled publication remain open.
 
+The manager subsequently installed df536b7, admitted that zero-dispatch recovery,
+and ran one actual GEN16 research response. CLI 0.162.1 completed the response,
+but its real search/other/find telemetry lacks retained open/result evidence;
+the synthetic open-page fixtures had overestimated its contract. Manager accepted
+an explicit code-consultation prerequisite, rather than fabricated retrospective
+CLI opens. Separate discovery from actual returned-page/excerpt consultation;
+preserve all existing source, rights, privacy and independent-review gates. Admit
+local Henry's null access URL only through unchanged code-verified source identity,
+archive/atoms/locator/excerpt. Three annotated citation URLs and one cross-site
+article require checked identity mappings or actual same-page redirect proof.
+Implement only the named manager receipt and original consumed-response reuse
+documented in SUPERVISOR_AUTHORING. All original blocked history/raw bytes/ordinal
+and ordinary two-response cap persist; fetch failures remain counted, invalid
+evidence leaves the block and no other debt clears. Worker uses fabricated HTTP
+and actual-shaped telemetry fixtures; manager owns real fetches/import/trial.
+
 Tests use conspicuously fabricated Scripture, source prose, references, IDs,
 connector responses, automation TOML and fake Codex binaries. No test calls a real
 model, Google write or separately billed API. Cover EDF ties/dependencies, civil

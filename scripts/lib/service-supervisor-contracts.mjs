@@ -1,6 +1,7 @@
 import {digest,jsonBytes,fault} from './service-supervisor-store.mjs';
 import {assertSchemaValid} from './schema-validator.mjs';
 import {isDeepStrictEqual} from 'node:util';
+import {sourceWorkBinding} from './service-supervisor-source-binding.mjs';
 import {DAILY_REVIEW_ASSERTIONS} from './service-supervisor-publication-gates.mjs';
 
 const text=(maximum=4000,minimum=1)=>({type:'string',minLength:minimum,maxLength:maximum});
@@ -109,7 +110,7 @@ export function decodeResearch(output,{packet,sourceSchema}) {
 export function admitResearch(output,{packet,sourceSchema,sourceEvidence,decoded=false}) {
   if(!decoded)output=decodeResearch(output,{packet,sourceSchema});assertChildPrivacy(output);
   if(output.status!=='complete')throw fault('SUPERVISOR_RESEARCH_EDITORIAL_BLOCK');
-  const ids=new Set(),consulted=new Set(),independent=new Set(),evidence=[],quoteTotals=new Map();
+  const ids=new Set(),consulted=new Set(),independent=new Set(),evidence=[],quoteTotals=new Map(),workQuoteTotals=new Map();
   for(const record of output.records) {
     const source=record.source;if(ids.has(source.sourceId))throw fault('SUPERVISOR_SOURCE_ID_DUPLICATE');ids.add(source.sourceId);
     if(source.summaryUseStatus==='included'||source.includedReadings.length)throw fault('SUPERVISOR_RESEARCH_CANNOT_SELF_INCLUDE');
@@ -117,20 +118,33 @@ export function admitResearch(output,{packet,sourceSchema,sourceEvidence,decoded
     const url=publicSourceUrl(record.accessedUrl),proof=sourceEvidence.findLast(p=>p.url===url&&
       (!p.sourceId||p.sourceId===source.sourceId));
     const local=proof?.kind==='local_verified_henry'&&source.urlOrCitation===proof.locator;
-    if(!proof||!local&&publicSourceUrl(source.urlOrCitation)!==url||!record.evidenceExcerpt||
+    const codeConsulted=proof?.kind==='bounded_anonymous_https'&&proof.sourceId===source.sourceId&&
+      proof.citationBinding?.sourceWorkSha256===sourceWorkBinding(source)&&proof.citationBinding.urlOrCitation===source.urlOrCitation&&
+      proof.citationBinding.accessedUrl===url&&['exact_url','manager_mapping','same_returned_page'].includes(proof.citationBinding.kind);
+    if(!proof||!local&&!codeConsulted&&publicSourceUrl(source.urlOrCitation)!==url||!record.evidenceExcerpt||
       !proof.returnedContent.includes(record.evidenceExcerpt))throw fault('SUPERVISOR_SOURCE_ACCESS_BINDING_FAILED');
     const wordCount=record.evidenceExcerpt.trim().split(/\s+/).length;
     const workKey=JSON.stringify([source.authorOrOrganization.trim().toLowerCase(),source.title.trim().toLowerCase(),source.edition.trim().toLowerCase()]),
-      quoteKey=proof.finalUrl||url,total=(quoteTotals.get(quoteKey)||0)+wordCount;quoteTotals.set(quoteKey,total);
-    if(total>(['public_domain','open_license'].includes(source.rightsStatus)?200:25)||
+      quoteKey=proof.finalUrl||url,limit=['public_domain','open_license'].includes(source.rightsStatus)?200:25;
+    // A later permissive label cannot raise the cap already established for a
+    // page or work. A later restrictive label also applies to its prior quotes.
+    for(const [totals,key]of [[quoteTotals,quoteKey],[workQuoteTotals,workKey]]) {
+      const previous=totals.get(key)||{words:0,limit:200},next={words:previous.words+wordCount,limit:Math.min(previous.limit,limit)};
+      totals.set(key,next);if(next.words>next.limit)throw fault('SUPERVISOR_SOURCE_RIGHTS_OR_ACCESS_FAILED');
+    }
+    if(
       ['unknown'].includes(source.rightsStatus)||!source.accessDate||!source.accessMethod||
       ['copyrighted','unknown'].includes(source.rightsStatus)&&source.rawTextStorageAllowed)
       throw fault('SUPERVISOR_SOURCE_RIGHTS_OR_ACCESS_FAILED');
     assertChildPrivacy(record.evidenceExcerpt);consulted.add(source.sourceId);independent.add(workKey);
     evidence.push({sourceId:source.sourceId,eventId:proof.eventId,url,contentSha256:proof.contentSha256,
       accessKind:proof.kind||'cli_returned_page',accessMethod:source.accessMethod,accessDate:source.accessDate,
+      ...(proof.accessedAt?{accessedAt:proof.accessedAt}:{}),
+      ...(proof.citationBinding?{citationBinding:proof.citationBinding}:{}),
+      ...(proof.archiveSha256?{archiveSha256:proof.archiveSha256,atomHashes:proof.atomHashes}:{}),
       ...(proof.normalizedTextSha256?{normalizedTextSha256:proof.normalizedTextSha256,normalization:proof.normalization,
         finalUrl:proof.finalUrl,redirects:proof.redirects,rawBodyStored:false}:{}),
+      ...(proof.extraction?{extraction:proof.extraction}:{}),
       excerpt:record.evidenceExcerpt,excerptSha256:digest(Buffer.from(record.evidenceExcerpt)),
       claimNotes:record.claimNotes,limitations:record.limitations,rightsStatus:source.rightsStatus});
   }

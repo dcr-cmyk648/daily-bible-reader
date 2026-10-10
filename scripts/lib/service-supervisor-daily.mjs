@@ -11,7 +11,8 @@ import {reconcileManifestBackedPrefix,extendActivePrefix} from './active-calenda
 import {validatePublicationSnapshot,DAILY_REVIEW_ASSERTIONS} from './service-supervisor-publication-gates.mjs';
 import {executeBoundedChild} from './service-supervisor-exec.mjs';
 import {researchContract,synthesisContract,independentReviewContract,decodeResearch,admitResearch,assertChildPrivacy,assertResearchPacketPrivacy,assertDailyReviewPacketPrivacy} from './service-supervisor-contracts.mjs';
-import {verifiedResearchSources} from './service-supervisor-source-fetch.mjs';
+import {verifiedResearchSources,consultResearchSources} from './service-supervisor-source-fetch.mjs';
+import {PDF_LIMITS,PDF_VERSION,PDF_PACKAGE_SHA} from './service-supervisor-pdf.mjs';
 import {sourceInput} from './mhc-v2-service.mjs';
 import {loadLatestHenryReading} from './mhc-library-sync.mjs';
 import {loadJob} from './mhc-v2-store.mjs';
@@ -111,8 +112,12 @@ export async function dailyResearchPacket(ctx,{entry,order,job,priorRegistry,fou
       ({sourceId,title,authorOrOrganization,edition,urlOrCitation,includedReadings})),
     registryContract:'Preserve existing records exactly. Reuse only a record already scoped to this reading; otherwise record a genuinely distinct accessed chapter/page/edition locator. Never invent a locator or count another chapter/mirror as an independent work.',
     sourceAccessContract:{mode:ctx.config.children?.sourceAccessMode||'cli_content',
-      method:'Completed CLI page opens are discovery; source consultation needs returned page bytes and an exact selected excerpt.',
-      copyrightExcerptWords:25,publicDomainExcerptWords:200,rawModernBodiesStored:false},
+      method:ctx.config.children?.sourceAccessMode==='code_consultation'?
+        'CLI activity and candidate URLs are discovery only, never proof of an open. Code consultation requires actual anonymous HTTPS bytes, literal normalized excerpts and citation/rights binding. Use exact page URLs as citations; annotated or alternative citations need manager-verified identity mapping. Local Henry is code-verified without a network claim.':
+        'Completed CLI page opens are discovery; source consultation needs returned page bytes and an exact selected excerpt.',
+      copyrightExcerptWords:25,publicDomainExcerptWords:200,rawModernBodiesStored:false,
+      ...(ctx.config.children?.sourceAccessMode==='code_consultation'?{pdf:{configured:!!ctx.config.children.pdfExtractor,
+        method:'pypdf-plain/v1',version:PDF_VERSION,packageSha256:PDF_PACKAGE_SHA,...PDF_LIMITS}}:{})},
     foundation:foundation?{...foundation,sourceEvidence:undefined}:null};
   assertResearchPacketPrivacy(packet);return packet;
 }
@@ -137,6 +142,8 @@ export async function admitDailyOrder(ctx,order,now,dependencies={}) {
   return {entry,plan,appConfig};
 }
 function registryForReading(prior,research,includedIds,readingId,now) {
+  const verified=new Set(research.evidence.map(e=>e.sourceId));
+  if(includedIds.some(id=>!verified.has(id)))throw fault('SUPERVISOR_DAILY_CITATION_UNCONSULTED');
   const next=structuredClone(prior),byId=new Map(next.sources.map(s=>[s.sourceId,s])),locators=new Set(next.sources.map(s=>s.urlOrCitation.trim().toLowerCase().replace(/\/$/,'')));
   for(const record of research.records) {
     const source=structuredClone(record.source),included=includedIds.includes(source.sourceId),existing=byId.get(source.sourceId);
@@ -233,8 +240,10 @@ export async function runDailyWork(ctx,{journal,lease,order,deadline,wakeId=leas
       prompt:`Research this one reading under the supplied editorial/rights policy. Web consultation only; no shell/apps/MCP/agents. Do not quote Scripture. eventId must be null: code binds actual opened-page events. Include the verified local Henry foundation when supplied, with its exact locator and source ID. Stop only for documented coverage limits/diminishing returns, never count mirrors as independent works. Return the contract JSON with inputSha256 ${digest(jsonBytes(researchPacket))}.\n${JSON.stringify(researchPacket)}`},
       packet=>researchContract(packet,sourceSchema),{...dependencies.exec,clock,admit:async(output,proof)=>{
         const decoded=decodeResearch(output,{packet:proof.packet,sourceSchema});
-        const evidence=await verifiedResearchSources(decoded,proof.sourceEvidence,{foundation,deadline,
-          fetchSource:dependencies.fetchSource,reserve:async proof=>{
+        const consult=ctx.config.children.sourceAccessMode==='code_consultation',
+          verifier=consult?(_output,_events,options)=>consultResearchSources(_output,options):verifiedResearchSources;
+        const evidence=await verifier(decoded,proof.sourceEvidence,{foundation,deadline,
+          fetchSource:dependencies.fetchSource,...(consult?{pdfExtractor:ctx.config.children.pdfExtractor}:{}),reserve:async proof=>{
             const reservations=(await journal.load()).filter(e=>e.kind==='source_fetch_reserved'&&e.data.wakeId===wakeId);
             if(reservations.length>=64)throw fault('SUPERVISOR_SOURCE_FETCH_BUDGET_EXHAUSTED');
             await journal.append('source_fetch_reserved',{wakeId,jobId:job.id,readingId:entry.readingId,

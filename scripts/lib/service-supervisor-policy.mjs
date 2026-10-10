@@ -29,7 +29,7 @@ export function measuredBuffer(plan, appConfig, health, now) {
   // retaining them here also permits Stage A's adapter before that dependency lands.
   return {...report, readingIds: expected, fallbackReadingIds: health.currentHorizonHenryLayer.fallbackReadingIds || []};
 }
-export function selectEDF({plan, appConfig, health, jobs = [], role, now}) {
+export function selectEDF({plan, appConfig, health, jobs = [], role, now,includeReview=false}) {
   if (!ROLES.includes(role)) throw fault('SUPERVISOR_ROLE_INVALID');
   const window = forwardWindow(plan, appConfig, now), buffer = measuredBuffer(plan, appConfig, health, now);
   const allowed = new Map(window.entries.map(e => [e.readingId, e])), ids = new Set();
@@ -63,7 +63,7 @@ export function selectEDF({plan, appConfig, health, jobs = [], role, now}) {
       nodes.push({readingId: entry.readingId, component, scheduleDate: entry.scheduleDate, action, basisSha256: null});
     }
   }
-  const runnable = nodes.filter(n => role === 'review-audit' ? ['review', 'publish', 'recover_publication'].includes(n.action) : n.action !== 'review')
+  const runnable = nodes.filter(n => role === 'review-audit' ? ['review', 'publish', 'recover_publication'].includes(n.action) : includeReview||n.action !== 'review')
     .sort((a, b) => a.scheduleDate.localeCompare(b.scheduleDate) || rank[a.action] - rank[b.action] || a.readingId.localeCompare(b.readingId));
   return {effectiveDate: window.today, buffer, work: runnable, debts,
     next: runnable[0] || null, forwardComplete: buffer.status === 'ready'};

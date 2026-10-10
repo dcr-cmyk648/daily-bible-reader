@@ -17,7 +17,7 @@ async function defaultHealth(ctx, now) {
   return verifyLiveHorizon(liveHealthCredentialsFromStores(config, codes), {now,
     fetchImpl: (...args) => fetch(args[0], {...args[1], signal: AbortSignal.timeout(45000)})});
 }
-async function defaultJobs(ctx, health) {
+export async function defaultJobs(ctx, health) {
   const root = await confined(ctx.projectRoot, 'private-content/automation/mhc-v2');
   const names = await readdir(root).catch(e => {if (e.code === 'ENOENT') return []; throw e;});
   const jobs = [];
@@ -25,8 +25,16 @@ async function defaultJobs(ctx, health) {
     if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{2,159}$/.test(name)) throw fault('SUPERVISOR_JOB_INVALID');
     if (!health.readingIds.includes(name)) continue;
     const job = await loadJob(await confined(root, name, false));
+    const eligibleFallback=['C','D'].includes(ctx.config.stage)&&job.state.phase==='fallback_pending'&&
+      ['V2_CANDIDATE_EXHAUSTED','V2_SPARK_MODEL_UNAVAILABLE'].includes(job.state.blocker?.code);
     jobs.push({readingId: job.input.reading_id, component: 'henry', phase: job.state.phase,
-      blocker: job.state.blocker, basisSha256: job.state.review?.approved_sha256 || job.input.input_sha256});
+      blocker: eligibleFallback?null:job.state.blocker, basisSha256: job.state.review?.approved_sha256 || job.input.input_sha256});
+  }
+  if(['C','D'].includes(ctx.config.stage)) {
+    const daily=new Map();for(const event of await (await openJournal(ctx.stateRoot)).load())
+      if(event.kind==='daily_state')daily.set(event.data.job.readingId,event.data.job);
+    for(const job of daily.values())if(health.readingIds.includes(job.readingId))jobs.push({readingId:job.readingId,component:'daily',
+      phase:job.phase==='waiting_henry'?'authoring':job.phase,blocker:job.blocker,basisSha256:job.approvalSha256||job.contentSha256||null});
   }
   return jobs;
 }
@@ -40,10 +48,12 @@ async function defaultStatus(ctx, previous, options) {
 export async function supervisorContext(config, releaseRoot) {
   assertSchemaValid(config, JSON.parse(await readFile(path.join(releaseRoot, 'schemas/service-supervisor-config.schema.json'), 'utf8')),
     {label: 'Installed supervisor config'});
-  if (config.schemaVersion !== 'service-supervisor-config/v1' || !['A','B'].includes(config.stage) || !path.isAbsolute(config.projectRoot) ||
+  if (config.schemaVersion !== 'service-supervisor-config/v1' || !['A','B','C','D'].includes(config.stage) || !path.isAbsolute(config.projectRoot) ||
       !path.isAbsolute(config.runtimeRoot) || !Array.isArray(config.automations) || !/^[a-f0-9]{40}$/.test(config.sourceRevision)) throw fault('SUPERVISOR_CONFIG_INVALID');
-  if (config.stage==='B' && (!config.publicationResources || !['text/plain','application/json'].includes(config.publicationResources.manifest.mimeType) ||
+  if (['B','C','D'].includes(config.stage) && (!config.publicationResources || !['text/plain','application/json'].includes(config.publicationResources.manifest.mimeType) ||
     config.publicationResources.folder.mimeType!=='application/vnd.google-apps.folder')) throw fault('SUPERVISOR_PUBLICATION_CONFIG_INVALID');
+  if(['C','D'].includes(config.stage)&&(!config.children||!config.henryRuntime||config.maxReadingsPerWake!==(config.stage==='C'?1:3)))
+    throw fault('SUPERVISOR_CHILD_CONFIGURATION_INVALID');
   const projectRoot = path.resolve(config.projectRoot);
   await assertCanonicalPath(projectRoot, projectRoot);
   for (const relative of ['private-content', 'private-commentary', 'research/raw', 'research/working']) {
@@ -58,6 +68,7 @@ export async function supervisorContext(config, releaseRoot) {
     publicationInputRoot=path.resolve(config.publicationInputRoot);await assertCanonicalPath(publicationInputRoot,publicationInputRoot);
     for(const relative of ['private-content','research/working'])await confined(publicationInputRoot,relative,false);
   }
+  if(['C','D'].includes(config.stage)&&publicationInputRoot!==projectRoot)throw fault('SUPERVISOR_PUBLICATION_INPUT_ROOT_INVALID');
   return {config, projectRoot, runtimeRoot, stateRoot, publicationInputRoot, releaseRoot: path.resolve(releaseRoot)};
 }
 export async function runSupervisor(ctx, {role, now = new Date(), runId} = {}, dependencies = {}) {
@@ -77,7 +88,7 @@ export async function runSupervisor(ctx, {role, now = new Date(), runId} = {}, d
       const jobs = await (dependencies.jobs || defaultJobs)(ctx, health);
       const selection = selectEDF({plan, appConfig, health, jobs, role, now});
       const publications=new Map();
-      if(ctx.config.stage==='B')for(const event of await journal.load())if(event.kind==='publication_state') {
+      if(['B','C','D'].includes(ctx.config.stage))for(const event of await journal.load())if(event.kind==='publication_state') {
         const t=event.data.transaction;
         publications.set(t.kind==='reading'?`${t.readingId}:${t.component}`:`status:${t.role}`,t);
       }
@@ -131,7 +142,7 @@ export async function runSupervisor(ctx, {role, now = new Date(), runId} = {}, d
 export async function supervisorStatus(ctx) {
   const journal = await openJournal(ctx.stateRoot), events = await journal.load();
   const last = events.findLast(e => e.kind === 'run_finished');
-  return {schemaVersion: 'service-supervisor-status/v1', stage: ctx.config.stage, events: events.length,
+  return {schemaVersion: 'service-supervisor-status/v1', stage: ctx.config.stage, sourceRevision:ctx.config.sourceRevision, events: events.length,
     lastRunAt: last?.at || null, lastOutcome: last?.data.outcome || null, lastErrorCode: last?.data.code || null,
     published: false};
 }

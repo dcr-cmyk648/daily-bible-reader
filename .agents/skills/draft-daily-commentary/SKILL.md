@@ -5,6 +5,15 @@ description: Prepare or repair exactly one Daily Bible Reader study from a schem
 
 # Draft Daily Commentary
 
+The explicitly accepted October 10 supervisor migration is a named exception to
+the primary-only execution wording below: its code-owned daily research,
+synthesis and independent review use bounded ephemeral Sol 6.1/high executions
+through the verified existing ChatGPT login. The same substantive editorial,
+source, rights, full private validation and atomic publication gates apply.
+See `docs/SUPERVISOR_AUTHORING.md`; outside this installed contract the primary
+task retains the broader research/synthesis/review work. No paid API fallback,
+arbitrary main-commentary delegation, runtime AI or model-authored tool commands.
+
 Accept either one legacy `commentary-work-order/v1` produced by `scripts/content-automation.mjs work-order`, one `rolling-study-work-order/v1` produced by `scripts/rolling-study-work-order.mjs`, or one `protocol-backfill-work-order/v1` produced by `scripts/protocol-backfill-work-order.mjs`. Every packet authorizes one reading only. The legacy order is draft-only. A rolling `prepare_publish` order or a protocol-backfill `refresh_review_publish` order authorizes private publication only after the primary task completes source review, content review, Henry review, validation, and content-first/manifest-last promotion. A protocol refresh may run only after the T+7 lane is ready; it preserves stable reading identity, comments/highlights, prior versions, and the newest reviewed Henry layer or verified fallback.
 
 ## 1. Verify the gate
@@ -37,9 +46,9 @@ Do not copy Scripture into any artifact. `verseOfTheDay` is a reference only.
 
 ## 4. Research and draft
 
-Run the Matthew Henry preflight for the named passages. When exact reviewed atoms exist, use that source as the foundational confessional/pastoral pass and record its exact CrossWire edition. The controller tries exact Spark first; one Spark model-execution failure (including quota, availability, or process failure) may retry exact Luna once at low reasoning. Sol, Terra, and all other models are forbidden; deterministic request, source, checksum, schema, security, repository, review, and publication failures never fall back. If both model attempts fail, retain or attach the verified credential-free HTTPS link to the complete public-domain chapter commentary, bound to its real source-registry record, and continue the independently researched study. Label that fallback honestly; absence is never permission to invent a condensation. Build outward with independent grammatical, textual, historical, literary, canonical, theological, reception, and useful counterposition sources.
+Run the Matthew Henry preflight for the named passages. When exact reviewed atoms exist, use that source as the foundational confessional/pastoral pass and record its exact CrossWire edition. The accepted native controller uses exact `gpt-6-luna` at medium reasoning; exact `gpt-5.6-luna` at low reasoning requires its recorded eligible fallback state. A capability/provider failure blocks and claims nothing; deterministic request, source, checksum, schema, security, repository, review and publication failures never authorize fallback. If permitted model attempts fail, retain or attach the verified credential-free HTTPS link to the complete public-domain chapter commentary, bound to its real source-registry record. Absence of a reviewed library alone does not authorize a fresh fallback: the accepted supervisor may prepare an exact admitted unpublished daily dependency, review/export Henry privately, then complete daily review and publish the one contiguous reading. Build outward with independent grammatical, textual, historical, literary, canonical, theological, reception, and useful counterposition sources.
 
-Do not delegate the main daily synthesis to Spark. The primary task must perform the broad source research, evidentiary weighting, drafting, editing, citation verification, validation, and publication handoff itself. The exact authenticated `gpt-5.3-codex-spark` model is reserved for the separate high-volume, verse-by-verse Matthew Henry condensation pipeline described in `docs/MATTHEW_HENRY_PIPELINE.md`. Preserve the D057 Spark-assisted draft as a one-off historical calibration; it is not a precedent for subsequent work orders.
+The primary task owns broad source research, evidentiary weighting, drafting, editing, citation verification, validation and publication, except for the explicitly accepted installed supervisor contract above. Henry condensation remains the separate approved Luna pipeline in `docs/MATTHEW_HENRY_PIPELINE.md`; Sol's bounded source-bound review/one editorial repair does not change its author model or attempt history. Preserve D057 Spark as historical calibration only.
 
 Record a source as consulted only after accessing the work itself. Separate inaccessible, rights-excluded, duplicate, low-quality, consulted, and included sources. Do not rely on snippets, mirrors, fabricated bibliography, paywall bypass, or stored copyrighted source prose.
 

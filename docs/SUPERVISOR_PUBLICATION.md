@@ -207,6 +207,20 @@ check after rebasing onto e9a2740 passed 526 tests,
 44 schemas, repository safety and unchanged selected/unselected public-byte
 verification. Fabricated protocol, historical-scope, native-reference and installed
 handoff tests do not substitute for the manager's genuine one-reading acceptance.
-Stage B runtime/automation activation and Stage C bounded author/review delivery
-remain separately sequenced. Preserve selected production assets and all prior
+Manager installed b0496c4 with the actual e9 four-ACTIVE inventory and canonical
+inputs. Genuine status-only transaction b1747405ee6a277f6e115a93e0798420 and
+Genesis 14 transaction 792d1dfe6016435cf95afafebf55fa57 completed. The reading
+used fifteen actual operations, unchanged sharing, content-first exact raw checks,
+fresh pointer-last merge/readback, current source/library/approval fences, named
+ready/complete Henry health, payload binding and a full-horizon measurement.
+The devotional stayed unchanged; metadata SHA-256 is
+2187cc580748a81bf5fcd6f0f727d231eba163f0a855056ca4d8570aef15874f.
+All 66 private-prefix studies validated. Actual health improved to 3/8 devotionals,
+1/8 Henry, two devotional future days and zero complete future days. Both
+transactions have stored heartbeat and completed publication proof; the old backend
+still yields heartbeatDelivered:false. Raw proofs remain in the canonical ignored
+publication journal. Native controller reconciliation is manager-owned; no new
+reader/backend release or sustained-trial acceptance follows from this one reading.
+Stage C bounded author/review delivery and D consolidation remain separately
+sequenced. Preserve selected production assets and all prior
 public releases; this supervisor stage does not deploy WO-2's shell/backend.

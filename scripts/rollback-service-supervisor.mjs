@@ -4,6 +4,7 @@ import path from 'node:path';
 import {assertNoWriters, verifyRuntime} from './lib/service-supervisor-runtime.mjs';
 import {readPrivate, confined, durableWrite, digest, jsonBytes, openJournal, fault} from './lib/service-supervisor-store.mjs';
 import {safeCode} from './lib/service-supervisor-policy.mjs';
+import {fourLaneCompatibility} from './lib/service-supervisor-compatibility.mjs';
 
 async function main() {
   const args = process.argv.slice(2);
@@ -21,6 +22,13 @@ async function main() {
     // Validate the retained target without exposing it as current before proof.
     await verifyRuntime(runtimeRoot, launcher, saved);
     const current = await readFile(await confined(runtimeRoot, 'current.json', false));
+    const currentPointer=JSON.parse(current),currentConfigBytes=await readFile(await confined(runtimeRoot,`config-${currentPointer.configSha256}.json`,false));
+    if(digest(currentConfigBytes)!==currentPointer.configSha256)throw fault('SUPERVISOR_ROLLBACK_HASH_INVALID');
+    const currentConfig=JSON.parse(currentConfigBytes);
+    if(['C','D'].includes(currentConfig.stage)) {
+      const report=await fourLaneCompatibility({projectRoot,stateRoot,config:currentConfig});
+      if(!report.rollbackSafe||!report.oldDailyAuthorAllowed)throw fault('SUPERVISOR_ROLLBACK_COMPATIBILITY_REQUIRED');
+    }
     const config = await readPrivate(runtimeRoot, `config-${pointer.configSha256}.json`);
     const manifestBytes = await readFile(await confined(runtimeRoot, `releases/${pointer.release}/manifest.json`, false));
     if (digest(manifestBytes) !== pointer.manifestSha256 || digest(jsonBytes(config)) !== pointer.configSha256 || config.stage !== 'A') throw fault('SUPERVISOR_ROLLBACK_HASH_INVALID');

@@ -14,11 +14,11 @@ source review, atomic publication, access/sharing, immutable rollback and releas
 
 ## Current sequencing
 
-- WO-1 native 7068de0 is installed. Both configured ChatGPT author preflights passed
-  at 17:35 UTC; both Henry definitions are ACTIVE and pinned to that runtime.
-- WO-3 publisher B 7068de0 is installed. Genuine Genesis 14 and Psalm 3/Proverbs
+- WO-1 native fd5922d is installed. Both configured ChatGPT author preflights passed
+  at 18:10 UTC; both Henry definitions remain ACTIVE; manager owns exact pin updates.
+- WO-3 publisher B fd5922d is installed. Genuine Genesis 14 and Psalm 3/Proverbs
   publication transactions are terminal with exact release proof. C/D integration
-  remains under review. [Publication protocol](docs/SUPERVISOR_PUBLICATION.md).
+  remains under review. [Publication](docs/SUPERVISOR_PUBLICATION.md), [authoring](docs/SUPERVISOR_AUTHORING.md).
 - WO-2 466058d remains an unselected canary; backend/installed-phone promotion
   is held. Stored preparation heartbeats reach the private store, but the old
   backend drops the new fields. Scheduled-wake readback remains required.
@@ -38,8 +38,8 @@ actual health and the original manifest-backed selector after author preflight.
 Cooldowns, current priority, owners, attempts, sessions and leases remain authoritative.
 The immutable runtime includes the existing allowlisted public backend config.
 Manager owns installation, live preflight, source pins and C/D acceptance.
-Historical source check: 585 fabricated/local tests, safety, builds and asset
-verification passed; selected production files are unchanged.
+Rebased C/D check: 622 fabricated/local tests, safety, 45 schemas, builds and asset
+verification passed. Live GEN15/GEN16 C proof and D routing remain manager-owned.
 Interface and policy: [Henry operations](docs/HENRY_V2_OPERATIONS.md#one-reading-lifecycle).
 
 The author remains gpt-6-luna at medium; retained gpt-5.6-luna fallback is low

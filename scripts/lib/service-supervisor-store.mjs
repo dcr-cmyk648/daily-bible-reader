@@ -115,12 +115,12 @@ export async function openJournal(root, {absent = processAbsent} = {}) {
       return appendUnlocked(events, kind, data, now);
     }, absent),
     acquire: (resource, {now = new Date(), durationMs = 90 * 60 * 1000, runId = nonce()} = {}) => mutex(root, async () => {
-      if (!['preparation', 'review-audit', 'publication', 'installation'].includes(resource) ||
+      if (!['preparation', 'review-audit', 'publication', 'installation','work'].includes(resource) ||
           !Number.isSafeInteger(durationMs) || durationMs < 1000 || durationMs > 24 * 60 * 60 * 1000) throw fault('SUPERVISOR_LEASE_INVALID');
       const events = await load(), prior = lastLease(events, resource);
       const installation = lastLease(events, 'installation');
       if (resource !== 'installation' && installation?.kind === 'lease_acquired' && !absent(installation.data.pid)) throw fault('SUPERVISOR_INSTALL_WRITER_ACTIVE');
-      if (resource === 'installation' && ['preparation', 'review-audit', 'publication'].some(name => {
+      if (resource === 'installation' && ['preparation', 'review-audit', 'publication','work'].some(name => {
         const active = lastLease(events, name); return active?.kind === 'lease_acquired' && !absent(active.data.pid);
       })) throw fault('SUPERVISOR_INSTALL_WRITER_ACTIVE');
       if (prior?.kind === 'lease_acquired' && !absent(prior.data.pid)) throw fault('SUPERVISOR_LEASE_BUSY');

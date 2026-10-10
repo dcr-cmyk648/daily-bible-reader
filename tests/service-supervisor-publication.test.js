@@ -92,6 +92,17 @@ test('status publication merges fresh lane state and preserves every reading poi
   const value=JSON.parse(f.getLive());assert.deepEqual(value.readings,before);assert.equal(value.preparationStatus.state,'blocked');
   assert.equal(value.preparationStatus.lanes.review.lastErrorCode,'FABRICATED_REVIEW_FAILURE');assert.equal(value.preparationStatus.lanes.daily.lastOutcome,'no_op');
 });
+
+test('terminal C wake completion survives every status connector handoff and is true only after exact readback',async t=>{
+  const f=await fixture(t);f.ctx.config.stage='C';
+  let handoff=await f.publisher.beginPublication(f.ctx,{role:'preparation',heartbeat:f.heartbeat,now,
+    workCompletion:{wakeId:'e'.repeat(32),outcome:'checkpointed',code:'SUPERVISOR_WORK_CHECKPOINTED'}});
+  for(let i=0;i<35&&handoff.action==='dispatch_required';i++) {
+    assert.equal(handoff.runComplete,false);assert.equal(handoff.wakeId,'e'.repeat(32));handoff=await f.step(handoff);
+  }
+  assert.equal(handoff.outcome,'complete');assert.equal(handoff.runComplete,true);assert.equal(handoff.workOutcome,'checkpointed');
+  assert.equal((await f.publisher.publicationHandoff(f.ctx,handoff.transactionId)).runComplete,true);
+});
 test('content-first immutable versions require metadata/raw checks; upload acknowledgement alone is unpublished',async t=>{
   const f=await fixture(t);let next=await f.publisher.beginPublication(f.ctx,{role:'review-audit',request:f.request,now},f.dependencies);
   while(next.action==='dispatch_required') {
@@ -258,6 +269,54 @@ async function nativeHenryAuthority(t) {
   const verifyApproval=(ctx,tx)=>verifyCurrentPublicationApproval(ctx,tx,{source:async()=>source,library:async()=>library});
   return {...f,job,native,verifyApproval,setSource:value=>{source=value;},setLibrary:value=>{library=value;},source,library};
 }
+async function dailyHenryAuthority(t) {
+  const f=await nativeHenryAuthority(t),henryApproval={path:f.request.approvalPath,sha256:f.request.approvalSha256,
+    inputSha256:f.job.input.input_sha256,approvedSha256:f.job.state.review.approved_sha256,libraryReadingSha256:f.library.artifactSha256},
+    metadata=JSON.parse(await fs.readFile(path.join(f.root,f.artifacts[1].path)));
+  metadata.verseCommentaries=f.library.runtimes;const bytes=f.store.jsonBytes(metadata);await f.write(f.artifacts[1].path,bytes);
+  f.artifacts[1].sha256=f.store.digest(bytes);f.artifacts[1].bytes=bytes.length;
+  const stagedRoot=path.join(f.ctx.stateRoot,'FABRICATED-daily-inputs');await fs.mkdir(path.dirname(path.join(stagedRoot,f.artifacts[1].path)),{recursive:true});
+  await fs.writeFile(path.join(stagedRoot,f.artifacts[1].path),bytes);
+  const approval={schemaVersion:'supervisor-editorial-approval/v1',readingId:ids[0],status:'approved',contentSha256:f.artifacts[0].sha256,
+    metadataSha256:f.artifacts[1].sha256,registrySha256:'c'.repeat(64),authorSessionId:'a'.repeat(32),reviewerSessionId:'b'.repeat(32)},
+    relative=`private-content/automation/staging/${ids[0]}/FABRICATED-daily-approval.json`;
+  f.request.component='daily';f.request.approvalPath=relative;await f.write(relative,approval);
+  f.request.approvalSha256=f.store.digest(await fs.readFile(path.join(f.root,relative)));
+  const job={...approval,schemaVersion:'service-supervisor-daily-state/v1',phase:'approved',approvalPath:relative,approvalSha256:f.request.approvalSha256,
+    research:{path:relative,sha256:f.request.approvalSha256},henryApproval,draft:{inputRoot:stagedRoot,metadataPath:f.artifacts[1].path}};
+  const journal=await f.store.openJournal(f.ctx.stateRoot);await journal.append('daily_state',{job},now);
+  const deps={...f.dependencies,verifyApproval:f.verifyApproval,health:async(ctx,t)=>({...await f.dependencies.health(ctx,t),payloadBinding:{
+    contentSha256:metadata.generation.contentHash,commentaryVersion:metadata.commentaryVersion,runtimeSha256:f.library.runtimes.map(r=>f.store.digest(f.store.jsonBytes(r)))}})};
+  return {...f,dailyJob:job,journal,deps};
+}
+test('unchanged daily approval is fenced by revoked attached native Henry or a newer library before write',async t=>{
+  const f=await dailyHenryAuthority(t);let next=await f.publisher.beginPublication(f.ctx,{role:'preparation',request:f.request,now},f.deps);
+  while(JSON.parse(await fs.readFile(next.operationPath)).write!==true)next=await f.step(next,{},f.deps);
+  await f.native.appendState(f.job,'FABRICATED Henry revoked',{...f.job.state,phase:'review_pending'},now);
+  await assert.rejects(f.publisher.dispatchPublication(f.ctx,next.transactionId,next.operationId,{now},f.deps),/CURRENT_HENRY_APPROVAL_CHANGED/);
+  assert.equal(f.uploads.size,0);assert.equal(f.store.digest(await fs.readFile(path.join(f.root,f.request.approvalPath))),f.request.approvalSha256);
+  const g=await dailyHenryAuthority(t);let pending=await g.publisher.beginPublication(g.ctx,{role:'preparation',request:g.request,now},g.deps);
+  while(JSON.parse(await fs.readFile(pending.operationPath)).write!==true)pending=await g.step(pending,{},g.deps);
+  g.setLibrary({...g.library,artifactSha256:'f'.repeat(64)});
+  await assert.rejects(g.publisher.dispatchPublication(g.ctx,pending.transactionId,pending.operationId,{now},g.deps),/CURRENT_HENRY_LIBRARY_CHANGED/);
+  assert.equal(g.uploads.size,0);
+});
+test('one exact daily publication supplies native Henry completion receipt; fallback daily never does',async t=>{
+  const f=await dailyHenryAuthority(t);let reconciled=0;
+  f.deps.reconcileDailyHenry=async(_ctx,t,receipt)=>{
+    assert.equal(t.component,'daily');assert.equal(receipt.henryLayerStatus,'complete');assert.equal(receipt.payloadSha256,f.artifacts[1].sha256);
+    assert.equal(receipt.approvedSha256,f.job.state.review.approved_sha256);reconciled++;
+    f.job=await f.native.appendState(f.job,'FABRICATED exact daily publication verified',{...f.job.state,phase:'published',publication:{transactionId:t.id}},now);
+  };
+  const started=await f.publisher.beginPublication(f.ctx,{role:'preparation',request:f.request,now},f.deps),done=await f.drain(started,f.deps);
+  assert.equal(done.outcome,'complete');assert.equal(done.published,true);assert.equal(reconciled,1);assert.equal(f.uploads.size,2);
+  assert.equal((await f.native.loadJob(f.job.directory)).state.phase,'published');
+  const receipt=JSON.parse(await fs.readFile(path.join(f.root,`private-content/automation/staging/${ids[0]}/manager-publication-result.json`)));
+  assert.equal(receipt.schemaVersion,'mhc-manager-publication-result/v1');assert.equal(receipt.publicationComponent,'daily');
+  const g=await fixture(t),began=await g.publisher.beginPublication(g.ctx,{role:'preparation',request:g.request,now},g.dependencies);
+  assert.equal((await g.drain(began)).published,true);
+  await assert.rejects(fs.readFile(path.join(g.root,`private-content/automation/staging/${ids[0]}/manager-publication-result.json`)),{code:'ENOENT'});
+});
 
 test('real Henry event-chain revocation refuses an unchanged old approval before immutable upload',async t=>{
   const f=await nativeHenryAuthority(t),deps={...f.dependencies,verifyApproval:f.verifyApproval};

@@ -3,7 +3,7 @@ import {readFile} from 'node:fs/promises';
 import path from 'node:path';
 import {supervisorContext, runSupervisor, supervisorStatus} from './lib/service-supervisor.mjs';
 import {safeCode} from './lib/service-supervisor-policy.mjs';
-import {fault, readPrivate, openJournal} from './lib/service-supervisor-store.mjs';
+import {fault, readPrivate, openJournal,durableWrite,jsonBytes,digest} from './lib/service-supervisor-store.mjs';
 
 async function main() {
   const args = process.argv.slice(2), command = args.shift();
@@ -14,15 +14,15 @@ async function main() {
       if(!['--role','--request','--transaction','--operation','--receipt','--native-result'].includes(args[i])||!args[i+1]||extra[args[i]])throw fault('SUPERVISOR_ARGUMENTS_INVALID');
       extra[args[i]]=args[i+1];
     }
-  } else if (command !== 'status' || args.length) throw fault('SUPERVISOR_ARGUMENTS_INVALID');
+  } else if (!['status','compatibility'].includes(command) || args.length) throw fault('SUPERVISOR_ARGUMENTS_INVALID');
   const configPath = process.env.BIBLEAPP_SUPERVISOR_CONFIG, releaseRoot = process.env.BIBLEAPP_SUPERVISOR_RELEASE;
   if (!configPath || !releaseRoot || !path.isAbsolute(configPath) || !path.isAbsolute(releaseRoot)) throw fault('SUPERVISOR_INSTALLED_LAUNCHER_REQUIRED');
   const config = JSON.parse(await readFile(configPath, 'utf8'));
   const ctx = await supervisorContext(config, releaseRoot);
   let result;
-  if(command.startsWith('publication-')||command==='tick'&&config.stage==='B') {
+  if(command.startsWith('publication-')||command==='tick'&&['B','C','D'].includes(config.stage)) {
     const publisher=await import('./lib/service-supervisor-publication.mjs');
-    if(config.stage!=='B')throw fault('SUPERVISOR_PUBLICATION_CONFIG_INVALID');
+    if(!['B','C','D'].includes(config.stage))throw fault('SUPERVISOR_PUBLICATION_CONFIG_INVALID');
     if(command==='publication-start'&&Object.keys(extra).length===2&&extra['--role']&&extra['--request']) {
       result=await publisher.beginPublication(ctx,{role:extra['--role'],request:await readPrivate(ctx.projectRoot,extra['--request'])});
     } else if(command==='publication-handoff'&&Object.keys(extra).length===1&&extra['--transaction'])result=await publisher.publicationHandoff(ctx,extra['--transaction']);
@@ -37,16 +37,36 @@ async function main() {
     else if(command==='tick') {
       result=await publisher.pendingPublication(ctx);
       if(!result) {
+        let work;
+        if(['C','D'].includes(config.stage)) {
+          const worker=await import('./lib/service-supervisor-work.mjs');work=await worker.runStageC(ctx,{role});
+          if(work.action==='publish_required') {
+            result=await publisher.beginPublication(ctx,{role,request:await readPrivate(ctx.projectRoot,work.requestPath)});
+            await worker.bindWakePublication(ctx,work.wakeId,result.transactionId);
+            result={...result,wakeId:work.wakeId,runComplete:false};
+          }
+        }
+        if(!result) {
         const observation=await runSupervisor(ctx,{role});
         const events=await (await openJournal(ctx.stateRoot)).load(),staged=events.findLast(e=>e.kind==='status_staged'&&e.data.role===role);
         if(!staged)throw fault('SUPERVISOR_STATUS_STAGING_FAILED');
         const status=(await readPrivate(ctx.stateRoot,staged.data.candidate)).preparationStatus;
         const lane=role==='preparation'?'daily':'review';
-        result=await publisher.beginPublication(ctx,{role,heartbeat:{state:status.state,summary:status.summary,action:status.action,
-          heartbeat:{lane,lastOutcome:observation.outcome==='blocked'?'blocked':observation.forwardComplete?'no_op':'running',
-            lastErrorCode:observation.code||'',...(observation.buffer?{buffer:observation.buffer}:{})}}});
+        const blocked=work?.outcome==='blocked'||observation.outcome==='blocked',code=work?.code||observation.code||'';
+        result=await publisher.beginPublication(ctx,{role,...(work?{workCompletion:{wakeId:work.wakeId,outcome:work.outcome,code:work.code}}:{}),heartbeat:{state:blocked?'blocked':status.state,
+          summary:work?.outcome==='blocked'?`Preparation blocked: ${code}`:status.summary,
+          action:blocked?'Open BibleApp Manager in Codex':status.action,
+          heartbeat:{lane,lastOutcome:blocked?'blocked':observation.forwardComplete?'no_op':'running',
+            lastErrorCode:code,...(observation.buffer?{buffer:observation.buffer}:{})}}});
+        }
       }
     } else throw fault('SUPERVISOR_ARGUMENTS_INVALID');
+  } else if(command==='compatibility') {
+    const {fourLaneCompatibility}=await import('./lib/service-supervisor-compatibility.mjs'),report=await fourLaneCompatibility(ctx),bytes=jsonBytes(report),
+      reportSha256=digest(bytes),reportPath=await durableWrite(ctx.stateRoot,`compatibility/${reportSha256}.json`,bytes);
+    result={schemaVersion:report.schemaVersion,reportPath,reportSha256,rollbackSafe:report.rollbackSafe,
+      oldDailyAuthorAllowed:report.oldDailyAuthorAllowed,parkedDailyJobs:report.daily.filter(j=>j.disposition==='park_no_replay').length,
+      nativeJobs:report.henry.length,published:false};
   } else result=command === 'status' ? await supervisorStatus(ctx) : await runSupervisor(ctx, {role});
   process.stdout.write(JSON.stringify(result) + '\n');
   if (['blocked','reconciliation_required','health_pending'].includes(result.outcome)) process.exitCode = 1;

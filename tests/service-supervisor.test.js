@@ -217,7 +217,7 @@ test('immutable installed launcher works from arbitrary CWD and detects exact co
   const installed = await f.runtime.installRuntime({projectRoot: f.root, sourceRevision: revision, files, inventory: f.inventory});
   const options = {cwd: os.tmpdir(), windowsHide: true, encoding: 'utf8', timeout: 15000};
   const first = spawnSync(process.execPath, [installed.launcher, 'status'], options);
-  assert.equal(first.status, 0, first.stdout + first.stderr); assert.equal(JSON.parse(first.stdout).stage, 'A');
+  assert.equal(first.status, 0, first.stdout + first.stderr); assert.equal(JSON.parse(first.stdout).stage, 'A');assert.equal(JSON.parse(first.stdout).sourceRevision,revision);
   const runtimeRoot = path.dirname(installed.launcher), pointer = await f.store.readPrivate(runtimeRoot, 'current.json');
   const file = path.join(runtimeRoot, 'releases', pointer.release, 'scripts/lib/service-supervisor-policy.mjs');
   const prior = await fs.readFile(file); await fs.writeFile(file, '// FABRICATED tampering');
@@ -242,6 +242,27 @@ test('side-by-side installation retains prior pointer and rollback preserves jou
   const events = await (await f.store.openJournal(f.ctx.stateRoot)).load();
   assert.equal(events.filter(v => v.kind === 'installation_activated').length, 2);
   assert.equal(events.some(v => v.kind === 'rollback_activated'), true);
+});
+
+test('A rollback refuses an unsupported C daily job without changing its pointer, journal state or saved definitions',async t=>{
+  const f=await fixture(t),files=await runtimeFiles(),first=await f.runtime.installRuntime({projectRoot:f.root,sourceRevision:revision,files,inventory:f.inventory}),
+    runtimeRoot=path.dirname(first.launcher),saved=await fs.readFile(path.join(runtimeRoot,'current.json'));
+  await f.runtime.installRuntime({projectRoot:f.root,sourceRevision:'b'.repeat(40),files,inventory:f.inventory});
+  const pointer=await f.store.readPrivate(runtimeRoot,'current.json'),config=await f.store.readPrivate(runtimeRoot,`config-${pointer.configSha256}.json`);
+  // A fabricated C marker tests the routing gate; it never authorizes a child.
+  config.stage='C';const bytes=f.store.jsonBytes(config);pointer.configSha256=f.store.digest(bytes);
+  await f.store.durableWrite(runtimeRoot,`config-${pointer.configSha256}.json`,bytes);
+  await f.store.durableWrite(runtimeRoot,'current.json',f.store.jsonBytes(pointer),{immutable:false});
+  const journal=await f.store.openJournal(f.ctx.stateRoot),job={id:'c'.repeat(32),readingId:'FABRICATED-daily',phase:'waiting_henry',
+    workOrder:{sha256:'d'.repeat(64)},authorSessionId:'e'.repeat(32),reviewerSessionId:null,contentSha256:null};
+  await journal.append('daily_state',{job},now);const before=await fs.readFile(path.join(runtimeRoot,'current.json')),
+    definitions=await Promise.all(f.mapping.map(v=>fs.readFile(v.file)));
+  const result=spawnSync(process.execPath,[path.join(sourceRoot,'scripts/rollback-service-supervisor.mjs'),'--project-root',f.root,
+    '--pointer-sha256',f.store.digest(saved)],{cwd:os.tmpdir(),encoding:'utf8',windowsHide:true,timeout:15000});
+  assert.equal(result.status,1,result.stdout+result.stderr);assert.match(result.stdout,/ROLLBACK_COMPATIBILITY_REQUIRED/);
+  assert.deepEqual(await fs.readFile(path.join(runtimeRoot,'current.json')),before);
+  assert.deepEqual((await journal.load()).findLast(e=>e.kind==='daily_state').data.job,job);
+  assert.deepEqual(await Promise.all(f.mapping.map(v=>fs.readFile(v.file))),definitions);
 });
 test('installer reads exact clean committed blobs in one batch and rejects a dirty source', async t => {
   const f = await fixture(t), files = await runtimeFiles(), source = path.join(f.root, 'source');

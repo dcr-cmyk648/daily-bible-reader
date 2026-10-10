@@ -1,6 +1,7 @@
 import {mkdir, readFile, lstat, readdir} from 'node:fs/promises';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
+import {pathToFileURL} from 'node:url';
 import {assertCanonicalPath} from './mhc-native-paths.mjs';
 import {assertSchemaValid} from './schema-validator.mjs';
 import {loadJob} from './mhc-v2-store.mjs';
@@ -54,6 +55,8 @@ export async function assertNoWriters(projectRoot, stateRoot, {now = new Date(),
   const publications=new Map();
   for (const event of events) if(event.kind==='publication_state')publications.set(event.data.transaction.id,event.data.transaction);
   if([...publications.values()].some(t=>!['complete','blocked'].includes(t.phase)))throw fault('SUPERVISOR_INSTALL_PUBLICATION_PENDING');
+  const children=new Map();for(const event of events)if(event.kind==='execution_state')children.set(event.data.execution.id,event.data.execution);
+  if([...children.values()].some(e=>['reserved','uncertain'].includes(e.phase)))throw fault('SUPERVISOR_INSTALL_CHILD_PENDING');
   if ([...latest.values()].some(e => e.kind === 'lease_acquired' && !absent(e.data.pid))) throw fault('SUPERVISOR_INSTALL_WRITER_ACTIVE');
   const jobRoot = await confined(projectRoot, 'private-content/automation/mhc-v2');
   for (const name of await readdir(jobRoot).catch(e => {if (e.code === 'ENOENT') return []; throw e;})) {
@@ -69,7 +72,7 @@ export async function assertNoWriters(projectRoot, stateRoot, {now = new Date(),
     if ([...latestEvents.values()].some(e => e.outcome === 'leased')) throw fault('SUPERVISOR_INSTALL_WRITER_ACTIVE');
   }
 }
-export async function installRuntime({projectRoot, sourceRevision, files, inventory, stage='A', publicationResources, publicationInputRoot, now = new Date()}) {
+export async function installRuntime({projectRoot, sourceRevision, files, inventory, stage='A', publicationResources, publicationInputRoot, children, henryRuntime, now = new Date()}) {
   projectRoot = path.resolve(projectRoot);
   await assertCanonicalPath(projectRoot, projectRoot);
   for (const name of ['private-content', 'private-commentary', 'research/raw', 'research/working']) {
@@ -87,17 +90,25 @@ export async function installRuntime({projectRoot, sourceRevision, files, invent
   await assertNoWriters(projectRoot, stateRoot, {now});
   const journal = await openJournal(stateRoot), lease = await journal.acquire('installation', {now, durationMs: 10 * 60 * 1000});
   try {
-    if (!['A','B'].includes(stage) || stage==='B' && (!publicationResources || !['text/plain','application/json'].includes(publicationResources.manifest?.mimeType) ||
+    if (!['A','B','C','D'].includes(stage) || ['B','C','D'].includes(stage) && (!publicationResources || !['text/plain','application/json'].includes(publicationResources.manifest?.mimeType) ||
       publicationResources.folder?.mimeType!=='application/vnd.google-apps.folder') || stage==='A' && publicationResources) throw fault('SUPERVISOR_INSTALL_ARGUMENTS_INVALID');
     if(publicationInputRoot) {
-      if(stage!=='B'||!path.isAbsolute(publicationInputRoot))throw fault('SUPERVISOR_PUBLICATION_INPUT_ROOT_INVALID');
+      if(!['B','C','D'].includes(stage)||!path.isAbsolute(publicationInputRoot))throw fault('SUPERVISOR_PUBLICATION_INPUT_ROOT_INVALID');
       publicationInputRoot=path.resolve(publicationInputRoot);await assertCanonicalPath(publicationInputRoot,publicationInputRoot);
       for(const relative of ['private-content','research/working'])await confined(publicationInputRoot,relative,false);
     }
-    if (stage==='B') for(const name of ['scripts/lib/service-supervisor-publication.mjs','scripts/lib/service-supervisor-publication-gates.mjs','scripts/lib/service-supervisor-connector.mjs','scripts/lib/service-supervisor-scope.mjs','scripts/lib/service-supervisor-approval.mjs',
+    if (['B','C','D'].includes(stage)) for(const name of ['scripts/lib/service-supervisor-publication.mjs','scripts/lib/service-supervisor-publication-gates.mjs','scripts/lib/service-supervisor-connector.mjs','scripts/lib/service-supervisor-scope.mjs','scripts/lib/service-supervisor-approval.mjs',
       'schemas/service-supervisor-editorial-approval.schema.json']) if(!files.some(v=>v.path===name)) throw fault('SUPERVISOR_RELEASE_DEPENDENCY_MISSING');
+    if(['C','D'].includes(stage)) {
+      if(!children||!henryRuntime||publicationInputRoot&&publicationInputRoot!==projectRoot)throw fault('SUPERVISOR_CHILD_CONFIGURATION_INVALID');
+      if(inventory.some(a=>a.status!==(['daily','review'].includes(a.lane)||stage==='C'?'ACTIVE':'PAUSED')))
+        throw fault('SUPERVISOR_AUTOMATION_DRIFT');
+      for(const name of ['exec','contracts','daily','henry','source-fetch','work','compatibility'])
+        if(!files.some(v=>v.path===`scripts/lib/service-supervisor-${name}.mjs`))throw fault('SUPERVISOR_RELEASE_DEPENDENCY_MISSING');
+    } else if(children||henryRuntime)throw fault('SUPERVISOR_CHILD_CONFIGURATION_INVALID');
     const config = {schemaVersion: 'service-supervisor-config/v1', stage, sourceRevision, projectRoot, runtimeRoot, automations: inventory,
-      ...(publicationResources?{publicationResources}:{}),...(publicationInputRoot?{publicationInputRoot}:{})};
+      ...(publicationResources?{publicationResources}:{}),...(publicationInputRoot?{publicationInputRoot}:{}),
+      ...(['C','D'].includes(stage)?{children,henryRuntime,maxReadingsPerWake:stage==='C'?1:3}:{})};
     assertSchemaValid(config, JSON.parse(files.find(v => v.path === 'schemas/service-supervisor-config.schema.json').bytes), {label: 'Supervisor install config'});
     const configBytes = jsonBytes(config), configSha256 = digest(configBytes);
     const manifest = {schemaVersion: 'service-supervisor-release/v1', sourceRevision,
@@ -107,6 +118,15 @@ export async function installRuntime({projectRoot, sourceRevision, files, invent
     for (const file of files) await durableWrite(runtimeRoot, `releases/${release}/${file.path}`, file.bytes);
     await durableWrite(runtimeRoot, `releases/${release}/manifest.json`, manifestBytes);
     await durableWrite(runtimeRoot, `config-${configSha256}.json`, configBytes);
+    if(['C','D'].includes(stage)) {
+      const releaseRoot=await confined(runtimeRoot,`releases/${release}`,false),ctx={projectRoot,stateRoot,runtimeRoot,releaseRoot,config};
+      const [executor,henry]=await Promise.all(['exec','henry'].map(name=>import(pathToFileURL(path.join(releaseRoot,`scripts/lib/service-supervisor-${name}.mjs`)).href)));
+      // Read-only CLI login/version/isolation checks and immutable native pin
+      // verification. This never runs an availability/model probe.
+      await executor.verifyChildTransport(ctx);await henry.verifiedHenryContext(ctx);
+      await journal.append('installation_capabilities_verified',{sourceRevision,executableSha256:children.executableSha256,
+        henrySourceRevision:henryRuntime.sourceRevision,henryManifestSha256:henryRuntime.manifestSha256},now,lease);
+    }
     await durableWrite(runtimeRoot, 'launcher.mjs', files.find(v => v.path === 'scripts/service-supervisor-launcher.mjs').bytes, {immutable: false});
     const pointer = {schemaVersion: 'service-supervisor-pointer/v1', sourceRevision, release, manifestSha256, configSha256};
     await journal.append('installation_prepared', {sourceRevision, release, configSha256, previousPointerSha256: prior ? digest(prior) : null}, now, lease);

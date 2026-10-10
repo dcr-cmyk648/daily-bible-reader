@@ -10,7 +10,7 @@ import {loadLatestHenryReading} from './mhc-library-sync.mjs';
 import {digestObject} from './mhc-v2.mjs';
 
 export async function verifyCurrentPublicationApproval(ctx,transaction,dependencies={}) {
-  if(transaction.kind!=='reading')return null;
+  if(!['reading','daily_henry_binding'].includes(transaction.kind))return null;
   const started=performance.now(),reference=transaction.approval;
   if(!reference?.path||!/^[a-f0-9]{64}$/.test(reference.sha256||''))throw fault('SUPERVISOR_APPROVAL_REQUIRED');
   const raw=await readFile(await confined(ctx.projectRoot,reference.path,false));
@@ -19,7 +19,7 @@ export async function verifyCurrentPublicationApproval(ctx,transaction,dependenc
   if(transaction.component==='henry') {
     const job=await (dependencies.loadHenryJob||loadJob)(await confined(ctx.projectRoot,`private-content/automation/mhc-v2/${id}`,false));
     const approvedSha256=digestObject(approval);
-    if(job.state.phase!=='publishing'||job.state.blocker||job.state.review?.approved_sha256!==approvedSha256||
+    if(!(transaction.kind==='daily_henry_binding'?['publishing','published'].includes(job.state.phase):job.state.phase==='publishing')||job.state.blocker||job.state.review?.approved_sha256!==approvedSha256||
       job.state.review?.review_basis_sha256!==approval.review_basis_sha256||job.input.input_sha256!==approval.input_sha256||
       job.input.reading_id!==id||approval.reading_id!==id||approval.schema_version!=='mhc-evidence-approved/v2'||approval.review?.status!=='approved')
       throw fault('SUPERVISOR_CURRENT_HENRY_APPROVAL_CHANGED');
@@ -43,7 +43,7 @@ export async function verifyCurrentPublicationApproval(ctx,transaction,dependenc
       transaction.approvalAuthority?.libraryReadingSha256&&transaction.approvalAuthority.libraryReadingSha256!==library.artifactSha256)
       throw fault('SUPERVISOR_CURRENT_HENRY_LIBRARY_CHANGED');
     return {kind:'henry_native',approvedSha256,inputSha256:job.input.input_sha256,reviewBasisSha256:approval.review_basis_sha256,
-      libraryReadingSha256:library.artifactSha256,elapsedMs:Math.ceil(performance.now()-started)};
+      libraryReadingSha256:library.artifactSha256,runtimeSha256:library.runtimes.map(digestObject),elapsedMs:Math.ceil(performance.now()-started)};
   }
   if(transaction.component!=='daily'||approval.schemaVersion!=='supervisor-editorial-approval/v1')throw fault('SUPERVISOR_DAILY_APPROVAL_INVALID');
   const events=await (await openJournal(ctx.stateRoot)).load();
@@ -57,6 +57,23 @@ export async function verifyCurrentPublicationApproval(ctx,transaction,dependenc
     !/^[a-f0-9]{64}$/.test(job.research.sha256||''))throw fault('SUPERVISOR_DAILY_SOURCE_EVIDENCE_REQUIRED');
   const evidence=await readFile(await confined(ctx.projectRoot,job.research.path,false));
   if(digest(evidence)!==job.research.sha256)throw fault('SUPERVISOR_DAILY_SOURCE_EVIDENCE_CHANGED');
+  let henry=null;
+  if(job.henryApproval) {
+    if(!job.henryApproval.path.startsWith(`private-content/automation/mhc-v2/${id}/approved/`))throw fault('SUPERVISOR_DAILY_HENRY_APPROVAL_CHANGED');
+    henry=await verifyCurrentPublicationApproval(ctx,{kind:'daily_henry_binding',component:'henry',readingId:id,
+      approval:job.henryApproval,approvalAuthority:{libraryReadingSha256:job.henryApproval.libraryReadingSha256}},dependencies);
+    if(henry.inputSha256!==job.henryApproval.inputSha256||henry.approvedSha256!==job.henryApproval.approvedSha256)
+      throw fault('SUPERVISOR_DAILY_HENRY_APPROVAL_CHANGED');
+    if(!job.draft?.inputRoot||!job.draft.metadataPath)throw fault('SUPERVISOR_DAILY_HENRY_APPROVAL_CHANGED');
+    const staged=await readFile(await confined(job.draft.inputRoot,job.draft.metadataPath,false));
+    if(digest(staged)!==job.metadataSha256)throw fault('SUPERVISOR_DAILY_INPUT_CHANGED');
+    const metadata=JSON.parse(staged),runtimes=metadata.verseCommentaries||(metadata.verseCommentary?[metadata.verseCommentary]:[]);
+    if(!isDeepStrictEqual(runtimes.map(digestObject),henry.runtimeSha256)||metadata.henrySourceLink)
+      throw fault('SUPERVISOR_DAILY_HENRY_ATTACHMENT_CHANGED');
+  } else if(['C','D'].includes(ctx.config.stage)) {
+    const {plan}=await loadHenryPlan(ctx.releaseRoot);
+    if(plan.entries.find(e=>e.readingId===id)?.kind==='chapter')throw fault('SUPERVISOR_DAILY_HENRY_APPROVAL_REQUIRED');
+  }
   return {kind:'daily_job',approvedSha256:reference.sha256,authorSessionId:job.authorSessionId,reviewerSessionId:job.reviewerSessionId,
-    currentStateSha256:record.sha256,elapsedMs:Math.ceil(performance.now()-started)};
+    currentStateSha256:record.sha256,...(henry?{henry}:{}),elapsedMs:Math.ceil(performance.now()-started)};
 }

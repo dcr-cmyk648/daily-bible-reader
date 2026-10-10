@@ -34,7 +34,7 @@ function verifyMetadata(value, expected) {
 }
 function requireResources(ctx) {
   const resources = ctx.config.publicationResources;
-  if (ctx.config.stage !== 'B' || !resources || !validId(resources.manifest?.fileId) || !validId(resources.folder?.fileId)) throw fault('SUPERVISOR_PUBLICATION_CONFIG_INVALID');
+  if (!['B','C','D'].includes(ctx.config.stage) || !resources || !validId(resources.manifest?.fileId) || !validId(resources.folder?.fileId)) throw fault('SUPERVISOR_PUBLICATION_CONFIG_INVALID');
   return resources;
 }
 function states(events) {
@@ -53,11 +53,13 @@ async function save(journal, lease, transaction, now) {
   await journal.append('publication_state', {transaction}, now, lease);
 }
 function publicResult(t) {
-  return {schemaVersion:'service-supervisor-publication-result/v1', transactionId:t.id, role:t.role,
+  return {schemaVersion:'service-supervisor-publication-result/v1', transactionId:t.id, role:t.role,sourceRevision:t.sourceRevision,
     readingId:t.readingId, kind:t.kind, component:t.component, outcome:t.phase,
     code:t.code||null, published:t.phase==='complete' && t.kind==='reading',
     manifestDelivered: Boolean(t.manifestReadback), heartbeatStored:Boolean(t.manifestReadback),
-    heartbeatDelivered:t.phase==='complete'&&t.readerVisible===true, readerVisible:t.readerVisible===true};
+    heartbeatDelivered:t.phase==='complete'&&t.readerVisible===true, readerVisible:t.readerVisible===true,
+    ...(t.workCompletion?{wakeId:t.workCompletion.wakeId,runComplete:t.phase==='complete',
+      workOutcome:t.workCompletion.outcome,workCode:t.workCompletion.code}:{} )};
 }
 async function op(ctx, journal, lease, t, purpose, tool, args, now, details={}) {
   if(t.ordinal>=32)throw fault('SUPERVISOR_CONNECTOR_BUDGET_EXHAUSTED');
@@ -143,9 +145,12 @@ async function uploadNext(ctx,journal,lease,t,now) {
     parent_folder_id:requireResources(ctx).folder.fileId},now,{expectedSha256:artifact.sha256,expectedBytes:artifact.bytes,write:true});
 }
 
-export async function beginPublication(ctx,{role,request=null,heartbeat=null,now=new Date()},dependencies={}) {
+export async function beginPublication(ctx,{role,request=null,heartbeat=null,workCompletion=null,now=new Date()},dependencies={}) {
   const resources=requireResources(ctx);
   if(!['preparation','review-audit'].includes(role))throw fault('SUPERVISOR_ROLE_INVALID');
+  if(workCompletion&&(request||!['C','D'].includes(ctx.config.stage)||!/^[a-f0-9]{32}$/.test(workCompletion.wakeId||'')||
+    !['complete','checkpointed','blocked'].includes(workCompletion.outcome)||
+    workCompletion.code!==null&&safeCode(workCompletion.code)!==workCompletion.code))throw fault('SUPERVISOR_WAKE_BINDING_CHANGED');
   const journal=await openJournal(ctx.stateRoot),lease=await journal.acquire('publication',{now,durationMs:10*60*1000});
   try {
     const previous=[...states(await journal.load()).values()];
@@ -154,6 +159,7 @@ export async function beginPublication(ctx,{role,request=null,heartbeat=null,now
       t.component===request.component&&t.approval?.sha256===request.approvalSha256))throw fault('SUPERVISOR_PUBLICATION_BLOCK_RETAINED');
     const id=token(),t={id,role,kind:request?'reading':'status',readingId:request?.readingId||null,component:request?.component||null,
       sourceRevision:ctx.config.sourceRevision,phase:'active',ordinal:0,index:0,rebases:0,artifacts:[],operation:null,code:null};
+    if(workCompletion)t.workCompletion={wakeId:workCompletion.wakeId,outcome:workCompletion.outcome,code:workCompletion.code};
     const original=await readFile(await confined(ctx.projectRoot,'private-content/private-manifest.json',false));checkManifest(parsed(original));
     t.original=await rawArtifact(ctx,t,'original',original);
     if(request) {
@@ -324,7 +330,7 @@ async function finishHealth(ctx,journal,lease,t,now,dependencies) {
   // An exact raw manifest is published before health. Failure leaves an honest
   // verification debt; it never rolls a newer remote pointer back to old bytes.
   try {
-    await currentApproval(ctx,t,dependencies);
+    const approvalAuthority=await currentApproval(ctx,t,dependencies);
     const proof=await (dependencies.health||defaultHealth)(ctx,t,now),{plan,appConfig}=await checkScope(ctx,t,now);
     measuredBuffer(plan,appConfig,proof.health,now);
     const expected=parsed(await readFile(await confined(ctx.stateRoot,t.candidate.path,false))).preparationStatus;
@@ -332,7 +338,7 @@ async function finishHealth(ctx,journal,lease,t,now,dependencies) {
     const actualStatus=core.preparationServiceStatus({preparationStatus:proof.preparationStatus},{authorId:'dustin'});
     const visible=Boolean(expectedStatus)&&equal(actualStatus,expectedStatus);
     if(t.kind==='reading'&&(proof.named?.readingId!==t.readingId||proof.named.status!=='ready'||
-      t.component==='henry'&&proof.named.henryLayerStatus!=='complete'))throw fault('SUPERVISOR_NAMED_HEALTH_FAILED');
+      (t.component==='henry'||approvalAuthority?.henry)&&proof.named.henryLayerStatus!=='complete'))throw fault('SUPERVISOR_NAMED_HEALTH_FAILED');
     if(t.kind==='reading') {
       const metadata=parsed(await readFile(await confined(ctx.stateRoot,t.artifacts.find(a=>a.slot==='metadata').snapshot,false)));
       const binding={contentSha256:metadata.generation?.contentHash,commentaryVersion:metadata.commentaryVersion,
@@ -354,6 +360,20 @@ async function finishHealth(ctx,journal,lease,t,now,dependencies) {
         payloadSha256:metadata.sha256,transactionId:t.id,healthSha256:t.health.sha256,verifiedAt:new Date(now).toISOString()};
       await durableWrite(ctx.stateRoot,`publications/${t.id}/publication-receipt.json`,jsonBytes(receipt));
       if(t.component==='henry')await durableWrite(ctx.projectRoot,`private-content/automation/staging/${t.readingId}/manager-publication-result.json`,jsonBytes(receipt),{immutable:false});
+      if(t.component==='daily'&&approvalAuthority?.henry&&proof.named.henryLayerStatus==='complete') {
+        const nativeReceipt={...receipt,schemaVersion:'mhc-manager-publication-result/v1',publicationComponent:'daily',
+          approvedSha256:approvalAuthority.henry.approvedSha256,inputSha256:approvalAuthority.henry.inputSha256};
+        await durableWrite(ctx.projectRoot,`private-content/automation/staging/${t.readingId}/manager-publication-result.json`,jsonBytes(nativeReceipt),{immutable:false});
+        if(dependencies.reconcileDailyHenry)await dependencies.reconcileDailyHenry(ctx,t,nativeReceipt,now);
+        else {
+          const {verifiedHenryContext}=await import('./service-supervisor-henry.mjs'),binding=await verifiedHenryContext(ctx);
+          await binding.runner.withRunnerLock(binding.native,()=>binding.service.reviewWorkOrderV2(binding.native,now));
+          const {loadJob}=await import('./mhc-v2-store.mjs'),nativeJob=await loadJob(await confined(binding.native.jobRoot,t.readingId,false));
+          if(nativeJob.state.phase!=='published')throw fault('SUPERVISOR_DAILY_HENRY_RECONCILIATION_PENDING');
+        }
+        await journal.append('daily_henry_publication_verified',{transactionId:t.id,readingId:t.readingId,receiptSha256:digest(jsonBytes(nativeReceipt)),
+          approvedSha256:approvalAuthority.henry.approvedSha256,inputSha256:approvalAuthority.henry.inputSha256},now,lease);
+      }
     }
     await save(journal,lease,t,now);return publicResult(t);
   } catch(e) {t.phase='health_pending';t.code=safeCode(e.code||'SUPERVISOR_LIVE_HEALTH_FAILED');await save(journal,lease,t,now);return publicResult(t);}

@@ -1,0 +1,1050 @@
+# Project state archive — September 2026 and prior checkpoints
+
+This file preserves the full prior `PROJECT_STATE.md` snapshot from the `origin/main`
+base used for the October 10 recovery work. It includes resolved incidents and older
+operational checkpoints for audit continuity. The current status and active sequencing
+are maintained in the root `PROJECT_STATE.md`; consult `docs/SERVICE_AUTHORITY.md` and
+current work orders for present authority. Archived status statements are historical.
+
+---
+## Highlight popup cleanup — October 1, 2026
+
+Removed the routine shared-color explanation below verse highlights. The empty
+status element now occupies no space, and the highlight list's paragraph margin
+is reset so the action follows at a compact, consistent distance. Saving,
+connection and error messages retain their live status region. This is a
+frontend-only change; preparation, private content and backend contracts are
+unchanged. The local fabricated-reader popup was visually checked.
+
+# Project state
+
+## September 24 recovery in progress
+
+The user explicitly authorized the prepared Matthew metric correction, code
+delivery/runtime installation, recovery through actual T+7, visible preparation
+warnings and fewer routine approvals. The candidate preserves the September 20
+commentary-retry release and corrects Matthew 2/22/26 numeric counts. A direct
+manifest-prefix home warning no longer waits for background content downloads;
+owner-only private operational notices can show a red specific approval block.
+See `docs/SERVICE_AUTHORITY.md`. Release and publication remain in progress;
+this paragraph is not a readiness or deployment claim.
+
+## Commentary refresh recovery — September 20, 2026
+
+The reader now retries a transient open-reading commentary check after 5, 15 and
+30 seconds, with a limit of three automatic retries. Concurrent checks share one
+request. Leaving the reading or losing access cancels its work; a hidden reader
+pauses queued retries and checks again on resume. Integrity/content errors do not
+become transport retries. A separate indicator under the reading title reports
+the last successful commentary check, pending recovery or an unresolved failure,
+with a direct Retry commentary control. Discussion synchronization cannot replace
+that indicator. The element is created by the application code so retained PWA
+HTML remains compatible.
+
+Mobile browser fault injection exposed an additional race during this change:
+an earlier background download could arrive after a failed newer check, report
+itself as fresh and cancel the new retry. Every private-reading request now has an
+in-memory per-reading identity. Superseded responses cannot replace newer accepted
+content or confirm its freshness, and credential/cache resets invalidate pending
+downloads. This changes no IndexedDB schema, stored record format, retention
+policy, authentication, RPC contract, service-worker logic or Apps Script backend.
+
+The final local release gate passed **459 tests**, including 13 behavioral refresh
+regressions, source/private/schema/safety checks, all builds and exact immutable
+asset checks. Frontend `e5afc23ca3f9e514` and PWA `438d40c45f87e726` preserve
+all prior published releases. A 390-pixel authenticated candidate-browser check
+started with simulated missing Psalm 1 Henry, failed the update request, completed
+a fabricated discussion refresh, and then recovered all six Henry verse popups
+automatically without another user action. The warning remained visible until
+the fresh payload arrived, with no page errors or horizontal overflow. Private
+diagnostic evidence is under ignored automation staging; no discussion content
+was read or live private content changed.
+
+The ordinary devotional and Henry service runtimes remain pinned to their accepted
+`3b300b2` release. This is a reader-only delivery change; it does not require
+repinning those independent preparation services. September 20–27 preparation
+and today's published Psalm 1 layer were verified in the preceding recovery;
+older partial-horizon paragraphs below are historical.
+
+## Publication isolation repair — September 20, 2026
+
+Today's Psalm 1 Henry layer had already completed authoring and review, but every
+publisher stopped because an unrelated unpublished Matthew 1 pair remained in the
+shared bridge directory. Reconciliation selected 45 published readings while strict
+directory validation saw 46 pairs. The pending approved registry upload has now
+completed; Matthew 1 is live and its named-reading health is ready. Psalm 1's exact
+approved layer has also been published with immutable metadata, exact-byte manifest
+readback, and live ready/Henry-complete verification. The controller received the
+genuine publication receipt. This is verified recovery, not yet an unattended trial.
+
+The repair adds a separate exact manifest-backed content snapshot for initial daily
+audits and Henry publication. It preserves pending drafts without admitting them,
+retains the strict candidate validator, and fails for missing/corrupt published
+inputs, manifest gaps, or an unreconciled plan. The full-check wrapper invokes the
+existing complete check sequence. Regression tests reproduce the interrupted-draft
+case and exercise the real validator's rejection of corrupt admitted metadata.
+
+The preparation buffer currently reaches September 22; recovery through actual
+Detroit T+7 (September 27) is ongoing. Do not infer full-horizon readiness from
+today's Henry repair or these tests. Release installation and scheduled proof are
+recorded separately after their actual completion.
+
+## Cortan Henry runner repair — 2026-09-12
+
+The dedicated Henry repair is implemented and validated in the isolated `a25e/BibleApp` worktree at base `c960e12`; it is not committed, pushed, installed in the canonical project, or activated. The canonical checkout and its six migration edits, the dirty migration snapshot, original unfinished implementation, real private content, reviewed library artifacts, historical leases, and daily devotional automation were not modified. Henry automations remain paused.
+
+The installed Windows entry now avoids per-wake Git/bootstrap operations, installs exact committed blobs with checksum-bound pointer-last activation, and uses native Node/PowerShell invocation. Ledger-based recovery covers staging interruptions, complete readings without checkpoints, terminal candidate failure, and superseded leases. One-reading pinning, cross-chapter Spark continuation, three distinct candidate attempts, crash-safe 48-submit accounting, 16-chunk/45-minute leasing limits, the 60-minute authoring deadline, exact model routing, and canonical path/junction checks preserve the independent review/publication boundary.
+
+Final validation: `npm.cmd run check` passed all **355 tests**, 42 schemas, repository/source/content gates, all builds, and exact Pages verification. Both installed real-controller integration tests completed 15 fabricated chunks through admission, ledger, assembly, and actual reviewer discovery; no model or network was used. `npm.cmd run publish:pages` reproduced unchanged frontend `d35abd879455dc50` and PWA `a3cde99646bb00aa`, then exact verification passed. Ignored real-content validation was explicitly skipped because this isolated worktree contains no real drafts; the recorded canonical migration validation was not rerun. Test subprocesses required explicitly approved execution outside the Windows sandbox after `spawn EPERM`.
+
+The source fingerprints and precise gates are in `docs/validation/henry-windows-repair-20260912.json`; the detailed recovery/capacity evidence is in `docs/execplans/henry-deterministic-runner-throughput.md`, and the concrete release/activation sequence is in `docs/HENRY_WINDOWS_ACTIVATION.md`. Next: obtain explicit approval for this reviewed code-only commit/push, install the exact accepted revision, separately resolve historical operational path/lease ownership, and obtain Henry activation approval. A naturally authorized exact-model reading and a naturally scheduled wake remain necessary before claiming unattended reliability; no real Henry material was generated as a smoke test.
+
+---
+
+Updated 2026-09-10 (`America/Detroit`).
+
+The September 10 daily lane completed the Celebration-to-long-term crossover and is live through Detroit T+7, September 17. D091/Malachi 3, D092/Malachi 4, the Genesis introduction, and Genesis 1 were independently researched where required, reviewed, validated, and published content-first with the existing private manifest updated last. The private prefix now contains exactly 41 contiguous active-calendar readings. Exact payload and manifest readback, unchanged narrow sharing, named-reading health, and the full authenticated eight-reading health gate all passed. The current chapter horizon has 0 complete, 7 verified-fallback debts, and 0 unavailable Matthew Henry layers; that debt remains assigned to the independent native lane.
+
+This run's single permitted historical protocol refresh advanced D071/Zechariah 3 to `daily-study-protocol/v1` while preserving its stable reading ID, prior versions, comments/highlights compatibility, and approved checksum-bound Henry layer. D070/Zechariah 2 is the next deterministic protocol-refresh candidate and was intentionally not processed in the same run. The additive private source registry is version 41 with 315 sources; the private review bundle contains 85 files and no Scripture or credentials.
+
+The crossover support release makes the rolling evaluator and protocol backfill follow active-calendar `dayIndex`, allows only a terminal book introduction in a prepared-prefix validation context, recognizes the verified full book-introduction Henry fallback, batches authenticated live-health payloads to stay within the transport limit, and prevents factual schedule provenance from being mistaken for commentary citations. The corrected token backend is immutable version 32; its downloaded four-file bundle matched exactly, project HEAD was restored to the accessing-user hybrid bundle, and both rollback deployments remain pinned to version 23. The release gate passes repository safety over 394 files, 38 schemas, all private/source/content validators, 342/342 tests, every build, exact Pages verification, and a fabricated 390×844 browser smoke with Genesis introduction and Genesis 1 prepared, Genesis 2 locked, no horizontal overflow, and no browser warnings or errors. Commit `eeb2014` is on `main`; GitHub safety/test run `34468093906` and Pages deployment `34468093073` passed. All 12 current live files for frontend `d35abd879455dc50` and PWA `a3cde99646bb00aa` match committed bytes and expected MIME types, and the live 390×844 shell loads the exact PWA client with no overflow or browser warnings/errors. Because the backend contract and immutable token deployment changed, the release still needs the installed-iPhone cold-launch, close/reopen, calendar, one-Scripture-open, and one-write acceptance check; version 23 remains available throughout that external gate.
+
+The user explicitly approved committing and pushing the combined Henry reliability repair on September 9. The release includes guarded canonical candidate-save paths, the complete nested candidate schema and coherent packet v2, successful same-slot Spark progress handling, one model-bound Luna fallback after exhausted Spark candidate admission, and daily-study preparation independent of Henry generation debt. Primary review accepted the complete diff against `55ea966`; existing gates pass 333/333 tests, every validator, repository safety, all builds, and exact Pages verification. The real exact-Luna-low four-verse proof remains valid. The saved daily, Spark, and Luna automations already fetch their tracked prompts from `origin/main`, so this code release requires no automation-definition or app-backend change. The public frontend and PWA assets remain unchanged, and the separate private review/publication gates remain in force.
+
+The September 9 06:17 Detroit supervisory pass found one complete recovery and two new blockers. The 05:27 Luna lane resumed D087/September 10 and validated its bounded chunk on the third distinct submit; assembly correctly remains `reading_incomplete`, with no review or publication and the prior manifest live. The 05:15 Spark lane stopped before selection at `controller / NATIVE_AUTOMATION_BLOCKED_BY_HOST_POLICY`; this is neither model failure nor Luna eligibility. The 03:14 daily lane selected D091/September 14 but let legacy Henry candidate admission block the entire study at `generation / SPARK_CANDIDATE_ADMISSION_FAILED`, leaving readiness live only through D090/September 13. The reviewer remains a healthy `completion / completed` manifest-backed no-op.
+
+The accepted local milestone now restores the intended lane separation. Daily T+7 preparation no longer invokes or waits for Henry generation; it may publish a fully reviewed study with a checksum-bound approved Henry layer or a verified full-commentary link whose existing health fields continue to expose Henry debt to the independent native lanes. Generated-candidate admission exhaustion is model-bound and admits exactly one Luna-low attempt, while controller/bootstrap/host-policy failures remain non-fallback and cannot be blamed on Luna. The combined repair passes 118/118 focused tests and the full repository gate: safety over 388 files, every validator, 333/333 tests, all builds, exact Pages verification, deterministic unchanged Pages publication, and `git diff --check`. No private state, manifest, review, publication, deployment, commit, or push changed. Release still requires explicit commit/push approval.
+
+The September 9 00:15 Detroit supervisory pass separated the visible Luna warning from model availability. The 23:15 Spark lane selected D087/September 10 and validated its first bounded chunk after both permitted repairs; `reading_incomplete` is normal multi-chunk progress and the prior manifest remains live. The paired 23:25 Luna lane stopped before generation with `pre_work_item / BRIDGE_SCOPE_LIMIT` because Codex injected the saved project's obsolete August `AGENTS.md` before the automation entered its clean fetched-main worktree. Luna itself was available. The canonical saved-project instruction was reconciled locally to the current D054-D092 factual-calendar and current-through-T+7 preparation policy without touching its unrelated dirty application files. The 23:45 review lane was a correct manifest-backed no-op. D091/September 14 remains the daily lane's non-green work order; its next 03:00 run had not yet been missed at this supervisory checkpoint.
+
+The combined unreleased repair also closes a controller race exposed by that pair: successful Spark progress in a scheduled slot now reserves the next chunk for the next Spark slot instead of being misclassified as a missed primary ten minutes later. Explicit Spark model failure and genuinely missed or stale slots still admit the single Luna-low fallback. The complete Luna persistence/schema/packet repair plus this slot fix passes 45/45 focused native tests, 333/333 repository tests, every schema/source/private validator, repository safety over 388 files, all builds, exact Pages verification, and `git diff --check`. `npm run publish:pages` reproduced the unchanged public frontend `c20dfa1a2c7392c9` and PWA `c2681bc6c65b8220`; nothing was deployed or pushed. The validated changes remain local pending explicit commit/push approval, which is required before scheduled jobs that fetch `origin/main` can use them.
+
+The September 8 Luna incident diagnosis found an upstream cause missing from the earlier empty-output report: the 17:25 worker drafted a substantive four-verse D086 candidate, its approved save through an isolated-worktree private-store symlink failed, and it then replaced that draft with an empty shell. The supplied schema also omitted required nested fact fields, while the packet concatenated conflicting standalone Spark-only stage instructions. The local repair now reports guarded canonical candidate/diagnostics paths, supplies the complete nested schema and a fabricated example, and renders one model-neutral `mhc-native-candidate-packet/v2` contract. Save/readback failures retain the complete draft and are classified separately from model-validation attempts. The packet overlay is versioned and checksum-recorded without replacing source/work-item bindings, active leases, rejected attempts, or prior staged content.
+
+This repair has operational proof, not only controller tests: exact `gpt-5.6-luna` at low reasoning generated the formerly failing D086 verses 1–4 in an independent private snapshot. Two exact-snippet mismatches were repaired within the existing three-submit budget; final submit returned `validated`, staged all four fact briefs and four verse drafts, and preserved the candidate prose exactly. The snapshot manifest remains byte-identical to the canonical manifest. Focused tests pass 44/44, including a real CLI four-verse submission through a symlinked private store; `npm run check` passes repository safety, all validators, 332/332 tests, all builds, and exact Pages verification. This proves the repaired bounded generation path; it does not approve or publish the entire D086 chapter. The changes remain local pending explicit commit/push approval, so scheduled jobs that fetch `origin/main` do not yet receive them. See `docs/execplans/repair-luna-henry-save-and-contract.md` for evidence, isolation boundaries, and the exact release handoff.
+
+The September 8 17:15/17:25 Detroit pair confirmed that the direct Luna execution repair works: the fallback stayed on D086 and wrote `candidate.json` without launching a nested process. The candidate was nevertheless an empty structural shell, deterministic submission rejected it as `validation / NATIVE_CANDIDATE_INVALID`, and the scheduled lane incorrectly skipped both permitted repairs before recording `NATIVE_CANDIDATE_UNRESOLVED`. The prior manifest and verified fallback stayed live, and the 17:45 reviewer was a correct manifest-backed no-op. The controller now persists a private, content-free three-attempt ledger bound to the exact work item and active lease; rejects repeated candidate bytes; refuses terminal model failure before three distinct rejected submissions; and requires both remaining repair passes after a first failure. An interrupted one- or two-attempt cycle is resumed on its original authenticated lease before any later-slot selection or lease, while stale, terminal, forged, mismatched, conflicting, or ambiguous work fails closed. Both Spark and Luna contracts treat zero briefs, zero drafts, or missing requested verses as incomplete. `npm run check` passes repository safety over 385 files, all 38 schemas and private/source/content validators, 328/328 tests, every build, and exact Pages verification; `npm run publish:pages` reproduced the existing code-only frontend/PWA bytes, and the post-publication safety/verification gates pass. Commit `7a0db26` is on `main`; GitHub safety/test run `34287979753` and Pages deployment `34287978883` passed. D091/September 14 remains the next non-green T+7 daily work order; the next 03:00 daily run is expected to address it. A later paired Henry run is still required to confirm three-attempt repair behavior operationally.
+
+The September 8 11:25 Detroit Luna fallback run confirmed that durable Spark/Luna pairing now works but exposed one final execution-layer defect. Spark and Luna stayed on D086, yet the assigned Luna child unnecessarily launched a second nested Codex process; that nested process could not write its local state database, so the lane ended `generation / WORKER_UNAVAILABLE` before producing a candidate. The separate reviewer correctly found no handoff and left the prior fallback and manifest unchanged. The tracked Luna scheduled and worker prompts now make the assigned exact Luna-low child the generation worker: it writes one `candidate.json` directly through ordinary repository editing, may repair it twice against the same lease, and may not invoke nested Codex, delegate again, or substitute Terra, Sol, Spark, or another model. A regression guards the complete direct-worker contract. Aggregate validation passes repository safety, every schema/content/source check, 323/323 tests, all builds, exact Pages verification, and `git diff --check`; no private artifact or live generation was touched. Commit `2a0a757` is on `main`; GitHub safety/test run `34250985497` and Pages deployment `34250984078` passed. The next paired run is the remaining operational confirmation.
+
+The September 8 supervisory run found three distinct automation-state defects behind the visible Luna warning. The daily lane correctly stopped before generation because the live manifest already contained D090 while the tracked prepared prefix ended at D089. The Spark lane selected D085 but could not build a bounded worker view because shared-range evidence was duplicated into every verse. The paired Luna lane then incorrectly reran the rotating selector, chose D086 instead of Spark's D085, and failed candidate validation; this was controller drift, not a Luna availability outage. The review lane independently recovered and correctly classified completed D084 as a manifest-backed no-op.
+
+The repair adds an exact manifest-to-tracked-prefix reconciliation command, reconciles the factual tracked prefix through D090, persists one checksum-bound reading selection for each Spark/Luna pair, records deterministic pre-work blocks so Luna cannot reinterpret them as missed Spark attempts, and compacts worker-visible evidence without clipping or weakening provenance. Candidate admission now proves that every cited source unit, atom, snippet, and evidence quote was visible in that verse's compact worker view. D085's real worker views fit the repaired bounds in a read-only probe, D091 is now the sole admitted next daily work order, and no private prose, manifest, Drive file, deployment, comment, highlight, Scripture text, secret, or sharing state changed. Aggregate validation passed repository safety, all schemas/content/source checks, 322/322 tests, all builds, and exact Pages verification. Commit `dbb0895` is on `main`; GitHub safety/test run `34218908909` and Pages deployment `34218907916` passed. Confirmation from the next scheduled daily and paired Henry runs is the remaining operational check.
+
+The tracked native scheduled-worker replacement is prepared in the isolated implementation worktree. It adds immutable private `mhc-native-work-item/v1` staging, a candidate contract that contains only the work-item ID/fact brief/verse drafts, deterministic validation and unreviewed staging, and a non-generating review handoff. Exact Spark-medium is primary; exact Luna-low is eligible only after a recorded Spark model failure or stale primary lease. No live automation definition, private manifest, content, or deployment changed during this implementation.
+
+The native admission follow-up binds every work item to its plan version and an unsuperseded matching ledger lease, records the actual missing Spark chunk on missed/stale transfers while Luna restarts from chunk one, and emits ordered per-chapter handoffs carrying the winning model, automation, source, and ledger-event bindings. Review preparation is isolated in ignored staging; an explicit approved all-assertions-true review is required before canonical runtime/audit/library mutation, and sync/metadata/content/Drive publication remain a later reviewer action. Tracked Spark/Luna/Terra/supervisor prompts are ready, but installing them and supervising one private candidate remains the required live-install step. Focused native tests, full `npm test`, repository safety, build, and diff check passed; no live automation, manifest, private content, or deployment changed.
+
+## Current phase
+
+The September 7 23:45 Detroit Henry review run exposed a completion-detection defect after the D084 repair: the reviewer treated the deliberately retained immutable review-handoff directory as pending work even though the exact reading was already finalized, attached, privately published, and live. It then attempted a second review and stopped on stale approval/source-copy bindings; the existing live manifest and reviewed Henry layer remained unchanged. A new deterministic read-only `mhc:native:review:work-order` command now classifies each retained handoff from its canonical transaction, checksum-bound library entry, local attachment, and private-manifest state before any source atoms are opened. Completed work is a no-op; approved-but-uncommitted work resumes apply; committed finalization, attachment, or publication debt routes to the corresponding recovery action; ambiguous or orphaned state fails closed. The real retained D084 handoff now reports `completed` with prior manifest state `manifest_backed`. Focused native/library tests pass 40/40 and repository safety passes over 380 files. Commit `fbcf239` is on `main`; GitHub safety/test run `34186433542` and Pages deployment `34186433053` passed. The next scheduled review confirmation is the remaining operational check.
+
+The September 7 supervisory repair confirms that Luna was available and completed the selected D084/James 4 Henry work; the failure occurred after generation. The approved canonical runtime and audit were not being materialized into the durable checksum-bound Henry library, so `mhc:sync-latest` could not attach the reviewed layer to the reading. Native review apply now performs a deterministic, idempotent library-finalization step only after its committed review transaction. A recovery-only `mhc:native:review:finalize` command safely completes older canonical-only transactions without regeneration. Commit `39d7828` is on `main`, both GitHub workflows passed, D084 was recovered without regeneration, its existing restricted Drive metadata file matched exact local bytes, and authenticated live health now reports its Henry layer complete.
+
+The same supervisory run found an independent daily-lane sequencing defect. After publishing one missing reading, the automation used the full current-through-T+7 live-health batch before preparing later gaps; the backend correctly rejected the still-missing later payload, and the automation incorrectly rolled back the reading it had just verified. The new `study:live-reading-health -- <readingId>` gate validates only the atomic reading just promoted, after which `study:next` may select the next gap. D090 has now been restored manifest-last after exact payload, access, parent, and manifest checks, and its authenticated exact-reading gate reports ready. D091/September 14 is the next legitimate T+7 gap; the full horizon remains non-green until that reading is prepared. The existing full `study:live-health` check remains mandatory once the work order reports no remaining gap. Focused tests pass 41/41, the full suite passes 313/313, repository safety passes over 378 files, and all builds pass. `npm run check` reaches only the known private-store inventory mismatch: 74 bridge files exist while the validator still expects the former 72-file prefix.
+
+The September 7 Henry-backfill automation split is live, and the second supervised failure exposed the remaining controller fault rather than a Luna outage. D079 and D080 both retained their verified fallbacks and prior manifest while the cooldown-aware queue advanced. The child command's `sqlite_home` override was discarded by `--ignore-user-config`; after that was corrected through explicit `CODEX_SQLITE_HOME`, each unique blank database still spent its entire two-minute bound rebuilding the host's 1,682-rollout, roughly 24 GB history. The accepted local repair seeds every unique child database with only the current schema, SQLx migration metadata, and a completed backfill marker—zero thread, rollout, project, prompt, or user-content rows—then deletes the exact `0700`/`0600` temporary state after close. Scheduled ensure now permits one Spark process and at most one eligible Luna-low process, with no hidden retries. Real fabricated controller probes returned valid Spark and Luna JSON in under five seconds; repository safety, content/source validation, all 277 tests, every build, and exact Pages verification pass. `npm run check` reaches only the pre-existing private-store count mismatch (74 staged bridge files versus the 72-file prepared prefix) and is otherwise green. The saved daily task still bootstraps from tracked `origin/main` at 3:00 a.m. Detroit time; the independent Henry task runs every six hours at quarter past, and the supervisory heartbeat checks both lanes an hour later. Tracked release and a real one-reading retry are next; no private artifact or manifest changed during diagnosis.
+
+The September 5 preparation run is live end to end through Detroit T+7. D089/Malachi 2 for September 12 was independently researched, reviewed, validated, and atomically published; its plan, app config, source registry, content, metadata, and manifest bindings matched exact Drive bytes, payload files remained owner-only, and the stable private manifest retained its parent and narrow owner/reader sharing. Exact Spark and the single permitted Luna-low retry both failed during Henry fact-chunk generation, so no partial condensation was admitted and the study retains a directly verified complete public-domain chapter-commentary fallback. The private prepared prefix now contains 36 contiguous readings through D089, `study:next` reports `horizon_ready`, and authenticated `study:live-health` returns all eight D082–D089 payloads with no missing records or component failures.
+
+D072/James 1 also received this run's single permitted historical protocol refresh. The stable reading ID, prior versions, comments/highlights compatibility, and approved checksum-bound 27-verse Henry layer were preserved; the broader study now carries `daily-study-protocol/v1`, exactly one included historical-context assessment, an evidence-bounded expanded dossier with a nearby bibliography, a direct research audit, and one achievable inward takeaway. New content and metadata files matched exact Drive bytes and owner-only access before the private manifest was updated last; the manifest then matched exact bytes, advanced one revision, and retained its file identity, parent, and narrow sharing. D071/Zechariah 3 is the next deterministic protocol-refresh candidate. The former ordering did not enter Henry-only work while protocol work remained; the current checked workflow now attempts at most one Henry fallback repair before the optional protocol refresh. Repository safety, source/private/content validation, 270/270 tests, all builds, and exact Pages artifact verification pass. The tracked prepared-prefix plan and testing allowlist are ready locally, but the required code-only Pages publication was denied by the execution approval layer; remote tracked release remains pending rather than being worked around.
+
+The separate-Henry-readiness milestone is live as a code-only release. Daily study readiness still treats a verified complete Henry source link as prepared, while `study:live-health` now reports `currentHorizonHenryLayer` only for chapter entries already fetched from the Detroit current-through-T+7 window. The authenticated live result now states both truths: all eight D082–D089 studies are ready, while all eight currently carry Henry fallback debt and none has a reviewed verse layer. Across the prepared prefix, D057–D078 have reviewed verse layers and D079–D089 retain verified full-source fallbacks. Once the primary T+7 lane is green, the recurring workflow attempts at most one of those fallback repairs before considering its optional protocol refresh; Spark runs once and Luna-low runs once only after an eligible Spark model-execution/no-output failure. A failed Henry attempt retains the fallback, leaves daily study ready, and does not suppress the protocol refresh. Prospective drafting guidance now states the best-supported point directly and confines disagreement in the main synthesis to named positions that materially change interpretation; lesser unresolved debates move to the expanded study, and existing studies remain unchanged. Repository safety inspected 351 files, every validator passed, all 272 tests passed, and immutable frontend `c20dfa1a2c7392c9` / PWA `c2681bc6c65b8220` match the current build. Commits `836c69a` and `7207fb4`, GitHub safety/test run `33987317570`, and Pages deployment `33987317194` are live; all eight changed HTTPS files matched committed bytes and MIME types. No controllable browser was connected for the routine deployed visual smoke. The generated Apps Script server is byte-identical, so no backend deployment was required.
+
+The September 4 app-visible preparation-horizon repair is live. Independent read-only checks found that the private Drive manifest and plan contain the exact 35-reading D054–D088 contiguous prefix, authenticated bootstrap exposes the same 35 prepared IDs, and the deployed backend returns all eight D081–D088 payloads required from the current Detroit day through T+7. Every returned payload passes the frontend's complete preparation validator. The visible short-horizon warning was therefore a client truth-boundary bug: the fast startup warmer intentionally fetched only today and tomorrow, then incorrectly rendered the seven-day readiness warning from that two-reading map before the complete authenticated window arrived. The priority warmer and retained offline cache can no longer establish publication readiness; only a successful authenticated full-window batch may update that warning. A new `study:live-health` command uses the existing ignored Dustin reader code without accepting or printing a token, requests the exact app-visible horizon, and applies the same validator; the active 3:00 a.m. scheduled workflow now requires that command before reporting success. The real live check reports 8/8 ready through September 11, `study:next` reports `horizon_ready`, repository safety passes, 270/270 tests pass, all validators/builds pass, and immutable Pages releases frontend `aa4ff7bbcd2dc4c1` / PWA `c34528a216b98fe9` verify exactly. Commit `283ec7c` is on `main`; GitHub safety/test run `33871873624` and Pages deployment `33871872401` passed, and all 12 live shell/release files returned HTTPS 200 with correct MIME types and exact committed bytes. A deployed mobile-width smoke loaded the new release with no console issue or horizontal overflow. No private content, Drive state, Apps Script code, authentication, comments, highlights, ESV configuration, or sharing changed. The installed-iPhone update/reopen warning check remains the final external gate.
+
+The September 4 preparation recovery is live end to end through Detroit T+7. D083/Zechariah 12, D084/James 4, D085/Zechariah 13, D086/Zechariah 14, D087/Psalms 148–150, and D088/Malachi 1 were independently researched, reviewed, validated, and published one reading and one manifest-last revision at a time. Exact Spark and the single permitted Luna-low retry both failed during fact-chunk generation for each reading, so no partial or invented Henry condensation was admitted; each study retains a verified complete public-domain commentary link. The private prepared prefix now contains 35 contiguous readings through September 11. Exact payload, plan, registry, config, and manifest readback; ordered plan/manifest-prefix equality; unchanged narrow sharing; and real authenticated bootstrap health passed after every promotion and in the repeated final horizon audit. D073/Zechariah 4 also received the one permitted historical protocol refresh: its stable ID, prior versions, comments/highlights compatibility, and approved checksum-bound Henry layer were preserved while a directly consulted Jewish interpretive witness, textual clarification, current protocol metadata, and the required historical assessment were added. That refresh likewise passed exact readback, manifest-last promotion, and authenticated bootstrap. D072 is the next deterministic protocol-refresh candidate and was not processed because this run's one-refresh cap is exhausted; Henry-only backfill remains gated until the protocol queue is empty. Repository safety inspected 337 files; all validators, 267/267 tests, every build, and exact Pages verification passed. Commit `6402d17` is on `main`; GitHub safety/test run `33857244978` and Pages deployment `33857243768` passed. Frontend `40476564f433ff33`, PWA `d9a55fa727bf4e5d`, and generated token backend `7e88eb0712b1b813` remained byte-identical, so no token Apps Script deployment update was necessary.
+
+The September 3 preparation repair established the controller and prefix-synchronization baseline used by the current run. The Henry controller resolves only the prepared prefix or its single exact next entry from the complete calendar after proving plan-version and prefix equality; it rejects skip-ahead, boundary-crossing, unknown, and mismatched requests. The active-prefix release keeps the rollback-compatible prepared plan and `testingReadingIds` synchronized and safely repairs the interrupted state in which the plan advanced but the allowlist did not. Commits `4a28592` and `2dc502d` are on `main`; frontend `40476564f433ff33`, PWA `d9a55fa727bf4e5d`, and the production Apps Script deployment remain the prior stable baseline.
+
+The September 3 calendar-preparation release makes the server's authoritative prepared-reading prefix visible without conflating readiness with completion. Every prepared scheduled date receives a faint sage surface and inset boundary; unprepared scheduled dates remain unfilled, the selected state remains stronger, today's blue boundary remains distinct, and Dustin/Shane's two colored dots still mean only that the named reader has commented. A matching swatch and plain-language legend make the distinction explicit, while each date's accessible label says `Study prepared` or `Study preparation pending`. The 390×844 smoke confirmed distinct prepared, pending, selected, and today treatments with no horizontal overflow. The private manifest now stops at D082/Zechariah 11 on September 5, so D083/Zechariah 12 on September 6 is the first unprepared study. The immutable code-only releases remain frontend `40476564f433ff33` and PWA `d9a55fa727bf4e5d`; readiness is still derived only from the authenticated manifest-backed prefix.
+
+The approved four-stream schedule is now active in the deployed calendar-continuation release. The factual calendar has 1,263 stable occurrences: the unchanged 39-day Celebration bridge through `CC-Y3Q4-D092` / Malachi 4 on September 15, followed by `LTP-0001-GEN-INTRO` on September 16 and `LTP-0002-GEN-001` on September 17, then the remaining approved schedule through January 21, 2030. The browser receives a compact 299 KB calendar rather than the source candidate's research rationale, and unprepared occurrences remain visible but unavailable. Existing comments, highlights, and completion events retain the compatibility plan namespace; a separate SHA-256 calendar revision invalidates the old 39-entry installed-phone bootstrap without clearing reader credentials or private reading caches. The private Drive plan remains the manifest-backed prepared prefix and has not been advanced or uploaded by this calendar-only release.
+
+The calendar-continuation release adds an exact active-prefix validator, a T+7-bounded exact-next prefix extension command, all 66 ESV book-name mappings, and day-index-based rolling preparation across the September 15/16 boundary. Commit `efac5ac2bfc2c5026242f1b3d49f4219feead92e` is live: GitHub safety/test run `33509027873` and Pages run `33509027172` succeeded. Immutable token backend version 30 is deployed; both accessing-user rollback deployments remain version 23. Version-30 token and restored-HEAD readbacks are exact, all listed live Pages assets match committed bytes and expected MIME types, and the public status GET succeeds. No authenticated HTTP bootstrap is claimed here. The authenticated browser/installed-iPhone update, reopen, and Sync gate remains the final external check.
+
+The September 2 Matthew Henry controller repair permits one Luna-low retry only after a Spark model-execution/no-output failure, preserving both attempt classifications and fingerprints. The schedule consumer records a per-passage verified-link-required outcome after two failed eligible model attempts, with no runtime records, portable-store entry, or durable Henry catalog readiness claim, so the independently researched study continues. The repository guard keeps generated-output schema/admission failures and every deterministic request, source, checksum, security, repository, review, and publication failure fail-closed. The repaired controller was exercised against D079/Zechariah 9: Spark and Luna-low each failed during fact-chunk generation, the complete CCEL Henry link remained the verified fallback, and the non-Henry study was independently refreshed and privately published as `CC-Y3Q4-D079-draft-v2`. Its current-protocol payload contains both the concise and expanded archaeological/historical layers. Exact payload, registry, and manifest Drive readback passed with unchanged narrow sharing; an authenticated live bootstrap and D079 payload read both succeeded. No app deployment, reader credential, ESV configuration, comment, highlight, or sharing rule changed.
+
+The private reader is operating as a pre-launch bridge based on Celebration Church's *Reading the Bible in 3 Years — Year 3 Quarter 4*. The installed GitHub Pages PWA is the phone-confirmed primary reader. Its separate owner-executed Apps Script bridge authenticates Dustin/Shane through the existing long reader codes and does not use Google OAuth/GIS. The token backend separately reports the complete active factual calendar and validated manifest-backed prepared prefix while partitioning individually over-limit chapters into compliant verse ranges. Both accessing-user rollback deployments remain pinned to version 23.
+
+The app has local-first startup, a selected-day-first home page followed by the dark full-month calendar, authoritative two-reader completion, exact selected-day verse wording for the current/next hot path, a seven-day-ahead preparation audit, three reading pages, policy-bounded ESV passage retention, source-grounded private commentary, append-only shared comments, and append-only shared verse highlights. A successful Scripture request goes directly from the ESV heading to the passage. Assignments over the ESV half-book display limit use chapter or verse-range tabs and never hold/display more than the provider-policy ceiling; an individually over-limit short-book chapter is divided into balanced contiguous ranges. The short commentary path is an uninterrupted executive synthesis; private claim markers remain auditable but are omitted from displayed prose, while the detailed synthesis retains visible numbered citations and its own nearby source list. Dustin and Shane have distinct highlight colors, may both mark the same verse, see server timestamps, and may remove only their own marks. Startup milestones are visible only in the local cache/build inspector and never leave the browser.
+
+The August 30 synchronization repair addresses the shared cause behind calendar, discussion/outbox, and highlight failures after a transient cached-shell authorization check. Every explicit shared-sync path now reuses the deduplicated authorization confirmation while the browser is online, retains local-only behavior when genuinely offline, and returns to the reader-code gate without overwriting it on an explicit denial. The optional highlight client also avoids unsupported replacement/focus calls, keeps an online reconnect action tappable, and snapshots verse/context state across awaited recovery before optimistic add/remove reconciliation. A fabricated 390×844 browser smoke opened James 2:1, added and removed the highlight, returned focus, and had no horizontal overflow or application exception. Repository safety inspected 303 files; 26 schemas, the factual schedule, and fabricated-only Scripture validation passed; 247/247 tests, every build, and exact Pages artifact verification passed. Code commit `ff0c758` passed GitHub safety/test run `33310882907` and Pages deployment `33310882428`; all 12 live shell/release files returned HTTPS 200 with expected MIME types and matched committed bytes exactly. The installed-iPhone reopen plus calendar/comment/highlight synchronization check remains the final external gate because client authorization recovery changed.
+
+The August 31 current-study repair separates a cached first paint from a genuinely offline browser and gives the open reading its own deduplicated authoritative revalidation. Opening retained content online now reports that the saved study is being checked, recovers reader-code access when necessary, fetches the manifest-backed payload, and rerenders Page 1 only when its commentary version/hash changed. Returning online, `pageshow`, and both visible Sync controls use that same path before discussion/outbox work; a transient failure keeps the saved reading usable and retryable, while an explicit denial still fails closed. Read-only Drive verification confirmed D077/Zechariah 7 already has distinct concise and expanded historical-context layers in its current manifest-backed v2 payload, so no private content or backend change was needed. An isolated 390×844 browser smoke replaced a fabricated stale D077 cache after connectivity returned, completed visible synchronization, logged no page error, and had no horizontal overflow. Repository safety inspected 308 files; all validators, 249/249 tests, both builds, and exact Pages artifact verification passed. Code commit `fc3dd08` passed GitHub safety/test run `33392197299` and Pages deployment `33392196777`; all 12 live shell/release files returned HTTPS 200 with expected MIME types and matched committed bytes exactly. Live code-only releases are frontend `81e02dcc477061b4` and PWA `3d946af577c6bd19`; Apps Script version 29, both version-23 rollback deployments, storage, authentication, and private content are unchanged. The installed-iPhone reopen and current-study synchronization check remains the final external gate because authentication recovery behavior changed.
+
+The August 31 false-offline recovery repair addresses the installed iPhone's remaining stale WebKit reachability hint. `navigator.onLine === false` is no longer allowed to suppress a bounded secure-access confirmation, open-reading revalidation, calendar/discussion/outbox synchronization, Home/resume work, or a manual highlight retry. Confirmation stays promise-deduplicated, failed automatic attempts use a 15-second cooldown, visible Sync and a verse-sheet retry may force one attempt, and explicit reader-code/access error codes survive the Pages shim to the fail-closed gate. The form bridge now yields one event turn after inserting its target iframe, and its 45-second transport timeout settles before the core's 50-second bound. A fabricated 390×844 browser smoke forced `navigator.onLine === false` while the bridge adapter remained reachable: exactly one confirmation ran, access became confirmed, the calendar synchronized, no page error occurred, and horizontal overflow was zero. Repository safety covered 313 files; all validators, 251/251 tests, both builds, and exact Pages verification passed. Code commit `a52322b` passed GitHub safety/test run `33397633499` and Pages deployment `33397632371`; all 12 live files for frontend `f08fa5a23afa3ea2` and PWA `2968fc2194622313` returned HTTPS 200 with expected MIME types and matched committed bytes exactly. Apps Script version 29, both version-23 rollback deployments, storage, authentication, and private content remain unchanged. The installed-iPhone update/reopen and authoritative reading synchronization check is the final external gate.
+
+The reopened August 31 WebKit transport repair follows the failed installed-phone gate for PWA `2968fc2194622313`. A live fabricated-code Chromium request completed the backend in about 2.4 seconds, isolating the remaining failure to the Safari form target. The former `iframe.hidden=true` response target mapped to `display:none`; WebKit's documented named-frame behavior can remove such a frame from the form-target collection. The target now remains rendered as a fixed one-pixel, offscreen, clipped, opacity-zero, pointer-inert, non-focusable iframe, and `frame-src`/`form-action` both admit only `script.google.com`, the bare `script.googleusercontent.com`, and generated Googleusercontent response hosts. Repository safety covered 314 files; all validators, 252/252 tests, both builds, exact Pages verification, and a 390×844 generated-PWA transport/layout smoke passed. Code commit `4a147c6` passed GitHub safety/test run `33399811628` and Pages deployment `33399810254`; all 12 live files for unchanged frontend `f08fa5a23afa3ea2` and PWA `ff1e8a6ddead3094` returned HTTPS 200, matched committed bytes and MIME types, and a live fabricated-code bridge probe completed in 2.6 seconds without a CSP violation. Apps Script version 29, rollback deployments, Drive/Sheet state, private content, reader codes, and cached device data remain unchanged. The installed-iPhone update/reopen and authoritative current-reading synchronization check remains the final gate.
+
+The authoritative August 31 sync diagnosis found that authentication was healthy: Dustin's retained reader code confirmed successfully, but `getBootstrapData` failed with `CONTENT_INVALID`. The private manifest contained 28 prepared readings through D081 while its referenced active rolling plan stopped at D079 with 26 entries, so the backend correctly rejected every calendar, comment, highlight, and payload route that reread private state. The validated 28-entry plan was restored in place; exact Drive readback now matches the manifest's D054–D081 order, and authenticated bootstrap, calendar activity, comments, highlights, and reading-payload reads all succeed. No reader hash, Apps Script version, Sheet permission, comment, or highlight changed. Frontend `3e0281c1ba2d501c` and PWA `41ea61216d032f66` keep cached data usable while distinguishing content-publication, discussion-store, transport, payload, and explicit-auth failures; cached-shell access becomes confirmed only after authoritative bootstrap succeeds, and a failed bootstrap starts no dependent background work. Repository safety covered 318 files, all validators passed, 254/254 tests and every build passed, and a fabricated 390×844 success/failure smoke had no error or overflow. Commit `8a246ba`, safety/test run `33405097351`, and Pages deployment `33405096738` passed; all 12 public files matched committed bytes and expected MIME types on the first check. The active daily automation now requires exact plan bytes, ordered plan/manifest-prefix equality, and authenticated bootstrap health around every manifest promotion. Only the installed-iPhone Sync gate remains pending.
+
+“Prepared” has one end-to-end meaning in the reader: reviewed/hash-bearing metadata, a substantive orientation, configured ESV passage, either a complete reviewed verse-by-verse Matthew Henry layer with exact cited public-domain atoms or a transparently labeled verified full-commentary link after an allowed Henry-controller failure, coherent main synthesis, verse of the day, practical takeaway, comprehensive synthesis, and traceable source records. The private prepared prefix is complete through D089/September 12, and every study in the live D082–D089 horizon carries the current protocol and paired historical-context layers. D057–D077 have complete reviewed Matthew Henry verse layers; D078–D089 retain verified complete-chapter public-domain fallbacks. Historical protocol refresh proceeds separately in deterministic most-recent-first order, with D071 next after the now-current D072 and D073 studies.
+
+The rolling automation contract audits every scheduled reading from the current Detroit day through T+7 and returns the earliest missing or stale record. Each work order still authorizes at most one end-to-end private publication; only exact Drive readback and authenticated bootstrap health permit reevaluation for the next bounded gap. In ordinary caught-up operation this remains the one newly entering T+7 reading. The complete calendar no longer grows during this lane. A separate rollback-compatible private prefix plan and its testing allowlist advance together only with the same newly prepared manifest reading; `planExtensionRequired` refers only to that private prefix, and an earlier gap is selected rather than skipped. The primary Codex task retains broad research, synthesis, editing, citation review, and publication. The active saved automation permits the strict Spark-first controller for Henry generation: a Spark model-execution/no-output failure can retry Luna-low once, while generated-output schema/admission and every deterministic source, checksum, controller, security, repository, review, and publication failure remain fail-closed. The device paints retained data immediately, then revalidates the manifest-backed current-through-T+7 subset and retains it under the existing policy boundaries. The private Drive manifest now contains the contiguous D054–D089 prefix.
+
+The tracked `daily-study-protocol/v1` now makes the paired archaeological/historical decision auditable: every current study must record `generation.contentProtocolVersion` and `componentAssessments.historicalContext`; `included` requires both distinct context layers, while `not_material` requires a rationale and neither layer. Legacy metadata is deliberately stale for readiness. The T+7 lane remains first priority. Only once it reports ready may the separate `study:protocol-backfill:next` work order select one already-read manifest-backed stale study, most-recent-first, for a complete primary-reviewed editorial refresh. That lane preserves stable reading IDs, comments/highlights, prior versions, the newest reviewed Henry layer or verified fallback, ESV exclusion, and content-first/manifest-last publication. It outranks the lower-priority Henry-only backfill. Zechariah 5/D074 is the first completed refresh: its v2 payload includes both historical-context layers, retains its reviewed Henry layer, advances source provenance, and was verified by exact Drive readback before manifest-last promotion. The remaining legacy studies will be reconsidered under the current protocol rather than receiving metadata-only version bumps.
+
+The current release gate passes repository safety, all content/source/private validators, 267/267 tests, every build, and exact Pages artifact verification. Private validation accepts 26 end-to-end prepared studies, 29 syntheses, and 214 registered sources with no stored Scripture. D074–D082 are current under the protocol. D082/Zechariah 11 was published with exact content, metadata, source-registry, plan, configuration, and manifest readback, unchanged narrow sharing, and successful authenticated bootstrap health. D083/Zechariah 12 is the next bounded horizon reading. The repaired controller makes one equivalent Spark model/process/no-output failure Luna-eligible once, while generated-output schema/admission remains fail-closed and the complete Henry source link remains available if both permitted model attempts fail.
+A reusable Matthew Henry preprocessing/controller path is implemented locally. CrossWire `MHC` 2.2 is hash-verified; normalized v3 units preserve indexed ranges while atomizing exact commentary paragraphs and excluding the module's embedded Scripture transcription from worker/runtime data. The current two-stage controller uses fact extractor v8 and writer v5, with bounded facts, exact source markers, protected agency, rejection of archaic/source-reporting prose, hash-bound review corrections, and exact atom citations. The private library's checksum-bound `current.json` is authoritative at every publication bundle: attached chapter layers are synchronized to the newest reviewed artifact, while corrupt pointers, checksum mismatches, absent readings, and an unreviewed newest artifact fail closed. D065's former verified full-source fallback was replaced by a completely reviewed 20-verse layer; D066 has 22 reviewed verses, D067 has 38 reviewed verses across Haggai 1–2, D068 has 18 reviewed verses, D069 has 21 reviewed verses, D070–D076 have durable primary-reviewed layers generated under the approved fallback policy, and D077 has a 14-verse exact-Spark layer approved after complete primary atom review. D078–D082 retain no generated or partial Henry layer; each complete CCEL chapter fallback is registered and directly verified.
+
+The approved long-term source remains the byte-unchanged deterministic v2 candidate: `four-stream-protestant-66-candidate-2026-09-16-v2` has 1,224 daily slots from 2026-09-16 through 2030-01-21, starts with the Genesis introduction and Genesis 1, and uses 66 immediate introduction/chapter-1 pairs. It retains 785 OT, 287 NT, and 151 Psalm logical contributions; Proverbs has its own introduction and 109 sequential within-chapter range contributions paired only with short Psalms. Every candidate entry exposes machine-readable stream contributions, every ordinary pair is at or below 20 raw verses, and the logical streams finish within 3 days. Its source schedule SHA-256 remains `79b9dfd88851fdf4e852490cae8ff9e9605af7c3a081309d96a94077a44d0be8`; the activated combined calendar has revision `24a3bba6883339e87fc91ec59f868642f094200e677b363c94999379ef2adb31`. Psalms remain canonical rather than speculatively relocated. Calendar activation does not prepare, publish, or claim readiness for any long-term study; permanent Drive resources and notes still advance one reviewed occurrence at a time under the existing T+7 workflow.
+
+## Active schedule
+
+The fixed shared start date is 2026-08-08 in `America/Detroit`; readers may look seven days ahead. The compiled calendar contains the 39 remaining Celebration assignments, D054–D092 (August 8–September 15), followed immediately by all 1,224 approved four-stream occurrences beginning September 16. Private content is a contiguous manifest-backed prefix through D082/September 5. Calendar visibility is independent of preparation: future long-term dates can be selected for inspection but cannot be opened until the exact prepared prefix and manifest reach them.
+
+| Bridge date | Stable reading ID | Source day | Passage | Content state |
+|---|---|---:|---|---|
+| Aug 8 | `CC-Y3Q4-D054` | 54 | Micah 3–4 | Full synthesis, `draft-v7`, in review |
+| Aug 9 | `CC-Y3Q4-D055` | 55 | Micah 5–7 | Full synthesis, `draft-v7`, in review |
+| Aug 10 | `CC-Y3Q4-D056` | 56 | 1 Peter 5 | Full synthesis, `draft-v8`; private Henry audit `in_review` |
+| Aug 11 | `CC-Y3Q4-D057` | 57 | Nahum 1 | Full multi-source synthesis plus 15-verse Henry layer live in private Drive, both `in_review` |
+| Aug 12 | `CC-Y3Q4-D058` | 58 | Nahum 2 | Full multi-source synthesis plus 13-verse Henry layer live in private Drive, both `in_review` |
+| Aug 13 | `CC-Y3Q4-D059` | 59 | Nahum 3 | Full synthesis plus reviewed 19-verse Henry layer |
+| Aug 14 | `CC-Y3Q4-D060` | 60 | Proverbs 31 | Full synthesis plus reviewed 31-verse Henry layer |
+| Aug 15 | `CC-Y3Q4-D061` | 61 | Habakkuk 1–3 | Full synthesis plus three reviewed Henry chapter layers |
+| Aug 16 | `CC-Y3Q4-D062` | 62 | 2 Peter 1 | Full synthesis plus reviewed 21-verse Henry layer |
+| Aug 17 | `CC-Y3Q4-D063` | 63 | Zephaniah 1 | Full synthesis plus reviewed 18-verse Henry layer |
+| Aug 18 | `CC-Y3Q4-D064` | 64 | Zephaniah 2 | Full synthesis plus reviewed 15-verse Henry layer |
+| Aug 19 | `CC-Y3Q4-D065` | 65 | Zephaniah 3 | Full synthesis plus reviewed 20-verse Henry layer |
+| Aug 20 | `CC-Y3Q4-D066` | 66 | 2 Peter 2 | Full synthesis plus reviewed 22-verse Henry layer |
+| Aug 21 | `CC-Y3Q4-D067` | 67 | Haggai 1–2 | Full synthesis plus two reviewed Henry chapter layers |
+| Aug 22 | `CC-Y3Q4-D068` | 68 | 2 Peter 3 | Full synthesis plus reviewed 18-verse Henry layer |
+| Aug 23 | `CC-Y3Q4-D069` | 69 | Zechariah 1 | Full synthesis plus reviewed 21-verse Henry layer |
+| Aug 24 | `CC-Y3Q4-D070` | 70 | Zechariah 2 | Full synthesis plus reviewed Henry layer |
+| Aug 25 | `CC-Y3Q4-D071` | 71 | Zechariah 3 | Full synthesis plus reviewed Henry layer |
+| Aug 26 | `CC-Y3Q4-D072` | 72 | James 1 | Full synthesis plus reviewed Henry layer |
+| Aug 27 | `CC-Y3Q4-D073` | 73 | Zechariah 4 | Full synthesis plus reviewed Henry layer |
+| Aug 28 | `CC-Y3Q4-D074` | 74 | Zechariah 5 | Full synthesis plus reviewed Henry layer |
+| Aug 29 | `CC-Y3Q4-D075` | 75 | Zechariah 6 | Protocol-current v2 synthesis plus reviewed Henry layer |
+| Aug 30 | `CC-Y3Q4-D076` | 76 | James 2 | Protocol-current v2 synthesis plus reviewed Henry layer |
+| Aug 31 | `CC-Y3Q4-D077` | 77 | Zechariah 7 | Protocol-current v2 synthesis plus reviewed 14-verse exact-Spark Henry layer |
+| Sep 1 | `CC-Y3Q4-D078` | 78 | Zechariah 8 | Full synthesis plus verified complete-chapter Matthew Henry fallback |
+| Sep 2 | `CC-Y3Q4-D079` | 79 | Zechariah 9 | Full synthesis plus verified complete-chapter Matthew Henry fallback |
+| Sep 3 | `CC-Y3Q4-D080` | 80 | James 3 | Full synthesis plus verified complete-chapter Matthew Henry fallback |
+| Sep 4 | `CC-Y3Q4-D081` | 81 | Zechariah 10 | Full synthesis plus verified complete-chapter Matthew Henry fallback |
+| Sep 5 | `CC-Y3Q4-D082` | 82 | Zechariah 11 | Full synthesis plus verified complete-chapter Matthew Henry fallback |
+
+The full source-day mapping remains factual metadata only; the active bridge uses its D054–D092 portion for calendar display. D083–D092 are scheduled but not yet prepared: they contain no generated commentary or stored ESV wording and remain visibly unavailable until the private preparation lane reaches them. The preserved Genesis calibration drafts are inactive.
+
+## Decisions in force
+
+- The phone-confirmed rollback remains an Apps Script HTML-service web app executing as the accessing user. Google identity, the exact two-user server allowlist, reader enrollment/code, and Drive permission must all succeed on that path; failures close access.
+- GitHub Pages is enabled from `main`. The Pages PWA contains only public shell code, icons, release metadata, and one necessarily public Apps Script web-app URL. Its owner-executed backend hashes the presented high-entropy reader code and derives exactly one of two fixed identities. Pages is never authorization, reader codes never enter Git or URLs, and OAuth/GIS is intentionally absent from this owner-approved two-person path.
+- Drive is canonical for the rollback-compatible private prepared-prefix plan, commentary, and source metadata. The complete non-sensitive factual calendar schedule is compiled from tracked code-only metadata. The restricted event spreadsheet has separate append-only `comment-events` and `highlight-events` tabs.
+- Reader identity, display name, IDs, timestamps, and revisions are server-derived. The client cannot select another user, Sheet, Drive file, passage, or redirect.
+- ESV is the only displayed translation. Each chapter or compliant verse range is fetched server-side through the official API. Eligible passage records may enter only the bounded IndexedDB store (500 verses total, half of a book, eight-day expiry, policy-version invalidation, eviction before write); ESV never enters Git, Drive, public builds, logs, exports, or a service-worker cache. Over-limit daily units use one displayed option at a time; a chapter that alone exceeds half its book is deterministically divided into balanced compliant verse ranges, with an exact ESV.org link for the active range and every unavailable warning.
+- Private commentary, source metadata, comment state, drafts, and the comment outbox may remain in IndexedDB for up to fourteen days, bounded by reader identity, plan, and content revisions. Eligible ESV passage records may remain for at most eight days under the independently enforced 500-verse and half-book ceilings; a short-book assignment may retain only one compliant chapter or verse range and stream the others through passage tabs. Comment writes cannot leave the device until current authorization succeeds. Highlight state is network-only and memory-resident for the open Scripture page.
+- Runtime AI remains disabled. Research, drafting, validation, review, and publication happen offline one reading at a time.
+- Optional per-verse Matthew Henry condensations travel inside the already-authorized private reading payload and are validated before display. Verse taps use only the already-loaded chapter shard; **Read Henry** may reveal exact cited public-domain commentary atoms while omitting the source module's embedded Scripture transcription. After both permitted model attempts fail, the payload may instead expose a validated credential-free HTTPS link to the complete public-domain chapter commentary, clearly labeled as a fallback and never presented as a generated condensation. The ignored current-window exchange store is checksum-addressed, contains no Scripture, and remains unpublished. No public asset, per-click model call, or runtime AI carries this commentary.
+- Commentary treats Scripture as true and divinely inspired, receives prophecy, miracle, divine action, and explicit attribution as the working presumption, and does not treat methodological naturalism as a neutral baseline.
+- Non-Christian critical work enters the synthesis only for a genuinely influential or materially important claim. Included counterpositions name traceable sources and state the evidence, strongest traditional explanation, and assessment concisely. Published prose never mentions prompts or editorial rules.
+- Prior-day continuity is useful when a reading strongly depends on its immediate context, but every displayed unit must still make sense within that day's Scripture.
+- The confirmed long-term plan begins 2026-09-16 in `America/Detroit`, immediately after D092/Malachi 4, and uses the 66-book Protestant canon. It will interweave OT outside Psalms/Proverbs, NT, Psalms, and Proverbs proportionally so all four finish together while preserving chronology and book contiguity as far as practical. The larger OT stream may run on consecutive days; the smaller NT stream generally will not. Sundays normally carry one Psalm-centered daily unit; selected short Psalms also carry a bounded sequential Proverbs range, while long Psalms stand alone. Every book introduction is its own daily unit and must be followed immediately by that book's chapter 1. The introduction's middle page contains the book overview instead of ESV text, and its verse-of-the-day reference is a famous or representative verse from that book. A combined wisdom day remains one focused daily study with two labeled exegetical movements and one takeaway.
+- Each prepared study may add archaeological/historical context only when meaningful. The concise H3 preview beneath the orientation sources and the separate expanded-study H3 dossier after Discussion/navigation are independently authored research layers, not two renderings of one section. The expanded layer must add substantial evidence and explanation under topical subheadings, distinguish direct evidence from inference, retain claim-level citations and its own bibliography, and remain hidden when legacy content has only a preview. Both layers are absent from Page 3. The research limits disputes to material questions, uses Wikipedia only for orientation/discovery, prefers stronger final sources, and does not import skeptical or anti-supernatural padding.
+- V2's exact stream/book order, canonical Psalm placement, deterministic Proverbs ranges, and 3-day finish spread are available for review. Editorial Proverbs range review, future-lock behavior, browsing horizon, recurring commentary length, and explicit activation still require approval.
+
+## Approved backlog and design candidates
+
+`docs/BACKLOG.md` is the canonical cross-feature index; this section records the immediate decisions that materially affect current implementation.
+
+- The selected-date card shows the validated **verse of the day** reference and exact ESV.org link above the open button. For current and next it resolves exact ESV wording from a live or valid bounded response and shows the required notice. The commentary metadata retains only the reference; wording never enters plan/commentary files, Cache Storage, Git, or Drive.
+- Use Matthew Henry's *Complete Commentary on the Whole Bible* as the default foundational commentary pass, then build outward with independent sources suited to the passage. The preferred exact research edition is CrossWire `MHC` version 2.2, explicitly marked public domain; preserve the normal edition, provenance, independence, and claim-level citation controls.
+- The installed Pages PWA passed Dustin's phone check and is the recommended path. It supplies deterministic shell launch, exact public-asset offline caching, the correct iOS icon/manifest, and explicit version updates; live Drive, Sheets, ESV, and writes still cross the Apps Script bridge. The discarded OAuth/API-executable prototype has been replaced by the approved reader-token bridge, so no Cloud project, OAuth client, consent screen, or billing setup remains.
+
+## Completed work
+
+- September 3 D082 recovery: repaired the Henry controller's prepared-prefix lookup, synchronized prepared-plan and testing-allowlist extension/recovery, and published the complete Zechariah 11 study through the established content-first/manifest-last lane. The study includes a standalone orientation, configured ESV reference, verse reference, coherent main synthesis, practical takeaway, nine-section deep study, paired historical-context layers, twelve consulted sources, and a verified complete Matthew Henry fallback after Spark and Luna-low each failed fact extraction. Exact private payload and manifest readback, unchanged narrow sharing, authenticated 29-reading bootstrap, the 267-test repository gate, and both GitHub workflows passed.
+
+- Authoritative sync repair: proved reader-code authentication and the Apps Script bridge healthy, isolated `CONTENT_INVALID` to the Drive rolling-plan/manifest mismatch, restored the existing plan file to the validated D054–D081 prefix, and verified all read-only backend routes. Added precise retained-data error classification and bootstrap-before-background-work ordering, plus atomic-publication health gates in repository docs and the active recurring automation. The complete local release gate, 390×844 service-health smoke, both GitHub workflows, and exact live byte/MIME verification passed; only the installed-phone gate remains.
+
+- August 29 mobile-formatting release: at iPhone width the header now reserves a stable brand column, limits the eyebrow to a balanced two-line label, keeps **Daily Bible Reader** on one line, and gives the background sync message its own unsqueezed column. The reading toolbar now wraps the complete date/plan context beside **Calendar** instead of truncating it. A 390×844 fabricated-content browser smoke reproduced the long sync status, opened a prepared library reading, confirmed non-overlapping header and toolbar geometry, full untruncated labels, the existing page-top/non-sticky behavior, zero horizontal overflow, and no application warnings or errors. Repository safety inspected 302 files; all 26 schemas and private-content gates passed; 245/245 tests, every build, and exact Pages artifact verification passed. The immutable code releases are frontend `558fd5b0820789d5` and PWA `a70ee80b19780072`; Apps Script, private content, storage schemas, and backend contracts are unchanged.
+
+- August 29 protocol-recovery publication: D075/Zechariah 6, D076/James 2, and D077/Zechariah 7 were each separately refreshed under unchanged one-reading work orders and atomically republished. Every v2 study has the required protocol marker, one included historical-context assessment, distinct preview and expanded research layers, direct primary editorial review, exact content hash, preserved stable reading ID/prior version, and either its newest approved Henry layer or its existing fallback contract. D075 retained its approved 15-verse Luna layer, D076 retained its approved 26-verse Luna layer with four recorded isolated corrections, and D077 retained its correction-free 14-verse exact-Spark layer. For each reading, five versioned payloads were owner-only and matched local bytes exactly before the manifest moved; the manifest then matched exact bytes and retained its original parent and owner/reader sharing. Repository safety, source/rights/citation/private-content checks, 245/245 tests, every build, and exact Pages verification passed after each accepted milestone. The next exact work order named D078/Zechariah 8. Its strict exact-Spark attempt failed during chunked fact extraction, which is not an allowed quota/model-unavailable fallback condition; Luna was not attempted, no D078 payload or manifest was written, the prior local live copy was restored, and D078 remains the retry target. The protocol and Henry-only historical backfill lanes did not run because the T+7 horizon is incomplete.
+
+- Page-top library-picker release: the app header and Book/Chapter picker now remain at the top of the document rather than sticking to the viewport over a reading. Reading-page navigation still measures any visible header before positioning the active page strip, so moving between Orientation, Scripture, and Commentary does not hide the new section heading. The 390×844 fabricated-content smoke opened a prepared chapter, scrolled 627 pixels, confirmed the header and picker were fully above the viewport, found no horizontal overflow, and logged no application warning or error. Repository safety inspected 298 files; all 26 schemas and private-content gates passed; 245/245 tests, every build, and exact Pages verification passed. The immutable code releases are frontend `bdc05f52ad86c79b` and PWA `182575f2383e7ae9`; Apps Script, private content, storage schemas, and backend contracts are unchanged.
+
+- August 28 T+7 publication: prepared and privately published only D081/Zechariah 10 for September 4. The primary task directly consulted and represented eleven sources across public-domain, evangelical, translation-technical, Jewish, literary-canonical, and Persian-period historical categories; drafted a 2,125-word deep synthesis with paired archaeological context; verified citations, rights, evidence boundaries, and the exact content hash; and marked the study `in_review`. Exact Spark failed at its account-usage boundary before generating the authorized 12-verse Henry layer, so no model substitution or partial condensation ran; the registered CCEL Chapter X page was verified through the Chapter XI boundary as the complete public-domain fallback, and the same-run backfill probe was skipped. Five new versioned payload files matched local SHA-256 and byte counts, remained owner-only, and were promoted before the manifest; the manifest then matched exact bytes, retained its parent, and preserved the same owner/reader ACL without broad sharing. The evaluator returned `horizon_ready` through September 4. Repository safety inspected 282 files, private validation accepted 25 end-to-end studies, 28 syntheses, and 198 registered sources with no stored Scripture, and 241/241 tests plus every build and exact Pages check passed. Frontend `4a4166ba77d11f13`, PWA `9bb292cdb149a96f`, and Apps Script sources/deployments were unchanged.
+
+- Active-plan library picker: added a compact accessible page-top Book plus Chapter/Overview picker derived only from the validated active plan, `bookMetrics`, and prepared-reading membership. It disables unavailable books/resources, maps each grouped or partial chapter resource to its original occurrence `readingId`, labels partial ranges exactly, opens prepared occurrences on Orientation in a compact library mode, and creates no completion or activity merely by opening. The ordinary calendar future lock remains unchanged; library access is restricted to prepared occurrences. Explicit grouped-chapter requests survive cache, live transport, retry, and rendering, so selecting Micah 4 cannot show Micah 3. No backend, storage schema, service-worker policy, ESV policy, or private content changed. `npm run check` passed repository safety over 285 files, 24 schemas, every content/private gate, 241/241 tests, all builds, and exact Pages verification. An iPhone-width Chrome smoke passed at 390px with zero horizontal overflow and exact Micah 4 selection. The immutable code releases were frontend `4a4166ba77d11f13` and PWA `9bb292cdb149a96f` for that initial picker release.
+
+- Permanent-library and wisdom-plan-v2 review milestone: the approved canonical-resource/dated-occurrence split, explicit private/shared permanent notes, canonical verse highlights with originating occurrences, Sheet event authority plus restricted Drive backups, accessible prepared-resource selectors, and current-through-T+7 plus bounded-recent-resource cache are now durable design contracts; no runtime or private storage was changed. The deterministic inactive v2 candidate contains 1,224 dated slots through 2030-01-21, exposes all logical stream contributions, covers every Psalm chapter and Proverbs verse once in canonical order, keeps long Psalms alone, caps ordinary combined Psalm/Proverbs days at 20 raw verses, and finishes all four logical streams within 3 days. Its pragmatic Proverbs cut points remain explicitly subject to Dustin's editorial review. `npm run check` passed repository safety, 24 schemas, all content/private gates, 239/239 tests, every build, and exact Pages-release verification; frontend `0ddb985f7d7adef0` and PWA `2cdc4cede6ed8fde` remained byte-identical.
+
+- August 27 T+7 publication: prepared and privately published only D080/James 3 for September 3. The primary task directly consulted eleven lawful sources and completed the orientation, four-paragraph executive synthesis, concrete speech-and-peacemaking takeaway, James 3:17 reference, seven-section cited deep study, source coverage, metadata, and exact content hash. Exact Spark returned an account-usage-limit failure before generation; no substitute model or partial condensation was used, and the CCEL page was verified from its Chapter III heading through both chapter divisions and the Chapter IV boundary as the complete public-domain fallback. The five private payloads were written before the manifest, matched local text and UTF-8 byte sizes exactly, and remained owner-only; the existing manifest moved last, matched exact bytes, bound the new reading, and retained its narrow owner/reader sharing and parent. The fresh schema-valid work order reports `horizon_ready` through September 3. The separate Henry-only backfill probe was skipped because the run had already received the Spark quota failure. Repository safety inspected 274 files; 24 schemas, private source/citation/rights gates, 238/238 tests, every build, and Pages verification passed. The additive private source registry is `celebration-bridge-2026-08-27-v17` with 191 records. Frontend `0ddb985f7d7adef0` and PWA `2cdc4cede6ed8fde` bytes were unchanged, so no Apps Script deployment or production-pointer movement was needed. Commit `e4ab115` reached `main`; repository safety/test run `33049931677` and Pages deployment `33049930890` succeeded.
+
+- August 26 recurring-context and schedule-review milestone: the canonical scheduled-task prompt, `$draft-daily-commentary` skill, and automation runbook now explicitly require the two independently authored Page 1 historical-context layers whenever meaningful reading-specific evidence exists, while omitting both rather than manufacturing filler. Regression tests bind the exact headings, added-depth/H4/evidence-inference/citation/bibliography contract, no-duplication rule, and Spark's Henry-only boundary. The deterministic long-term generator now also emits and checks a month-grouped daily review artifact containing all 1,255 entries. The candidate JSON, dates, ordering, activation state, and SHA-256 remain unchanged. `npm run plan:long-term:check` passed; repository safety inspected 273 files; all 24 schemas and private gates passed; all 238 tests passed; and the existing frontend/PWA build remained byte-identical. Commit `915b927` reached `main`; Pages run `32992370470` succeeded; the exact Markdown artifact and rendered HTML both returned 200, and the live HTML contained all 1,255 dated rows from the expected first through last reading.
+
+- August 26 distinct-depth historical-context release: Page 1 now treats **Archaeological and historical context** as the concise orientation preview and **Archaeological and historical context — expanded study** as a separate lower research dossier. Runtime never derives or repeats one from the other; preview-only legacy content hides the lower panel. Both exact sections remain absent from Page 3, while sources shared with retained deep study remain indexed there. James 1 keeps its 204-word preview and adds a separately written 755-word, four-part dossier. Zechariah 4 keeps its 216-word preview and adds a 945-word, five-part dossier, including bounded Israel Antiquities Authority and British Museum evidence. The validator now requires distinct prose, at least double/+120 words of added depth, two unique H4 headings, and inline citations for every prepared preview/expanded pair. All six existing Drive targets (two readings, two metadata files, registry, and manifest-last update) matched the local bundle byte for byte and retained their original folders and restricted permission shapes. Repository safety inspected 271 files; all 24 schemas and private-content gates passed; private validation accepted 23 end-to-end studies, 26 syntheses, and 182 sources with no stored Scripture; all 236 tests passed. Code commit `d497f2f` and Pages deployment `32989978197` succeeded; frontend `0ddb985f7d7adef0`, PWA `2cdc4cede6ed8fde`, and all eight mutable/immutable public files matched committed bytes with their expected live MIME types. Apps Script, ESV data, credentials, Sheets, and sharing were unchanged.
+
+- August 26 T+7 publication: prepared and privately published only D079/Zechariah 9 for September 2. The primary task directly consulted nine lawful sources and completed the orientation, four-paragraph executive synthesis, concrete peace-making takeaway, Zechariah 9:9 reference, seven-section cited deep study, source coverage, metadata, and exact content hash. Exact Spark returned an account-quota failure before generation; no substitute model or partial condensation was used, and the CCEL page was verified from its Chapter IX heading through every verse range and the Chapter X boundary as the complete public-domain fallback. The five private payloads were written before the manifest, matched exact Drive bytes, and remained owner-only; the existing manifest moved last, matched exact bytes, bound the new reading, and retained its narrow owner/reader sharing and parent. The fresh schema-valid work order reports no T+7 gap through September 2. The separate Henry-only backfill probe was skipped because the run had already received the Spark quota failure. Repository safety inspected 247 files; 24 schemas, private source/citation/rights gates, 232/232 tests, every build, Pages publication/verification, and the 55-file private bundle passed. The additive private source registry is `celebration-bridge-2026-08-26-v13` with 177 records. Frontend `d04e8089f8baf34f` and PWA `c0d71d2e81f89997` bytes were unchanged, so no Apps Script deployment or production-pointer movement was needed.
+
+- August 26 long-term candidate and historical-context pilot: completed the inactive review-only four-stream candidate (1,255 units, 2026-09-16 through 2030-02-21, SHA-256 `d209d9067b677ffb161ae62c8f3d31b7c00c6d3b0772fe115eaf45abe289d057`) and its human report. It begins Genesis introduction then Genesis 1; includes 66 immediate introduction/chapter-1 pairs; allocates OT/NT/Psalms/Proverbs as 785/287/151/32; limits NT runs to the exact two-day introduction/chapter-1 pair; assigns 149 Sunday Psalms and 30 Sunday Proverbs with four disclosed non-Sunday minor exceptions; and has an 11-day finish spread. It remains inactive pending Dustin's review. James 1/D072 and Zechariah 4/D073 each gained an optional archaeological/historical-context section and were published in place at 2026-08-26T14:28:43Z after exact readback; their existing devotional core and Henry layers were unchanged. The registry is `celebration-bridge-2026-08-26-v15` with 180 sources. Yale Bible Study supports the James Jewish-Christian diaspora/wisdom/social setting; *Encyclopaedia Iranica* and the Metropolitan Museum support the bounded Persian-period Jerusalem/material-record/Cyrus-policy context. The sources are used for neutral evidence and inference boundaries, not skeptical padding. The integrated gate then passed repository safety (254 files), 24-schema content validation, private validation (23 end-to-end studies, 26 syntheses, 180 sources, no Scripture), all 235 tests, and code-only builds/Pages verification.
+
+- August 25 Zechariah 3 deep-note discoverability revision: the executive synthesis remained unchanged while the existing seven-eyed stone paragraph gained its own scan-visible accordion heading. Commentary advanced `draft-v1` → `draft-v2`; content and metadata were updated in place in Drive before manifest-last promotion, with exact-byte readback and unchanged permissions (payloads owner-only; manifest owner plus reader). `npm run check` passed 232/232 tests, the rolling horizon remains ready through D078/September 1, and no app redeploy was needed.
+
+- August 25 T+7 publication: prepared and privately published only D078/Zechariah 8 for September 1. The primary task directly consulted nine lawful sources and completed the orientation, four-paragraph executive synthesis, concrete inward takeaway, Zechariah 8:13 reference, seven-section cited deep study, source coverage, metadata, and exact content hash. Exact Spark returned an account-quota failure before generation; no substitute model or partial condensation was used, and the CCEL page was verified from its Chapter VIII heading through every verse range and the Chapter IX boundary as the complete public-domain fallback. Five versioned private payloads were uploaded first, matched exact Drive hashes, and remained owner-only; the existing manifest moved last, matched exact bytes, bound all five verified files, and retained its narrow owner/reader sharing and parent. The fresh schema-valid work order reports `horizon_ready` through September 1. The separate Henry-only backfill probe was skipped because the run had already received the Spark quota failure. Repository safety inspected 246 files; 24 schemas, private source/citation/rights gates, 232/232 tests, every build, Pages publication/verification, and the 53-file private bundle passed. The source registry is additive version `celebration-bridge-2026-08-25-v12` with 169 records. Frontend `d04e8089f8baf34f` and PWA `c0d71d2e81f89997` bytes were unchanged, so no Apps Script deployment or production-pointer movement was needed.
+
+- August 24 T+7 publication: prepared and privately published only D077/Zechariah 7 for August 31. The primary task directly consulted eight lawful sources and completed the orientation, four-paragraph executive synthesis, inward practical takeaway, Zechariah 7:9 reference, six-section cited deep study, source coverage, metadata, and exact content hash. Exact Spark generated the complete 14-verse Matthew Henry layer; the primary review compared every condensation with every cited exact atom, found no recurring or isolated defect, approved the hash-bound candidate, and applied it once. Five versioned private payloads were uploaded first and matched exact Drive bytes while remaining owner-only; the existing manifest moved last, matched exact bytes, bound all five verified files, and retained its narrow owner/reader sharing and parent. The fresh work order reports `horizon_ready` through August 31, and the separately validated backfill work order reports `none` because no published Henry fallbacks remain. Repository safety inspected 245 files; 24 schemas, private source/citation/rights gates, 232/232 tests, every build, Pages publication/verification, and the 51-file private bundle passed. The source registry is additive version `celebration-bridge-2026-08-24-v11` with 165 records. Frontend `d04e8089f8baf34f` and PWA `c0d71d2e81f89997` bytes were unchanged, so no Apps Script deployment or production-pointer movement was needed.
+
+- Spark-to-Luna Henry backfill and private publication: a coded Spark availability/quota failure occurred, so the same run used exact `gpt-5.6-luna` at low reasoning for D070–D076; no Sol, Terra, or arbitrary worker model was permitted. Primary review compared every condensation with every cited atom and applied 15 isolated corrections before the seven reviewed artifacts became durable. The seven daily metadata records now embed their newest reviewed layers, and the cumulative private catalog/prefix is contiguous D056–D076 (21 readings) with mixed Spark/Luna provenance and no prior reading IDs dropped. Local private validation passed 20 end-to-end studies, 23 syntheses, and 159 sources with no stored Scripture; the private bundle contains 49 files. The seven metadata files and manifest were published content-first/manifest-last to the existing private Drive location, with unchanged file identity/sharing and exact raw-byte/byte-count readback. `npm run study:next -- --today 2026-08-23` reports `horizon_ready` with no gap through D076/August 30. `npm run check` passed repository safety over 244 files, content/private/source validation, 231 tests, hybrid/token/PWA builds, and Pages verification. No app-code deployment was needed for this private-content publication; the reviewed routing/docs code awaits commit and push.
+
+- August 23 T+7 publication: prepared and privately published only D076/James 2 for August 30. Eight directly consulted sources are represented across a four-paragraph main synthesis and seven-section deep study; two inaccessible academic works remain inventory-only. The exact Spark worker reached its account usage limit before completing the Matthew Henry verse layer, so no partial output or substitute model was used and the verified complete public-domain James 2 commentary remains linked. The controller now classifies exact Spark quota/model-unavailable output as coded non-retryable failure, with deterministic regression coverage. Five versioned private files and the manifest matched local bytes exactly on Drive readback; payloads remain owner-only and the manifest retained its owner/reader ACL. Repository safety, 24 schemas, source/citation/rights/private-content gates, 217/217 tests, every build, immutable Pages verification, and the private review bundle passed. The source registry is additive version `celebration-bridge-2026-08-23-v10` with 159 records. Because the run already received a confirmed Spark quota failure, the optional Henry backfill probe was skipped exactly as required.
+
+- Backfilled the entire August 22–29 preparation horizon in order. The evaluator now audits the actual current-through-T+7 schedule window, fails closed when evidence for an earlier reading is absent or stale, chooses the earliest gap, and reports `plan_complete` only after the final scheduled day. D070/Zechariah 2, D071/Zechariah 3, D072/James 1, and D073–D075/Zechariah 4–6 were prepared and privately published with full orientation, ESV references only, verse selection, coherent main synthesis, inward practical takeaway, custom cited deep study, source coverage, and verified public-domain Matthew Henry links. The source registry is version `celebration-bridge-2026-08-22-v9` with 151 records: 122 `included`, two `consulted`, 26 `inaccessible`, and one `excluded_rights`. Spark failed during the authorized Henry attempt, so no substitute model or condensation was used. Each private publication advanced the rollback-compatible prefix contiguously, promoted the manifest last, matched exact bytes on readback, and retained restricted sharing. No ESV wording, private commentary, IDs, reader codes, or secrets entered Git or Pages.
+
+- Haggai/short-book ESV display release: server and browser derive the same balanced verse-range display segments, cache them by flat display-option index, preserve the original `passageIndex` wire field, and resolve verse-of-the-day/highlight selection against the selected range. Haggai 2's 23 verses are split as 2:1–12 and 2:13–23 under its 19-verse half-book ceiling. The whole Scripture-unavailable banner is now a keyboard-accessible link to the exact active ESV.org range. Repository safety inspected 242 files; content validation accepted 24 schemas, 16 private-prefix readings, 39 scheduled readings, and the 92-day factual schedule; 210/210 tests, every build, and exact Pages verification passed. Commit `97df369`, GitHub safety/test run `32492465404`, and Pages deployment `32492464164` passed. All 12 current live Pages files matched committed bytes and MIME types. The local 390×844 fabricated-Scripture smoke opened all three Haggai display tabs, selected 2:13–23 with its exact ESV.org URL, found no overflow/fatal state/application error, and the clean live shell registered PWA `c0d71d2e81f89997` with the same results. Immutable token backend 29 matched Google's four-file readback exactly; only the token deployment moved, both rollback deployments stayed on version 23, and project HEAD matched the restored hybrid bundle. No private content, Sheet data, ESV text, credentials, or sharing configuration changed.
+
+- Full Celebration bridge schedule release: generated and validated all 39 factual entries from D054 through D092, ending with Malachi 4 on September 15, without generating later commentary or storing ESV text. Bootstrap now returns the full calendar plus an audited contiguous `preparedReadingIds` prefix; the UI labels and blocks unprepared dates and limits private/ESV prefetch to prepared readings. Repository safety inspected 237 files, content validation accepted 24 schemas, 16 private-prefix readings, 39 scheduled readings, and the 92-day reference plan, and all 209 tests plus all builds and exact Pages verification passed. Commit `e099146`, GitHub safety/test run `32488924510`, and Pages deployment `32488922573` passed; all eight live Pages files matched committed bytes and expected MIME types. Immutable token backend 28 matched Google's four-file readback exactly, only the token deployment moved, both rollback deployments stayed on version 23, project HEAD matched the restored hybrid bundle, and an authenticated live bootstrap returned the 39-reading schedule ending at D092 with the 16-reading prepared prefix. No Drive content, Sheet data, ESV text, credentials, or sharing configuration changed.
+
+- Repaired three installed-iPhone interaction paths without changing storage schemas or the backend: comment drafts restore before slower private-content loading and no late title-focus call can dismiss the keyboard; a direct pointer/click focus safeguard and native text-input attributes protect the composer; `pageshow`, visible-app resume, online return, and return-home all reconcile the current Detroit civil date and select the new day; and page navigation measures the actual sticky header so the active three-step strip and new section heading are both visible. The local 390×844 smoke focused and typed into the textarea, placed Page 2's step strip eight pixels below the sticky header with its heading visible, found zero horizontal overflow, and logged no warnings/errors. Repository safety, all validators, 203/203 tests, every build, and exact Pages verification passed for frontend `3a73486791c983c5` and PWA `42ee987fa545a4b6`.
+- Inspected this repository and Fractured Fate read-only; Fractured Fate remains unchanged.
+- Recorded the complete 92-day Celebration chapter assignment while activating only D054–D060 and generating substantive work only through the individually authorized D057.
+- Built secure Apps Script/Drive/Sheet/ESV adapters, server-derived reader enrollment, append-only comment revisions, offline drafts/outbox, calendar-wide completion, and provider-policy ESV handling.
+- Built the three-page mobile reader, selected-date-first home page, full-month calendar, two-reader dots, comments on every page, verse of the day, custom collapsed deep studies, source audit, and deterministic old-build recovery.
+- Repaired Page 3 citation rendering so `commentary/v3` markers in comprehensive Markdown become compact numbered links instead of raw internal syntax; prepared-content validation rejects undeclared or incompletely represented deep-study citations.
+- Reframed the daily commentary as an executive synthesis rather than a sequence of independently sourced blocks. Paragraphs now build one governing argument; secondary questions stay in custom deep-study sections. Main claim markers remain private provenance and the daily prose shows only a collapsed bibliography, while detailed sections retain visible claim-level citations.
+- Published the revised D057 metadata in place as `draft-v2`. Exact raw-byte readback matched local SHA-256 `33bd5d09c31a99386008ee1b6f640c8f9b851de8b417ab8e90f70d949cc43c40`; the existing file identity, parent, MIME type, and private owner-plus-reader permissions remained unchanged.
+- Built the original 36-record ignored source registry, then expanded it additively for Nahum 1 to 54 records: 38 included sources, two consulted-but-not-included records (one schedule source and one historical counterposition), 13 inaccessible candidates, and one rights exclusion. Mirrors and snippet-only discoveries do not count as consulted.
+- Added critical-source `affiliationContext` and `synthesisPriority` metadata. Validators reject unbounded or anonymous critical-source use and prevent inaccessible sources from being presented as consulted.
+- Revised the 1 Peter 5 deep study to name the major modern authorship case and present the traditional Silvanus explanation tightly. Uploaded `draft-v8` and the revised source registry in place; file identity and owner-plus-Shane permissions were preserved.
+- Added shared highlights end to end: immutable create/delete events, idempotency, locking, exact passage-bound validation, server identity/time, owner-only removal, two-reader overlap, accessible verse buttons, and color/timestamp UI.
+- Isolated highlights into an optional post-core client after the version-20 phone stall. The core reader now starts immediately, installed readers stay on IndexedDB schema version 4, highlights never migrate or persist in IndexedDB, and independent 8/45-second startup watchdogs replace an infinite **Starting…** state with a visible recovery path.
+- Downloaded immutable Apps Script versions 15–22 from Google and built a release matrix. The working version-19 core's longest minified line is 49,022 characters; both pre-core failures exceed 50,000. Version 22 preserves version-21 logic but reduces every inline script line to at most 817 characters.
+- Added a permanent 800-byte esbuild line target, a hard 1,200-character generated-script ceiling, per-script build diagnostics, and the release policy in `docs/RELEASE_STABILITY.md`.
+- Recorded version 22's first-open iPhone failure and rejected line length as a sufficient cause instead of weakening the phone gate.
+- Built the external code-only delivery path. The launcher validates one fixed Pages origin/prefix, retrieves a no-store release manifest, applies SHA-384 integrity, keeps a last-valid immutable-release fallback, and rejects hostile paths. Frontend/server releases are independently versioned so routine UI changes do not redeploy Apps Script.
+- Published frontend release `73da95f8a9ec3bb3` from `main` to GitHub Pages. The manifest, core, stylesheet, and optional highlight client returned HTTPS 200 with CORS enabled and matched the tracked bytes exactly.
+- Created immutable Apps Script version 23 from server build `c57d948db8fbf838`, moved only the existing canary deployment to it, and downloaded the Google-stored files back for an exact byte comparison.
+- Passed version 23 on Dustin's installed iPhone, including close/reopen, calendar, live ESV, and reversible highlight write; promoted that exact immutable artifact to the unchanged production deployment.
+- Reworked highlight writes so add/remove paints immediately, shows a saving state, reconciles from the authoritative write response, and rolls back on failure. This removes the second serial Sheet read from every toggle. Frontend release `ced732908c22c3de` is live on Pages; the Apps Script build remains `c57d948db8fbf838`.
+- Confirmed the intended open-Bible PNG is valid and reachable but cannot become the Home Screen icon under the current top-level Apps Script host. Apps Script can set only a favicon, while iOS needs a manifest icon or Apple touch icon and therefore generates the observed **D** monogram.
+- Added and verified the frozen 17-column `highlight-events` tab in the existing event spreadsheet without changing sharing.
+- Extended plan/reading schemas with stream IDs/sequences, context reading IDs, unit labels, and partial-passage bounds. Validation enforces four unique streams, contiguous schedule/stream order, earlier-only context, exact ranges, and introduction immediately followed by chapter 1.
+- Documented the four-stream scheduling model without generating the complete plan.
+- Added the canonical `docs/BACKLOG.md` so all requested deployment, calendar, commentary, automation, plan, offline, and manual-check work survives conversation history and is prioritized independently of the current task.
+- Replaced the unused OAuth/API-executable canary with an eleven-method HTTPS form bridge. It keeps the reader code in POST bodies, binds replies to random request IDs/nonces, accepts only Google's actual Apps Script response origins, enforces exact methods/arity/size limits, and retains the code only in IndexedDB after server verification.
+- Created immutable owner-executed Apps Script version 24 as a separate token-canary deployment while leaving both version-23 deployments unchanged. After publishing to `main`, a real-browser test found that Google serves HtmlService from generated `n-…-script.googleusercontent.com` sandbox hosts; release `d9bcecb7f5b1d5fa` contains the narrowly constrained origin fix and a regression test.
+- Dustin confirmed the installed Pages reader works. It is now the primary installation; the historical `pwa-canary` path remains stable, and Apps Script version 23 remains an untouched rollback.
+- Added a selected-day verse reference to the calendar detail card. It is validated against the reading, sourced from private commentary metadata, linked to ESV.org, and never downloads or persists ESV wording from the calendar.
+- Repaired the selected-day verse card so current and next show exact provider wording as soon as authorization warms the normal daily path. Current/next private payloads and comments prepare first, their Scripture requests are coalesced in a two-reading volatile window, the permitted seven-reading private snapshot then fills in the background, and other days stream without joining the hot window.
+- Corrected the remaining stale-content display failure in the hot path. Current and next are always revalidated after authorization; an opened cached placeholder now waits for the fresh Drive payload, while a newer commentary version/hash arriving after a prepared cached page paints rerenders the open orientation, synthesis, takeaway, sources, and attached Henry layer in place. A background IndexedDB write can no longer leave the visible page on old content.
+- Closed the same stale-revision gap across the entire offline pack. The reader still paints all retained records immediately, but the delayed authorized batch now revalidates every current-through-T+7 payload instead of fetching only absent records; an old future placeholder therefore cannot survive until its fourteen-day expiry.
+- Replaced metadata-only readiness with an end-to-end preparation contract and moved the three-reading horizon to tomorrow. The audit verifies the orientation, ESV configuration, complete source-backed Henry layer, main and comprehensive syntheses, verse selection, takeaway, sources, review state, and hash. Dustin sees the dated gap plus missing components; Shane sees only a generic later-delay message.
+- Added field-allowlisted startup milestones for shell, application code, cached/fresh calendar, authorization, fresh sync, and Scripture. The inspector keeps only monotonic millisecond values in memory; it stores or transmits no identity, content, references, comments, credentials, or private IDs.
+- Added versioned automation policy, private staging-index, live-metadata-index, and readiness-report schemas; a read-only earliest-gap CLI; fabricated fixtures; and a scheduled-task runbook/prompt. The strict publication horizon requires explicit `approved` metadata and does not inherit the bridge UI's temporary legacy `in_review` compatibility.
+- Added a schema-validated scheduler-to-worker contract, an explicit private `generationEnabled` gate, stable one-reading work-order IDs, and the repo-local `$draft-daily-commentary` skill. A real read-only status run selected D057 as the first main-commentary gap and refused work-order issuance while disabled; a separate completed-reading simulation produced one valid D054 packet and stopped without model or file generation.
+- Exercised that contract for D057 after explicit authorization. The source packet recorded 12 consulted commentary resources—11 included and one consulted-but-unused historical counterposition—plus one rights exclusion and five inaccessible modern works. The one-off Spark calibration returned an auditable raw draft; primary-task editorial cleanup removed workflow language and repaired citations before the private schema/provenance/hash/no-Scripture gate passed. This is retained as historical evidence only: later main daily syntheses stay in the primary task, while Spark is confined to mass verse-by-verse Henry work.
+- After Dustin's explicit publication approval, replaced only the existing D057 Markdown/metadata files and additive source registry in private Drive. Raw byte readback matched all three validated local files; file IDs, parent folder, and the private owner-plus-reader permissions remained unchanged. No app code, Apps Script deployment, Sheet, ESV secret, or sharing setting changed.
+- Promoted D057's live review state to `in_review`, attached its complete 15-record Matthew Henry runtime, and corrected the three recorded verse-level findings against the exact cited CrossWire atoms. The updated metadata was written into the existing Drive file and raw-read back byte for byte; its file identity, parent, and private owner-plus-reader permissions remained unchanged. No ESV wording, Apps Script deployment, Sheet, secret, or sharing setting changed.
+- Prepared D058 end to end under stable work order `CWO-34c56747e4f14bfa303bf8b5`: a two-paragraph orientation, connected four-paragraph executive synthesis, selected verse, concrete takeaway, seven passage-specific deep sections, 11-source coverage audit, and complete 13-verse Henry layer. The verse-10 Henry overstatement was corrected directly against its cited public-domain atom. Private validation recognized two complete prepared studies, five syntheses, two explicit placeholders, 61 registered sources, and no stored Scripture.
+- Published D058's Markdown/metadata and the additive source registry by replacing only their existing Drive files. Also refreshed D057 metadata to the newest reviewed Henry v11 artifact. All four Drive files matched the validated local bytes exactly after write; file identities, parent folders, and the two restricted owner/reader permissions were preserved. D059–D060 and all Google configuration, sharing, Sheet, Apps Script, and ESV-secret state were unchanged.
+- Added a reusable latest-Henry publication handoff. `npm run bundle:private` resolves the checksum-bound library pointer/catalog, verifies the reading artifact and runtime schema, synchronizes every already attached layer, and fails closed rather than retaining a stale, corrupt, missing, or unreviewed result. Focused tests cover stale replacement, unreviewed refusal, and catalog corruption; the client payload revision already includes the Henry generation timestamp so refreshed verse notes invalidate the local private-content view.
+- Restored Page 3's main commentary article to the same Georgia serif reading face used by the orientation, Scripture, detailed study, and takeaway, with a regression test guarding the shared typography.
+- Built A/B bundle `aa5f629de676c1b3`, created immutable Apps Script version 22, deployed it only to canary, and cloned it back from Google to confirm an exact byte match with the inspected bundle. Its phone failure was preserved as diagnostic evidence rather than promoted. Both deployment URLs return no-store Google sign-in redirects to anonymous requests.
+- Evaluated CrossWire and CCEL Matthew Henry sources, selected CrossWire `MHC` 2.2 under its stated public-domain distribution license, preserved the exact 2026-08-10 archive at SHA-256 `6bcb936873ca144e317805e5c1677940fd86e2403f7c14517752e44f25c8882b`, and kept all raw/normalized/generated material in ignored storage.
+- Implemented deterministic SWORD `zCom4` decoding, 66-book canonical mapping, hash-locked Genesis introduction boundaries, range-preserving normalized JSONL, exact commentary atomization/hashes, non-display verse anchors, strict legacy/current chapter/book/runtime schemas, and a sequential ChatGPT-authenticated `codex exec` controller with dry-run, bounded retry, validation, resume/invalidation, review queue, per-book/per-chapter modes, and an explicit two-flag full-corpus lock. Embedded source-module Scripture transcription remains private and is excluded from worker/runtime evidence.
+- Ran the approved, sequential Genesis 1 Spark-versus-Luna pilot with the exact requested model slugs. Both produced 31 structurally valid records; that prompt's direct source review selected Luna, preserved both raw outputs, and recorded the one Luna Genesis 1:9 correction required before approval. The separate Luna Genesis introduction also validated, and both Luna resources were exported only as private `unreviewed` pilot shards.
+- Added a schedule-aware Spark lane whose rolling command resolves today through at most two days ahead in Detroit time, rejects arbitrary passage/corpus/model selection, processes scheduled chapters sequentially, and writes ignored machine-readable/Markdown audits without changing the main commentary or publishing. The single-reading today/tomorrow command remains available. The current run reused D056/D057 jobs where valid, generated D058, and intentionally stopped before D059.
+- Added `mhc-window-store/v1` and `mhc-portable-reading/v1`: each reading embeds validated runtime shards, filenames are content-addressed, SHA-256 is recorded in a manifest written only after the complete window succeeds, and every object declares that it contains no Scripture and is not published. Localhost-only manifest/reading endpoints and the private-draft adapter verify the store before serving or attaching it.
+- Extended the existing verse/highlight sheet with local precomputed commentary lookup, the `Matthew Henry — condensed paraphrase` label, subtle source-range/conditional-scope display, collapsible exact cited atoms under **Read Henry**, graceful unavailability, close/Escape focus restoration, and a book-level introduction card. Local-only Genesis and schedule-draft routes consume validated ignored shards when present; production-build guards strip every `/__mhc/` route.
+
+## Validation status
+
+- D082 release: private validation accepted 26 end-to-end studies, 29 syntheses, 214 sources, and no stored Scripture. All five versioned private payloads matched exact bytes and owner-only permissions before the manifest-last promotion; the manifest retained its parent and owner/reader ACL with no broad sharing. Authenticated bootstrap returned the exact 29-entry prepared prefix and exposed D082. Repository safety inspected 336 files, all validators and 267/267 tests passed, both deterministic builds and exact Pages verification passed, and GitHub runs `33767885176` and `33767883978` succeeded.
+
+- Authoritative sync repair: exact Drive plan readback matches all 28 manifest entries through D081. Authenticated confirmation, 39-entry/28-prepared bootstrap, calendar activity, comments, highlights, and reading payload reads succeed; an invalid empty comment was rejected before mutation. The code-only candidate passed repository safety over 318 files, all validators, 254/254 tests, all builds, exact Pages artifact verification, and a 390×844 smoke covering both healthy bootstrap and retained `CONTENT_INVALID` behavior.
+
+- Backfill recovery passed repository safety over 243 files, all 24 schemas, the 22-reading private prefix, the complete 39-reading schedule, private validation for 19 end-to-end studies/22 syntheses/151 sources with no stored Scripture, 216/216 tests, every build, and exact Pages verification. `npm run study:next -- --today 2026-08-22` now returns `none` / `horizon_ready` through D075. Authenticated read-only live probes returned a 22-reading prepared prefix through D075 and loaded all six new studies with their complete preparation fields. Commit `2e16433` is on `main`; GitHub safety/test run `32575241292` and Pages deployment `32575240802` passed, and post-deployment verification matched frontend `d04e8089f8baf34f` plus PWA `c0d71d2e81f89997` exactly. Because `npm run publish:pages` reproduced the existing tracked Pages bytes, no shell or service-worker version changed and no Apps Script deployment was required. The Google Drive connector produced empty raw JSON files when asked to upload as `application/json`; publication remained fail-closed, and rewriting those candidates as `text/plain` produced exact bytes before any manifest promotion. Apps Script consumes the file bytes and parses JSON by allowlisted ID, so this transport MIME does not change the data contract.
+
+- Fourth unattended T+7 automation run: prepared and privately published only D069/Zechariah 1 for August 23. Nine directly consulted sources are represented in the synthesis; five inaccessible major commentaries remain inventory-only. Spark was available only for the Matthew Henry layer, and primary review compared all 21 condensations with all 14 cited exact atoms before eleven isolated corrections were approved and applied once. Five new versioned files matched local bytes exactly and remain owner-only; the stable manifest was promoted last, matched exact bytes on readback, bound all five files, and retained its unchanged owner/reader ACL. Repository safety inspected 227 files; schema validation accepted 24 schemas and 16 rolling readings; private validation accepted 13 end-to-end studies, 16 syntheses, and 135 sources with no stored Scripture; and 200/200 tests plus all builds and exact Pages verification passed. The code-only frontend `cc67c986ddd67ac4`, PWA `a084197232a72a04`, and Apps Script deployments were unchanged. The published-fallback queue returned `none`. The bridge-extension tests now derive the next contiguous T+7 boundary from the fixture, and the runbook now uses the validated one-reading Henry ensure request rather than the interactive today/tomorrow command.
+
+- Partitioned first-chapter warm candidate: the current/next warmer and eight-reading retention pass now select passage index `0` for an over-limit multi-chapter assignment instead of selecting the chapter that happens to contain the verse of the day. A verse selected from another chapter is extracted through a transient request and retained only as one volatile verse; it cannot replace the first full chapter in memory or IndexedDB. Later tabs stream normally, replace the one full-chapter memory slot, and allow the provider-policy engine to evict the prior same-book chapter before persistence. Returning to an evicted tab streams it again. Transient bridge/server/ESV reads receive one automatic retry; authorization, configuration, rate-limit, content, and policy failures do not. Downloaded-data coverage now counts the one eligible first-chapter target rather than reporting deliberately streamed chapters as missing. `npm run check` passed repository safety over 227 files, all 24 schemas, 15 bridge readings, private validation with 12 prepared studies/121 sources/no Scripture, 200/200 tests, every build, and exact Pages verification. Commit `ca78577`, GitHub safety/test run `31896478995`, and Pages deployment `31896478706` passed. All eight live files for frontend `cc67c986ddd67ac4` and PWA `a084197232a72a04` returned HTTP 200 with the expected MIME types and matched committed bytes exactly. No Apps Script source, deployment, private content, Sheet, Drive file, secret, or sharing rule changed. A connected browser was unavailable for the local visual smoke, so the installed-iPhone first-open check remains the release gate.
+
+- Current-plus-seven takeaway revision: D061–D068 now use `draft-v2` metadata and the inward-focus `commentary-workflow-v12-inward-takeaway` contract. Each 24–27-word sentence is passage-specific and centers on an attitude, temptation, motive, or response to watch; vague “fix an injustice” assignments and broad correction of other people were removed. Private validation passed 12 end-to-end prepared studies, 15 syntheses, 121 registered sources, and no stored Scripture. All eight existing Drive metadata files were replaced in place and matched the validated local bytes exactly on readback while retaining file identity, parent, MIME type, and permission shape; the stable manifest and sharing were unchanged. The canonical ignored local store matches those published bytes.
+
+- ESV short-book/chapter-cache release candidate: `npm run check` passed repository safety over 223 files, all 24 schemas, 15 contiguous bridge readings, 199/199 tests, every build, and exact tracked Pages verification. Fix commit `4208847`, GitHub safety/test run `31884076922`, and Pages deployment `31884076279` passed. The live code-only artifacts are frontend `b23089771f9d5010`, PWA `a2134c9e8a7b06a5`, and server `64751edb13306021`; all eight public files returned HTTP 200 with the expected MIME types and matched committed bytes exactly. A 390×844 fabricated-Scripture browser smoke opened Habakkuk 1–3 with three chapter tabs, switched from chapters 1 to 2, changed the exact ESV.org target with the active chapter, had `scrollWidth === clientWidth === 390`, and showed no fatal state. A separate live-shell smoke loaded the new PWA client with the same 390-pixel width, no overflow, and no fatal state. Immutable Apps Script token version 27 matched all four generated files byte for byte; only the token deployment moved from version 26 to 27, both rollback deployments remain pinned to version 23, and project HEAD exactly matches the restored stable hybrid bundle. Status-only GET and malformed anonymous POST probes returned no study data. The installed-iPhone update/reopen, live Habakkuk 1→2→3, offline reopen, and exact-link check remain required because this release changes storage and the backend request contract.
+
+- Third unattended T+7 automation run: prepared and privately published only D068/2 Peter 3 for August 22. Nine directly represented sources support the synthesis; five inaccessible academic candidates remain inventory-only. Spark was available only for the Matthew Henry layer, and primary review compared all 18 condensations with all cited exact atoms before nine isolated corrections were approved and applied once. Five new versioned files matched local bytes exactly and remain owner-only; the stable manifest was promoted last, matched exact bytes on readback, bound all five files, and retained its unchanged owner/reader ACL. Repository safety inspected 219 files, private validation accepted 12 end-to-end studies and 121 sources with no stored Scripture, and 196/196 tests plus all builds and exact Pages verification passed. The code-only frontend and PWA release bytes were unchanged, and the published-fallback queue returned `none`.
+
+- Second unattended T+7 automation run: prepared and privately published only D067/Haggai 1–2 for August 21. Eleven directly consulted sources are represented in the synthesis; two inaccessible academic articles remain inventory-only. Spark was available only for the two-chapter Matthew Henry layer, and primary review compared all 38 condensations with all 23 cited exact atoms before seven isolated corrections were approved and applied once. Five new versioned files matched local bytes exactly and remain owner-only; the stable manifest was promoted last, matched exact bytes on readback, and retained its unchanged owner/reader ACL. Repository safety inspected 219 files, private validation accepted 11 end-to-end studies and 114 sources with no stored Scripture, and 196/196 tests plus all builds and exact Pages verification passed. The code-only frontend and PWA release bytes were unchanged, and the published-fallback queue returned `none`.
+
+- Rolling T+7/offline-refresh release: `npm run check` passed repository safety over 215 files, 23 schemas, all private-content gates, 192/192 tests, every build, and exact tracked Pages verification. Commit `5d11691` is live after GitHub safety/test run `31618402985` and Pages deployment `31618402039` passed. Frontend `3ecddffa6a4a079a` and PWA `ad8ad65b5b38f49e` matched all eight committed public files exactly over HTTPS. In the authenticated live reader, the update replaced retained future placeholders, reported 8/8 records, removed the preparation warning, and exposed D065's honest full-commentary Henry link on every verse with no substitute condensation. The separate token backend remains immutable version 26; both rollback deployments remain version 23.
+
+- Selected-day-first home release: `npm run check` passed repository safety over 176 files, all 18 schemas, 160/160 tests, every build, and exact Pages artifact verification. Commit `20b9d97`, safety/test run `31504959921`, and Pages deployment `31504958510` passed. The live code-only releases are frontend `b5ee9d7c055d5eb5` and PWA `94b1a3d8701551c6`; all eight changed public files matched committed bytes and expected MIME types over HTTPS. Apps Script source/deployments and all private content are unchanged. In the authenticated live app at iPhone width, the selected-day card was the first home section and primary heading, the calendar followed below it, return-home focus landed on the selected reading, horizontal overflow was zero, and the browser logged no warning or error. The real Nahum 1 ESV page hid only its redundant informational banner while retaining provider identity, link, copyright notice, verse controls, highlights, and discussion; loading, fabricated-text, and failure notices remain covered by regression tests.
+
+- Nahum 2/latest-Henry/typography release: `npm run check` passed repository safety over 176 files, all 18 schemas and private-content gates, 159/159 tests, every build, and exact Pages artifact verification. Private validation accepted two end-to-end prepared studies, five syntheses, two explicit placeholders, 61 registered sources, and no stored Scripture. Commit `358da49` is live after GitHub safety/test run `31501850930` and Pages deployment `31501850238` passed. All eight changed public files matched committed bytes over HTTPS with correct MIME types. The releases are frontend `cd43eeba4eb91ba0` and PWA `13b29667018eac3e`; the Apps Script backend/deployments are unchanged. Exact Drive readback matched the refreshed D057 metadata, D058 Markdown/metadata, and 61-source registry byte for byte while preserving their existing folders and owner/reader permissions. An authenticated 390×844 update/restart then showed Nahum 2's full orientation, 13 live ESV verse controls with Henry available, corrected verse-10 condensation and exact source layer, four-paragraph main synthesis, verse/takeaway, seven custom deep sections plus audit, one consistent Georgia serif reading face, comments before optional depth, no raw citation tokens, no horizontal overflow, and no browser warnings/errors. Nahum 1 verse 5 rendered the newest v11 Henry wording. The duplicated stale readiness sentence was removed from the downloaded-data card; the authoritative preparation alert identifies D059 as the first later gap.
+- Executive-synthesis release: `npm run check` passed repository safety over 165 files, all 18 schemas and private-content gates, 156/156 tests, every build, and exact Pages artifact verification. Commit `32c2a4f` is live after GitHub safety/test run `31494218970` and Pages deployment `31494218132` passed. The eight changed public files matched their committed bytes over HTTPS with correct MIME types. The releases are frontend `ae42ef1bb115edc6` and PWA `4e309373acfbbf9f`; the Apps Script backend and deployments are unchanged. In the authenticated live app at 390×844, Nahum 1 rendered as four connected paragraphs with no displayed citation interruptions or raw `{{cite:...}}` syntax; the detailed study retained 16 numbered citation groups and 39 working links, horizontal overflow was absent, and the browser logged no warning or error.
+- Page 3 citation release: `npm run check` passed repository safety over 161 files, 18 schemas, private validation with one complete prepared study, 156/156 tests, every build, and exact Pages verification. The prepared code-only releases are frontend `66b6f7beb84e9b98` and PWA `f71a988c59bf3b54`; the Apps Script backend and deployment are untouched. At 390×844, the actual private Nahum 1 draft rendered 16 deep-study citation groups and 39 numbered links against 11 source notes, exposed no raw `{{cite:...}}` marker, opened and focused the correct source note, produced no horizontal overflow, and logged no warning or error.
+- End-to-end preparation/cache-display release: commit `2afdeb9` is live after GitHub safety/test run `31451831326` and Pages deployment `31451830730` passed. Repository safety passed over 157 files; private validation recognized D057 as the one complete prepared study with exact 15-of-15 Henry/source-atom coverage; and 156/156 tests passed. The releases are frontend `03867657f0795726`, PWA `5afebd2259e6df95`, and unchanged server `ff276f62af94ecd4`; all eight changed public files returned HTTPS 200 with correct MIME types and matched committed bytes exactly. An authenticated 390×844 update/reload showed **Tomorrow's study is ready**, named Nahum 2 on August 12 as the later gap, opened Nahum 1 with its full two-paragraph orientation and live ESV, exposed Henry on all 15 verse controls with exact source text, rendered a four-paragraph/334-word main synthesis plus seven deep sections and 12 source notes, and produced no overflow or browser warnings/errors. A direct component audit of the delivered D057-equivalent payload passed all nine preparation components.
+- Nahum readiness/cache release: `npm run check` passed repository safety over 153 files, 18 schemas, 156/156 tests, all builds, and exact Pages artifact verification. Commit `99622be` is live after GitHub safety/test run `31447756963` and Pages deployment `31447756418` passed. All 12 public shell/release files matched committed bytes over HTTPS with the expected MIME types. Private validation passed four syntheses, three explicit placeholders, 54 registered sources, no stored Scripture, and D057's exact 15-of-15 attached Henry coverage. The releases are frontend `8bfcb7ad8ac984fd`, PWA `32a7f06941bc6c24`, and unchanged server `ff276f62af94ecd4`. The final D057 metadata cleanup matched local and Drive SHA-256 `1bfe865ee7d195d597018e6395958f22cdbe50dcae0c9b1755adff27faed5222`, preserved the same file, and retained two private user permissions: owner and reader.
+- The authenticated live Pages smoke applied the update at 390×844, refreshed an older seven-day snapshot without clearing it, advanced the warning from D057 to D058, reported 7/7 private records, and prefetched both the selected verse and Nahum's full ESV chapter in memory. All 15 verse buttons advertised precomputed Henry notes; verse 5 showed the reviewed wording and exact `Nahum 1:2–8` source range. The two-paragraph orientation retained four source links without exposing internal citation tokens. There was no horizontal overflow and no browser warning or error.
+- Current/next hot-path and commentary-handoff release: `npm run check` passed repository safety over 149 files, 18 schemas, 155/155 tests, all builds, and exact Pages artifact verification. The release is live from code commit `da34361`: frontend `0c8367a2904c40b7`, PWA `604dfc89f63ca97b`, and server build `ff276f62af94ecd4`. GitHub safety/test run `31435779519` and Pages deployment `31435779114` passed. Twelve live Pages shell/release files matched the committed bytes exactly and returned correct MIME types. At 390×844, fabricated today/tomorrow verses switched without a second Scripture wait, the inspector reported exactly two memory-only Scripture readings and seven private records, horizontal overflow was absent, and the browser logged no warnings/errors. Immutable Apps Script token version 25 exactly matched all four inspected local files; both rollback deployments remain on version 23, and Apps Script project HEAD exactly matches the restored stable hybrid bundle. The installed-iPhone update/reopen check remains required because startup caching behavior changed.
+- The local content-automation foundation passed `npm run check`: repository safety over 127 files, 11 schemas, 132/132 tests, all builds, and exact Pages verification. Its fixtures contain only fabricated plan metadata, its evaluator emitted exactly one earliest-gap action, and no recurring task, private-content write, model run, publication, deployment, or Google-resource change occurred.
+- The selected-day/readiness/diagnostics batch passed a clean isolated `npm run check`: repository safety over 113 files, seven schemas, 121/121 tests, all builds, and exact tracked Pages artifact verification. Ignored private content separately passed its full three-synthesis/four-placeholder/36-source validation. Commit `93d0812` is live on Pages with frontend `16d564a50f763ab3` and PWA `644cc0275a7264c0`; both GitHub workflows passed and the live manifest, shell, service worker, bridge client, and application core matched the committed bytes exactly. An authenticated 390-pixel browser smoke confirmed cached calendar launch, selected-day verse, the readiness warning, live ESV with attribution, zero horizontal overflow, no console errors, and a timing inspector free of credentials, identities, comments, Scripture, and private content. Apps Script version 23 was not redeployed.
+- The exact committed Pages-token release passed a clean-clone `npm run check`: repository safety over 105 files, seven schemas, all content/source/private validators, 118/118 tests, all builds, and exact tracked-artifact verification. The stable backend is server `6306f476dd5c9920`, the shared frontend is `01e0dce691dd3cc9`, and the corrected PWA is `d9bcecb7f5b1d5fa`. GitHub Actions passed on `main` commit `1cc0a1e`.
+- Before integration, the exact Matthew Henry handoff passed repository safety over 119 files, thirteen schemas, all content/source/private validators, and 137/137 tests. Its raw, normalized, generated, audit, and portable-store material remained ignored and private; only code, schemas, prompts, fabricated tests, and documentation entered the integration branch.
+- Hybrid server build `c57d948db8fbf838` has 23,837 bytes of Apps Script HTML with only 1,757-byte and 4,074-byte watchdog/loader scripts inline. Live Pages frontend `ced732908c22c3de` contains the integrity-checked 73,635-byte core, 21,566-byte CSS, and 6,501-byte optional highlight client; exact HTTPS readback, content types, and permissive asset CORS were verified after publication. Tracked `web/` exactly matches the live release, and prior `73da95f8a9ec3bb3` remains available for fallback.
+- GitHub Pages HTTPS readback passed for the release manifest and all three immutable assets: status, content type, CORS, byte length, and complete bytes were verified. Apps Script version 23 also matches the inspected local build exactly; its anonymous probe correctly redirects to Google sign-in with no-store headers.
+- At iPhone-class width, the optimistic add/remove smoke used fabricated Scripture, updated accessible verse state correctly, produced no horizontal overflow or console errors, and left the server/launcher build unchanged.
+- Schedule coverage includes stable IDs, grouped/partial passages, Detroit civil dates and DST, start-date changes, lookahead/locking, four-stream invariants, earlier-reading context, and introduction/chapter-1 adjacency.
+- Authorization, comment, and highlight coverage includes two server-derived users, anonymous/third-user denial, Drive denial, code spoofing, arbitrary-ID rejection, create/edit/retract, highlight add/remove/overlap, owner-only removal, exact verse bounds, idempotent retry, collisions, XSS, and payload limits.
+- ESV coverage includes server-only keys, exact attribution/links, no translation fallback, exact requested boundaries, half-book display partitioning, balanced within-chapter range segmentation, total/per-book/age eviction, and no service-worker/Git/Drive persistence.
+- At iPhone-class width, the local browser smoke used only fabricated Scripture and verified immediate startup, the month, three-page reader, shared-highlight add/remove, timestamps, no horizontal overflow, and no console warnings/errors. Each generated inline script also parsed independently, and the source scripts executed successfully in macOS JavaScriptCore.
+- Private validation and the review-bundle build pass with two end-to-end prepared studies, five syntheses, two explicit placeholders, 61 registered sources, and no stored Scripture. D057 metadata, D058 Markdown/metadata, and the additive registry were replaced in Drive; exact raw bytes, file identities, parent folders, and restricted permissions were re-read.
+- Focused Matthew Henry/controller/frontend tests pass, including synthetic SWORD decoding, exact range/atom coverage, exclusion of embedded Scripture transcription, bad-citation and duplicate/missing rejection, Codex schema-subset compatibility, fingerprint invalidation/resume, cited-atom runtime export, Detroit single/rolling-window resolution, Spark/window/full-corpus locks, portable-store validation/hash enforcement, private-path safety, and complete-shard UI admission. The restarted localhost server returned 200 for the manifest and D056–D058, and 404 for D059. At 390×844, the D058 private preview used only fabricated Scripture, rendered 13 selectable verses, showed the actual verse-10 Spark condensation with `From Nahum 2:1–10`, expanded the exact cited atom under **Read Henry**, had no horizontal overflow, and produced no browser warnings/errors.
+- First unattended T+7 automation run: prepared and privately published only D066/2 Peter 2 for August 20, with nine directly represented sources, a direct primary editorial review, a hash-bound 22-verse Henry review, and exact content/configuration/manifest Drive readback. It then used the separate one-reading backfill lane for D065, reviewed all 20 condensations against 18 exact atoms, replaced only the fallback metadata, and left no published Henry fallbacks. Six new versioned private files are owner-only; both manifest-last revisions retained the existing owner/reader ACL with no broad sharing. Repository safety inspected 219 files, private validation accepted 10 end-to-end studies and 101 sources with no stored Scripture, and 196/196 tests plus all builds and exact Pages verification passed. Frontend `3ecddffa6a4a079a`, PWA `ad8ad65b5b38f49e`, and Apps Script sources/deployments were unchanged.
+
+## Known risks and external checks
+
+- The calendar-continuation release changes the bootstrap/backend contract while preserving stored event identity. The installed iPhone must update without clearing retained data, show September 16/17, preserve its reader code, and complete one visible Sync/reopen check. The prior immutable Pages release and Apps Script version 23 remain rollback controls.
+
+- The hybrid has passed Pages HTTPS readback, local execution, immutable Google artifact comparison, anonymous sign-in probing, and the installed-phone gate. Version 23 is production.
+- The Apps Script rollback installation retains WebKit's **D** monogram. The installed Pages PWA supplies the intended open-Bible Apple touch icon and manifest icons.
+- Shane's account/code binding and app-mediated comment creation are verified. His live ESV, Home Screen installation, and highlight overlap remain manual checks for later.
+- An editor of the underlying Sheet could alter rows directly. Google sharing is restricted to the two exact accounts, but the event logs are operationally auditable rather than cryptographically immutable.
+- Offline revocation is not instantaneous. Removing access requires allowlist, Drive, and Sheet revocation plus clearing downloaded data on a retained device.
+- No service worker runs under Apps Script hosting. The Pages PWA has bounded eligible ESV passage retention, but iOS controls cold shell/storage retention and short-book limits mean Scripture coverage can remain partial.
+- The Pages PWA uses bearer codes rather than Google account identity. A leaked Dustin or Shane code grants that reader's app access until its configured hash is rotated; this is the explicit low-exposure tradeoff accepted for the two-person app. The isolated backend URL and approximate rate limits reduce accidental/automated abuse but are not substitutes for code secrecy.
+- The Pages PWA is the primary Home Screen installation after Dustin's confirmation. Version 23 remains the tested rollback; Shane's later install/live-ESV/overlapping-highlight check is still outstanding.
+- Token backend version 29 and the Haggai range-selection contract are deployed. Exact Pages/Google readback and public status probing passed; the installed-iPhone update/reopen and live Haggai 1 → 2:1–12 → 2:13–23 check remain external. If that check fails, Pages can return to its retained immutable release and the token deployment can return to version 28 without moving either version-23 rollback deployment.
+- D054–D089 are substantive and the private Drive manifest is live through September 12. The next calendar record remains outside the current Detroit T+7 authorization. The latest private publication retained restricted sharing.
+- D057–D078 have reviewed Matthew Henry runtimes, while D079–D089 retain verified full-chapter fallbacks. Those fallback readings preserve the permitted Spark and Luna-low failure outcomes without admitting a partial generated layer; their complete public-domain chapter fallbacks remain available. Every future generated layer still requires full primary review before publication.
+- **Prepare Daily Bible Reader T+7** is active daily at 3:00 a.m. Detroit time. Its saved prompt is synchronized with the tracked workflow: each reading tries Spark once, tries Luna-low once only after an eligible Spark model-execution/no-output failure, and continues the independent study with the verified Henry link if both fail. It drains the earliest gaps in a bounded current-through-T+7 recovery loop while keeping each work order atomic and requiring the paired historical-context assessment. A local-project scheduled task requires the Mac and Codex desktop app to be running. The in-reader warning remains the independent first-gap alert.
+
+## Next concrete action
+
+Confirm that the next scheduled reviewer consumes the tracked work-order command and no-ops the completed D084 handoff instead of rescanning it. Then prepare D091/September 14 through direct editorial review, content-first/manifest-last Drive publication, exact readback, and its exact-reading live gate. Reevaluate the bounded work order afterward and run the full horizon health check only when no gap remains. The independent Henry lane may continue to its next eligible fallback candidate; each future review must complete durable-library finalization and app-visible publication before success is recorded.
+
+## Henry activation coordination update — 2026-09-12
+
+The manager relayed the user’s explicit activation instruction and owns all
+release, installation, and task changes. Read-only canonical preflight found
+zero live historical leases; 221 native work-store files stayed hash-identical.
+D087 is the deterministic next fallback: eight winning chunks remain valid,
+with only Psalm 150:5–6 requiring a fresh eligible Luna lease. D084’s actual
+review work order is a completed/manifest-backed no-op. The Henry runtime and
+Henry task definitions are not installed on Cortan; original identities must be
+restored for work-item continuity. No activation mutation or real generation
+was performed by the isolated repair task. `docs/HENRY_WINDOWS_ACTIVATION.md`
+contains the classified preflight and the manager’s concrete next steps.
+
+The manager subsequently restored all three Henry definitions as PAUSED; a
+read-only check confirms their original IDs and exact model/reasoning settings.
+The installed reviewer ends at reviewed-library finalization. Attachment, private
+validation, live-health, and manifest-last Drive publication require the manager’s
+separately verified existing publication lane or a reviewed command extension.
+This capability limit was handed to the manager before activation; no source
+fingerprint, runtime, or task state was changed by this repair task.
+
+The manager resolved the reviewer capability boundary by explicitly handing
+attachment/validation/publication to its existing verified offline Cortan
+publication workspace. No native runtime code patch is required. The three
+Henry tasks remain PAUSED pending coordinated source release and installation.
+
+## Release approval - 2026-09-12
+
+The user explicitly approved committing and pushing this validated Henry repair and activating it on Cortan. The manager owns the release, exact-commit installation and task activation. The canonical dirty checkout and independent daily-service runtime remain preserved. All 22 frozen code fingerprints match the accepted 355-test handoff; remote main was verified at the same c960e12 base before release. Operational results will be recorded after installation and the first real run.
+
+## Henry fallback review classification follow-up - 2026-09-12
+
+The manager released and installed `c3b51fe` and activated the three original
+Henry tasks. The first real Luna continuation completed D087's remaining chunk
+and produced a complete unreviewed handoff. Reviewer discovery then blocked on
+`REVIEW_CANONICAL_INVALID`: the canonical audit was an older, honest
+`verified_link_required` fallback-generation record, with no generated runtime,
+approval, applied review, or native transaction. The classifier had treated every
+existing audit as a purported approved native admission.
+
+The isolated follow-up recognizes only the exact unreviewed fallback shape for
+the requested reading, plan, and ordered passages. It also requires absent native
+transactions, canonical review output, and expected chapter runtimes. This allows
+independent review while retaining the old audit unchanged until approved apply.
+Approved-admission, transaction, hash, library, and completion checks are unchanged.
+A read-only comparison against canonical D087 changed the result from blocked to
+`review` / `pending_review`; hashes of six relevant private files stayed identical.
+
+Regression coverage includes actual CLI discovery, 23 malformed or conflicting
+fallback variants, and both fabricated installed Spark/Luna fifteen-chunk flows
+through prepare, hash-bound approval, apply, finalize, and attachment-debt
+discovery. The fixtures preserve the fallback audit before apply and handoff bytes
+through finalization. Release, exact-revision runtime installation, and operational
+review remain manager-owned; this follow-up has not mutated shared private stores,
+runtime pointers, task definitions, or Git history. The prior 355-test receipt
+remains historical evidence for `c3b51fe`.
+
+The follow-up passed `npm.cmd run check`: 380/380 tests, 42 schemas, repository
+safety, source/content validation, all builds, and exact Pages verification.
+Frontend `d35abd879455dc50` and PWA `a3cde99646bb00aa` are unchanged.
+Real private-content validation was skipped because ignored drafts are absent
+from this isolated checkout; all reviewer-flow execution used fabricated data.
+
+## Henry mixed-model finalization correction - 2026-09-12
+
+The real scheduled D087 review passed admission after `f6b546b`, then stopped at
+`committed_library_debt` / `recover_finalize` with `Canonical audit provenance is
+stale or tampered`. The audit correctly identifies its first passage's worker as
+Luna, with ordered passage models Luna/Spark/Luna. Finalization sorted the complete
+model set and incorrectly compared that representative field with the alphabetically
+first model, Spark. This was a producer/consumer convention mismatch, not a change
+to the approved content or transaction.
+
+The correction validates the representative against the first ordered chapter
+runtime and preserves it in the portable reading and catalog. The complete model
+set remains sorted and exact; prompt, approval, runtime schema, canonical-byte,
+staged-byte, and committed-transaction guards remain required. A fabricated
+three-chapter regression reproduces the old exception and verifies successful,
+idempotent finalization with canonical and transaction artifacts unchanged.
+Negative cases retain rejection for a wrong representative, missing/extra models,
+wrong prompt, and a schema-valid audit change outside the committed transaction.
+
+A read-only probe used the real D087 canonical artifacts and transaction, with
+all output directed into an ignored isolated copy of the library. The installed
+old finalizer failed at the exact reported guard; the corrected finalizer passed
+every subsequent gate and its retry made no change. Work-order discovery against
+the isolated result returned `recover_attach` / `committed_attachment_debt`.
+All 21 checked shared audit,
+runtime, transaction, review, manifest, metadata, and library-pointer files stayed
+byte-identical. No approved artifact was regenerated or rewritten. This does not
+constitute live finalization, attachment, or publication.
+
+The manager owns the approved release and exact-revision installation. Recovery
+then uses only the existing installed launcher command `reviewer finalize
+--reading CC-Y3Q4-D087`, followed by work-order discovery and the separately
+authorized attachment/publication lane. Do not reapply or replace the committed
+review. The daily service and prior verified live fallback remain independent.
+
+Validation passed `npm.cmd run check`: 387/387 tests, 42 schemas, repository and
+source/content checks, all builds, and exact Pages verification. Frontend
+`d35abd879455dc50` and PWA `a3cde99646bb00aa` remain unchanged. Real private-content
+validation was skipped in the isolated checkout; the real-input probe described
+above wrote only to an ignored isolated library copy.
+
+## Adaptive Henry forward priority - 2026-09-12
+
+The user requested Henry completion through the normal preparation horizon before
+historical backlog. Selection now uses the actual America/Detroit civil date and
+validated `futureLookaheadDays` (0–7). It chooses published chapter Henry debt in
+that window chronologically. If the earliest date is cooling, another eligible
+forward date may proceed; if all forward debt is cooling or awaiting review or
+publication, historical generation waits. When no published forward debt remains,
+historical selection retains least-recent-attempt fairness. Unpublished/unprepared
+dates and book overviews remain the daily lane's responsibility. Nothing expands
+devotional preparation or authorizes generation beyond the configured horizon.
+
+The immutable Henry runtime now includes the already-approved full factual active
+calendar. A shared loader verifies its checksum and exact installed-prefix match;
+generation, work-order review, and finalization all resolve the same factual
+reading identities. The live private manifest and metadata restrict selection to
+published studies, so newly prepared entries become visible without rewriting the
+installed prefix. Active leases, pinned wakes, valid chunks, and the shared
+Spark/Luna pair retain precedence over fresh queue selection.
+
+Validated generation handoffs skip regeneration while other actionable forward
+dates proceed. Native review preserves approved transaction recovery first, then
+prioritizes untouched forward review over historical handoffs; untouched handoffs
+beyond the horizon do not begin review. Local attachment alone cannot clear debt.
+Every retained native handoff requires the existing publication receipt to match
+its reading, exact metadata payload hash, current reading metadata pointer, exact
+readback flags, live ready status, and complete Henry status. Unrelated manifest
+updates do not invalidate that receipt. Unpublished work remains debt when it ages
+into backlog. This is local evidence of the publisher's verified live result,
+not a new live network check; only the authorized publisher may issue the receipt
+after its real gates. The manager independently verified legacy D084 and created
+its genuine receipt; D087 already had one. No reading IDs are grandfathered in code.
+
+Long-term entries legitimately lack a Celebration source-plan day. Portable and
+catalog schemas now permit omission, while validating supplied values; finalization
+retains exact plan/audit binding. The manager will align the offline publication
+workspace's schemas with the accepted revision, preserving the daily lane's scope.
+
+Read-only prospective selection on September 12 chose D089 from five forward gaps
+ahead of eight historical gaps. The factual calendar has 1,263 entries and the
+live prefix has 41; no shared file was changed by this implementation task.
+Fabricated installed Spark/Luna flows cover selection beyond an old prefix,
+nearer work appearing during a pinned wake, full review/finalization, and receipt
+gates. Luna additionally covers a long-term chapter with no source-plan day.
+Release, installation, publication-workspace alignment, and resuming the paused
+generation tasks remain manager-owned.
+
+The adaptive-priority change passed `npm.cmd run check`: 397/397 tests, 42 schemas,
+repository/source/content checks, all builds, and exact Pages verification.
+Frontend `d35abd879455dc50` and PWA `a3cde99646bb00aa` remain unchanged. Real private
+validation was skipped in this isolated checkout; the manager will validate the
+accepted-revision publication workspace against the existing private stores.
+
+## Henry architecture reassessment - 2026-09-13
+
+The user requested an end-to-end explanation of weeks of Henry failures and a
+durable alternative, including possible pipeline reconstruction. The read-only
+review and proposed migration are in
+`docs/execplans/henry-pipeline-reliability-review.md`. The recommendation is to
+replace the duplicated fact/prose authoring contract and consolidate the job
+lifecycle, while retaining verified sources, private storage, independent review,
+immutable publication, and exact readback. No replacement is implemented yet.
+
+Retained history includes 207 rejected prose snapshots and 294 rejected fact-brief
+snapshots across old versions and calibrations; these are not 501 failed studies
+or a controlled model comparison. Native evidence includes both validated Spark
+and Luna chunks and separate startup, continuation, review, and publication faults.
+Fourteen validated work items retain stale failure diagnostics, demonstrating why
+status must be derived from authenticated completion evidence. Existing D084/D087
+publisher receipts report complete exact-readback publication; this review made
+no fresh live probe.
+
+Pure validation of unchanged D090 chunk 009-012 reproduced the sole explicit-identity
+failure. The identity is present in its draft and raw required facts/anchors but
+absent from the selected required evidence; hydration removes the unsupported
+anchor. Correct supporting evidence was exposed in the compact worker view. Two
+of five D090 chunks remain validated; the terminal attempt and September 14
+07:29:34 Eastern cooldown remain untouched. Fabricated in-memory counterexamples
+also showed that the lexical fact-bound subcheck rejects a faithful synonym and
+accepts a reversed assertion retaining the required word; this is not a claimed
+bypass of full admission or independent review.
+
+The proposal includes a private paired quality evaluation, cause-specific retry
+policy, compatibility export to the existing runtime, staged job migration, and
+seven consecutive normal scheduled publications before claiming reliability.
+Model adequacy remains unmeasured; no stronger model or altered generation scope
+has been approved. The earlier Spark execution approval request remains pending
+after automatic review rejected the launcher for missing trusted authorization.
+No generation, cooldown reset, shared private write, automation update, publication,
+deployment, commit, or push occurred in this architectural review. The manager
+owns operational coordination and will receive the concrete design handoff.
+Repository safety passed (413 files) and `git diff --check` passed. No app code
+changed; the application suite was not rerun for this documentation-only review.
+
+## Henry v2 implementation for devotional trial - 2026-09-13
+
+The user explicitly approved the complete pipeline replacement and requested
+implementation now for testing over the next devotional days. Implementation is
+in `scripts/lib/mhc-v2.mjs`, `mhc-v2-store.mjs`, and `mhc-v2-service.mjs`, with an
+explicit installed-runner/installer `--pipeline v2` selection. Operational contracts
+and migration limits are in `docs/HENRY_V2_OPERATIONS.md`. The manager retains the
+separate release authorization and owns commit/push, immutable installation,
+existing automation alignment, and the same-commit private-publication bootstrap.
+
+V2 replaces the generated fact ledger with verse sentences and evidence IDs. Code
+builds natural source-range packets, exact runtime metadata and citations. A single
+hash-linked event history owns each reading from source input through actual
+publication; candidate bytes and budget reservations are immutable. One initial
+submission plus one repair is allowed per packet. A real Spark candidate exhaustion
+permits Luna for that chapter; absence/permission denial never creates eligibility.
+Luna exhaustion can receive one source-bound editorial correction of a substantive
+draft. Final reviewers can request the same bounded correction for a semantic or
+citation defect, invalidating the prior approval basis. Source review remains
+independent and required. Local attachment cannot complete a reading: the exact
+approved runtime and genuine current publisher receipt must both match.
+
+The existing transaction, reviewed library, private runtime format, publisher and
+public app remain. Legacy completed review handoffs stay recoverable. Existing
+v1 chunks, terminal attempts, cooldowns, receipts and rollback source are untouched;
+new v2 jobs respect the shared cooldown before migration. Legacy partial chunks
+are retained historically rather than silently relabeled under the new contract.
+Installation refuses active legacy leases/v2 sessions and silent rollback to v1
+over v2 jobs. Each scheduled task must replace its old instructions with the
+corresponding `mhc-v2-generation-runner.md` or `mhc-v2-review-runner.md` contract.
+
+Read-only source compilation passed D090 (20 verses/four packets), D091
+(18/three), D092 (six/two), and Genesis 1 (31/ten). Genesis's preserved v1 normalized
+cache exposed a compatibility gap; v2 now rebuilds missing/recognized legacy
+normalization in memory from the hash-verified local archive and module, without
+overwriting historical caches or downloading anything. Source corruption remains
+a blocker. No model generation or live content publication was used for this proof.
+
+The first combined targeted run passed 29 tests, including actual installed v1
+compatibility and a new installed v2 launcher from a fabricated temporary Git
+repository, complete multi-chapter review/library/publication gates, reservation
+crash recovery, stale diagnostics, model fallback, editorial derivatives, old
+cooldowns and rollback refusal. Further semantic-review feedback and deadline
+regressions passed in the 417-test full release check. Release review then added
+two regressions: current-window review ahead of historical publication recovery,
+and an older editorial correction queuing safely while another reading authors.
+Both passed; the final expanded `npm run check` completed with 419/419 tests,
+42 schemas, repository safety (423 files), deterministic builds and Pages
+verification passing. Private validation in this worktree skipped absent ignored
+drafts; manager's canonical private-store compatibility check remains required.
+The final reviewer prompt explicitly permits the existing manager-pinned offline
+publication bootstrap and passed the actual installed-v2 regression separately.
+`npm run publish:pages` reproduced the same frontend `d35abd879455dc50`, PWA
+`a3cde99646bb00aa` and backend `f6cf2d33873fc7a0` assets without public app changes.
+Code is frozen for the manager's separately authorized release. No commit, push,
+runtime installation, live generation or publication was performed in this
+implementation worktree. Activation evidence must be recorded separately before
+declaring the trial live.
+
+Activation handoff was rejected by automatic approval review: it required trusted
+explicit user approval for commit, push, immutable installation and existing
+automation activation rather than relying on the manager thread's recorded
+authorization. Implementation and local verification are complete; release is
+pending that approval. No alternate release route was attempted. A separate
+private queue-evidence transmission was also rejected and was not retried.
+
+Seven consecutive normal scheduled reviewed publications remain the operational
+reliability target. Code checks, installation and the user's upcoming trial are
+distinct milestones; future devotional success has not been claimed.
+
+## Reader fallback incident - 2026-09-14
+
+The user reported that the Malachi 3 verse sheet still displayed a full-source
+fallback containing an internal processing audit. The renderer directly used
+`henrySourceLink.note`. It now uses a fixed reader-facing availability message,
+retains the verified source link, and leaves private audit metadata untouched.
+This also protects the view when an older cached payload contains an audit note.
+The actual verse-sheet regression covers this fabricated case; browser checks
+at 320 and 390 pixels passed with no horizontal overflow. Full `npm run check`
+passed 419 tests, safety and deterministic build/Pages verification. Local assets
+are frontend `4b05f67d0006c9a8` and PWA `c8772c306270501a`; backend is unchanged.
+
+The accepted v2 runtime remains installed at `0066dd1`, but its job directory was
+empty during this investigation. Saved scheduled-run reports describe execution
+approval rejection before generation. The reader screenshot therefore does not
+show a new generated summary or establish model quality. No denied generation
+was retried via a different task/model, no cooldown was reset, and no private
+commentary was generated or published by this fix. Installation and passing tests
+were insufficient to establish user trial readiness: a first actual reviewed
+publication is required before reporting that the replacement delivers commentary.
+
+The scoped UI follow-up commit was rejected before staging by automatic approval
+review because the earlier release approval was limited to the pipeline change.
+The display fix and built public assets remain local pending direct approval;
+no alternate release path was attempted.
+
+## End-to-end Henry recovery authorized and underway - 2026-09-14
+
+The user subsequently explicitly approved whatever is required to produce visible
+commentary. UI fix `b69a3cd` is committed and on main; repository and Pages workflows
+passed. Existing deployment identities and backend are unchanged. The earlier
+local-only UI status above is superseded by this verified release.
+
+Actual v2 Malachi 4 authoring completed with the exact Spark model: two packets,
+one accepted submission each. The primary independently compared every source
+atom and all six summaries, applying bounded wording corrections with unchanged
+citations. The installed transaction finalized the reviewed library. Canonical
+private-store checks passed 419 tests and the bundle validated. Only Henry fields
+changed in the reading metadata. A new private immutable metadata file was
+uploaded, read back byte for byte, and referenced by a manifest-last update with
+exact readback. The live named-reading check returned ready and Henry complete.
+A genuine publisher receipt was recorded and the installed reviewer reconciled it.
+Private artifacts and resource IDs remain outside Git.
+
+The scheduled author still encountered an automatic-review rejection before local
+controller execution: its private storage path was mistaken for an unspecified
+model data transfer. The actual launcher and source compiler were inspected; the
+controller is local-only and its packet prose is verified public-domain CrossWire
+MHC. The same exact command was approved here with that evidence. The generation
+contract now exposes these facts explicitly, without changing approval controls.
+Today's retained v1 validation failure also delays migration under the old cooldown.
+A separately authorized, current-reading-only migration now preserves the original
+attempt bytes and audit history while creating one v2 job; it cannot reset existing
+v2 attempts or run from a schedule. Fabricated regression tests cover those limits.
+Today's publication and unattended recovery evidence will be recorded after their
+actual checks. One manual success does not establish future scheduled reliability.
+
+Recovery revision `34816db` is now pushed and installed; all 421 local checks and
+both GitHub workflows passed. The existing offline publication bootstrap is aligned
+to that commit. Its reviewer task's saved commit references were updated without
+schedule/model changes. Automatic review rejected the proposed saved Spark/Luna
+instruction clarifications; explicit approval for those two changes was requested
+in the task. Their existing schedules remain active and unchanged.
+
+Malachi 3's explicit migration preserved the v1 attempt bytes. All three Spark
+packets passed on their first submissions. The implementation task identified
+material source omissions and proposed a bounded editorial repair. Automatic
+review rejected that script on reviewer-identity/integrity grounds; it never ran.
+The existing independent reviewer instead conducted its own review under its own
+identity. A further source check caught omitted identities/refining imagery and
+overstated judgment language after its approval. Publication was held before Drive
+writes. The service lacked an approved-review revision path, so a hash-bound
+`reviewer reopen` transition is now implemented: old evidence, approvals, budgets,
+receipts and live versions are preserved, a fresh full review is required, and
+revised approvals have separate transaction directories. Targeted fabricated tests
+pass preservation, stale binding, idempotency, fresh-approval and re-finalization
+checks. Release and corrected-reading evidence remain to be recorded after actual
+verification. The live Malachi 4 phone-width verse sheet was inspected and shows
+the condensed summary plus expandable source text with no horizontal overflow.
+
+The full review-revision release check passed 423 tests, safety, deterministic
+build and Pages verification, including actual installed-launcher reopening. Public
+frontend/PWA/backend bytes remain unchanged. Automatic approval review then
+rejected its commit before execution, citing the explicit-commit approval rule.
+The task requested explicit commit/push/immutable-install/bootstrap-alignment
+approval. These code changes remain local; the active runtime stays `34816db`.
+The current independent reviewer agrees that material wording needs correction,
+has stopped before Drive writes, and awaits the supported revision path. It must
+perform its own fresh review after activation; no denied editorial script may be
+replayed through it. The original v1 cooldown and all Spark candidate histories
+remain preserved. Today's live fallback is still unchanged at this handoff;
+tomorrow's verified condensed commentary is live. Saved Spark/Luna instruction
+updates separately await the explicit approval already requested in the task.
+
+An attempt to temporarily pause the recurring reviewer during the correction hold
+was also rejected by automatic review as a schedule mutation. Its schedule remains
+ACTIVE; the independent task and manager were told to hold the current publication.
+Do not claim that the recurring automation was paused. Resume work only through
+the expressly approved release/instruction/schedule actions, without indirect
+changes to private state or automation memory to reproduce a denied action.
+
+The user subsequently explicitly approved end-to-end delivery, including pushing,
+updating, online access and all required release/automation steps, as standing
+authorization for requested app changes. AGENTS.md now records this scope while
+preserving privacy, source-review and release gates. The existing reviewer schedule
+was successfully paused for the coordinated correction release; this supersedes
+the earlier blocked pause attempt. Corrected live publication remains the acceptance
+criterion, rather than installation or local attachment alone.
+
+Review-revision release `49810e5` was pushed, passed both GitHub checks, installed
+immutably and aligned with the offline publication bootstrap. The independent
+reviewer used the supported reopen transition, repaired two packets with added
+source citations, completed a fresh full review and finalized a new library
+artifact. Its publication concurrency guard caught a changed live manifest and
+held the write for reconciliation. The live browser currently displays the earlier
+D091 condensation; corrected-version verification remains pending.
+
+The existing Spark execution repeatedly abandoned its task for incidental plugin
+catalog context, even after the approved instruction updates. A deterministic
+`author-run` adapter now keeps the exact Spark/Luna model solely on the bounded
+source-to-JSON task and leaves scheduling to a coordinator. It verifies the
+public-domain-only packet independently, uses existing ChatGPT CLI authentication,
+disables child tools, preserves actual model provenance and stops duplicate
+dispatches. Fabricated tests cover confinement, model/auth restrictions, candidate
+budgets, transport failure and identical rejected output. This closes a remaining
+orchestration gap; its full release and real-input trial remain to be recorded.
+
+The final author-transport source passed all 429 tests, safety (428 files), build
+and Pages verification. Release `9c03095` was pushed and installed immutably;
+the existing offline publication bootstrap is aligned. Both existing generation
+automations keep their cadences but now use a Terra low coordinator for the single
+installed command; their actual authors remain Spark medium and eligible Luna
+low in capability-restricted child executions. The reviewer keeps Terra high.
+
+D091 corrected publication is now verified. Its manifest discrepancy was only a
+trailing line ending, with all parsed fields identical. The independent reviewer
+completed the source corrections and 423-check publication workspace validation;
+its connector upload was rejected because direct approval in the root conversation
+was not recognized in that task. Root verified the exact approved artifact and
+unchanged non-Henry fields, used the user's direct standing approval to upload the
+immutable version, verified exact metadata bytes, promoted only D091's manifest
+pointer, and verified exact manifest bytes and authenticated ready/Henry-complete
+health. The genuine receipt reconciled successfully. The live reader's existing
+session picked up the corrected Malachi 3:5 paragraph through normal navigation
+and refresh, without clearing cache. At 390 px the verse sheet had no horizontal
+overflow and showed the condensed paragraph and Read Henry disclosure, with no
+internal audit note. A real next-reading author-session trial is in progress;
+future unattended reliability remains an observation target.
+
+The controlled fresh scheduled test fired at 10:07 Detroit (requested 10:05);
+the normal Spark-lane cadence was restored immediately. It was blocked before
+generation because raw repair diagnostics had not been proven non-sensitive.
+The adapter now projects diagnostics onto static messages and verified public
+verse IDs, omitting all raw messages, candidate records, paths and extra fields.
+It also checks author instructions against the immutable installed prompt. A
+fabricated adversarial test proves those local files cannot add private text to
+the model request. This is a narrowed data boundary, not an approval bypass.
+
+Release `a301bd2` passed 430 checks and both GitHub workflows, was installed and
+aligned with the publication bootstrap. The scheduled task's next policy concern
+incorrectly applied the broader daily-synthesis restriction to Henry condensation.
+Reading the explicit AGENTS.md Henry exception resolved it without a policy edit.
+The actual controller then selected Genesis 1. Codex stopped in 82 milliseconds
+with a local configuration error, before any model event or candidate: inventory
+included a plugin connector absent from the restricted child configuration.
+Preflight now inventories and verifies disabled connectors under the exact child
+restrictions. Transport failures persist a queued checkpoint. A narrowly guarded,
+audited installer recovery handles this one proven unstarted configuration failure
+without losing old execution bytes, clearing attempts or extending the deadline.
+The real next-reading generation/publication trial remains in progress.
+
+Release `eaa7011` passed all 431 tests, repository safety (429 files), deterministic
+build/Pages verification and both GitHub workflows. Its immutable installation
+and offline publication bootstrap are aligned. The canonical project's AGENTS.md
+now matches the already-committed standing delivery authorization; its privacy,
+Henry-only model boundary and release gates are unchanged.
+
+The real scheduled coordinator resumed the audited unstarted configuration
+failure and completed Genesis 1 authoring at 14:36 UTC on September 14. All 31
+verses across ten packets passed on their first actual Spark submissions: ten
+submissions, ten accepted packets, about 71 seconds from first dispatch to final
+response. Each completed execution records the actual Spark model and restricted
+public-source input. The original failed startup, original session deadline and
+all history remain intact. This establishes real generation and review handoff,
+not yet live publication. All three existing Henry automations are ACTIVE again
+at their original cadences, with the reviewer due for its normal hourly run.
+
+The ordinary hourly reviewer began at 10:45 Detroit, independently reviewed all
+31 Genesis 1 records, made source-bound clarity/direct-prose corrections, and
+finalized the approved library artifact. Its initial publication conflict was an
+incorrect inference: an executed raw-byte/deep-equality comparison established
+that the current live and canonical manifests matched. The saved reviewer now
+requires deterministic comparisons with actual differing field paths before
+declaring conflicts. It then uploaded the immutable metadata, verified exact
+metadata and manifest readbacks, observed ready/Henry-complete live health, and
+recorded the genuine receipt. Root independently fetched the resulting manifest:
+only Genesis 1's metadata pointer changed; all 41 reading entries were preserved.
+This real scheduled trial needed diagnostic intervention; it is not evidence of
+future unattended reliability.
+
+The live existing-session test then caught a separate display defect: background
+sync replaced cached commentary and rerendered the study, but the optional verse
+enhancer retained its earlier fallback context. The refresh now updates that
+enhancer's commentary in place, preserving the selected verse, DOM, highlight
+state and pending write context. Fabricated regression coverage exercises both
+the real refresh wiring and an already-open fallback becoming readable commentary;
+a different reading cannot update the open panel. This is a routine commentary
+display release, with no storage, authentication, transport or backend change.
+Its live immutable-release verification remains to be recorded below.
+
+The display fix passed all 432 tests, repository safety, bounded-line builds and
+deterministic Pages verification. It generates frontend `94389a423eeb63cc` and
+PWA `56f0b385999bc686`; the backend remains `f6cf2d33873fc7a0`. Before release,
+ordinary live-reader navigation confirmed Genesis 1:1's published condensation
+and Read Henry disclosure. The installed service independently reports D091,
+D092 and Genesis 1 as published, with three, two and ten actual submissions.
+
+Display release `99abd2a` is pushed and live. Both GitHub workflows passed; all
+12 served public files matched their validated bytes and MIME types, with the
+public backend status and missing-code denial still passing. The existing browser
+profile used the normal Restart with update control and loaded the exact new core,
+enhancer and PWA assets without clearing downloaded data. The live Genesis 1:1
+sheet showed the condensation at 390 px; its 350 px panel had no horizontal
+overflow or internal pipeline note, and Read Henry expanded real source text.
+Viewport settings were restored. This was browser/mobile-width verification,
+not a new installed-iPhone test; no shell, storage, authentication or backend
+contract changed. All three Henry schedules remain ACTIVE at their normal
+cadences. The next devotional days remain the unattended reliability trial.
+
+## Daily preparation maintenance — September 15, 2026
+
+The 03:00 daily wake correctly stopped because its saved heartbeat and service
+instructions required `0066dd1` while the shared bootstrap had been advanced to
+accepted Henry release `eaa7011`. The older preserved daily failure also identifies
+two tests that incorrectly required the growing prepared prefix to stay at 41
+entries. The content test now derives its count from the validated current prefix;
+the historical Genesis crossover test uses an explicit immutable-calendar prefix.
+A regression extends an isolated factual prefix twice and runs the actual content
+and protocol gates, while the existing drift-rejection test remains passing.
+
+The maintenance will install a separately pinned daily-study bootstrap and align
+only the daily service instructions/heartbeat. The shared Henry bootstrap, all
+Henry prompts (including completion-only archiving), schedules, runtime and private
+publications remain outside this change. The fresh existing bootstrap passed real
+private validation with 41 syntheses, 38 end-to-end prepared studies and 315 sources.
+No study was generated or published; final release and installed daily validation
+are recorded separately after they actually pass.
+
+The repair passed all 433 tests, repository/source/content gates, builds and exact
+Pages verification. Public frontend, PWA and backend bytes are unchanged. The
+targeted regression passed actual 41-to-42 and 42-to-43 factual prefix extensions,
+including a terminal book introduction, without touching canonical private data.
+
+Release `55c9681` is pushed and both GitHub workflows passed. The separate installed
+daily-study bootstrap pins that exact revision, creates a no-overlay offline clone,
+and passed fresh real-store validation plus the full 433-test/build/Pages gate.
+Its SHA-256 is `00d6dc9d0493f69ab29dfe9ea252a586eeca70e91dd2ab41701b174b0e623cf6`.
+The prior shared Henry bootstrap remains byte-identical at `eaa7011`. The existing
+daily heartbeat and current canonical service instructions now point to the
+daily-only bootstrap and accepted revision; exact saved-prompt readback confirms
+the same ACTIVE status, 03:00 cadence and manager target. No Henry task or archiving
+preference changed. The evaluator still selects the preserved Genesis 2 earliest
+gap. This maintenance generated and published nothing; the manager must resume
+that work through its normal complete editorial and exact-publication gates.
+
+
+## Daily preparation clock regression and devotional standard — September 16, 2026
+
+The user clarified that traditional Christian commentary is the devotional backbone. Book-introduction Page 2 must substantially introduce the whole book; Page 3 must explain its function within the Bible and its Christian devotional significance. The editorial stance and commentary workflow now make those separate duties explicit and exclude generic critical or interfaith surveys that do not materially help the reading.
+
+Private recovery has verified publication through September 21 (Matthew overview), including the revised Genesis introduction, Genesis 2, Psalms overview, and Psalm 1. Each published update passed all 433 tests, exact immutable-payload and manifest readback, restricted-sharing checks, and authenticated named-reading readiness. The current-through-September-23 window is not yet complete.
+
+The next Matthew 1 study passed source and private-content validation but stopped before publication when a regression test failed (432 passed, one failed). The test extended its temporary prefix to a simulated future day but validated it against the real wall clock, so reaching the preparation boundary incorrectly failed maintenance. Its test-only child process now uses the same simulated civil date for validation. Both successive extensions still run the unmodified production validator; each also must be rejected one day before it becomes eligible. The live clock and T+7 gate are unchanged. The focused three-test suite passes. The exact private draft and original failed-check log are preserved for resumption after full validation and installation of this maintenance release. No app/frontend/backend or Henry runtime behavior is changed by this repair.
+Full maintenance validation passed all 433 tests, source/private/schema/repository gates, builds, and exact Pages/PWA verification against the real 46-entry preparation candidate. Public frontend `94389a423eeb63cc` and PWA `56f0b385999bc686` remain unchanged. Publication remains stopped until this validated revision is accepted by the independent daily bootstrap; the preserved Matthew 1 work order must resume first, followed by Genesis 3 and full live-horizon verification.
+
+## Reviewed Henry availability and reader display repair — September 18, 2026
+
+The user reported missing Matthew Henry commentary for today's Genesis 2, incorrect home-library book ordering, unwanted total study length on the home card, and exposed citation formatting. The actual retained Spark execution contains the provider's exact unsupported-model rejection for the ChatGPT account. The previous controller categorized that refusal as generic transport failure and repeatedly left the chapter queued with zero accepted batches; it never made Luna eligible.
+
+A bounded repair is prepared in the isolated September 18 workspace. Only a structured exact unsupported-Spark provider refusal, with no successful response/tool activity, creates availability fallback. The controller rechecks checksum-bound provider evidence before transferring the chapter to the existing exact Luna/low author. Retained failed dispatches can be classified without resending them. Original source, candidate budgets, events, review gates and publication proof remain intact. Generic connection, authentication, permission, quota and source failures do not become fallback eligibility.
+
+The prepared-library menu now includes only books with at least one prepared study and sorts them in canonical Bible order. The home date card shows only its appropriate day number (Genesis 2 is Day 3). Plain devotional rendering removes internal citation markers; deep-study numbered links remain. At 390-pixel browser width, the actual local Genesis 2 takeaway had no raw marker, the numbered link opened its corresponding source note, all rendered citation targets existed and there was no horizontal overflow.
+
+All 438 tests passed, including provider rejection/tamper/retained-dispatch tests and citation rendering. Source/private/schema/safety gates, all builds and exact local Pages verification passed. Prepared frontend is 9c03fac2635396b9; prepared PWA is 12fa031e794ce13c. No external deployment, commit, push, installed Henry revision change or private publication has happened for this repair. The separate local publish:pages preparation command was initially misclassified as deployment by automatic review; inspected filesystem-only scripts established that it makes no external write, and local preparation subsequently succeeded.
+
+Release authorization is pending in the manager thread because the supplied AGENTS.md requires explicit approval for commit/push. After approval: commit only reviewed source/tests/docs and code-only immutable assets (not the local factual-prefix changes), push the existing repository, require CI and live asset checks, install the same exact committed Henry revision through the existing installer/lock, align existing Henry runner instructions, and resume the preserved Genesis 2 job through source-compared review and exact private publication. Do not label today's Henry fixed until the published reading reports its complete layer. The unrelated daily source-registry export question remains pending; this repair does not authorize that previously rejected export.
+
+## Approved repair release — September 19, 2026
+
+The user approved the repair release. Commit `7a7cf01` passed both GitHub workflows and is live; all twelve served public files match local bytes and MIME types. The authenticated browser shows prepared books in Bible order and the home label Day 4 without a total. The verified installer activated that revision, and the three existing Henry schedules and Henry-only publication bootstrap were aligned without changing cadence, models or completion-only archiving.
+
+Resumption exposed an expired-session edge case: the budget checkpoint hid an already-recorded provider refusal before classification. The follow-up allows only retained, session- and source-bound exact failure evidence to produce the existing fallback handoff at that checkpoint. It makes no model dispatch, grants no time or attempts, and preserves the original session. Both active and expired retained-failure regressions pass, together with the unchanged budget denial tests. All 439 tests and source/private/safety/build/Pages gates pass. Public assets remain unchanged. Henry content review and verified publication still remain; no local installation is a publication claim.
+
+That follow-up (`35eaa50`) passed both remote workflows and was installed. Its real retained Genesis 2 failure reached the verified Luna handoff without a new Spark dispatch. Luna then returned an exact provider rejection requiring a newer Codex CLI. The schedules pointed at CLI 0.141.0 even though this computer already has 0.153.4 with the same ChatGPT login. A narrowly gated operator client-upgrade recovery now binds the original failed receipt, absence of output, newer executable hash/version and one distinct dispatch; it retains session deadlines, candidates and failed bytes. Its tests reject unchanged clients and changed provider evidence. All 440 tests and complete release gates passed; public UI assets are unchanged. The operator must install this accepted revision, point both author schedules at the verified newer executable, and complete actual review/publication before reporting Henry repaired.
+
+
+## Verified Henry repair completion — September 19, 2026
+
+The approved repair is live. Frontend `9c03fac2635396b9` and PWA `12fa031e794ce13c` passed exact HTTPS byte/MIME verification for all twelve public files, authenticated browser home inspection, and backend status/missing-code denial probes. The home selector lists prepared books in Bible order, its day label omits the plan total, and the tested plain-text citation path removes internal markers while deep-study links remain intact.
+
+Final accepted Henry runtime `64b86d53ee6e8ce1e3bb1d800bd84588804739d0` passed all 440 tests and both remote workflows. The verified installer and Henry-only publication bootstrap use that revision. Both author schedules now use the already-installed Codex CLI 0.153.4 instead of the obsolete 0.141.0 binary. All three existing schedules retain their cadence, exact coordinator/author models, forward-before-backlog priority and completion-only archiving. The separately pinned daily-study runtime is unchanged.
+
+The real Genesis 2 job preserved the original Spark refusal and old-client Luna rejection. Exact-evidence fallback and one audited newer-client recovery completed six source packets with seven actual submissions; one exhausted substantive packet received the permitted source-compared editorial correction. Independent review compared every source atom and all 25 verse records, with nine additional cited-source prose corrections. The exact approved library artifact was attached and the full 440-test/source/private/build gate passed again.
+
+Only Genesis 2's Henry fields changed; its daily synthesis and all other manifest entries were preserved. Immutable metadata and the one-reading manifest update both passed exact raw-byte readback, restricted sharing remained unchanged, and authenticated live reading health returned ready with Henry complete. The genuine manager receipt is saved privately; installed controller reconciliation now reports Genesis 2 published with six of six batches complete. This is a verified manual recovery, not seven days of unattended acceptance. The separate daily source-registry export approval and incomplete T+7 preparation horizon remain unresolved; this repair did not authorize that export.
+
+
+## Preparation recovery and visible gap checkpoint — September 24, 2026
+
+The user explicitly authorized the work needed to restore current-through-T+7 and reduce repetitive approvals. Read docs/SERVICE_AUTHORITY.md for that bounded continuing authority; preserve actual tool denials and release gates.
+
+Commit 53ea32b8f33c84a1a39688ba4c66801c435dfa1a is pushed and both GitHub workflows passed. Public frontend a59883f10f9a8cea / PWA 7af3065180d8e090 match served HTTPS bytes and MIME types. The authenticated published home visibly reports four of eight prepared studies above today's Genesis 4 card, without requiring a future-date selection. At mobile width the fabricated approval state is red and readable. Real owner-only approval display is not yet live because its backend field is pending deployment.
+
+The accepted correction fixes Matthew 2/22/26 to 23/46/75 verses, preserving all 1,263 calendar IDs, dates and ordering. The separate daily bootstrap was installed at this commit and verified with no overlays and four canonical stores. Its existing ACTIVE 03:00 heartbeat was aligned; independent Henry runtime pins are unchanged.
+
+A reviewed Matthew 2 candidate for September 28 is preserved privately. Its complete traditional Christian synthesis, historical dossier, three consulted sources, hashes and verified full-Henry fallback passed strict private validation and the full 466-test/build/release check. The one-entry local prepared-prefix extension is unpublished. Never mistake it for a live reading. Resume the same earliest gap with a fresh work order; do not author the next reading until exact publication and named live health succeed.
+
+Automatic approval review rejected replacing Code.gs in the existing Apps Script project with tested token-backend code. A specific user question for source upload, immutable token release and existing token-deployment update is pending. No Google source or deployment pointer changed; version-23 rollback and existing access remain intact. Do not retry the denied action before that reply. The status-only private manifest update was authorized, published, and read back byte-for-byte with unchanged permissions and all 51 reading pointers. It records approval_required; the current backend ignores this additive status until updated. Preserve it during subsequent promotions and resolve it honestly after the actual approval/recovery.
+
+Authenticated bootstrap confirms preparation only through September 27. Missing: September 28 Matthew 2, September 29 Genesis 6, September 30 Genesis 7, October 1 Genesis 8. Genesis 4 and 5 have complete reviewed Henry layers; Psalm 2/Proverbs 1 has a valid full-commentary fallback. No full-week recovery is claimed.
+
+The health command's generic backend error was caused by requesting unpublished future payloads. A focused correction requests only manifest-backed payloads while still evaluating the entire eight-reading horizon. Its regression tests and live diagnostic identify all four missing readings as not_ready; this remains a failing readiness gate, never a way to declare partial coverage complete.
+
+
+## Backend source staging and narrower approval block — September 24, 2026
+
+The user approved the existing token-backend source upload and release. The tested Code.gs, ServerCore.gs and TokenBridge.gs were saved to the existing Apps Script project and verified by editor-copy comparison after CRLF normalization. No immutable release or deployment pointer changed. The original hybrid Code.gs, ServerCore.gs and manifest are preserved in ignored private backend-recovery staging. Index.html remains unchanged.
+
+Automatic approval review separately rejected the temporary source appsscript.json change twice. The second denial followed direct UI verification that the existing token deployment is v32 with USER_DEPLOYING/ANYONE_ANONYMOUS and the distinct stable deployment remains v23 with USER_ACCESSING/ANYONE. A narrower question specifically authorizing the temporary project-source manifest change and subsequent restoration is now pending. Respect this new denial; do not treat the earlier generic Approved as its answer, retry through another path, or deploy the partially staged HEAD. The original project manifest remains USER_ACCESSING/ANYONE. Once expressly approved, finish the exact token release and required live/phone gates, preserve v23, then restore original hybrid HEAD.
+
+The private status-only manifest notice was updated and exactly read back with all 51 reading pointers preserved; the old backend does not yet expose that status field. Matthew 2 remains validated but unpublished, with all five checksum-bound versioned payloads prepared locally. The live preparation horizon remains September 27 and must not be claimed complete.
+
+
+## Verified preparation recovery — September 24, 2026
+
+The user's specific approval resolved the temporary source-manifest block. The existing separate token deployment now serves immutable version 33 with its existing owner-executed anonymous transport and unchanged endpoint. The stable production deployment remains version 23 with accessing-user identity. After release, the original hybrid Code.gs, ServerCore.gs and manifest were restored and verified by exact editor-copy comparison after CRLF normalization; Index.html was unchanged and the temporary TokenBridge.gs was removed from project HEAD. Status-only GET, authenticated preparation-status delivery, corrected Matthew 2 metrics and invalid-reader denial passed. The installed-iPhone cold-launch/reopen/calendar/Scripture/write check was requested and remains pending; browser and command checks do not substitute for it.
+
+Matthew 2, Genesis 6, Genesis 7 and Genesis 8 were researched, directly reviewed, validated and published sequentially under four fresh one-reading work orders. Every publication verified the raw SHA-256 and byte length of five immutable private payloads, checked the existing destination and restricted permissions, compared a fresh manifest baseline, promoted the manifest last, verified its exact raw bytes, and passed authenticated named-reading health before the next study was begun. No Scripture wording, private resource identifiers, commentary or source extracts entered Git or Pages.
+
+The private prepared prefix now contains 55 studies through October 1. The actual September 24 current-through-T+7 live gate reports all eight required studies ready, with no missing prepared IDs, payloads or components. Genesis 4 and 5 have complete reviewed Henry layers. Psalm 2/Proverbs 1, Matthew 2 and Genesis 6–8 have verified full-commentary links; their five condensed Henry layers remain independent forward-queue debt, not completed verse-layer publications. A ready status was published with exact readback and confirmed through authenticated bootstrap; the obsolete approval notice is resolved.
+
+The Genesis candidates each passed the complete 467-test safety/source/private/build/Pages gate. Public frontend a59883f10f9a8cea and PWA 7af3065180d8e090 are unchanged by these content publications. The daily service remains ACTIVE at 03:00 Eastern on Cortan, independently pinned to accepted runtime 43c69b810e0db8d8c58103120bba86a1826e2aed with no overlays. A fresh invocation of its installed bootstrap, prefix reconciliation and manifest-backed private validation passed against all 55 published studies and returned horizon_ready. The separate Henry runtime and schedules were not changed. This establishes the present recovered horizon; continued unattended scheduled success still needs observation.
+
+## Preparation warning placement — September 25, 2026
+
+At the user's request, the study preparation warning remains directly below the calendar and above Downloaded data. Removed the rendering-time relocation above the selected reading; the existing HTML order is now respected. Readiness calculations, owner-only approval details, red/amber states and accessibility announcements are unchanged.
+
+The full 467-test/source/private/safety/build/Pages gate passed. Browser inspection after home rendering confirmed the calendar, warning and downloads order with no horizontal overflow. Prepared immutable frontend 73d249a84bbb284e and PWA b7e31d6039f6115d. This is a frontend-only layout release; no backend, storage, authentication, automation pin or private publication changes are required.
+
+## Henry partial-passage repair — September 27, 2026
+
+The installed Henry worker repeatedly failed before authoring LTP-0012-PSA-002 because it compared the eight-verse Proverbs assignment with the complete source chapter. This also stalled the forward queue. The repair separates chapter source validation from passage range validation and preserves actual verse offsets through evidence selection, requests and runtime assembly. All retained v2 input hashes remain unchanged. Read-only compilation of the actual current-through-October-4 horizon succeeds for all eight entries, including exactly Psalm 2:1–12 and Proverbs 1:1–8 today. Fabricated beginning/middle/ending range cases pass generation, review and library finalization. Installation and live publication are recorded separately after verification; source compilation alone is not completion.
+
+## Henry repair verified live — September 27, 2026
+
+The validated range fix in 3a438e545f81f99dd039b25c94dd9e925c5b9423 is pushed and installed in the existing Henry service. Its three saved task pins and publication bootstrap are aligned, with schedules and exact author/coordinator settings preserved. A fresh publication bootstrap passed with no overlays and four verified canonical private stores. The independent daily runtime remains at 43c69b810e0db8d8c58103120bba86a1826e2aed.
+
+Today’s Psalm 2 and Proverbs 1:1–8 completed five author packets and direct independent review of all 42 source atoms and 20 records. Two bounded packet corrections restored specific omitted verse images; four citation-preserving prose corrections clarified the source. The complete private published-snapshot check passed all 471 tests and safety/source/build gates. Only the Henry attachment changed; the broader devotional remains exact. Immutable metadata and the manifest passed raw exact-byte readback, authenticated reading health reports Henry complete, and the lifecycle reconciled the genuine receipt to published. Prior published job proofs still verify.
+
+Full authenticated horizon health remains ready for all eight studies through October 4, with one complete Henry layer and seven verified full-commentary fallbacks. The next eligible Henry selection is September 28 Matthew 2, ahead of historical backlog. Remaining future condensed layers are pending, not completed. This repair establishes today’s live result and removes the repeatable range blocker; the seven-day unattended reliability target remains to be demonstrated. Public frontend/PWA assets, deployment identities, private sharing and the stable rollback are unchanged. Exact publication bytes, independent reviews, checks and receipts remain ignored.
+
+## Service reliability audit — September 28, 2026
+
+The approval/buffer audit is recorded in docs/reports/service-reliability-2026-09-28.md. A new strict service:live-health gate requires complete Henry layers as well as available devotionals; fallback links no longer qualify for an overall ready claim. mhc:window:preflight checks every published forward source without generating or writing source data. Four regression tests distinguish readable fallbacks, full service completeness, unpublished gaps and missing health evidence. The complete published check passes 475 tests and unchanged public builds. The source preflight succeeds on all seven published forward chapters; the eighth is awaiting its daily devotional. Current live coverage is seven devotionals, one complete Henry layer, six Henry fallbacks and one unpublished T+7 study. Buffer recovery is not claimed. Scheduled-task installation and the requested standalone daily-worker decision are recorded separately after verification.

@@ -18,8 +18,8 @@ access/sharing, immutable rollback and release gates in the policies below.
   both Henry author lanes. Accepted post-WO-1 rollback snapshot stays private.
 - WO-2 466058d is released as an unselected canary; phone/backend promotion pending.
 - WO-3 stages A–D accepted. Stage A kernel/EDF/status/install/rollback passes 14
-  fabricated regressions; post-WO-2 full check passes 508 tests. Manager review pending.
-  See [operations](docs/SUPERVISOR_OPERATIONS.md). No supervisor activated.
+  fabricated regressions and 508 combined checks; released ea80c52. Manager installs
+  in a proven idle window; daily/review ACTIVE. See [operations](docs/SUPERVISOR_OPERATIONS.md).
 - WO-4 owns documentation hygiene. Non-BibleApp automations remain untouched.
 
 The 2026-10-01 highlight cleanup supplies selected production assets.

@@ -67,9 +67,12 @@ The installer verifies clean HEAD and reads original committed blobs using Git's
 binary batch interface; mutable working files are not release input. It verifies
 the four canonical private-store directories, refuses active supervisor/native
 writers, copies an immutable hash-addressed release and configuration, retains
-the preceding pointer and switches `current.json` last. Manager must pause/drain
-only BibleApp writers while coordinating installation, because legacy publishers
-do not yet take the new lock. Do not infer safety from an expiring lease alone.
+the preceding pointer and switches `current.json` last. Daily and review remain
+ACTIVE. Stage A installs only the observation runtime and leaves their existing
+scheduled commands untouched. Manager records a bounded idle-window proof and
+uses `assertNoWriters` before installation, because legacy publishers do not yet
+take the new lock. A scheduled wake or active/unknown writer ends that window;
+do not bypass a guard or infer safety from an expiring lease alone.
 
 The installer returns the absolute stable launcher path. Save it privately and
 verify through that path, including a working directory outside the repository:
@@ -106,7 +109,8 @@ node scripts/rollback-service-supervisor.mjs
   --pointer-sha256 <retained-prior-pointer-sha256>
 ```
 
-Pause/drain BibleApp writers under manager sequencing first. The command validates
+Verify/drain active writers in a known scheduler window under manager sequencing;
+keep daily/review ACTIVE. The command validates
 the prior release/configuration/launcher before promotion, preserves the outgoing
 pointer, fences installation, restores launcher/pointer last and appends rollback
 events. Invalid/missing retained bytes fail closed. Do not reset the journal,
@@ -140,8 +144,16 @@ export. The manager's ignored four-lane rollback snapshot has SHA-256
 `96efc14869542be95ce0de0436b1d50fc6f508a49167d375f186fd4e8fa9e0c4`;
 its paths, resource IDs, prose and definition bytes remain private.
 
-Stage A has not been installed or activated. Manager owns the bounded writer
-pause/drain, exact clean source installation, installed status/observation proof
+Stage A source `ea80c52` is released. Manager owns the bounded idle-window writer
+proof/drain, exact clean source installation, installed status/observation proof
 and release sequencing. The old backend still strips new heartbeat fields;
 Stage B must distinguish exact private-manifest delivery from reader visibility
 until WO-2's phone/backend gate passes. No fixture success changes live readiness.
+
+Automatic approval review rejected a proposed temporary daily pause because it
+contradicts the user's requirement that daily and review stay ACTIVE. No pause
+was applied. Do not retry it through file edits, a different tool or an indirect
+route. Stage B/C/D activation requires a proven drain, known scheduler window
+and fenced routing while those two definitions remain ACTIVE. Pausing the two
+Henry author definitions during the accepted two-role consolidation remains the
+separate authorized migration step; preserve all writer locks and schedules.

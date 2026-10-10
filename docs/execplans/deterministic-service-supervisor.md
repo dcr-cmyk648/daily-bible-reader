@@ -424,7 +424,11 @@ fresh-manifest status protocol; never silently resume/edit an automation.
 The two current Henry pauses are intentional until WO-1 installation and approved
 preflight; do not report those exact baseline pauses as an unexpected failure.
 After consolidation their expected state remains PAUSED as retained rollback
-definitions. Manager-coordinated temporary release pauses need an explicit private
+definitions. Daily/review remain ACTIVE; installation needs a proven idle window
+and fenced routing without bypassing writer guards. Record a private maintenance
+receipt with the known next scheduled wakes. A past proposed temporary daily
+pause was rejected by automatic approval review; do not retry it indirectly.
+Manager-coordinated permitted Henry consolidation pauses need an explicit private
 bounded maintenance record and expire; they must not permanently suppress red.
 If both active automations or the PC stop, no process can publish new status. The
 reader's independent >30-hour heartbeat-age check is the only remaining signal.
@@ -515,9 +519,11 @@ Migration sequence is manager-owned:
 2. Install each accepted supervisor stage side by side. Shadow audits are read-only;
    production state mutations start only on the accepted fenced adapter route.
    Validate existing private stores and retained legacy review recovery.
-3. For consolidation, pause only BibleApp writers in a bounded coordinated window;
-   drain/reconcile active sessions and connector transactions. Refuse installation
-   while a writer or uncertain dispatch remains active. No blanket “pause all.”
+3. For consolidation, keep daily/review ACTIVE and use a bounded known scheduler
+   window plus fenced routing. Drain/reconcile active sessions and connector
+   transactions. Refuse installation while any writer or uncertain dispatch
+   remains active; a scheduled wake invalidates the idle-window proof. Pause only
+   the two Henry definitions during the separately accepted two-role migration.
 4. Update only the existing daily and reviewer definitions with private absolute
    launchers and the two thin prompts. Preserve their named project, schedules and
    coordinator models unless an explicit accepted change is recorded. Keep legacy

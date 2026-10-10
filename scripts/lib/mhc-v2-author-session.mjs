@@ -46,7 +46,7 @@ export function transportSchema(schema) {
 export function authorArguments({model,reasoning,schemaPath,outputPath,mcpNames=[]}) {
   if(![...Object.values(MODELS),LEGACY_MODELS.spark].includes(model)||reasoning!==(model===MODELS.luna?'low':'medium'))throw Error('V2_TRANSPORT_MODEL_INVALID');
   if(mcpNames.some(name=>!/^[A-Za-z0-9_-]+$/.test(name)))throw Error('V2_TRANSPORT_MCP_NAME_INVALID');
-  return ['exec','--model',model,'-c',`model_reasoning_effort="${reasoning}"`,'-c','model_provider="openai"','-c','forced_login_method="chatgpt"','--sandbox','read-only',...['shell_tool','apps','plugins','multi_agent'].flatMap(feature=>['--disable',feature]),'-c','web_search="disabled"',...mcpNames.flatMap(name=>['-c',`mcp_servers.${name}.enabled=false`]),'--output-schema',schemaPath,'--output-last-message',outputPath,'--json','-'];
+  return ['exec','--ephemeral','--model',model,'-c',`model_reasoning_effort="${reasoning}"`,'-c','model_provider="openai"','-c','forced_login_method="chatgpt"','--sandbox','read-only',...['shell_tool','apps','plugins','multi_agent'].flatMap(feature=>['--disable',feature]),'-c','web_search="disabled"',...mcpNames.flatMap(name=>['-c',`mcp_servers.${name}.enabled=false`]),'--output-schema',schemaPath,'--output-last-message',outputPath,'--json','-'];
 }
 
 export function successfulModelResult(result) {

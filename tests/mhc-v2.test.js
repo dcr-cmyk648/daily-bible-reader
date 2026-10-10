@@ -30,7 +30,7 @@ for(const [model,message] of [['gpt-5.3-codex-spark',"not supported when using C
   const staged=await readJson(result.statusCandidatePath);assert.equal(staged.preparationStatus.state,'blocked');assert.ok(staged.preparationStatus.summary.includes(model));
   assert.deepEqual(staged.readings,(await readJson(path.join(ctx.privateRoot,'private-manifest.json'))).readings);
 });
-test('preflight probes each configured model with ChatGPT-only auth and isolated tools',async t=>{
+test('preflight probes each configured model with ephemeral ChatGPT-only exec and isolated tools',async t=>{
   const {ctx,now}=await fixture(t),normal=fabricatedModelRun(),models=[];
   const run=(bin,args,opts)=>{if(opts.input?.startsWith('Availability preflight')){models.push(args[args.indexOf('--model')+1]);assert.equal(opts.env.OPENAI_API_KEY,undefined);assert.equal(opts.env.CODEX_API_KEY,undefined);assert.ok(args.includes('forced_login_method="chatgpt"'));}return normal.run(bin,args,opts);};
   const result=await authorPreflight(ctx,{codexExecutable:process.execPath},{run,clock:()=>now});
@@ -157,6 +157,10 @@ const sessionId=report=>report.advanceArgv.at(-1);
 function fabricatedModelRun(transform=x=>x){
   let calls=0;
   const run=(_binary,args,options)=>{
+    if(args[0]==='exec'){
+      assert.deepEqual(args.slice(0,2),['exec','--ephemeral']);
+      assert.equal(args.filter(arg=>arg==='--ephemeral').length,1);
+    }
     if(args[0]==='--version')return {status:0,stdout:'codex-cli 0.162.1'};
     if(options.input?.startsWith('Availability preflight')){writeFileSync(args[args.indexOf('--output-last-message')+1],bytesFor({ok:true}));return {status:0,stdout:'{"type":"turn.completed"}\n'};}
     if(args[0]==='login')return {status:0,stderr:'Logged in using ChatGPT'};

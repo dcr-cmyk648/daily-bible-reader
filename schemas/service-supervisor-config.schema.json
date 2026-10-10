@@ -7,13 +7,23 @@
   "required": ["schemaVersion", "stage", "sourceRevision", "projectRoot", "runtimeRoot", "automations"],
   "properties": {
     "schemaVersion": {"const": "service-supervisor-config/v1"},
-    "stage": {"const": "A"},
+    "stage": {"enum": ["A", "B"]},
     "sourceRevision": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
     "projectRoot": {"type": "string", "minLength": 1},
     "runtimeRoot": {"type": "string", "minLength": 1},
-    "automations": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"$ref": "#/$defs/automation"}}
+    "publicationInputRoot": {"type": "string", "minLength": 1},
+    "automations": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"$ref": "#/$defs/automation"}},
+    "publicationResources": {"type": "object", "additionalProperties": false, "required": ["manifest", "folder"], "properties": {
+      "manifest": {"$ref": "#/$defs/resource"}, "folder": {"$ref": "#/$defs/resource"}
+    }}
   },
   "$defs": {
+    "resource": {"type": "object", "additionalProperties": false, "required": ["fileId", "mimeType", "parents", "permissionsSha256"], "properties": {
+      "fileId": {"type": "string", "pattern": "^[A-Za-z0-9_-]{10,200}$"},
+      "mimeType": {"enum": ["text/plain", "application/json", "application/vnd.google-apps.folder"]},
+      "parents": {"type": "array", "maxItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^[A-Za-z0-9_-]{10,200}$"}},
+      "permissionsSha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+    }},
     "automation": {
       "type": "object", "additionalProperties": false,
       "required": ["lane", "file", "name", "kind", "status", "rrule", "model", "reasoning_effort", "execution_environment", "target", "cwds", "promptSha256"],

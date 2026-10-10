@@ -14,12 +14,12 @@ access/sharing, immutable rollback and release gates in the policies below.
 
 ## Current sequencing
 
-- WO-1 fe7bb36 is installed; manager verified both models at 15:13 UTC and resumed
-  both Henry author lanes. Accepted post-WO-1 rollback snapshot stays private.
+- WO-1 e9a2740 is installed; manager verified both ChatGPT author models at 16:19
+  UTC. Both Henry lanes ACTIVE; exact e9 inventory/rollback remain private.
 - WO-2 466058d is released as an unselected canary; phone/backend promotion pending.
-- WO-3 stages A–D accepted. Stage A kernel/EDF/status/install/rollback passes 14
-  fabricated regressions and 508 combined checks; released ea80c52. Manager installs
-  in a proven idle window; daily/review ACTIVE. See [operations](docs/SUPERVISOR_OPERATIONS.md).
+- WO-3 A–D accepted. Stage A ea80c52 installed; B publication/source/revocation
+  gates pass 526 combined tests and real read-only Genesis 14 authority proof.
+  Manager sequences B install/publication; daily/review ACTIVE. [B protocol](docs/SUPERVISOR_PUBLICATION.md).
 - WO-4 owns documentation hygiene. Non-BibleApp automations remain untouched.
 
 The 2026-10-01 highlight cleanup supplies selected production assets.
@@ -47,14 +47,14 @@ live delivery needs the manager's backend/phone gate and scheduled-wake readback
 `docs/COMMENTARY_WORKFLOW.md`, and `docs/RELEASE_STABILITY.md` remain authoritative.
 Do not treat archived operational reports as current permission or readiness.
 
-## WO-1 release candidate
+## WO-1 current accepted runtime
 
-Released fe7bb36: approved gpt-6-luna primary (medium), gpt-5.6-luna fallback
+e9a2740 preserves approved gpt-6-luna primary (medium), gpt-5.6-luna fallback
 (low), ChatGPT-only preflight, bounded retries, 24-hour leases, three-reading
-drain and independent review. Legacy provenance/budgets survive explicit rebinds;
-runtime packaging verifies exact status/health dependencies. Manager's 14:55 UTC
-preflight verified both models on CLI 0.162.1 through ChatGPT; private proof is
-preserved. WO-1 check passed 485 tests with public assets unchanged. Manager owns
-live health and release sequencing. Installed exact fe7bb36 model probes passed
-at 15:13 UTC; both Henry author lanes resumed. Commands and WO-2/WO-3 interfaces:
-[Henry recovery release](docs/execplans/henry-recovery-release-2026-10-10.md).
+drain and independent review; author/probe execs now use --ephemeral. Legacy
+provenance/budgets survive explicit rebinds; status/health dependencies are pinned.
+Manager's 16:19 UTC installed CLI 0.162.1 probe verified both models via ChatGPT,
+with no API fallback. Only Henry prompt pins changed; all four definitions ACTIVE.
+Genesis 14 has five reviewed batches, six submissions and a publishing-phase
+approved job; manager owns remaining attachment/publication and live health.
+Commands/interfaces: [Henry recovery release](docs/execplans/henry-recovery-release-2026-10-10.md).

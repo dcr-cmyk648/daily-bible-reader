@@ -51,6 +51,9 @@ export async function captureInventory(mapping) {
 export async function assertNoWriters(projectRoot, stateRoot, {now = new Date(), absent = processAbsent} = {}) {
   const journal = await openJournal(stateRoot, {absent}), events = await journal.load(), latest = new Map();
   for (const event of events) if (['lease_acquired', 'lease_released'].includes(event.kind)) latest.set(event.data.resource, event);
+  const publications=new Map();
+  for (const event of events) if(event.kind==='publication_state')publications.set(event.data.transaction.id,event.data.transaction);
+  if([...publications.values()].some(t=>!['complete','blocked'].includes(t.phase)))throw fault('SUPERVISOR_INSTALL_PUBLICATION_PENDING');
   if ([...latest.values()].some(e => e.kind === 'lease_acquired' && !absent(e.data.pid))) throw fault('SUPERVISOR_INSTALL_WRITER_ACTIVE');
   const jobRoot = await confined(projectRoot, 'private-content/automation/mhc-v2');
   for (const name of await readdir(jobRoot).catch(e => {if (e.code === 'ENOENT') return []; throw e;})) {
@@ -66,7 +69,7 @@ export async function assertNoWriters(projectRoot, stateRoot, {now = new Date(),
     if ([...latestEvents.values()].some(e => e.outcome === 'leased')) throw fault('SUPERVISOR_INSTALL_WRITER_ACTIVE');
   }
 }
-export async function installRuntime({projectRoot, sourceRevision, files, inventory, now = new Date()}) {
+export async function installRuntime({projectRoot, sourceRevision, files, inventory, stage='A', publicationResources, publicationInputRoot, now = new Date()}) {
   projectRoot = path.resolve(projectRoot);
   await assertCanonicalPath(projectRoot, projectRoot);
   for (const name of ['private-content', 'private-commentary', 'research/raw', 'research/working']) {
@@ -84,7 +87,17 @@ export async function installRuntime({projectRoot, sourceRevision, files, invent
   await assertNoWriters(projectRoot, stateRoot, {now});
   const journal = await openJournal(stateRoot), lease = await journal.acquire('installation', {now, durationMs: 10 * 60 * 1000});
   try {
-    const config = {schemaVersion: 'service-supervisor-config/v1', stage: 'A', sourceRevision, projectRoot, runtimeRoot, automations: inventory};
+    if (!['A','B'].includes(stage) || stage==='B' && (!publicationResources || !['text/plain','application/json'].includes(publicationResources.manifest?.mimeType) ||
+      publicationResources.folder?.mimeType!=='application/vnd.google-apps.folder') || stage==='A' && publicationResources) throw fault('SUPERVISOR_INSTALL_ARGUMENTS_INVALID');
+    if(publicationInputRoot) {
+      if(stage!=='B'||!path.isAbsolute(publicationInputRoot))throw fault('SUPERVISOR_PUBLICATION_INPUT_ROOT_INVALID');
+      publicationInputRoot=path.resolve(publicationInputRoot);await assertCanonicalPath(publicationInputRoot,publicationInputRoot);
+      for(const relative of ['private-content','research/working'])await confined(publicationInputRoot,relative,false);
+    }
+    if (stage==='B') for(const name of ['scripts/lib/service-supervisor-publication.mjs','scripts/lib/service-supervisor-publication-gates.mjs','scripts/lib/service-supervisor-connector.mjs','scripts/lib/service-supervisor-scope.mjs','scripts/lib/service-supervisor-approval.mjs',
+      'schemas/service-supervisor-editorial-approval.schema.json']) if(!files.some(v=>v.path===name)) throw fault('SUPERVISOR_RELEASE_DEPENDENCY_MISSING');
+    const config = {schemaVersion: 'service-supervisor-config/v1', stage, sourceRevision, projectRoot, runtimeRoot, automations: inventory,
+      ...(publicationResources?{publicationResources}:{}),...(publicationInputRoot?{publicationInputRoot}:{})};
     assertSchemaValid(config, JSON.parse(files.find(v => v.path === 'schemas/service-supervisor-config.schema.json').bytes), {label: 'Supervisor install config'});
     const configBytes = jsonBytes(config), configSha256 = digest(configBytes);
     const manifest = {schemaVersion: 'service-supervisor-release/v1', sourceRevision,
@@ -100,7 +113,7 @@ export async function installRuntime({projectRoot, sourceRevision, files, invent
     if (prior) await durableWrite(runtimeRoot, `pointer-history/${digest(prior)}.json`, prior);
     await durableWrite(runtimeRoot, 'current.json', jsonBytes(pointer), {immutable: false});
     await journal.append('installation_activated', {sourceRevision, release, manifestSha256, configSha256}, now, lease);
-    return {action: 'installed', stage: 'A', sourceRevision, manifestSha256, configSha256, launcher: path.join(runtimeRoot, 'launcher.mjs')};
+    return {action: 'installed', stage, sourceRevision, manifestSha256, configSha256, launcher: path.join(runtimeRoot, 'launcher.mjs')};
   } finally {await journal.release(lease, now);}
 }
 export async function verifyRuntime(runtimeRoot, launcherBytes, pointerBytes = null) {

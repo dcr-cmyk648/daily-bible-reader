@@ -587,7 +587,11 @@ installed route proof, one real reading and sustained unattended operation.
 - [ ] Implement/validate/release stages A–D with manager sequencing and exact pins.
 - [ ] Verify next scheduled wakes and seven ordinary publications.
 
-The next action is implement/validate stage A and stop for manager release
-sequencing. Acceptance resolves subprocess roles/models and historical-selector
-retention; compatible post-WO-1 rollback remains a release gate. Acceptance alone
-changes no automation state or live service readiness.
+Stage A ea80c52 is released and installed; both arbitrary-CWD roles accepted the
+four ACTIVE definitions and staged truthful status. Stage B adds immutable native
+connector handoffs, raw readback, current-state approval/source/library fences and
+verified health. Its release/install/one-reading acceptance is manager-sequenced;
+continue Stage C bounded role implementation after that code release. Bind Henry
+integration to the manager's installed ephemeral e9a2740 runtime and recaptured
+ACTIVE inventory. Compatible post-WO-1 rollback remains a release gate. Stage
+acceptance alone changes no automation state or live service readiness.

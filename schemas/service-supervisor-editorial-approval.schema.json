@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daily-bible-reader.local/schemas/service-supervisor-editorial-approval.schema.json",
+  "title": "Hash-bound independent daily commentary approval",
+  "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion", "readingId", "status", "contentSha256", "metadataSha256", "registrySha256", "authorSessionId", "reviewerSessionId", "reviewedAt", "findings", "assertions"],
+  "properties": {
+    "schemaVersion": {"const": "supervisor-editorial-approval/v1"},
+    "readingId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{1,79}$"},
+    "status": {"const": "approved"},
+    "contentSha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "metadataSha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "registrySha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "authorSessionId": {"type": "string", "pattern": "^[a-f0-9]{32}$"},
+    "reviewerSessionId": {"type": "string", "pattern": "^[a-f0-9]{32}$"},
+    "reviewedAt": {"type": "string", "format": "date-time"},
+    "findings": {"type": "array", "minItems": 1, "maxItems": 100, "items": {"type": "string", "minLength": 3, "maxLength": 3000}},
+    "assertions": {
+      "type": "object", "additionalProperties": false,
+      "required": ["sourceAccessHonest", "claimsSupported", "interpretationReviewed", "coverageReviewed", "rightsAndPrivacyReviewed", "editorialStanceReviewed", "standaloneProseReviewed", "historicalContextReviewed"],
+      "properties": {
+        "sourceAccessHonest": {"const": true}, "claimsSupported": {"const": true},
+        "interpretationReviewed": {"const": true}, "coverageReviewed": {"const": true},
+        "rightsAndPrivacyReviewed": {"const": true}, "editorialStanceReviewed": {"const": true},
+        "standaloneProseReviewed": {"const": true}, "historicalContextReviewed": {"const": true}
+      }
+    }
+  }
+}

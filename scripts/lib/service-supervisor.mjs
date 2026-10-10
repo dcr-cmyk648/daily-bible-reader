@@ -40,8 +40,10 @@ async function defaultStatus(ctx, previous, options) {
 export async function supervisorContext(config, releaseRoot) {
   assertSchemaValid(config, JSON.parse(await readFile(path.join(releaseRoot, 'schemas/service-supervisor-config.schema.json'), 'utf8')),
     {label: 'Installed supervisor config'});
-  if (config.schemaVersion !== 'service-supervisor-config/v1' || config.stage !== 'A' || !path.isAbsolute(config.projectRoot) ||
+  if (config.schemaVersion !== 'service-supervisor-config/v1' || !['A','B'].includes(config.stage) || !path.isAbsolute(config.projectRoot) ||
       !path.isAbsolute(config.runtimeRoot) || !Array.isArray(config.automations) || !/^[a-f0-9]{40}$/.test(config.sourceRevision)) throw fault('SUPERVISOR_CONFIG_INVALID');
+  if (config.stage==='B' && (!config.publicationResources || !['text/plain','application/json'].includes(config.publicationResources.manifest.mimeType) ||
+    config.publicationResources.folder.mimeType!=='application/vnd.google-apps.folder')) throw fault('SUPERVISOR_PUBLICATION_CONFIG_INVALID');
   const projectRoot = path.resolve(config.projectRoot);
   await assertCanonicalPath(projectRoot, projectRoot);
   for (const relative of ['private-content', 'private-commentary', 'research/raw', 'research/working']) {
@@ -50,7 +52,13 @@ export async function supervisorContext(config, releaseRoot) {
   const runtimeRoot = await confined(projectRoot, 'private-content/automation/service-supervisor/runtime', false);
   if (runtimeRoot !== config.runtimeRoot) throw fault('SUPERVISOR_CONFIG_INVALID');
   const stateRoot = await confined(projectRoot, 'private-content/automation/service-supervisor/state');
-  return {config, projectRoot, runtimeRoot, stateRoot, releaseRoot: path.resolve(releaseRoot)};
+  let publicationInputRoot=projectRoot;
+  if(config.publicationInputRoot) {
+    if(!path.isAbsolute(config.publicationInputRoot))throw fault('SUPERVISOR_PUBLICATION_INPUT_ROOT_INVALID');
+    publicationInputRoot=path.resolve(config.publicationInputRoot);await assertCanonicalPath(publicationInputRoot,publicationInputRoot);
+    for(const relative of ['private-content','research/working'])await confined(publicationInputRoot,relative,false);
+  }
+  return {config, projectRoot, runtimeRoot, stateRoot, publicationInputRoot, releaseRoot: path.resolve(releaseRoot)};
 }
 export async function runSupervisor(ctx, {role, now = new Date(), runId} = {}, dependencies = {}) {
   if (!ROLES.includes(role)) throw fault('SUPERVISOR_ROLE_INVALID');
@@ -60,7 +68,7 @@ export async function runSupervisor(ctx, {role, now = new Date(), runId} = {}, d
   const logicalLane = role === 'preparation' ? 'daily' : 'review';
   let result, statusPath = null;
   try {
-    await journal.append('run_started', {runId: lease.runId, role, sourceRevision: ctx.config.sourceRevision, stage: 'A'}, now, lease);
+    await journal.append('run_started', {runId: lease.runId, role, sourceRevision: ctx.config.sourceRevision, stage: ctx.config.stage}, now, lease);
     let observation, code = null;
     try {
       const inventory = await inspectAutomations(ctx.config.automations, dependencies.automations);
@@ -68,18 +76,24 @@ export async function runSupervisor(ctx, {role, now = new Date(), runId} = {}, d
       const health = await (dependencies.health || defaultHealth)(ctx, now);
       const jobs = await (dependencies.jobs || defaultJobs)(ctx, health);
       const selection = selectEDF({plan, appConfig, health, jobs, role, now});
+      const publications=new Map();
+      if(ctx.config.stage==='B')for(const event of await journal.load())if(event.kind==='publication_state') {
+        const t=event.data.transaction;
+        publications.set(t.kind==='reading'?`${t.readingId}:${t.component}`:`status:${t.role}`,t);
+      }
+      const publicationDebt=[...publications.values()].find(t=>['blocked','reconciliation_required','health_pending'].includes(t.phase)&&t.code);
       const configurationDebt = selection.debts.find(v => failureClass(v.code).scope === 'capability');
-      code = inventory.findings[0]?.code || configurationDebt?.code || selection.debts.find(v => v.terminal)?.code || null;
+      code = inventory.findings[0]?.code || publicationDebt?.code || configurationDebt?.code || selection.debts.find(v => v.terminal)?.code || null;
       observation = {inventory, selection, measuredAt: new Date(now).toISOString()};
       await journal.append('observation', {runId: lease.runId, role, ...observation}, now, lease);
       const pending = Boolean(selection.next || selection.debts.length || !selection.forwardComplete);
-      result = {schemaVersion: 'service-supervisor-result/v1', stage: 'A', role,
+      result = {schemaVersion: 'service-supervisor-result/v1', stage: ctx.config.stage, role,
         action: 'observed', outcome: code ? 'blocked' : pending ? 'handoff_pending' : 'healthy_noop',
         code, published: false, forwardComplete: selection.forwardComplete, selectedReadingId: selection.next?.readingId || null,
         nextAction: selection.next?.action || null, buffer: selection.buffer};
     } catch (e) {
       code = safeCode(e.code);
-      result = {schemaVersion: 'service-supervisor-result/v1', stage: 'A', role, action: 'observed',
+      result = {schemaVersion: 'service-supervisor-result/v1', stage: ctx.config.stage, role, action: 'observed',
         outcome: 'blocked', code, published: false, forwardComplete: false, selectedReadingId: null, nextAction: null, buffer: null};
       await journal.append('observation_failed', {runId: lease.runId, role, code}, now, lease);
     }
@@ -117,7 +131,7 @@ export async function runSupervisor(ctx, {role, now = new Date(), runId} = {}, d
 export async function supervisorStatus(ctx) {
   const journal = await openJournal(ctx.stateRoot), events = await journal.load();
   const last = events.findLast(e => e.kind === 'run_finished');
-  return {schemaVersion: 'service-supervisor-status/v1', stage: 'A', events: events.length,
+  return {schemaVersion: 'service-supervisor-status/v1', stage: ctx.config.stage, events: events.length,
     lastRunAt: last?.at || null, lastOutcome: last?.data.outcome || null, lastErrorCode: last?.data.code || null,
     published: false};
 }

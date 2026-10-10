@@ -1,7 +1,8 @@
 import {readFile,readdir,mkdir} from 'node:fs/promises';
 import path from 'node:path';
+import {isDeepStrictEqual} from 'node:util';
 import {VERSION,MODELS,MAX_SUBMISSIONS,REVIEW_ASSERTIONS,candidateSchema,passageScope,compileReading,validateCandidate,chapterRuntime,digestObject} from './mhc-v2.mjs';
-import {appendState,atomicJson,bytesFor,confined,createJob,loadJob,maybeJson,readJson} from './mhc-v2-store.mjs';
+import {appendState,atomicJson,bytesFor,confined,createJob,initialJobState,loadJob,maybeJson,readJson} from './mhc-v2-store.mjs';
 import {loadHenryPlan,henryPriorityWindow,hasHenryPublicationReceipt,pendingHenryHandoffs} from './mhc-priority.mjs';
 import {selectMhcBackfillCandidate,isVerifiedHenryFallback} from './mhc-backfill-work-order.mjs';
 import {latestDetroitSparkSlot} from './mhc-native-state.mjs';
@@ -13,6 +14,7 @@ import {finalizeReviewedLibrary} from './mhc-reviewed-library-finalize.mjs';
 import {sparkModelUnavailable} from './mhc-v2-model-errors.mjs';
 import {configuredModels,jobModels} from './mhc-v2-author-config.mjs';
 import {stageAuthorBlock} from './mhc-v2-author-status.mjs';
+import {openJournal} from './service-supervisor-store.mjs';
 
 const HOUR=60*60*1000;
 const chapterKey=c=>`${c.book_id}.${c.chapter}`;
@@ -64,14 +66,17 @@ export async function sourceInput(ctx,entry) {
   } catch(error){error.readingId=entry.readingId;error.stage='source';throw error;}
 }
 
-async function allJobs(ctx) {
+async function allJobs(ctx,{readOnly=false}={}) {
   const names=await readdir(ctx.jobRoot,{withFileTypes:true}),jobs=[];
   for(const d of names){
     if(!d.isDirectory()||d.isSymbolicLink()||!validReading(d.name))throw new Error('V2_JOB_DIRECTORY_INVALID');
     const directory=await confined(ctx.jobRoot,d.name,{missing:false});
     const input=await maybeJson(await confined(directory,'input.json'));
     if(!input){if((await readdir(directory)).some(n=>!/^input\.json\.tmp-[a-f0-9]+$/.test(n)))throw new Error('V2_PARTIAL_JOB_INVALID');continue;}
-    await mkdir(await confined(directory,'events'),{recursive:true,mode:0o700});
+    if(readOnly){
+      const events=await readdir(await confined(directory,'events')).catch(error=>{if(error.code==='ENOENT')return null;throw error;});
+      if(events===null){const {input_sha256,...basis}=input;if(digestObject(basis)!==input_sha256)throw new Error('V2_INPUT_HASH_MISMATCH');jobs.push({directory,input,state:null});continue;}
+    } else await mkdir(await confined(directory,'events'),{recursive:true,mode:0o700});
     jobs.push(await loadJob(directory));
   }
   return jobs;
@@ -169,64 +174,154 @@ async function authorPacket(ctx,job,now) {
   return report(ctx,job,{action:budgetExpired?'checkpointed':(job.state.rejected[key]||[]).length?'repair_candidate':'author_candidate',...(budgetExpired?{code:'V2_WAKE_BUDGET'}:{}),candidatePath:await confined(job.directory,`${relative}/candidate.json`),sourcePath:await confined(job.directory,`${relative}/source-view.json`),schemaPath:await confined(job.directory,`${relative}/candidate.schema.json`),instructionsPath,validationPath:await confined(job.directory,`${relative}/validation.json`),deadlineAt:job.state.session.deadline_at,submissionsRemaining:MAX_SUBMISSIONS-(job.state.rejected[key]||[]).length,advanceCommand:cmd.command,advanceArgv:cmd.argv});
 }
 
-export async function startV2(ctx,lane,now=new Date()) {
-  if(!MODELS[lane])throw new Error('V2_MODEL_NOT_ALLOWED');
-  let jobs=await allJobs(ctx);const window=henryPriorityWindow(ctx.appConfig,now);
-  for(const partial of jobs.filter(j=>!j.state)){const entry=ctx.plan.entries.find(e=>e.readingId===partial.input.reading_id);if(!entry)throw new Error('V2_PARTIAL_JOB_PLAN_CHANGED');const sources=await sourceInput(ctx,entry);if(sources.input.input_sha256!==partial.input.input_sha256)throw new Error('V2_PARTIAL_JOB_SOURCE_CHANGED');await createJob(ctx.jobRoot,partial.input,now);}
-  jobs=await allJobs(ctx);
-  for(let old of jobs){
-    if(!old.state)continue;
-    const desired=configuredModels(ctx);
-    // The October replacement may rebind only never-authored work. Original
-    // receipts, event history, session deadlines and budgets remain intact.
-    if(jobModels(old).spark!==desired.spark&&old.state.total_submissions===0&&!old.state.pending_attempt&&Object.keys(old.state.accepted).length===0&&['queued','blocked','generating','fallback_pending'].includes(old.state.phase)&&!(old.state.phase==='generating'&&Date.parse(old.state.session?.deadline_at)>new Date(now).getTime())){
-      old=await appendState(old,'author_configuration_rebound',{...old.state,models:desired,owners:Object.fromEntries(old.input.chapters.map(c=>[chapterKey(c),'spark'])),phase:'queued',session:null,lease:{id:'configuration-rebound',started_at:new Date(now).toISOString(),expires_at:new Date(new Date(now).getTime()+24*HOUR).toISOString(),transport_checkpoints:0},blocker:null,history:[...old.state.history,{kind:'author_configuration_rebound',prior_models:jobModels(old),models:desired,at:new Date(now).toISOString()}]},now);
-    }
-    const started=Date.parse(old.state.lease?.started_at??old.state.created_at);
-    const expiry=Math.min(Date.parse(old.state.lease?.expires_at)||Infinity,started+24*HOUR);
-    if(['queued','generating','fallback_pending'].includes(old.state.phase)&&expiry<=new Date(now).getTime()){
-      await appendState(old,'author_lease_expired',{...old.state,phase:'blocked',lease:{...old.state.lease,released:true},blocker:{stage:'model_transport',code:'V2_AUTHOR_LEASE_EXPIRED'}},now);
-      await stageAuthorBlock(ctx,{model:jobModels(old)[old.state.session?.lane||'spark'],reason:'Author lease expired; fallback retained',code:'V2_AUTHOR_LEASE_EXPIRED'},now);
-    }
+// Compute the same housekeeping transitions without writing them. Exact-reading
+// selection must reject a mismatch before even an unrelated expiry/rebind event.
+function authorMaintenance(ctx,job,now) {
+  const transitions=[];let state=job.state;
+  const desired=configuredModels(ctx);
+  if(jobModels(job).spark!==desired.spark&&state.total_submissions===0&&!state.pending_attempt&&Object.keys(state.accepted).length===0&&['queued','blocked','generating','fallback_pending'].includes(state.phase)&&!(state.phase==='generating'&&Date.parse(state.session?.deadline_at)>new Date(now).getTime())){
+    state={...state,models:desired,owners:Object.fromEntries(job.input.chapters.map(c=>[chapterKey(c),'spark'])),phase:'queued',session:null,lease:{id:'configuration-rebound',started_at:new Date(now).toISOString(),expires_at:new Date(new Date(now).getTime()+24*HOUR).toISOString(),transport_checkpoints:0},blocker:null,history:[...state.history,{kind:'author_configuration_rebound',prior_models:jobModels(job),models:desired,at:new Date(now).toISOString()}]};
+    transitions.push({kind:'author_configuration_rebound',state});
   }
-  jobs=await allJobs(ctx);
+  const started=Date.parse(state.lease?.started_at??state.created_at),expiry=Math.min(Date.parse(state.lease?.expires_at)||Infinity,started+24*HOUR);
+  if(['queued','generating','fallback_pending'].includes(state.phase)&&expiry<=new Date(now).getTime()){
+    state={...state,phase:'blocked',lease:{...state.lease,released:true},blocker:{stage:'model_transport',code:'V2_AUTHOR_LEASE_EXPIRED'}};
+    transitions.push({kind:'author_lease_expired',state});
+  }
+  return transitions;
+}
+async function selectAuthorJob(ctx,jobs,lane,now,{dailyEntry,edf=false}={}) {
+  const window=henryPriorityWindow(ctx.appConfig,now),forward=j=>!ctx.forwardOnly||(j.input.schedule_date>=window.today&&j.input.schedule_date<=window.horizonDate);
   const active=jobs.filter(j=>j.state?.phase==='generating');
   if(active.length>1)throw new Error('V2_MULTIPLE_GENERATING_JOBS');
-  let job=active[0];
-  if(!job){
-    job=jobs.filter(j=>j.state?.phase==='queued'&&(!ctx.forwardOnly||(j.input.schedule_date>=window.today&&j.input.schedule_date<=window.horizonDate))).sort((a,b)=>a.input.schedule_date.localeCompare(b.input.schedule_date))[0];
-    if(job){job=(await checkedJob(ctx,job.input.reading_id)).job;const next=nextBatch(job);if(next&&next.lane!==lane)return ownershipWake(ctx,job,now);job=await appendState(job,'queued_authoring_resumed',{...job.state,phase:'generating'},now);}
+  if(active[0])return {job:active[0],kind:'generating'};
+  const earliest=phase=>jobs.filter(j=>j.state?.phase===phase&&forward(j)).sort((a,b)=>a.input.schedule_date.localeCompare(b.input.schedule_date))[0];
+  const queued=earliest('queued');
+  if(edf){
+    const fallback=earliest('fallback_pending');if(fallback)await assertFallbackEligible(ctx,fallback,{exact:true});
+    const selected=await selection(ctx,jobs,now),fresh=selected.candidate?.entry;
+    const candidates=[...(queued?[{job:queued,kind:'queued'}]:[]),...(fallback?[{job:fallback,kind:'fallback_pending'}]:[]),
+      ...(dailyEntry?[{entry:dailyEntry,kind:'daily_dependency'}]:[]),
+      ...(fresh&&fresh.dayIndex>=window.currentDay&&fresh.dayIndex<=window.horizonDay?[{entry:fresh,kind:'new'}]:[])];
+    const date=item=>item.job?.input.schedule_date??scheduleDateForEntry(ctx.appConfig,item.entry);
+    candidates.sort((a,b)=>date(a).localeCompare(date(b)));
+    return {...(candidates[0]||{kind:'new'}),queue:selected.queue};
   }
-  if(job){job=(await checkedJob(ctx,job.input.reading_id)).job;const next=nextBatch(job);if(next&&next.lane!==lane)return ownershipWake(ctx,job,now);}
-  if(!job&&lane==='luna') {
-    job=jobs.filter(j=>j.state?.phase==='fallback_pending'&&(!ctx.forwardOnly||(j.input.schedule_date>=window.today&&j.input.schedule_date<=window.horizonDate))).sort((a,b)=>a.input.schedule_date.localeCompare(b.input.schedule_date))[0];
-    if(job){
-      job=(await checkedJob(ctx,job.input.reading_id)).job;
-      const next=nextBatch(job),state=clone(job.state),blocker=state.blocker;
-      if(!next||next.lane!=='spark'||!['V2_CANDIDATE_EXHAUSTED','V2_SPARK_MODEL_UNAVAILABLE'].includes(blocker?.code))throw new Error('V2_FALLBACK_NOT_ELIGIBLE');
-      if(blocker.code==='V2_SPARK_MODEL_UNAVAILABLE'){
-        if(!/^[a-f0-9]{64}$/.test(blocker.execution_key||'')||blocker.packet_id!==next.packet.packet_id)throw new Error('V2_AVAILABILITY_PROOF_INVALID');
-        const base=`model-executions/${blocker.execution_key}`;
-        const execution=await readJson(await confined(job.directory,`${base}/result.json`,{missing:false}));
-        const events=await readFile(await confined(job.directory,`${base}/events.jsonl`,{missing:false}),'utf8');
-        if(execution.status!=='failed'||execution.proof?.model!==jobModels(job).spark||execution.proof.packet_sha256!==digestObject(next.packet)||
-          execution.error_code!==null||digestObject(execution.proof)!==blocker.proof_sha256||digestObject(events)!==blocker.events_sha256||
-          !sparkModelUnavailable({status:execution.exit_code,stdout:events}))throw new Error('V2_AVAILABILITY_PROOF_INVALID');
-      }
-      state.owners[chapterKey(next.chapter)]='luna';state.phase='generating';state.session=null;state.blocker=null;
-      job=await appendState(job,'eligible_luna_transfer',state,now);
+  if(queued)return {job:queued,kind:'queued'};
+  if(lane!=='spark'){const fallback=earliest('fallback_pending');if(fallback)return {job:fallback,kind:'fallback_pending'};}
+  const selected=await selection(ctx,jobs,now);
+  if(dailyEntry&&lane!=='luna'&&(!selected.candidate||dailyEntry.dayIndex<=selected.candidate.entry.dayIndex))return {entry:dailyEntry,kind:'daily_dependency',queue:selected.queue};
+  return {entry:selected.candidate?.entry,kind:'new',queue:selected.queue};
+}
+async function requestedDailyDependency(ctx,readingId,reference,now) {
+  const invalid=()=>{throw new Error('V2_DAILY_DEPENDENCY_BINDING_INVALID');};
+  if(!reference||Object.keys(reference).sort().join(',')!=='dailyJobId,path,sha256'||
+    !/^[a-f0-9]{32}$/.test(reference.dailyJobId||'')||!/^[a-f0-9]{64}$/.test(reference.sha256||'')||
+    reference.path!==`private-content/automation/staging/${readingId}/supervisor/orders/${reference.sha256}.json`)invalid();
+  const bytes=await readFile(await confined(ctx.projectRoot,reference.path,{missing:false}));if(sha256(bytes)!==reference.sha256)invalid();
+  const order=JSON.parse(bytes),window=henryPriorityWindow(ctx.appConfig,now),entry=ctx.plan.entries.find(e=>e.readingId===readingId);
+  assertSchemaValid(order,await readJson(path.join(ctx.releaseRoot,'schemas/rolling-study-work-order.schema.json')),{label:'Requested Henry daily dependency'});
+  const identity={plan:ctx.plan.planVersion,reading:readingId,reasonCode:order.reasonCode,planExtensionRequired:order.planExtensionRequired};
+  if(order.action!=='prepare_publish'||order.reasonCode!=='horizon_content_missing_or_stale'||order.planVersion!==ctx.plan.planVersion||
+    order.workOrderId!==`RSWO-${sha256(JSON.stringify(identity)).slice(0,24)}`||!isDeepStrictEqual(order.reading,entry)||entry?.kind!=='chapter'||
+    order.effectiveDate!==window.today||order.targetDate!==window.horizonDate||!Number.isFinite(Date.parse(order.issuedAt))||
+    Date.parse(order.issuedAt)>new Date(now).getTime()||henryPriorityWindow(ctx.appConfig,new Date(order.issuedAt)).today!==window.today||
+    entry.dayIndex<window.currentDay||entry.dayIndex>window.horizonDay)invalid();
+  // Read the existing same-project journal, never create an authority store.
+  const root=await confined(ctx.projectRoot,'private-content/automation/service-supervisor/state',{missing:false});
+  await confined(root,'events',{missing:false});const events=await (await openJournal(root)).load();
+  const job=events.findLast(e=>e.kind==='daily_state'&&e.data.job?.readingId===readingId)?.data.job;
+  const observation=events.findLast(e=>e.kind==='observation'&&e.data.role==='preparation'),selected=observation?.data.selection;
+  if(job?.schemaVersion!=='service-supervisor-daily-state/v1'||job.id!==reference.dailyJobId||job.phase!=='waiting_henry'||job.blocker||
+    !isDeepStrictEqual(job.workOrder,{path:reference.path,sha256:reference.sha256})||selected?.effectiveDate!==window.today||
+    selected.next?.readingId!==readingId||!['daily_author','henry_author'].includes(selected.next?.action)||
+    selected.next.component!==(selected.next.action==='daily_author'?'daily':'henry')||
+    selected.next?.scheduleDate!==scheduleDateForEntry(ctx.appConfig,entry))invalid();
+  const execution=events.filter(e=>e.kind==='execution_state'&&e.data.execution?.id===job.authorSessionId).at(-1)?.data.execution;
+  if(!/^[a-f0-9]{32}$/.test(job.authorSessionId||'')||!job.authorThreadId||execution?.phase!=='accepted'||
+    execution.kind!=='daily-synthesis'||execution.readingId!==readingId||execution.threadId!==job.authorThreadId||
+    execution.output?.path!==`executions/${execution.id}/output.json`||!/^[a-f0-9]{64}$/.test(execution.output.sha256||''))invalid();
+  if(sha256(await readFile(await confined(root,execution.output.path,{missing:false})))!==execution.output.sha256)invalid();
+  return {entry,proof:{work_order_path:reference.path,work_order_sha256:reference.sha256,daily_job_id:job.id,selection_event_sha256:observation.sha256}};
+}
+async function assertFallbackEligible(ctx,job,{exact=false}={}) {
+  const next=nextBatch(job),blocker=job.state.blocker;
+  if(!next||next.lane!=='spark'||!['V2_CANDIDATE_EXHAUSTED','V2_SPARK_MODEL_UNAVAILABLE'].includes(blocker?.code))throw new Error('V2_FALLBACK_NOT_ELIGIBLE');
+  if(exact&&blocker.code==='V2_CANDIDATE_EXHAUSTED'&&
+    (blocker.packet_id!==next.packet.packet_id||blocker.lane!=='spark'||(job.state.rejected[next.key]||[]).length!==MAX_SUBMISSIONS))throw new Error('V2_FALLBACK_NOT_ELIGIBLE');
+  if(blocker.code==='V2_SPARK_MODEL_UNAVAILABLE'){
+    if(!/^[a-f0-9]{64}$/.test(blocker.execution_key||'')||blocker.packet_id!==next.packet.packet_id)throw new Error('V2_AVAILABILITY_PROOF_INVALID');
+    const base=`model-executions/${blocker.execution_key}`;
+    const execution=await readJson(await confined(job.directory,`${base}/result.json`,{missing:false}));
+    const events=await readFile(await confined(job.directory,`${base}/events.jsonl`,{missing:false}),'utf8');
+    if(execution.status!=='failed'||execution.proof?.model!==jobModels(job).spark||execution.proof.packet_sha256!==digestObject(next.packet)||
+      execution.error_code!==null||digestObject(execution.proof)!==blocker.proof_sha256||digestObject(events)!==blocker.events_sha256||
+      !sparkModelUnavailable({status:execution.exit_code,stdout:events}))throw new Error('V2_AVAILABILITY_PROOF_INVALID');
+  }
+}
+// Caller holds the native runner lock through selection, preflight and dispatch.
+// Omitted lane means report the actual owner, or Luna for proven fallback work.
+export async function selectAuthorWorkV2(ctx,{requestedReadingId,lane,requestedDailyWorkOrder}={},now=new Date()) {
+  if(!validReading(requestedReadingId))throw new Error('V2_REQUESTED_READING_INVALID');
+  if(lane!==undefined&&!MODELS[lane])throw new Error('V2_MODEL_NOT_ALLOWED');
+  const window=henryPriorityWindow(ctx.appConfig,now),entry=ctx.plan.entries.find(e=>e.readingId===requestedReadingId);
+  const mismatch=extra=>({pipeline:VERSION,action:'none',state:'requested_reading_mismatch',code:'V2_REQUESTED_READING_MISMATCH',published:false,requestedReadingId,...extra});
+  if(!entry||entry.kind!=='chapter'||entry.dayIndex<window.currentDay||entry.dayIndex>window.horizonDay)return mismatch({reason:'outside_forward_window',readingId:null});
+  const daily=requestedDailyWorkOrder===undefined?null:await requestedDailyDependency(ctx,requestedReadingId,requestedDailyWorkOrder,now);
+  const jobs=await allJobs(ctx,{readOnly:true});
+  for(let i=0;i<jobs.length;i++){
+    let job=jobs[i];
+    if(!job.state){const entry=ctx.plan.entries.find(e=>e.readingId===job.input.reading_id);if(!entry)throw new Error('V2_PARTIAL_JOB_PLAN_CHANGED');const sources=await sourceInput(ctx,entry);if(sources.input.input_sha256!==job.input.input_sha256)throw new Error('V2_PARTIAL_JOB_SOURCE_CHANGED');job={...job,partial:true,state:initialJobState(job.input,now)};}
+    if(job.input.reading_id===requestedReadingId)for(const transition of authorMaintenance(ctx,job,now))job={...job,state:transition.state};
+    jobs[i]=job;
+  }
+  const selected=await selectAuthorJob({...ctx,forwardOnly:true},jobs,lane,now,{dailyEntry:daily?.entry,edf:true}),id=selected.job?.input.reading_id??selected.entry?.readingId??null;
+  if(id!==requestedReadingId)return mismatch({reason:'native_selection_differs',readingId:id,selectionKind:selected.kind});
+  const job=selected.job,next=job&&nextBatch(job),authorLane=selected.kind==='fallback_pending'?'luna':next?.lane??job?.state.session?.lane??'spark';
+  if(lane!==undefined&&lane!==authorLane)return mismatch({reason:'chapter_owner_differs',readingId:id,authorLane});
+  if(job&&!job.partial){const checked=await checkedJob(ctx,id);if(checked.job.input.input_sha256!==job.input.input_sha256)throw new Error('V2_SOURCE_CHANGED');}
+  if(selected.kind==='fallback_pending')await assertFallbackEligible(ctx,job,{exact:true});
+  return {pipeline:VERSION,action:'selected',state:'selection_ready',published:false,requestedReadingId,readingId:id,authorLane,
+    requiredModel:(job?jobModels(job):configuredModels(ctx))[authorLane],selectionKind:selected.kind,...(daily?{dailyDependency:daily.proof}:{})};
+}
+
+export async function startV2(ctx,lane,now=new Date(),{requestedReadingId,requestedDailyWorkOrder}={}) {
+  if(!MODELS[lane])throw new Error('V2_MODEL_NOT_ALLOWED');
+  if(requestedDailyWorkOrder!==undefined&&requestedReadingId===undefined)throw new Error('V2_DAILY_DEPENDENCY_READING_REQUIRED');
+  let exact;
+  if(requestedReadingId!==undefined){exact=await selectAuthorWorkV2(ctx,{requestedReadingId,lane,requestedDailyWorkOrder},now);if(exact.action!=='selected')return exact;ctx={...ctx,forwardOnly:true};}
+  let jobs=await allJobs(ctx,{readOnly:requestedReadingId!==undefined});const window=henryPriorityWindow(ctx.appConfig,now);
+  for(const partial of jobs.filter(j=>!j.state&&(requestedReadingId===undefined||j.input.reading_id===requestedReadingId))){const entry=ctx.plan.entries.find(e=>e.readingId===partial.input.reading_id);if(!entry)throw new Error('V2_PARTIAL_JOB_PLAN_CHANGED');const sources=await sourceInput(ctx,entry);if(sources.input.input_sha256!==partial.input.input_sha256)throw new Error('V2_PARTIAL_JOB_SOURCE_CHANGED');await createJob(ctx.jobRoot,partial.input,now);}
+  jobs=await allJobs(ctx,{readOnly:requestedReadingId!==undefined});
+  for(let old of jobs){
+    if(!old.state||(requestedReadingId!==undefined&&old.input.reading_id!==requestedReadingId))continue;
+    // The October replacement may rebind only never-authored work. Original
+    // receipts, event history, session deadlines and budgets remain intact.
+    for(const transition of authorMaintenance(ctx,old,now)){
+      old=await appendState(old,transition.kind,transition.state,now);
+      if(transition.kind==='author_lease_expired')await stageAuthorBlock(ctx,{model:jobModels(old)[old.state.session?.lane||'spark'],reason:'Author lease expired; fallback retained',code:'V2_AUTHOR_LEASE_EXPIRED'},now);
     }
   }
+  jobs=await allJobs(ctx,{readOnly:requestedReadingId!==undefined});
+  const selected=await selectAuthorJob(ctx,jobs,lane,now,{dailyEntry:exact?.selectionKind==='daily_dependency'?ctx.plan.entries.find(e=>e.readingId===requestedReadingId):undefined,edf:Boolean(exact)});let job=selected.job;
+  if(selected.kind==='queued'){job=(await checkedJob(ctx,job.input.reading_id)).job;const next=nextBatch(job);if(next&&next.lane!==lane)return ownershipWake(ctx,job,now);job=await appendState(job,'queued_authoring_resumed',{...job.state,phase:'generating'},now);}
+  if(job&&selected.kind!=='fallback_pending'){job=(await checkedJob(ctx,job.input.reading_id)).job;const next=nextBatch(job);if(next&&next.lane!==lane)return ownershipWake(ctx,job,now);}
+  if(selected.kind==='fallback_pending') {
+      job=(await checkedJob(ctx,job.input.reading_id)).job;
+      const next=nextBatch(job),state=clone(job.state);await assertFallbackEligible(ctx,job);
+      state.owners[chapterKey(next.chapter)]='luna';state.phase='generating';state.session=null;state.blocker=null;
+      job=await appendState(job,'eligible_luna_transfer',state,now);
+  }
   if(!job) {
-    const selected=await selection(ctx,jobs,now);
-    if(!selected.candidate)return {pipeline:VERSION,action:'none',state:'no_eligible_reading',queue:selected.queue};
+    if(!selected.entry)return {pipeline:VERSION,action:'none',state:'no_eligible_reading',queue:selected.queue};
     // Only Spark starts new v2 work. Luna needs a recorded actual Spark candidate
     // failure; absence or a host authorization denial never creates eligibility.
-    if(lane==='luna')return {pipeline:VERSION,action:'none',state:'awaiting_primary',readingId:selected.candidate.entry.readingId};
-    const entry=selected.candidate.entry;
+    if(lane==='luna')return {pipeline:VERSION,action:'none',state:'awaiting_primary',readingId:selected.entry.readingId};
+    const entry=selected.entry;
     if(ctx.forwardOnly&&entry.dayIndex<window.currentDay)return {pipeline:VERSION,action:'none',state:'forward_drain_complete',queue:selected.queue};
     if(entry.dayIndex>window.horizonDay)throw new Error('V2_OUTSIDE_HORIZON');
     const sources=await sourceInput(ctx,entry);job=await createJob(ctx.jobRoot,sources.input,now,configuredModels(ctx));
+    if(selected.kind==='daily_dependency')job=await appendState(job,'daily_dependency_admitted',{...job.state,history:[...job.state.history,{kind:'daily_dependency_admitted',...exact.dailyDependency}]},now);
   }
   job=await beginSession(ctx,job,lane,now);
   if(job.state.pending_attempt)return advanceV2(ctx,job.input.reading_id,job.state.session.id,now);

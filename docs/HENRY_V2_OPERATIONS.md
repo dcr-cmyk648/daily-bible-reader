@@ -42,6 +42,46 @@ that semantic checks are unnecessary.
 
 ## One reading lifecycle
 
+Stage C's native interface advertises `selectionBindingVersion =
+"requested-reading/v1"` from `mhc-v2-author-session.mjs`. Under the same native
+runner lock, call `selectAuthorWorkV2(ctx, {requestedReadingId}, now)` from
+`mhc-v2-service.mjs` to inspect the exact native selection and its `authorLane`
+without claiming work. Pass that lane to `runAuthorSession(ctx, {lane,
+codexExecutable, maxReadings: 1, requestedReadingId}, dependencies)`. Actual
+preflight runs before `startV2(ctx, lane, now, {requestedReadingId})` can mutate
+jobs. Wrong reading, lane or current-through-T+7 scope returns action `none`,
+code `V2_REQUESTED_READING_MISMATCH`, without configuration rebinds, lease expiry
+events, ownership wake increments or claims. Omitted requests retain the original
+selection and catch-up behavior; an exact request requires `maxReadings: 1`.
+Guarded housekeeping is restricted to that reading. It does not expire or rebind
+unrelated jobs, including retained past or out-of-window artifacts.
+The guarded selector and guarded start share an opt-in EDF choice across queued,
+proven fallback and new/dependency candidates. An earlier exhausted fallback can
+therefore select Luna ahead of a later primary queue. A retained generating owner
+still stays pinned. Default lane calls keep their original queue-first ordering.
+
+A daily study awaiting its Henry library may additionally pass
+`requestedDailyWorkOrder: {path, sha256, dailyJobId}` to both selection and author
+session. The path must be the exact private
+`private-content/automation/staging/<readingId>/supervisor/orders/<sha256>.json`.
+Native admission checks the raw file hash, rolling work-order schema, deterministic
+work-order identity, `prepare_publish` action, exact plan/reading, same Detroit
+effective/issue day, target date and seven-day guards. It then verifies the existing
+same-project supervisor journal: its latest preparation `observation` must name
+that EDF reading/action/date, its latest daily state must be `waiting_henry` with
+the same job and work-order reference, and its accepted `daily-synthesis` execution
+must match the author session/thread and unchanged response bytes. Stage C must
+append this observation before dispatch. The reference cannot displace an active
+native owner or earlier eligible queued, fallback or new-reading selection.
+
+This narrow path can create one source-authoring job before the devotional is
+remotely published. It records `daily_dependency_admitted` provenance and retains
+the original budgets, source verification, independent review and library
+finalization. It creates no quota fallback or remote content, plan or manifest
+write. Remote devotional publication retains its independent review, prefix and
+content-first/manifest-last gates. This reference requires an exact reading and
+one-reading cap; the ordinary backfill callers never consult it.
+
 The ignored `private-content/automation/mhc-v2/<readingId>/` directory contains:
 
 - immutable `input.json` with source, plan, scope and packet hashes;

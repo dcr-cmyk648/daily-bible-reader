@@ -11,6 +11,7 @@ import {stageAuthorBlock} from './mhc-v2-author-status.mjs';
 import {sha256} from './mhc-pipeline.mjs';
 
 const authorActions=new Set(['author_candidate','repair_candidate']);
+export const selectionBindingVersion='requested-reading/v1';
 const effort=lane=>lane==='spark'?'medium':'low';
 const blocked=(work,code)=>({...work,action:'checkpointed',stage:'model_transport',code});
 async function checkpointTransport(ctx,work,code,now,reason='Author transport failed'){
@@ -132,22 +133,24 @@ async function performPreflight(ctx,{lane='spark',codexExecutable},dependencies=
   return value;
 }
 
-export async function runAuthorSession(ctx,{lane,codexExecutable,maxReadings=3},dependencies={}) {
+export async function runAuthorSession(ctx,{lane,codexExecutable,maxReadings=3,requestedReadingId,requestedDailyWorkOrder},dependencies={}) {
   if(!Number.isInteger(maxReadings)||maxReadings<1||maxReadings>3)throw Error('V2_AUTHOR_RUN_CAP_INVALID');
+  if(requestedReadingId!==undefined&&maxReadings!==1)throw Error('V2_AUTHOR_REQUESTED_READING_CAP_INVALID');
+  if(requestedDailyWorkOrder!==undefined&&(requestedReadingId===undefined||maxReadings!==1))throw Error('V2_AUTHOR_DAILY_WORK_ORDER_CAP_INVALID');
   const preflight=await authorPreflight(ctx,{lane,codexExecutable},dependencies);
   if(preflight.state!=='available')return preflight;
   const run=dependencies.run||spawnSync,clock=dependencies.clock||(()=>new Date()),{mcpNames,options}=preflight.transport;
   const results=[],runDeadline=clock().getTime()+60*60*1000;
   for(let readingCount=0;readingCount<maxReadings&&clock().getTime()<runDeadline;readingCount++){
-    const work=await drainReading(readingCount?{...ctx,forwardOnly:true}:ctx,{lane,codexExecutable,run,clock,mcpNames,options,runDeadline});
+    const work=await drainReading(readingCount?{...ctx,forwardOnly:true}:ctx,{lane,codexExecutable,run,clock,mcpNames,options,runDeadline,requestedReadingId,requestedDailyWorkOrder});
     results.push(work);
     if(work.action!=='review_handoff'||work.scheduleDate<henryToday(ctx,clock()))break;
   }
   return {...results.at(-1),readings:results,preflightReceiptPath:preflight.receiptPath};
 }
 const henryToday=(ctx,now)=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Detroit',year:'numeric',month:'2-digit',day:'2-digit'}).format(now);
-async function drainReading(ctx,{lane,codexExecutable,run,clock,mcpNames,options,runDeadline}) {
-  let work=await startV2(ctx,lane,clock());
+async function drainReading(ctx,{lane,codexExecutable,run,clock,mcpNames,options,runDeadline,requestedReadingId,requestedDailyWorkOrder}) {
+  let work=await startV2(ctx,lane,clock(),{requestedReadingId,requestedDailyWorkOrder});
   // Classifying retained provider evidence is not a model dispatch. An expired
   // session may transfer its proven refusal, but cannot get time or attempts back.
   if(lane==='spark'&&work.code==='V2_WAKE_BUDGET'){

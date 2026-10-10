@@ -65,7 +65,8 @@ export async function createJob(root,input,now,models=MODELS) {
   await atomicJson(directory,'input.json',input,{immutable:true});
   await mkdir(await confined(directory,'events'),{recursive:true,mode:0o700});
   const job=await loadJob(directory);if(job.state)return job;
-  const state={reading_id:input.reading_id,input_sha256:input.input_sha256,phase:'generating',owners:Object.fromEntries(input.chapters.map(c=>[`${c.book_id}.${c.chapter}`,'spark'])),accepted:{},rejected:{},history:[],total_submissions:0,pending_attempt:null,session:null,sessions:{},blocker:null,review:null,publication:null,created_at:new Date(now).toISOString()};
-  state.models={...models};
-  return appendState(job,'created',state,now);
+  return appendState(job,'created',initialJobState(input,now,models),now);
+}
+export function initialJobState(input,now,models=MODELS) {
+  return {reading_id:input.reading_id,input_sha256:input.input_sha256,phase:'generating',owners:Object.fromEntries(input.chapters.map(c=>[`${c.book_id}.${c.chapter}`,'spark'])),accepted:{},rejected:{},history:[],total_submissions:0,pending_attempt:null,session:null,sessions:{},blocker:null,review:null,publication:null,created_at:new Date(now).toISOString(),models:{...models}};
 }

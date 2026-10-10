@@ -8,15 +8,17 @@ import {fileURLToPath,pathToFileURL} from 'node:url';
 import {createRequire} from 'node:module';
 import {VERSION,MODELS,REVIEW_ASSERTIONS,passageScope,compileReading,validateCandidate,digestObject} from '../scripts/lib/mhc-v2.mjs';
 import {sha256,normalizedBatchHash} from '../scripts/lib/mhc-pipeline.mjs';
-import {serviceContext,startV2,advanceV2,buildReview,reviewWorkOrderV2,applyReviewV2,editorialRepairV2,requestEditorialV2,migrateCurrentV2,reopenReviewV2} from '../scripts/lib/mhc-v2-service.mjs';
+import {serviceContext,startV2,selectAuthorWorkV2,sourceInput,advanceV2,buildReview,reviewWorkOrderV2,applyReviewV2,editorialRepairV2,requestEditorialV2,migrateCurrentV2,reopenReviewV2} from '../scripts/lib/mhc-v2-service.mjs';
 import {atomicJson,appendState,loadJob,readJson,bytesFor,createJob} from '../scripts/lib/mhc-v2-store.mjs';
-import {writeFileSync} from 'node:fs';
-import {runAuthorSession,transportSchema,authorArguments,successfulModelResult,verifyPublicPacket,publicRepairDiagnostics} from '../scripts/lib/mhc-v2-author-session.mjs';
+import {writeFileSync,readdirSync} from 'node:fs';
+import {runAuthorSession,selectionBindingVersion,transportSchema,authorArguments,successfulModelResult,verifyPublicPacket,publicRepairDiagnostics} from '../scripts/lib/mhc-v2-author-session.mjs';
 import {recoverUnstartedTransport} from '../scripts/lib/mhc-v2-transport-recovery.mjs';
 import {sparkModelUnavailable} from '../scripts/lib/mhc-v2-model-errors.mjs';
 import {recoverClientUpgrade} from '../scripts/lib/mhc-v2-client-upgrade.mjs';
 import {authorPreflight} from '../scripts/lib/mhc-v2-author-session.mjs';
 import {authorFailure} from '../scripts/lib/mhc-v2-model-errors.mjs';
+import {openJournal} from '../scripts/lib/service-supervisor-store.mjs';
+import {buildRollingStudyWorkOrder} from '../scripts/lib/rolling-study-work-order.mjs';
 
 const unavailableSparkEvents = () => JSON.stringify({type:'turn.failed',error:{message:JSON.stringify({type:'error',status:400,error:{type:'invalid_request_error',message:"The 'gpt-5.3-codex-spark' model is not supported when using Codex with a ChatGPT account."}})}})+'\n';
 
@@ -154,7 +156,7 @@ async function fixture(t,{verseCount=12,chapterCount=1,readingCount=1}={}) {
 }
 async function writeCandidate(report,mutate=x=>x) {const packet=await readJson(report.sourcePath);const value=mutate(candidate(packet));await writeFile(report.candidatePath,bytesFor(value));return value;}
 const sessionId=report=>report.advanceArgv.at(-1);
-function fabricatedModelRun(transform=x=>x){
+function fabricatedModelRun(transform=x=>x,{model=MODELS.spark}={}){
   let calls=0;
   const run=(_binary,args,options)=>{
     if(args[0]==='exec'){
@@ -166,7 +168,7 @@ function fabricatedModelRun(transform=x=>x){
     if(args[0]==='login')return {status:0,stderr:'Logged in using ChatGPT'};
     if(args.includes('mcp'))return {status:0,stdout:JSON.stringify([{name:'fabricated_mcp',enabled:!args.includes('mcp_servers.fabricated_mcp.enabled=false')}])};
     calls++;
-    assert.ok(args.includes(MODELS.spark));assert.ok(args.includes('mcp_servers.fabricated_mcp.enabled=false'));
+    assert.ok(args.includes(model));assert.ok(args.includes('mcp_servers.fabricated_mcp.enabled=false'));
     assert.ok(!options.input.includes('FABRICATED PRIVATE DEVOTIONAL'));
     const packet=JSON.parse(options.input.split('SOURCE PACKET:\n')[1].split('\n\n')[0]);
     const output=transform(candidate(packet),calls);
@@ -176,6 +178,175 @@ function fabricatedModelRun(transform=x=>x){
   };
   return {run,get calls(){return calls;}};
 }
+
+async function jobBytes(root) {
+  const entries=[];
+  async function visit(directory,relative=''){
+    for(const entry of (await readdir(directory,{withFileTypes:true})).sort((a,b)=>a.name.localeCompare(b.name))){
+      const name=path.join(relative,entry.name);entries.push([name,entry.isDirectory()?'directory':(await readFile(path.join(root,name))).toString('base64')]);
+      if(entry.isDirectory())await visit(path.join(root,name),name);
+    }
+  }
+  await visit(root);return entries;
+}
+test('requested author run rejects multi-reading caps before any probe or claim',async t=>{
+  assert.equal(selectionBindingVersion,'requested-reading/v1');
+  const {ctx,now}=await fixture(t),model=fabricatedModelRun();
+  for(const maxReadings of [undefined,2,3])await assert.rejects(runAuthorSession(ctx,{lane:'spark',codexExecutable:process.execPath,requestedReadingId:'FAB-1',maxReadings},{run:()=>assert.fail('No child may run'),clock:()=>now}),/V2_AUTHOR_REQUESTED_READING_CAP_INVALID/);
+  assert.equal(model.calls,0);assert.deepEqual(await readdir(ctx.jobRoot),[]);
+});
+for(const retained of [false,true])test(`unavailable requested preflight changes no job bytes (retained=${retained})`,async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1});if(retained)await startV2(ctx,'spark',now);
+  const before=await jobBytes(ctx.jobRoot),model=fabricatedModelRun();
+  const run=(bin,args,opts)=>opts.input?.startsWith('Availability preflight')?{status:1,stderr:'FABRICATED HTTP 400: model not supported'}:model.run(bin,args,opts);
+  const result=await runAuthorSession(ctx,{lane:'spark',codexExecutable:process.execPath,maxReadings:1,requestedReadingId:'FAB-1'},{run,clock:()=>now});
+  assert.equal(result.code,'V2_AUTHOR_MODEL_UNAVAILABLE');assert.equal(model.calls,0);assert.deepEqual(await jobBytes(ctx.jobRoot),before);
+});
+for(const phase of ['generating','queued'])test(`requested mismatch preserves the retained ${phase} job and ownership counters`,async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1,readingCount:2});await startV2(ctx,'spark',now);
+  if(phase==='queued'){const job=await loadJob(path.join(ctx.jobRoot,'FAB-1'));await appendState(job,'FABRICATED queued continuation',{...job.state,phase},now);}
+  const before=await jobBytes(ctx.jobRoot);
+  for(const request of [{requestedReadingId:'FAB-2',lane:'spark'},{requestedReadingId:'FAB-1',lane:'luna'}]){
+    const result=await startV2(ctx,request.lane,now,request);assert.equal(result.code,'V2_REQUESTED_READING_MISMATCH');assert.equal(result.action,'none');
+    assert.deepEqual(await jobBytes(ctx.jobRoot),before);
+  }
+  const selected=await selectAuthorWorkV2(ctx,{requestedReadingId:'FAB-1'},now);assert.equal(selected.authorLane,'spark');assert.equal(selected.selectionKind,phase);
+  assert.deepEqual(await jobBytes(ctx.jobRoot),before);
+});
+test('wrong requested reading rejects before configuration rebind or lease expiry writes',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1,readingCount:3});ctx.config.author_model='gpt-5.3-codex-spark';await startV2(ctx,'spark',now);
+  let job=await loadJob(path.join(ctx.jobRoot,'FAB-1'));await appendState(job,'FABRICATED retained checkpoint',{...job.state,phase:'queued'},now);
+  ctx.config.author_model='gpt-6-luna';let before=await jobBytes(ctx.jobRoot);
+  const rebound=await startV2(ctx,'spark',new Date(now.getTime()+2*60*60*1000),{requestedReadingId:'FAB-2'});assert.equal(rebound.code,'V2_REQUESTED_READING_MISMATCH');assert.equal(rebound.readingId,'FAB-1');assert.deepEqual(await jobBytes(ctx.jobRoot),before);
+  ctx.config.author_model='gpt-5.3-codex-spark';before=await jobBytes(ctx.jobRoot);
+  const expired=await startV2(ctx,'spark',new Date(now.getTime()+24*60*60*1000),{requestedReadingId:'FAB-3'});assert.equal(expired.code,'V2_REQUESTED_READING_MISMATCH');assert.equal(expired.readingId,'FAB-2');assert.deepEqual(await jobBytes(ctx.jobRoot),before);
+});
+test('requested scope excludes yesterday, outside T+7 and introductions without native mutation',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1,readingCount:9});await startV2(ctx,'spark',now);
+  const before=await jobBytes(ctx.jobRoot),tomorrow=new Date(now.getTime()+13*60*60*1000);
+  for(const [id,time] of [['FAB-1',tomorrow],['FAB-9',now],['FAB-UNKNOWN',now]]){
+    const result=await startV2(ctx,'spark',time,{requestedReadingId:id});assert.equal(result.reason,'outside_forward_window');assert.deepEqual(await jobBytes(ctx.jobRoot),before);
+  }
+  ctx.plan.entries[1].kind='book_intro';assert.equal((await selectAuthorWorkV2(ctx,{requestedReadingId:'FAB-2'},now)).reason,'outside_forward_window');
+  ctx.plan.entries[1].kind='chapter';const blocked=await startV2(ctx,'spark',tomorrow,{requestedReadingId:'FAB-2'});assert.equal(blocked.readingId,'FAB-1');assert.equal(blocked.reason,'native_selection_differs');assert.deepEqual(await jobBytes(ctx.jobRoot),before);
+});
+test('requested guard reads interrupted input without creating its missing events directory',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1,readingCount:2}),source=await sourceInput(ctx,ctx.plan.entries[0]);
+  await atomicJson(ctx.jobRoot,'FAB-1/input.json',source.input,{immutable:true});const before=await jobBytes(ctx.jobRoot);
+  assert.equal((await startV2(ctx,'spark',now,{requestedReadingId:'FAB-2'})).code,'V2_REQUESTED_READING_MISMATCH');assert.deepEqual(await jobBytes(ctx.jobRoot),before);
+  const selected=await selectAuthorWorkV2(ctx,{requestedReadingId:'FAB-1'},now);assert.equal(selected.authorLane,'spark');assert.deepEqual(await jobBytes(ctx.jobRoot),before);
+  assert.equal((await startV2(ctx,'spark',now,{requestedReadingId:'FAB-1'})).action,'author_candidate');
+});
+test('valid requested work leaves an unrelated expired out-of-window legacy queue byte-identical',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1,readingCount:9}),source=await sourceInput(ctx,ctx.plan.entries[8]);
+  let future=await createJob(ctx.jobRoot,source.input,new Date(now.getTime()-48*60*60*1000),{spark:'gpt-5.3-codex-spark',luna:MODELS.luna});
+  future=await appendState(future,'FABRICATED out-of-window continuation',{...future.state,phase:'queued'},now);const before=await jobBytes(future.directory);
+  assert.equal((await startV2(ctx,'spark',now,{requestedReadingId:'FAB-1'})).action,'author_candidate');assert.deepEqual(await jobBytes(future.directory),before);
+});
+test('requested selector reports proven exhausted fallback Luna and preserves native budgets',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1,readingCount:2});let work=await startV2(ctx,'spark',now);
+  for(let i=0;i<2;i++){await writeCandidate(work,c=>({...c,packet_id:'MHP2-'+String(i).repeat(32)}));work=await advanceV2(ctx,'FAB-1',sessionId(work),now);}
+  const before=await jobBytes(ctx.jobRoot),prior=await loadJob(path.join(ctx.jobRoot,'FAB-1'));
+  const selected=await selectAuthorWorkV2(ctx,{requestedReadingId:'FAB-1'},now);assert.equal(selected.authorLane,'luna');assert.equal(selected.requiredModel,MODELS.luna);assert.equal(selected.selectionKind,'fallback_pending');assert.deepEqual(await jobBytes(ctx.jobRoot),before);
+  assert.equal((await startV2(ctx,'spark',now,{requestedReadingId:'FAB-1'})).code,'V2_REQUESTED_READING_MISMATCH');assert.deepEqual(await jobBytes(ctx.jobRoot),before);
+  const model=fabricatedModelRun(x=>x,{model:MODELS.luna}),result=await runAuthorSession(ctx,{lane:selected.authorLane,codexExecutable:process.execPath,maxReadings:1,requestedReadingId:'FAB-1'},{run:model.run,clock:()=>now});
+  assert.equal(result.action,'review_handoff');assert.equal(result.totalSubmissions,3);assert.equal(model.calls,1);assert.deepEqual(await readdir(ctx.jobRoot),['FAB-1']);
+  const after=await loadJob(prior.directory);assert.deepEqual(after.state.rejected,prior.state.rejected);for(const [id,session] of Object.entries(prior.state.sessions))assert.deepEqual(after.state.sessions[id],session);
+});
+test('requested fallback rejects an exhaustion label without the two controller rejections',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1});const work=await startV2(ctx,'spark',now),job=await loadJob(path.join(ctx.jobRoot,'FAB-1')),packet=await readJson(work.sourcePath);
+  await appendState(job,'FABRICATED invalid exhaustion label',{...job.state,phase:'fallback_pending',blocker:{code:'V2_CANDIDATE_EXHAUSTED',lane:'spark',packet_id:packet.packet_id}},now);const before=await jobBytes(ctx.jobRoot);
+  await assert.rejects(selectAuthorWorkV2(ctx,{requestedReadingId:'FAB-1'},now),/V2_FALLBACK_NOT_ELIGIBLE/);assert.deepEqual(await jobBytes(ctx.jobRoot),before);
+});
+for(const guarded of [true,false])test(`earlier exhausted fallback versus later primary queue retains opt-in EDF (guarded=${guarded})`,async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1,readingCount:2});let work=await startV2(ctx,'spark',now);
+  for(let i=0;i<2;i++){await writeCandidate(work,c=>({...c,packet_id:'MHP2-'+String(i).repeat(32)}));work=await advanceV2(ctx,'FAB-1',sessionId(work),now);}
+  const source=await sourceInput(ctx,ctx.plan.entries[1]);let later=await createJob(ctx.jobRoot,source.input,now);
+  later=await appendState(later,'FABRICATED later queued primary',{...later.state,phase:'queued'},now);
+  const before=await jobBytes(ctx.jobRoot),laterBytes=await jobBytes(later.directory),fallbackBytes=await jobBytes(path.join(ctx.jobRoot,'FAB-1'));
+  const selection=await selectAuthorWorkV2(ctx,{requestedReadingId:'FAB-1'},now);assert.equal(selection.authorLane,'luna');assert.equal(selection.selectionKind,'fallback_pending');assert.deepEqual(await jobBytes(ctx.jobRoot),before);
+  const result=await startV2(ctx,'luna',now,guarded?{requestedReadingId:'FAB-1'}:{});
+  if(guarded){assert.equal(result.readingId,'FAB-1');assert.equal(result.action,'author_candidate');assert.equal(result.requiredModel,MODELS.luna);assert.equal(result.totalSubmissions,2);assert.deepEqual(await jobBytes(later.directory),laterBytes);}
+  else {assert.equal(result.readingId,'FAB-2');assert.equal(result.code,'V2_OTHER_MODEL_OWNS_CHAPTER');assert.deepEqual(await jobBytes(path.join(ctx.jobRoot,'FAB-1')),fallbackBytes);}
+});
+test('guarded EDF chooses an earlier new reading ahead of a later primary queue without mutating that queue',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1,readingCount:2}),source=await sourceInput(ctx,ctx.plan.entries[1]);
+  let later=await createJob(ctx.jobRoot,source.input,now);later=await appendState(later,'FABRICATED later queued primary',{...later.state,phase:'queued'},now);const before=await jobBytes(later.directory);
+  const selection=await selectAuthorWorkV2(ctx,{requestedReadingId:'FAB-1'},now);assert.equal(selection.selectionKind,'new');assert.equal(selection.authorLane,'spark');
+  assert.equal((await startV2(ctx,'spark',now,{requestedReadingId:'FAB-1'})).readingId,'FAB-1');assert.deepEqual(await jobBytes(later.directory),before);
+});
+test('requested author preflights before native selection and authors exactly its selected reading',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1,readingCount:2}),model=fabricatedModelRun();let probes=0;
+  const run=(bin,args,opts)=>{if(opts.input?.startsWith('Availability preflight')){probes++;assert.deepEqual(readdirSync(ctx.jobRoot),[]);}else if(opts.input?.includes('SOURCE PACKET:'))assert.equal(probes,2);return model.run(bin,args,opts);};
+  const result=await runAuthorSession(ctx,{lane:'spark',codexExecutable:process.execPath,maxReadings:1,requestedReadingId:'FAB-1'},{run,clock:()=>now});assert.equal(result.action,'review_handoff');assert.equal(result.readingId,'FAB-1');assert.equal(model.calls,1);assert.deepEqual(await readdir(ctx.jobRoot),['FAB-1']);
+});
+async function dailyDependencyFixture(ctx,now,{readingId='FAB-1',orderChanges={},jobChanges={},selectionChanges={},executionChanges={}}={}) {
+  const protocol=await readJson(path.join(repo,'config/daily-study-protocol.json'));
+  const order=buildRollingStudyWorkOrder({plan:ctx.plan,appConfig:ctx.appConfig,protocol,today:'2026-09-13',issuedAt:now.toISOString()});
+  order.reading=structuredClone(ctx.plan.entries.find(e=>e.readingId===readingId));Object.assign(order,orderChanges);
+  order.workOrderId=`RSWO-${sha256(JSON.stringify({plan:order.planVersion,reading:order.reading.readingId,reasonCode:order.reasonCode,planExtensionRequired:order.planExtensionRequired})).slice(0,24)}`;
+  const bytes=bytesFor(order),hash=sha256(bytes),relative=`private-content/automation/staging/${readingId}/supervisor/orders/${hash}.json`;
+  await atomicJson(ctx.projectRoot,relative,order,{immutable:true});
+  const journal=await openJournal(path.join(ctx.projectRoot,'private-content/automation/service-supervisor/state')),id='a'.repeat(32),executionId='b'.repeat(32),output=bytesFor({label:'FABRICATED admitted synthesis only'});
+  await atomicJson(journal.root,`executions/${executionId}/output.json`,JSON.parse(output));
+  const execution={id:executionId,readingId,kind:'daily-synthesis',phase:'accepted',threadId:'FABRICATED-daily-author',output:{path:`executions/${executionId}/output.json`,sha256:sha256(output)},...executionChanges};
+  const job={schemaVersion:'service-supervisor-daily-state/v1',id,readingId,phase:'waiting_henry',blocker:null,workOrder:{path:relative,sha256:hash},authorSessionId:executionId,authorThreadId:execution.threadId,...jobChanges};
+  const scheduleDate=new Date(Date.parse('2026-09-13T00:00:00Z')+(order.reading.dayIndex-1)*86400000).toISOString().slice(0,10);
+  await journal.append('observation',{role:'preparation',selection:{effectiveDate:'2026-09-13',next:{readingId,component:'daily',action:'daily_author',scheduleDate},...selectionChanges}},now);
+  await journal.append('execution_state',{execution},now);await journal.append('daily_state',{job},now);
+  return {reference:{path:relative,sha256:hash,dailyJobId:id},journal,job,order};
+}
+test('admitted requested daily dependency prepares one unpublished Henry reading without a fallback or remote mutation',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1,readingCount:2});
+  await atomicJson(ctx.projectRoot,'private-content/private-manifest.json',{readings:{}});const manifestBytes=await readFile(path.join(ctx.privateRoot,'private-manifest.json'));
+  await rm(path.join(ctx.privateRoot,'bridge'),{recursive:true,force:true});const {reference}=await dailyDependencyFixture(ctx,now);
+  assert.equal((await startV2(ctx,'spark',now)).state,'no_eligible_reading');assert.deepEqual(await readdir(ctx.jobRoot),[]);
+  const before=await jobBytes(ctx.jobRoot),selected=await selectAuthorWorkV2(ctx,{requestedReadingId:'FAB-1',requestedDailyWorkOrder:reference},now);
+  assert.equal(selected.authorLane,'spark');assert.equal(selected.selectionKind,'daily_dependency');assert.deepEqual(await jobBytes(ctx.jobRoot),before);
+  const model=fabricatedModelRun(),result=await runAuthorSession(ctx,{lane:selected.authorLane,codexExecutable:process.execPath,maxReadings:1,requestedReadingId:'FAB-1',requestedDailyWorkOrder:reference},{run:model.run,clock:()=>now});
+  assert.equal(result.action,'review_handoff');assert.equal(model.calls,1);assert.deepEqual(await readdir(ctx.jobRoot),['FAB-1']);
+  const job=await loadJob(path.join(ctx.jobRoot,'FAB-1'));assert.equal(job.state.review,null);assert.equal(job.state.total_submissions,1);
+  assert.equal(job.state.history.find(e=>e.kind==='daily_dependency_admitted').work_order_sha256,reference.sha256);
+  assert.deepEqual(await readFile(path.join(ctx.privateRoot,'private-manifest.json')),manifestBytes);await assert.rejects(readdir(path.join(ctx.privateRoot,'bridge')),/ENOENT/);
+});
+test('guarded EDF starts an admitted earlier daily dependency ahead of a later queued primary',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1,readingCount:2});await atomicJson(ctx.projectRoot,'private-content/private-manifest.json',{readings:{}});
+  const source=await sourceInput(ctx,ctx.plan.entries[1]);let later=await createJob(ctx.jobRoot,source.input,now);
+  later=await appendState(later,'FABRICATED later queued primary',{...later.state,phase:'queued'},now);const before=await jobBytes(later.directory),{reference}=await dailyDependencyFixture(ctx,now);
+  const request={requestedReadingId:'FAB-1',requestedDailyWorkOrder:reference},selection=await selectAuthorWorkV2(ctx,request,now);
+  assert.equal(selection.selectionKind,'daily_dependency');assert.equal(selection.authorLane,'spark');
+  const result=await startV2(ctx,selection.authorLane,now,request);assert.equal(result.readingId,'FAB-1');assert.equal(result.action,'author_candidate');assert.deepEqual(await jobBytes(later.directory),before);
+  assert.equal((await loadJob(path.join(ctx.jobRoot,'FAB-1'))).state.history[0].kind,'daily_dependency_admitted');
+});
+for(const changes of [
+  {orderChanges:{action:'none'}},{orderChanges:{planVersion:'FABRICATED-other-plan'}},
+  {orderChanges:{effectiveDate:'2026-09-12'}},{orderChanges:{targetDate:'2026-09-19'}},
+  {orderChanges:{issuedAt:'2026-09-13T16:16:00Z'}},{orderChanges:{issuedAt:'2026-09-12T15:16:00Z'}},
+  {orderChanges:{guards:{maxReadings:2}}},{jobChanges:{phase:'queued'}},{jobChanges:{blocker:{code:'FABRICATED_BLOCKED'}}},
+  {selectionChanges:{next:{readingId:'FAB-2',component:'daily',action:'daily_author',scheduleDate:'2026-09-14'}}},
+  {executionChanges:{phase:'reserved'}},{executionChanges:{readingId:'FAB-2'}}
+])test(`requested daily dependency rejects unadmitted/stale binding ${JSON.stringify(changes)}`,async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1,readingCount:2}),{reference}=await dailyDependencyFixture(ctx,now,changes),before=await jobBytes(ctx.jobRoot);
+  await assert.rejects(startV2(ctx,'spark',now,{requestedReadingId:'FAB-1',requestedDailyWorkOrder:reference}));assert.deepEqual(await jobBytes(ctx.jobRoot),before);
+});
+test('requested daily dependency requires exact persisted order and synthesis bytes plus the latest same-journal waiting state',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1}),{reference,journal,job}=await dailyDependencyFixture(ctx,now),before=await jobBytes(ctx.jobRoot);
+  for(const forged of [{...reference,sha256:'c'.repeat(64)},{...reference,path:'private-content/private-manifest.json'},{...reference,dailyJobId:'c'.repeat(32)},{...reference,extra:'FABRICATED'}])await assert.rejects(selectAuthorWorkV2(ctx,{requestedReadingId:'FAB-1',requestedDailyWorkOrder:forged},now));
+  await writeFile(path.join(journal.root,`executions/${job.authorSessionId}/output.json`),'FABRICATED changed synthesis');await assert.rejects(selectAuthorWorkV2(ctx,{requestedReadingId:'FAB-1',requestedDailyWorkOrder:reference},now));
+  await journal.append('daily_state',{job:{...job,phase:'blocked'}},now);await assert.rejects(selectAuthorWorkV2(ctx,{requestedReadingId:'FAB-1',requestedDailyWorkOrder:reference},now));
+  assert.deepEqual(await jobBytes(ctx.jobRoot),before);
+});
+for(const retained of [false,true])test(`requested daily dependency cannot bypass earlier native work (retained=${retained})`,async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1,readingCount:2});if(retained)await startV2(ctx,'spark',now);
+  const {reference}=await dailyDependencyFixture(ctx,now,{readingId:'FAB-2'}),before=await jobBytes(ctx.jobRoot);
+  const result=await startV2(ctx,'spark',now,{requestedReadingId:'FAB-2',requestedDailyWorkOrder:reference});assert.equal(result.code,'V2_REQUESTED_READING_MISMATCH');assert.equal(result.readingId,'FAB-1');assert.deepEqual(await jobBytes(ctx.jobRoot),before);
+});
+test('requested daily dependency needs a one-reading request and actual preflight before any native mutation',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1}),{reference}=await dailyDependencyFixture(ctx,now),before=await jobBytes(ctx.jobRoot),model=fabricatedModelRun();
+  await assert.rejects(runAuthorSession(ctx,{lane:'spark',codexExecutable:process.execPath,maxReadings:1,requestedDailyWorkOrder:reference},{run:()=>assert.fail('No child may run')}),/V2_AUTHOR_DAILY_WORK_ORDER_CAP_INVALID/);
+  const run=(bin,args,opts)=>opts.input?.startsWith('Availability preflight')?{status:1,stderr:'FABRICATED HTTP 400: model not supported'}:model.run(bin,args,opts);
+  const result=await runAuthorSession(ctx,{lane:'spark',codexExecutable:process.execPath,maxReadings:1,requestedReadingId:'FAB-1',requestedDailyWorkOrder:reference},{run,clock:()=>now});assert.equal(result.code,'V2_AUTHOR_MODEL_UNAVAILABLE');assert.deepEqual(await jobBytes(ctx.jobRoot),before);assert.equal(model.calls,0);
+});
 
 test('installed author transport drains only one reading through strict controller and leaves review pending',async t=>{
   const {ctx,now}=await fixture(t,{verseCount:12,readingCount:2}),model=fabricatedModelRun();

@@ -42,6 +42,16 @@ private publication or saved automation change. The old backend strips heartbeat
 live delivery needs the manager's backend/phone gate and scheduled-wake readback.
 
 ## Required policy references
+
+WO-1 Stage C native extension adds the `requested-reading/v1` capability marker,
+read-only native lane selection and a preflight-before-mutation exact-reading
+guard. A hash-bound rolling daily dependency can prepare one private Henry library
+before remote devotional publication, only with the same journal's EDF selection,
+`waiting_henry` state and accepted synthesis evidence. Default backfill behavior
+is retained. Manager owns runtime installation, pin updates, real preflight and
+service acceptance; this source change makes no live readiness claim. Interface:
+[Henry operations](docs/HENRY_V2_OPERATIONS.md#one-reading-lifecycle).
+
 `AGENTS.md`, `README.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md`,
 `docs/CONTENT_AND_RIGHTS.md`, `docs/EDITORIAL_STANCE.md`,
 `docs/COMMENTARY_WORKFLOW.md`, and `docs/RELEASE_STABILITY.md` remain authoritative.

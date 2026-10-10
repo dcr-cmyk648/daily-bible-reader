@@ -4,7 +4,7 @@ import path from "node:path";
 import process from "node:process";
 import {advanceRunner,startRunner,withRunnerLock} from "./lib/mhc-native-runner.mjs";
 import {serviceContext,startV2,advanceV2,reviewWorkOrderV2,applyReviewV2,statusV2,editorialRepairV2,requestEditorialV2,migrateCurrentV2,reopenReviewV2} from "./lib/mhc-v2-service.mjs";
-import {runAuthorSession} from './lib/mhc-v2-author-session.mjs';
+import {runAuthorSession,authorPreflight} from './lib/mhc-v2-author-session.mjs';
 import {recoverClientUpgrade} from './lib/mhc-v2-client-upgrade.mjs';
 
 const json=async file=>JSON.parse(await readFile(file,"utf8"));
@@ -32,7 +32,8 @@ async function main(){
   if(ctx.config.pipeline_version==='mhc-evidence-author/v2'){
     result=await withRunnerLock(ctx,async()=>{
       const service=await serviceContext(ctx);
-      if(command==='author-run')return runAuthorSession(service,{lane:option(args,'--lane'),codexExecutable:option(args,'--codex-executable')});
+      if(command==='author-preflight')return authorPreflight(service,{codexExecutable:option(args,'--codex-executable')}).then(({options,mcpNames,...receipt})=>receipt);
+      if(command==='author-run')return runAuthorSession(service,{lane:option(args,'--lane'),codexExecutable:option(args,'--codex-executable'),maxReadings:args.includes('--max-readings')?Number(option(args,'--max-readings')):3});
       if(command==='recover-client-upgrade')return recoverClientUpgrade(service,option(args,'--reading'),option(args,'--prior-codex'),option(args,'--codex-executable'));
       if(command==='spark'||command==='luna')return startV2(service,command);
       if(command==='advance')return advanceV2(service,option(args,'--reading'),option(args,'--session'));
@@ -46,7 +47,9 @@ async function main(){
       if(command==='reviewer'&&args[0]==='request-repair')return requestEditorialV2(service,option(args,'--reading'));
       throw Error('V2 supports spark, luna, advance, status, reviewer work-order/apply/repair. Legacy commands cannot mutate a v2 job.');
     });
-    process.stdout.write(`${JSON.stringify(result)}\n`);return;
+    process.stdout.write(`${JSON.stringify(result)}\n`);
+    if(result.state==='blocked')process.exitCode=1;
+    return;
   }
   if(command==="spark"||command==="luna")result=await withRunnerLock(ctx,()=>startRunner(ctx,{lane:command}));
   else if(command==="advance")result=await withRunnerLock(ctx,()=>advanceRunner(ctx,{checkpointId:option(args,"--checkpoint")}));

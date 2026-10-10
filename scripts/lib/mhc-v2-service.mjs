@@ -11,6 +11,8 @@ import {assertSchemaValid} from './schema-validator.mjs';
 import {applyNativeTransaction} from './mhc-native-transaction.mjs';
 import {finalizeReviewedLibrary} from './mhc-reviewed-library-finalize.mjs';
 import {sparkModelUnavailable} from './mhc-v2-model-errors.mjs';
+import {configuredModels,jobModels} from './mhc-v2-author-config.mjs';
+import {stageAuthorBlock} from './mhc-v2-author-status.mjs';
 
 const HOUR=60*60*1000;
 const chapterKey=c=>`${c.book_id}.${c.chapter}`;
@@ -97,7 +99,7 @@ function editorialTarget(job){
 }
 function report(ctx,job,extra={}) {
   const batch=nextBatch(job),total=job.input.chapters.reduce((n,c)=>n+c.batches.length,0),complete=job.input.chapters.reduce((n,c)=>n+c.batches.filter(p=>job.state.accepted[artifactKey(p,job.state.owners[chapterKey(c)])]).length,0);
-  return {pipeline:VERSION,lane:'henry_backfill',readingId:job.input.reading_id,scheduleDate:job.input.schedule_date,state:job.state.phase,action:'none',published:job.state.phase==='published',validatedBatches:complete,totalBatches:total,totalSubmissions:job.state.total_submissions,code:job.state.blocker?.code||null,...(batch?{requiredModel:MODELS[batch.lane]}:{}),...extra};
+  return {pipeline:VERSION,lane:'henry_backfill',readingId:job.input.reading_id,scheduleDate:job.input.schedule_date,state:job.state.phase,action:'none',published:job.state.phase==='published',validatedBatches:complete,totalBatches:total,totalSubmissions:job.state.total_submissions,code:job.state.blocker?.code||null,...(batch?{requiredModel:jobModels(job)[batch.lane]}:{}),...extra};
 }
 
 async function selection(ctx,jobs,now) {
@@ -143,6 +145,7 @@ export async function migrateCurrentV2(ctx,readingId,attemptSha256,reason,now=ne
 
 async function beginSession(ctx,job,lane,now) {
   const state=clone(job.state),slot=latestDetroitSparkSlot(now),id=`${lane}:${slot}`;
+  if(!state.lease)state.lease={id,started_at:new Date(now).toISOString(),expires_at:new Date(new Date(now).getTime()+24*HOUR).toISOString(),transport_checkpoints:0};
   if(state.session?.id===id)return job; // Restart does not replenish time/budget.
   if(state.session&&Date.parse(state.session.deadline_at)>new Date(now).getTime())throw new Error('V2_SESSION_ALREADY_ACTIVE');
   state.session=state.sessions[id]||{id,lane,started_at:new Date(now).toISOString(),deadline_at:new Date(new Date(now).getTime()+HOUR).toISOString(),submissions:0,runtime_revision:ctx.config.source_revision??null,runtime_manifest_sha256:ctx.manifestSha256??null};
@@ -152,7 +155,7 @@ async function beginSession(ctx,job,lane,now) {
 
 async function authorPacket(ctx,job,now) {
   const next=nextBatch(job);
-  if(!next){const state={...job.state,phase:'review_pending',blocker:null};job=await appendState(job,'generation_complete',state,now);return report(ctx,job,{action:'review_handoff'});}
+  if(!next){const state={...job.state,phase:'review_pending',blocker:null,lease:{...job.state.lease,released:true}};job=await appendState(job,'generation_complete',state,now);return report(ctx,job,{action:'review_handoff'});}
   if(next.lane!==job.state.session?.lane){job=await appendState(job,'chapter_model_handoff',{...job.state,session:null},now);return report(ctx,job,{action:'checkpointed',code:'V2_AWAITING_CHAPTER_OWNER'});}
   const budgetExpired=new Date(now).getTime()>=Date.parse(job.state.session?.deadline_at)||job.state.session?.submissions>=32;
   const {packet,lane,key}=next,relative=`author/${packet.packet_id}/${lane}`;
@@ -161,7 +164,7 @@ async function authorPacket(ctx,job,now) {
   const instructions=await readFile(path.join(ctx.releaseRoot,'prompts/mhc-v2-author.md'),'utf8');
   // Instructions are an immutable JSON string, so the same confined writer is
   // used for all private artifacts. No shell interpolation of source prose.
-  const instructionsPath=await atomicJson(job.directory,`${relative}/instructions.json`,{model:MODELS[lane],reasoning_effort:lane==='spark'?'medium':'low',instructions},{immutable:true});
+  const instructionsPath=await atomicJson(job.directory,`${relative}/instructions-${jobModels(job)[lane]}.json`,{model:jobModels(job)[lane],reasoning_effort:lane==='spark'?'medium':'low',instructions},{immutable:true});
   const cmd=command(ctx,['advance','--reading',job.input.reading_id,'--session',job.state.session.id]);
   return report(ctx,job,{action:budgetExpired?'checkpointed':(job.state.rejected[key]||[]).length?'repair_candidate':'author_candidate',...(budgetExpired?{code:'V2_WAKE_BUDGET'}:{}),candidatePath:await confined(job.directory,`${relative}/candidate.json`),sourcePath:await confined(job.directory,`${relative}/source-view.json`),schemaPath:await confined(job.directory,`${relative}/candidate.schema.json`),instructionsPath,validationPath:await confined(job.directory,`${relative}/validation.json`),deadlineAt:job.state.session.deadline_at,submissionsRemaining:MAX_SUBMISSIONS-(job.state.rejected[key]||[]).length,advanceCommand:cmd.command,advanceArgv:cmd.argv});
 }
@@ -171,16 +174,32 @@ export async function startV2(ctx,lane,now=new Date()) {
   let jobs=await allJobs(ctx);const window=henryPriorityWindow(ctx.appConfig,now);
   for(const partial of jobs.filter(j=>!j.state)){const entry=ctx.plan.entries.find(e=>e.readingId===partial.input.reading_id);if(!entry)throw new Error('V2_PARTIAL_JOB_PLAN_CHANGED');const sources=await sourceInput(ctx,entry);if(sources.input.input_sha256!==partial.input.input_sha256)throw new Error('V2_PARTIAL_JOB_SOURCE_CHANGED');await createJob(ctx.jobRoot,partial.input,now);}
   jobs=await allJobs(ctx);
+  for(let old of jobs){
+    if(!old.state)continue;
+    const desired=configuredModels(ctx);
+    // The October replacement may rebind only never-authored work. Original
+    // receipts, event history, session deadlines and budgets remain intact.
+    if(jobModels(old).spark!==desired.spark&&old.state.total_submissions===0&&!old.state.pending_attempt&&Object.keys(old.state.accepted).length===0&&['queued','blocked','generating','fallback_pending'].includes(old.state.phase)&&!(old.state.phase==='generating'&&Date.parse(old.state.session?.deadline_at)>new Date(now).getTime())){
+      old=await appendState(old,'author_configuration_rebound',{...old.state,models:desired,owners:Object.fromEntries(old.input.chapters.map(c=>[chapterKey(c),'spark'])),phase:'queued',session:null,lease:{id:'configuration-rebound',started_at:new Date(now).toISOString(),expires_at:new Date(new Date(now).getTime()+24*HOUR).toISOString(),transport_checkpoints:0},blocker:null,history:[...old.state.history,{kind:'author_configuration_rebound',prior_models:jobModels(old),models:desired,at:new Date(now).toISOString()}]},now);
+    }
+    const started=Date.parse(old.state.lease?.started_at??old.state.created_at);
+    const expiry=Math.min(Date.parse(old.state.lease?.expires_at)||Infinity,started+24*HOUR);
+    if(['queued','generating','fallback_pending'].includes(old.state.phase)&&expiry<=new Date(now).getTime()){
+      await appendState(old,'author_lease_expired',{...old.state,phase:'blocked',lease:{...old.state.lease,released:true},blocker:{stage:'model_transport',code:'V2_AUTHOR_LEASE_EXPIRED'}},now);
+      await stageAuthorBlock(ctx,{model:jobModels(old)[old.state.session?.lane||'spark'],reason:'Author lease expired; fallback retained',code:'V2_AUTHOR_LEASE_EXPIRED'},now);
+    }
+  }
+  jobs=await allJobs(ctx);
   const active=jobs.filter(j=>j.state?.phase==='generating');
   if(active.length>1)throw new Error('V2_MULTIPLE_GENERATING_JOBS');
   let job=active[0];
   if(!job){
-    job=jobs.filter(j=>j.state?.phase==='queued').sort((a,b)=>a.input.schedule_date.localeCompare(b.input.schedule_date))[0];
-    if(job){job=(await checkedJob(ctx,job.input.reading_id)).job;const next=nextBatch(job);if(next&&next.lane!==lane)return report(ctx,job,{code:'V2_OTHER_MODEL_OWNS_CHAPTER'});job=await appendState(job,'queued_authoring_resumed',{...job.state,phase:'generating'},now);}
+    job=jobs.filter(j=>j.state?.phase==='queued'&&(!ctx.forwardOnly||(j.input.schedule_date>=window.today&&j.input.schedule_date<=window.horizonDate))).sort((a,b)=>a.input.schedule_date.localeCompare(b.input.schedule_date))[0];
+    if(job){job=(await checkedJob(ctx,job.input.reading_id)).job;const next=nextBatch(job);if(next&&next.lane!==lane)return ownershipWake(ctx,job,now);job=await appendState(job,'queued_authoring_resumed',{...job.state,phase:'generating'},now);}
   }
-  if(job){job=(await checkedJob(ctx,job.input.reading_id)).job;const next=nextBatch(job);if(next&&next.lane!==lane)return report(ctx,job,{code:'V2_OTHER_MODEL_OWNS_CHAPTER'});}
+  if(job){job=(await checkedJob(ctx,job.input.reading_id)).job;const next=nextBatch(job);if(next&&next.lane!==lane)return ownershipWake(ctx,job,now);}
   if(!job&&lane==='luna') {
-    job=jobs.filter(j=>j.state?.phase==='fallback_pending').sort((a,b)=>a.input.schedule_date.localeCompare(b.input.schedule_date))[0];
+    job=jobs.filter(j=>j.state?.phase==='fallback_pending'&&(!ctx.forwardOnly||(j.input.schedule_date>=window.today&&j.input.schedule_date<=window.horizonDate))).sort((a,b)=>a.input.schedule_date.localeCompare(b.input.schedule_date))[0];
     if(job){
       job=(await checkedJob(ctx,job.input.reading_id)).job;
       const next=nextBatch(job),state=clone(job.state),blocker=state.blocker;
@@ -190,7 +209,7 @@ export async function startV2(ctx,lane,now=new Date()) {
         const base=`model-executions/${blocker.execution_key}`;
         const execution=await readJson(await confined(job.directory,`${base}/result.json`,{missing:false}));
         const events=await readFile(await confined(job.directory,`${base}/events.jsonl`,{missing:false}),'utf8');
-        if(execution.status!=='failed'||execution.proof?.model!==MODELS.spark||execution.proof.packet_sha256!==digestObject(next.packet)||
+        if(execution.status!=='failed'||execution.proof?.model!==jobModels(job).spark||execution.proof.packet_sha256!==digestObject(next.packet)||
           execution.error_code!==null||digestObject(execution.proof)!==blocker.proof_sha256||digestObject(events)!==blocker.events_sha256||
           !sparkModelUnavailable({status:execution.exit_code,stdout:events}))throw new Error('V2_AVAILABILITY_PROOF_INVALID');
       }
@@ -205,12 +224,20 @@ export async function startV2(ctx,lane,now=new Date()) {
     // failure; absence or a host authorization denial never creates eligibility.
     if(lane==='luna')return {pipeline:VERSION,action:'none',state:'awaiting_primary',readingId:selected.candidate.entry.readingId};
     const entry=selected.candidate.entry;
+    if(ctx.forwardOnly&&entry.dayIndex<window.currentDay)return {pipeline:VERSION,action:'none',state:'forward_drain_complete',queue:selected.queue};
     if(entry.dayIndex>window.horizonDay)throw new Error('V2_OUTSIDE_HORIZON');
-    const sources=await sourceInput(ctx,entry);job=await createJob(ctx.jobRoot,sources.input,now);
+    const sources=await sourceInput(ctx,entry);job=await createJob(ctx.jobRoot,sources.input,now,configuredModels(ctx));
   }
   job=await beginSession(ctx,job,lane,now);
   if(job.state.pending_attempt)return advanceV2(ctx,job.input.reading_id,job.state.session.id,now);
   return authorPacket(ctx,job,now);
+}
+
+async function ownershipWake(ctx,job,now){
+  const count=(job.state.ownership_wakes||0)+1,exhausted=count>=2;
+  job=await appendState(job,'other_owner_wake',{...job.state,ownership_wakes:count,...(exhausted?{phase:'blocked',lease:{...job.state.lease,released:true},blocker:{stage:'model_transport',code:'V2_OWNERSHIP_WAKE_EXHAUSTED'}}:{})},now);
+  const status=exhausted?await stageAuthorBlock(ctx,{model:jobModels(job)[nextBatch(job).lane],reason:'Chapter ownership stalled across two wakes',code:'V2_OWNERSHIP_WAKE_EXHAUSTED'},now):{};
+  return report(ctx,job,{code:exhausted?'V2_OWNERSHIP_WAKE_EXHAUSTED':'V2_OTHER_MODEL_OWNS_CHAPTER',...status});
 }
 
 export async function advanceV2(ctx,readingId,sessionId,now=new Date()) {
@@ -243,7 +270,7 @@ export async function advanceV2(ctx,readingId,sessionId,now=new Date()) {
   const validation=validateCandidate(candidate,packet),state=clone(job.state);state.pending_attempt=null;
   await atomicJson(job.directory,`diagnostics/${reserved.hash}.json`,validation,{immutable:true});
   await atomicJson(job.directory,`author/${packet.packet_id}/${lane}/validation.json`,{candidate_sha256:reserved.hash,...validation});
-  if(validation.valid){state.accepted[key]={candidate_sha256:reserved.hash,accepted_at:new Date(now).toISOString()};job=await appendState(job,'candidate_accepted',state,now);}
+  if(validation.valid){state.accepted[key]={candidate_sha256:reserved.hash,accepted_at:new Date(now).toISOString()};if(state.lease)state.lease.transport_checkpoints=0;state.ownership_wakes=0;job=await appendState(job,'candidate_accepted',state,now);}
   else {
     state.rejected[key]=[...(state.rejected[key]||[]),reserved.hash];
     if(state.rejected[key].length>=MAX_SUBMISSIONS){state.phase=lane==='spark'?'fallback_pending':'editorial_attention';state.blocker={code:'V2_CANDIDATE_EXHAUSTED',stage:'candidate',packet_id:packet.packet_id,lane};}
@@ -260,7 +287,7 @@ export async function buildReview(ctx,readingId) {
   for(const chapter of job.input.chapters){const lane=job.state.owners[chapterKey(chapter)],records=[];
     for(const packet of chapter.batches){const accepted=job.state.accepted[artifactKey(packet,lane)],stored=await readJson(await confined(job.directory,`attempts/${accepted.candidate_sha256}.json`,{missing:false}));if(sha256(stored.bytes)!==accepted.candidate_sha256)throw new Error('V2_ACCEPTED_ATTEMPT_CHANGED');const candidate=JSON.parse(stored.bytes),validation=validateCandidate(candidate,packet);if(!validation.valid)throw new Error('V2_ACCEPTED_CANDIDATE_INVALID');records.push(...validation.records);sentences.push(...candidate.records);concerns.push(...validation.reviewConcerns);}
     const units=sources.chapters.find(c=>c.bookId===chapter.book_id&&c.chapter===chapter.chapter).units;
-    const runtime=chapterRuntime({chapter,records,units,sourceManifest:sources.sourceManifest,model:MODELS[lane],createdAt:job.state.created_at});
+    const runtime=chapterRuntime({chapter,records,units,sourceManifest:sources.sourceManifest,model:jobModels(job)[lane],createdAt:job.state.created_at});
     assertSchemaValid(runtime,await readJson(path.join(ctx.releaseRoot,'schemas/mhc-runtime.schema.json')),{label:'V2 unreviewed runtime'});
     results.push({book_id:chapter.book_id,chapter:chapter.chapter,verse_count:chapter.verse_count,runtime});
   }

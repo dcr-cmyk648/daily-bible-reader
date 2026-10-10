@@ -1,8 +1,9 @@
 import {buildChapterJobSpec, exportChapterRuntime, sha256, stableJson, validateSourceCopyRisk} from './mhc-pipeline.mjs';
 import {validateAgainstSchema} from './schema-validator.mjs';
+import {AUTHOR_MODEL} from './mhc-v2-author-config.mjs';
 
 export const VERSION = 'mhc-evidence-author/v2';
-export const MODELS = {spark:'gpt-5.3-codex-spark', luna:'gpt-5.6-luna'};
+export const MODELS = {spark:AUTHOR_MODEL, luna:'gpt-5.6-luna'};
 export const MAX_PACKET_BYTES = 96 * 1024;
 export const MAX_BATCH_VERSES = 8;
 export const MAX_SUBMISSIONS = 2;

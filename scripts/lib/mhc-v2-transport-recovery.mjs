@@ -1,7 +1,8 @@
 import {readFile,readdir,lstat} from 'node:fs/promises';
 import path from 'node:path';
 import {loadJob,confined,readJson,appendState} from './mhc-v2-store.mjs';
-import {MODELS,digestObject} from './mhc-v2.mjs';
+import {digestObject} from './mhc-v2.mjs';
+import {jobModels} from './mhc-v2-author-config.mjs';
 
 // Explicit installer recovery under its existing global lock. This is confined
 // to a first CLI configuration rejection before any model response or candidate.
@@ -16,7 +17,7 @@ export async function recoverUnstartedTransport(projectRoot,readingId,revision,n
   const directory=await confined(executions,names[0],{missing:false});
   const record=await readJson(await confined(directory,'result.json',{missing:false}));
   const packet=job.input.chapters.flatMap(c=>c.batches).find(p=>digestObject(p)===record.proof?.packet_sha256);
-  if(record.status!=='failed'||record.exit_code!==1||record.error_code!==null||record.session!==state.session.id||record.proof?.model!==MODELS.spark||!packet||names[0]!==digestObject({session:record.session,packet:packet.packet_id,submissions:0}))throw Error('V2_TRANSPORT_RECOVERY_BINDING');
+  if(record.status!=='failed'||record.exit_code!==1||record.error_code!==null||record.session!==state.session.id||record.proof?.model!==jobModels(job).spark||!packet||names[0]!==digestObject({session:record.session,packet:packet.packet_id,submissions:0}))throw Error('V2_TRANSPORT_RECOVERY_BINDING');
   const events=await readFile(await confined(directory,'events.jsonl',{missing:false}),'utf8');
   const stderr=await readFile(await confined(directory,'stderr.txt',{missing:false}),'utf8');
   if(events.trim()||!/^Error loading config\.toml: invalid transport\r?\nin `mcp_servers\.[A-Za-z0-9_-]+`$/.test(stderr.trim()))throw Error('V2_TRANSPORT_RECOVERY_MODEL_MAY_HAVE_STARTED');

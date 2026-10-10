@@ -2,7 +2,8 @@ import {readFile,lstat} from 'node:fs/promises';
 import {spawnSync} from 'node:child_process';
 import path from 'node:path';
 import {loadJob,confined,readJson,appendState} from './mhc-v2-store.mjs';
-import {MODELS,digestObject} from './mhc-v2.mjs';
+import {digestObject} from './mhc-v2.mjs';
+import {jobModels} from './mhc-v2-author-config.mjs';
 import {sha256} from './mhc-pipeline.mjs';
 import {modelRequiresNewClient} from './mhc-v2-model-errors.mjs';
 
@@ -12,12 +13,12 @@ export async function recoverClientUpgrade(ctx,readingId,priorExecutable,executa
   const root=await confined(ctx.jobRoot,readingId,{missing:false}),job=await loadJob(root),state=job.state;
   if(state?.phase!=='queued'||state.total_submissions!==0||state.pending_attempt||Object.keys(state.accepted).length||Object.keys(state.rejected).length||state.history.some(e=>e.kind==='client_upgrade_recovered'))throw Error('V2_CLIENT_RECOVERY_NOT_ELIGIBLE');
   const chapter=job.input.chapters.find(c=>c.batches.length),packet=chapter?.batches[0],lane=state.session?.lane;
-  if(!packet||!MODELS[lane]||state.owners[`${chapter.book_id}.${chapter.chapter}`]!==lane)throw Error('V2_CLIENT_RECOVERY_BINDING');
+  if(!packet||!jobModels(job)[lane]||state.owners[`${chapter.book_id}.${chapter.chapter}`]!==lane)throw Error('V2_CLIENT_RECOVERY_BINDING');
   const key=digestObject({session:state.session.id,packet:packet.packet_id,submissions:0});
   const directory=await confined(root,`model-executions/${key}`,{missing:false});
   const record=await readJson(await confined(directory,'result.json',{missing:false}));
   const events=await readFile(await confined(directory,'events.jsonl',{missing:false}),'utf8');
-  if(record.status!=='failed'||record.error_code!==null||record.session!==state.session.id||record.proof?.model!==MODELS[lane]||record.proof.packet_sha256!==digestObject(packet)||!modelRequiresNewClient({status:record.exit_code,stdout:events},MODELS[lane]))throw Error('V2_CLIENT_RECOVERY_PROOF');
+  if(record.status!=='failed'||record.error_code!==null||record.session!==state.session.id||record.proof?.model!==jobModels(job)[lane]||record.proof.packet_sha256!==digestObject(packet)||!modelRequiresNewClient({status:record.exit_code,stdout:events},jobModels(job)[lane]))throw Error('V2_CLIENT_RECOVERY_PROOF');
   for(const file of [path.join(directory,'response.json'),path.join(root,'author',packet.packet_id,lane,'candidate.json')]){
     const stat=await lstat(file).catch(e=>{if(e.code==='ENOENT')return null;throw e;});if(stat)throw Error('V2_CLIENT_RECOVERY_OUTPUT_EXISTS');
   }

@@ -1,5 +1,13 @@
 # Matthew Henry preprocessing pipeline
 
+Current v2 author configuration (authorized October 10): `gpt-6-luna` primary
+at medium effort, retaining only `gpt-5.6-luna` at low as the existing
+candidate-exhaustion fallback. `scripts/lib/mhc-v2-author-config.mjs` owns the
+primary value. Installed `author-preflight` checks both models through the existing
+ChatGPT login before any reading claim. Provider 4xx or missing/outdated CLI errors
+block immediately; they do not authorize fallback. Historical Spark artifacts
+retain their exact provenance. See the recovery contract in HENRY_V2_OPERATIONS.md.
+
 The September 13 replacement is documented in
 [HENRY_V2_OPERATIONS.md](HENRY_V2_OPERATIONS.md). Its explicit installer selection
 is `--pipeline v2`; it uses source-range packets, sentence/evidence authoring,

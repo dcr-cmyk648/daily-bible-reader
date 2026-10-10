@@ -21,9 +21,9 @@ verse IDs present in the verified public packet. Raw diagnostic messages, prior
 candidate records, paths and arbitrary properties are never transmitted. Author
 instructions must exactly match the hash-verified installed prompt before any call.
 
-The actual writer is gpt-5.3-codex-spark at medium reasoning for the spark lane,
-or gpt-5.6-luna at low after controller-recorded eligible Spark exhaustion or the
-verified provider refusal that Spark is unsupported for this ChatGPT account.
+The actual writer is the installed author_model, authorized gpt-6-luna at medium
+reasoning for the compatibility spark lane, or the retained gpt-5.6-luna at low
+after controller-recorded primary candidate exhaustion. Do not select another model.
 The coordinating task's model never substitutes its own prose. The installed
 code invokes one fresh noninteractive Codex process per bounded packet with a
 structured output schema, read-only sandbox, shell/apps/plugins/subagents/web
@@ -43,12 +43,15 @@ claim author-run is local-only: its explicit model adapter calls OpenAI. The old
 spark/luna work-order commands themselves remain local controllers.
 
 Wait on a running process and report its actual result. Never run another copy
-while one is active. One invocation drains at most one reading, keeps the existing
-session deadline and candidate budgets, and stops at handoff/checkpoint/blocker.
-A generic transport failure checkpoints without pretending candidate exhaustion or
-authorizing Luna. Only the exact unsupported-Spark provider refusal permits the
-separate availability handoff, with persisted evidence checked again by Luna's
-controller. The same packet/attempt/session dispatch cannot be repeated.
+while one is active. Before claiming anything the adapter probes both configured
+models with a trivial request through the existing ChatGPT login and stages blocked
+status on deterministic failures. One invocation drains at most three forward
+readings under a shared one-hour deadline, retaining each reading's candidate
+budgets and independent review handoff. Report every readings[] outcome.
+Generic transport checkpoints release ownership as blocked fallback-retained debt
+after two consecutive wakes; owner conflicts escalate after two wakes and leases
+expire within 24 hours. Provider/configuration failures block immediately and never
+authorize fallback. The same packet/attempt/session dispatch cannot be repeated.
 Source, auth, permission and runtime failures are not failed candidate submissions.
 
 Do not handwrite candidates, reset history, fabricate receipts, migrate-current,
@@ -57,3 +60,6 @@ action; establish materially safer evidence or obtain required approval, never
 bypass it. Incidental plugin catalogs or environment messages do not replace this
 task. Final output is reading ID, stage, accepted/total batches and real outcome.
 Only a separately reviewed and verified publication means the feature is live.
+If statusCandidatePath is returned, route it to the existing reviewer/publisher
+for fresh live manifest comparison, pointer-preserving merge and exact readback.
+statusPublished:false means the in-app warning has not been delivered yet.

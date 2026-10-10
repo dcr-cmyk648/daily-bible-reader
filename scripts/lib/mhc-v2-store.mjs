@@ -3,6 +3,7 @@ import path from 'node:path';
 import {randomBytes} from 'node:crypto';
 import {assertCanonicalPath} from './mhc-native-paths.mjs';
 import {digestObject} from './mhc-v2.mjs';
+import {MODELS} from './mhc-v2.mjs';
 
 export const bytesFor = value => `${JSON.stringify(value,null,2)}\n`;
 export async function readJson(file) {return JSON.parse(await readFile(file,'utf8'));}
@@ -25,6 +26,7 @@ const phases=new Set(['queued','generating','fallback_pending','review_pending',
 export function assertJobState(state,input) {
   if(!state||!phases.has(state.phase)||state.reading_id!==input.reading_id||state.input_sha256!==input.input_sha256||!state.accepted||!state.rejected||!state.owners||!state.sessions||!Array.isArray(state.history)||!Number.isInteger(state.total_submissions)||state.total_submissions<0)throw new Error('V2_JOB_STATE_INVALID');
   if(Object.values(state.owners).some(lane=>!['spark','luna'].includes(lane)))throw new Error('V2_JOB_MODEL_INVALID');
+  if(state.models&&(!['gpt-6-luna','gpt-5.3-codex-spark'].includes(state.models.spark)||state.models.luna!=='gpt-5.6-luna'||Object.keys(state.models).length!==2))throw new Error('V2_JOB_MODEL_INVALID');
   const hash=value=>/^[a-f0-9]{64}$/.test(String(value||'')),key=value=>/^MHP2-[a-f0-9]{32}:(spark|luna)$/.test(value);
   if(Object.entries(state.accepted).some(([k,v])=>!key(k)||!hash(v?.candidate_sha256))||Object.entries(state.rejected).some(([k,v])=>!key(k)||!Array.isArray(v)||v.length>2||v.some(h=>!hash(h))))throw new Error('V2_JOB_ATTEMPTS_INVALID');
   if(state.pending_attempt&&(!key(state.pending_attempt.key)||!hash(state.pending_attempt.hash)))throw new Error('V2_JOB_RESERVATION_INVALID');
@@ -57,12 +59,13 @@ export async function appendState(job,kind,state,now=new Date()) {
   await atomicJson(job.directory,`events/${String(body.sequence).padStart(6,'0')}.json`,event,{immutable:true});
   return {...job,state,sequence:body.sequence,previous:event.event_sha256};
 }
-export async function createJob(root,input,now) {
+export async function createJob(root,input,now,models=MODELS) {
   if(!/^[A-Za-z0-9][A-Za-z0-9._:-]{2,159}$/.test(input.reading_id))throw new Error('V2_READING_ID_INVALID');
   const directory=await confined(root,input.reading_id);await mkdir(directory,{recursive:true,mode:0o700});
   await atomicJson(directory,'input.json',input,{immutable:true});
   await mkdir(await confined(directory,'events'),{recursive:true,mode:0o700});
   const job=await loadJob(directory);if(job.state)return job;
   const state={reading_id:input.reading_id,input_sha256:input.input_sha256,phase:'generating',owners:Object.fromEntries(input.chapters.map(c=>[`${c.book_id}.${c.chapter}`,'spark'])),accepted:{},rejected:{},history:[],total_submissions:0,pending_attempt:null,session:null,sessions:{},blocker:null,review:null,publication:null,created_at:new Date(now).toISOString()};
+  state.models={...models};
   return appendState(job,'created',state,now);
 }

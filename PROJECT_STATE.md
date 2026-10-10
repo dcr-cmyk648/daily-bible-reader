@@ -19,8 +19,8 @@ the policy documents listed below.
 - WO-1 owns the Henry runtime/model repair. The manager owns author-lane activation
   after WO-1's installed runtime and model preflight are verified.
 - WO-2 owns buffer-aware reader warnings; installed-iPhone promotion gate applies.
-- WO-3 is design-first; the manager reviews and accepts the design before staged
-  supervisor implementation and release.
+- WO-3 design is accepted; staged supervisor implementation is authorized.
+  The manager sequences its implementation and releases.
 - WO-4 owns documentation hygiene. Keep both Henry author lanes paused; daily
   preparation and review/audit remain active. Leave non-BibleApp automations alone.
 
@@ -35,3 +35,23 @@ evidence is retained in [`docs/reports/service-reliability-2026-09-28.md`](docs/
 `docs/CONTENT_AND_RIGHTS.md`, `docs/EDITORIAL_STANCE.md`,
 `docs/COMMENTARY_WORKFLOW.md`, and `docs/RELEASE_STABILITY.md` remain authoritative.
 Do not treat archived operational reports as current permission or readiness.
+
+## WO-1 release candidate
+
+Prepared the approved gpt-6-luna primary (medium), retaining only gpt-5.6-luna
+(low) after candidate exhaustion. Added ChatGPT-only preflight before claim,
+deterministic provider/configuration blocks, two-checkpoint transport/ownership
+bounds, 24-hour leases, and a three-reading forward drain with independent review.
+Legacy submissions retain provenance; stale never-authored jobs record an explicit
+configuration rebind preserving old budgets/history. Immutable runtime packaging
+now verifies the status helper and its exact shared status/health dependencies.
+
+Manager verified both configured models through the new tools-disabled structured
+preflight at 14:55 UTC on October 10: CLI 0.162.1, ChatGPT-only route, both codes
+null. The earlier child approval denial is resolved under the original authority;
+the private checksum-bound receipt is preserved. Full check passes all 485 tests;
+public artifacts are unchanged. Runtime/bootstrap installation follows the push.
+Manager alone owns
+installed preflight, live health and author-lane resumption. Other automations and
+dirty canonical files remain untouched. Commands, proof and WO-2/WO-3 interfaces:
+[Henry recovery release](docs/execplans/henry-recovery-release-2026-10-10.md).

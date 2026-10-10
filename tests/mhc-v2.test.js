@@ -4,7 +4,8 @@ import {mkdtemp,mkdir,writeFile,readFile,rm,cp,readdir} from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import {spawnSync} from 'node:child_process';
-import {fileURLToPath} from 'node:url';
+import {fileURLToPath,pathToFileURL} from 'node:url';
+import {createRequire} from 'node:module';
 import {VERSION,MODELS,REVIEW_ASSERTIONS,passageScope,compileReading,validateCandidate,digestObject} from '../scripts/lib/mhc-v2.mjs';
 import {sha256,normalizedBatchHash} from '../scripts/lib/mhc-pipeline.mjs';
 import {serviceContext,startV2,advanceV2,buildReview,reviewWorkOrderV2,applyReviewV2,editorialRepairV2,requestEditorialV2,migrateCurrentV2,reopenReviewV2} from '../scripts/lib/mhc-v2-service.mjs';
@@ -14,76 +15,96 @@ import {runAuthorSession,transportSchema,authorArguments,successfulModelResult,v
 import {recoverUnstartedTransport} from '../scripts/lib/mhc-v2-transport-recovery.mjs';
 import {sparkModelUnavailable} from '../scripts/lib/mhc-v2-model-errors.mjs';
 import {recoverClientUpgrade} from '../scripts/lib/mhc-v2-client-upgrade.mjs';
+import {authorPreflight} from '../scripts/lib/mhc-v2-author-session.mjs';
+import {authorFailure} from '../scripts/lib/mhc-v2-model-errors.mjs';
 
 const unavailableSparkEvents = () => JSON.stringify({type:'turn.failed',error:{message:JSON.stringify({type:'error',status:400,error:{type:'invalid_request_error',message:"The 'gpt-5.3-codex-spark' model is not supported when using Codex with a ChatGPT account."}})}})+'\n';
 
-test('explicit client upgrade recovers only a retained exact refusal with a newer bound binary and unchanged budgets',async t=>{
-  const {ctx,now}=await fixture(t,{verseCount:1}),model=fabricatedModelRun();
-  const events=unavailableSparkEvents().replace('is not supported when using Codex with a ChatGPT account.','requires a newer version of Codex. Please upgrade to the latest app or CLI and try again.');
-  const options={lane:'spark',codexExecutable:process.execPath};
-  const failed=await runAuthorSession(ctx,options,{clock:()=>now,run:(bin,args,opts)=>args[0]==='exec'?{status:1,stdout:events}:model.run(bin,args,opts)});
-  assert.equal(failed.code,'V2_TRANSPORT_FAILED');
-  const root=path.join(ctx.jobRoot,'FAB-1'),before=await loadJob(root),key=(await readdir(path.join(root,'model-executions')))[0];
-  const recordPath=path.join(root,'model-executions',key,'result.json'),recordBytes=await readFile(recordPath);
-  const old=path.join(ctx.projectRoot,'FABRICATED-old-cli.exe');await writeFile(old,'FABRICATED OLD CLI');
-  const version=file=>({status:0,stdout:file===old?'codex-cli 0.141.0':'codex-cli 0.153.4'});
-  await assert.rejects(recoverClientUpgrade(ctx,'FAB-1',old,process.execPath,now,()=>({status:0,stdout:'codex-cli 0.141.0'})),/UPGRADE_REQUIRED/);
-  const eventsPath=path.join(root,'model-executions',key,'events.jsonl');
-  await writeFile(eventsPath,events+'{"type":"turn.completed"}\n');
-  await assert.rejects(recoverClientUpgrade(ctx,'FAB-1',old,process.execPath,now,version),/RECOVERY_PROOF/);
-  await writeFile(eventsPath,events);
-  const result=await recoverClientUpgrade(ctx,'FAB-1',old,process.execPath,now,version);
-  assert.equal(result.budgetsUnchanged,true);
-  const after=await loadJob(root);assert.deepEqual(after.state.sessions,before.state.sessions);assert.equal(after.state.total_submissions,0);
-  await assert.rejects(recoverClientUpgrade(ctx,'FAB-1',old,process.execPath,now,version),/NOT_ELIGIBLE/);
-  await writeFile(eventsPath,events+'\n');
-  await assert.rejects(runAuthorSession(ctx,options,{run:model.run,clock:()=>now}),/PROOF_CHANGED/);
-  await writeFile(eventsPath,events);
-  const complete=await runAuthorSession(ctx,options,{run:model.run,clock:()=>now});
-  assert.equal(complete.action,'review_handoff');assert.equal(model.calls,1);assert.deepEqual(await readFile(recordPath),recordBytes);
-});
-
-for(const expired of [false,true])test(`retained unsupported-Spark failure recovers without repeating dispatch (expired=${expired})`, async t=>{
-  const {ctx,now}=await fixture(t,{verseCount:1}),normal=fabricatedModelRun();let calls=0;
-  const run=(bin,args,options)=>{if(args[0]!=='exec')return normal.run(bin,args,options);calls++;return {status:1,stdout:unavailableSparkEvents()};};
-  const options={lane:'spark',codexExecutable:process.execPath},deps={run,clock:()=>now};
-  await runAuthorSession(ctx,options,deps);
-  const job=await loadJob(path.join(ctx.jobRoot,'FAB-1'));
-  // Reproduce the previous runtime's generic queued checkpoint with the same real-shaped receipt.
-  await appendState(job,'FABRICATED older runtime checkpoint',{...job.state,phase:'queued',blocker:{code:'V2_TRANSPORT_FAILED'},history:[]},now);
-  const result=await runAuthorSession(ctx,options,{...deps,clock:()=>expired?new Date(now.getTime()+2*60*60*1000):now});
-  assert.equal(calls,1);assert.equal(result.code,'V2_SPARK_MODEL_UNAVAILABLE');
-  assert.equal(result.totalSubmissions,0);
-  const after=await loadJob(job.directory);
-  assert.deepEqual(after.state.sessions,job.state.sessions);
-  assert.deepEqual(after.state.session,job.state.session);
-});
-
-
-test('verified Spark provider refusal hands off to Luna without spending or resetting candidates', async t=>{
+for(const [model,message] of [['gpt-5.3-codex-spark',"not supported when using Codex with a ChatGPT account"],['gpt-5.6-luna','requires a newer version of Codex']])test(`October provider refusal ${model} blocks within one wake before claiming`,async t=>{
   const {ctx,now}=await fixture(t,{verseCount:1}),normal=fabricatedModelRun();
-  const run=(bin,args,options)=>args[0]==='exec'?{status:1,stdout:unavailableSparkEvents(),stderr:''}:normal.run(bin,args,options);
+  if(model==='gpt-5.3-codex-spark')ctx.config.author_model=model;
+  const run=(bin,args,opts)=>opts.input?.startsWith('Availability preflight')&&args.includes(model)?{status:1,stderr:`FABRICATED HTTP 400: The '${model}' model is ${message}.`}:normal.run(bin,args,opts);
   const result=await runAuthorSession(ctx,{lane:'spark',codexExecutable:process.execPath},{run,clock:()=>now});
-  assert.equal(result.code,'V2_SPARK_MODEL_UNAVAILABLE');assert.equal(result.state,'fallback_pending');
-  const before=await loadJob(path.join(ctx.jobRoot,'FAB-1'));
-  assert.equal(before.state.total_submissions,0);assert.equal(before.state.owners['TST.1'],'spark');
-  const order=await startV2(ctx,'luna',now);
-  assert.equal(order.requiredModel,MODELS.luna);assert.equal(order.submissionsRemaining,2);
-  const after=await loadJob(before.directory);
-  assert.deepEqual(after.state.sessions[before.state.session.id],before.state.session);
-  assert.equal(after.state.total_submissions,0);assert.equal(after.state.owners['TST.1'],'luna');
-  await writeCandidate(order);
-  const complete=await advanceV2(ctx,order.readingId,sessionId(order),now);
-  assert.equal(complete.action,'review_handoff');assert.equal(complete.totalSubmissions,1);
+  assert.equal(result.code,'V2_AUTHOR_MODEL_UNAVAILABLE');assert.equal(result.state,'blocked');assert.equal(result.statusPublished,false);
+  assert.deepEqual(await readdir(ctx.jobRoot),[]);assert.equal(normal.calls,0);
+  const staged=await readJson(result.statusCandidatePath);assert.equal(staged.preparationStatus.state,'blocked');assert.ok(staged.preparationStatus.summary.includes(model));
+  assert.deepEqual(staged.readings,(await readJson(path.join(ctx.privateRoot,'private-manifest.json'))).readings);
 });
-
-test('Spark availability handoff rejects tampered provider evidence', async t=>{
+test('preflight probes each configured model with ChatGPT-only auth and isolated tools',async t=>{
+  const {ctx,now}=await fixture(t),normal=fabricatedModelRun(),models=[];
+  const run=(bin,args,opts)=>{if(opts.input?.startsWith('Availability preflight')){models.push(args[args.indexOf('--model')+1]);assert.equal(opts.env.OPENAI_API_KEY,undefined);assert.equal(opts.env.CODEX_API_KEY,undefined);assert.ok(args.includes('forced_login_method="chatgpt"'));}return normal.run(bin,args,opts);};
+  const result=await authorPreflight(ctx,{codexExecutable:process.execPath},{run,clock:()=>now});
+  assert.equal(result.state,'available');assert.deepEqual(models,['gpt-6-luna','gpt-5.6-luna']);assert.equal(normal.calls,0);assert.deepEqual(await readdir(ctx.jobRoot),[]);
+  assert.equal(Object.hasOwn(JSON.parse(JSON.stringify(result)),'transport'),false);
+  assert.ok(result.receipts.every(receipt=>receipt.code===null&&receipt.reason==='Model availability verified'));
+});
+test('provider 4xx and configuration errors are deterministic; timeout remains transport',()=>{
+  for(const result of [{status:1,stdout:unavailableSparkEvents()},{status:1,stderr:'FABRICATED unexpected status 403'},{status:1,stderr:'FABRICATED requires a newer version of Codex'},{status:null,error:{code:'ENOENT'}}])assert.equal(authorFailure(result).code,'V2_AUTHOR_MODEL_UNAVAILABLE');
+  assert.equal(authorFailure({status:null,error:{code:'ETIMEDOUT'}}).code,'V2_TRANSPORT_FAILED');
+});
+test('a provider refusal after successful preflight blocks the claimed job without fallback',async t=>{
   const {ctx,now}=await fixture(t,{verseCount:1}),normal=fabricatedModelRun();
-  const run=(bin,args,options)=>args[0]==='exec'?{status:1,stdout:unavailableSparkEvents()}:normal.run(bin,args,options);
-  await runAuthorSession(ctx,{lane:'spark',codexExecutable:process.execPath},{run,clock:()=>now});
-  const job=await loadJob(path.join(ctx.jobRoot,'FAB-1'));
-  await writeFile(path.join(job.directory,'model-executions',job.state.blocker.execution_key,'events.jsonl'),'FABRICATED altered refusal');
-  await assert.rejects(startV2(ctx,'luna',now),/AVAILABILITY_PROOF_INVALID/);
+  const run=(bin,args,opts)=>opts.input?.includes('SOURCE PACKET:')?{status:1,stderr:'FABRICATED HTTP 400: model not supported'}:normal.run(bin,args,opts);
+  const result=await runAuthorSession(ctx,{lane:'spark',codexExecutable:process.execPath},{run,clock:()=>now});
+  assert.equal(result.code,'V2_AUTHOR_MODEL_UNAVAILABLE');const job=await loadJob(path.join(ctx.jobRoot,'FAB-1'));
+  assert.equal(job.state.phase,'blocked');assert.equal(job.state.total_submissions,0);assert.equal(job.state.lease.released,true);
+});
+test('three transport wakes release ownership after two checkpoints and preserve attempts',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1}),normal=fabricatedModelRun(()=>null),options={lane:'spark',codexExecutable:process.execPath},deps={run:normal.run,clock:()=>now};
+  const first=await runAuthorSession(ctx,options,deps),second=await runAuthorSession(ctx,options,deps),third=await runAuthorSession(ctx,options,deps);
+  assert.equal(first.state,'queued');assert.equal(second.code,'V2_TRANSPORT_RETRY_EXHAUSTED');assert.equal(third.state,'no_eligible_reading');assert.equal(normal.calls,1);
+  const job=await loadJob(path.join(ctx.jobRoot,'FAB-1'));assert.equal(job.state.lease.released,true);assert.equal(job.state.lease.transport_checkpoints,2);assert.equal(job.state.total_submissions,0);
+});
+test('released transport debt advances the next forward reading without resetting the failed job',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1,readingCount:2}),normal=fabricatedModelRun();
+  const failing=(bin,args,opts)=>opts.input?.includes('SOURCE PACKET:')?{status:null,error:{code:'ETIMEDOUT'},stderr:'FABRICATED timeout'}:normal.run(bin,args,opts);
+  const options={lane:'spark',codexExecutable:process.execPath,maxReadings:1};
+  await runAuthorSession(ctx,options,{run:failing,clock:()=>now});
+  const before=await loadJob(path.join(ctx.jobRoot,'FAB-1'));
+  const blocked=await runAuthorSession(ctx,options,{run:failing,clock:()=>now});assert.equal(blocked.code,'V2_TRANSPORT_RETRY_EXHAUSTED');
+  const result=await runAuthorSession(ctx,options,{run:normal.run,clock:()=>now});assert.equal(result.readingId,'FAB-2');assert.equal(result.action,'review_handoff');
+  const after=await loadJob(before.directory);assert.equal(after.state.lease.released,true);assert.equal(after.state.phase,'blocked');assert.equal(after.state.total_submissions,before.state.total_submissions);assert.deepEqual(after.state.accepted,before.state.accepted);assert.deepEqual(after.state.sessions,before.state.sessions);
+});
+for(const stdout of ['FABRICATED malformed events','{"type":"turn.started"}\n','{"type":"item.completed","item":{"type":"command_execution"}}\n{"type":"turn.completed"}\n'])test(`exit-zero invalid author protocol checkpoints safely (${stdout.slice(0,24)})`,async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1}),normal=fabricatedModelRun();
+  const run=(bin,args,opts)=>opts.input?.includes('SOURCE PACKET:')?{status:0,stdout}:normal.run(bin,args,opts);
+  const options={lane:'spark',codexExecutable:process.execPath};
+  const first=await runAuthorSession(ctx,options,{run,clock:()=>now});assert.equal(first.code,'V2_TRANSPORT_PROTOCOL_FAILED');assert.equal(first.state,'queued');
+  const second=await runAuthorSession(ctx,options,{run,clock:()=>now});assert.equal(second.code,'V2_TRANSPORT_RETRY_EXHAUSTED');assert.equal(second.state,'blocked');assert.equal(second.statusPublished,false);
+  const job=await loadJob(path.join(ctx.jobRoot,'FAB-1'));assert.equal(job.state.total_submissions,0);assert.deepEqual(job.state.accepted,{});assert.equal((await readJson(second.statusCandidatePath)).preparationStatus.state,'blocked');
+});
+test('lease expires within 24 hours and the next forward reading can advance',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1,readingCount:2});await startV2(ctx,'spark',now);const before=await loadJob(path.join(ctx.jobRoot,'FAB-1'));
+  const result=await startV2(ctx,'spark',new Date(now.getTime()+24*60*60*1000));assert.equal(result.readingId,'FAB-2');
+  const after=await loadJob(before.directory);assert.equal(after.state.blocker.code,'V2_AUTHOR_LEASE_EXPIRED');assert.deepEqual(after.state.sessions,before.state.sessions);assert.equal(after.state.lease.released,true);
+});
+test('other-model ownership escalates within two wakes',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1});await startV2(ctx,'spark',now);
+  assert.equal((await startV2(ctx,'luna',now)).code,'V2_OTHER_MODEL_OWNS_CHAPTER');assert.equal((await startV2(ctx,'luna',now)).code,'V2_OWNERSHIP_WAKE_EXHAUSTED');
+  assert.equal((await loadJob(path.join(ctx.jobRoot,'FAB-1'))).state.phase,'blocked');
+});
+test('default catch-up drains exactly three forward readings and leaves each for independent review',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1,readingCount:4}),model=fabricatedModelRun();
+  const result=await runAuthorSession(ctx,{lane:'spark',codexExecutable:process.execPath},{run:model.run,clock:()=>now});
+  assert.deepEqual(result.readings.map(r=>r.readingId),['FAB-1','FAB-2','FAB-3']);assert.equal(model.calls,3);
+  for(const id of ['FAB-1','FAB-2','FAB-3']){const job=await loadJob(path.join(ctx.jobRoot,id));assert.equal(job.state.phase,'review_pending');assert.equal(job.state.review,null);assert.equal(job.state.models.spark,'gpt-6-luna');}
+  assert.deepEqual((await readdir(ctx.jobRoot)).sort(),['FAB-1','FAB-2','FAB-3']);
+});
+test('approved configuration rebind preserves never-authored legacy history and all old session budgets',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:1});ctx.config.author_model='gpt-5.3-codex-spark';await startV2(ctx,'spark',now);
+  let job=await loadJob(path.join(ctx.jobRoot,'FAB-1'));const sessions=structuredClone(job.state.sessions);
+  const {models:priorModels,...legacyState}=job.state;
+  job=await appendState(job,'FABRICATED October 3 checkpoint',{...legacyState,phase:'queued',owners:{'TST.1':'luna'},blocker:{code:'V2_TRANSPORT_FAILED'},history:[{kind:'FABRICATED retained legacy refusal'}]},now);
+  ctx.config.author_model='gpt-6-luna';const result=await startV2(ctx,'spark',new Date(now.getTime()+2*60*60*1000));
+  assert.equal(result.requiredModel,'gpt-6-luna');const after=await loadJob(job.directory);assert.equal(after.state.history[0].kind,'FABRICATED retained legacy refusal');
+  assert.ok(after.state.history.some(e=>e.kind==='author_configuration_rebound'));assert.equal(after.state.total_submissions,0);
+  for(const [id,value] of Object.entries(sessions))assert.deepEqual(after.state.sessions[id],value);
+});
+test('submitted legacy candidates cannot be relabeled as the replacement model',async t=>{
+  const {ctx,now}=await fixture(t,{verseCount:12});ctx.config.author_model='gpt-5.3-codex-spark';let order=await startV2(ctx,'spark',now);await writeCandidate(order);await advanceV2(ctx,'FAB-1',sessionId(order),now);
+  let job=await loadJob(path.join(ctx.jobRoot,'FAB-1'));const {models:priorModels,...legacyState}=job.state;job=await appendState(job,'FABRICATED legacy checkpoint',{...legacyState,phase:'queued'},now);
+  ctx.config.author_model='gpt-6-luna';const order2=await startV2(ctx,'spark',new Date(now.getTime()+2*60*60*1000));assert.equal(order2.requiredModel,'gpt-5.3-codex-spark');
+  const after=await loadJob(job.directory);assert.deepEqual(after.state.accepted,job.state.accepted);assert.equal(after.state.total_submissions,job.state.total_submissions);assert.ok(!after.state.history.some(e=>e.kind==='author_configuration_rebound'));
 });
 
 test('Spark refusal classifier excludes generic failure, different model, tool execution and completed responses', ()=>{
@@ -136,10 +157,12 @@ const sessionId=report=>report.advanceArgv.at(-1);
 function fabricatedModelRun(transform=x=>x){
   let calls=0;
   const run=(_binary,args,options)=>{
+    if(args[0]==='--version')return {status:0,stdout:'codex-cli 0.162.1'};
+    if(options.input?.startsWith('Availability preflight')){writeFileSync(args[args.indexOf('--output-last-message')+1],bytesFor({ok:true}));return {status:0,stdout:'{"type":"turn.completed"}\n'};}
     if(args[0]==='login')return {status:0,stderr:'Logged in using ChatGPT'};
     if(args.includes('mcp'))return {status:0,stdout:JSON.stringify([{name:'fabricated_mcp',enabled:!args.includes('mcp_servers.fabricated_mcp.enabled=false')}])};
     calls++;
-    assert.ok(args.includes('gpt-5.3-codex-spark'));assert.ok(args.includes('mcp_servers.fabricated_mcp.enabled=false'));
+    assert.ok(args.includes(MODELS.spark));assert.ok(args.includes('mcp_servers.fabricated_mcp.enabled=false'));
     assert.ok(!options.input.includes('FABRICATED PRIVATE DEVOTIONAL'));
     const packet=JSON.parse(options.input.split('SOURCE PACKET:\n')[1].split('\n\n')[0]);
     const output=transform(candidate(packet),calls);
@@ -152,7 +175,7 @@ function fabricatedModelRun(transform=x=>x){
 
 test('installed author transport drains only one reading through strict controller and leaves review pending',async t=>{
   const {ctx,now}=await fixture(t,{verseCount:12,readingCount:2}),model=fabricatedModelRun();
-  const result=await runAuthorSession(ctx,{lane:'spark',codexExecutable:process.execPath},{run:model.run,clock:()=>now});
+  const result=await runAuthorSession(ctx,{lane:'spark',codexExecutable:process.execPath,maxReadings:1},{run:model.run,clock:()=>now});
   assert.equal(result.action,'review_handoff');assert.equal(result.readingId,'FAB-1');assert.equal(result.totalSubmissions,model.calls);
   const job=await loadJob(path.join(ctx.jobRoot,'FAB-1'));assert.equal(job.state.phase,'review_pending');assert.equal(job.state.review,null);
   assert.deepEqual((await readdir(ctx.jobRoot)),['FAB-1']);
@@ -165,13 +188,14 @@ test('author transport preserves controller repair and fallback budgets',async t
 test('failed author transport cannot repeat the same dispatch or masquerade as candidate exhaustion',async t=>{
   const {ctx,now}=await fixture(t,{verseCount:1}),model=fabricatedModelRun(()=>null),options={lane:'spark',codexExecutable:process.execPath},deps={run:model.run,clock:()=>now};
   const first=await runAuthorSession(ctx,options,deps),second=await runAuthorSession(ctx,options,deps);
-  assert.equal(first.code,'V2_TRANSPORT_FAILED');assert.equal(second.code,'V2_TRANSPORT_ALREADY_ATTEMPTED');assert.equal(model.calls,1);
-  const job=await loadJob(path.join(ctx.jobRoot,'FAB-1'));assert.equal(job.state.total_submissions,0);assert.equal(job.state.phase,'queued');
+  assert.equal(first.code,'V2_TRANSPORT_FAILED');assert.equal(second.code,'V2_TRANSPORT_RETRY_EXHAUSTED');assert.equal(model.calls,1);
+  const job=await loadJob(path.join(ctx.jobRoot,'FAB-1'));assert.equal(job.state.total_submissions,0);assert.equal(job.state.phase,'blocked');
 });
 test('unstarted configuration recovery preserves failed bytes and budgets and resumes only on a new release',async t=>{
   const {ctx,now}=await fixture(t,{verseCount:1});ctx.config.source_revision='a'.repeat(40);const model=fabricatedModelRun();
-  const failing=(bin,args,options)=>args[0]==='exec'?{status:1,stdout:'',stderr:'Error loading config.toml: invalid transport\nin `mcp_servers.fabricated_mcp`\n'}:model.run(bin,args,options);
+  const failing=(bin,args,options)=>options.input?.includes('SOURCE PACKET:')?{status:1,stdout:'',stderr:'FABRICATED transport timeout'}:model.run(bin,args,options);
   await runAuthorSession(ctx,{lane:'spark',codexExecutable:process.execPath},{run:failing,clock:()=>now});
+  const fabricatedFailureRoot=path.join(ctx.jobRoot,'FAB-1');const fabricatedKey=(await readdir(path.join(fabricatedFailureRoot,'model-executions')))[0];await writeFile(path.join(fabricatedFailureRoot,'model-executions',fabricatedKey,'stderr.txt'),'Error loading config.toml: invalid transport\nin `mcp_servers.fabricated_mcp`\n');
   const root=path.join(ctx.jobRoot,'FAB-1'),before=await loadJob(root),key=(await readdir(path.join(root,'model-executions')))[0],file=path.join(root,'model-executions',key,'result.json'),bytes=await readFile(file);
   await assert.rejects(recoverUnstartedTransport(ctx.projectRoot,'FAB-1','a'.repeat(40),now),/NEW_RELEASE_REQUIRED/);
   await writeFile(path.join(root,'model-executions',key,'events.jsonl'),'{}');
@@ -183,7 +207,7 @@ test('unstarted configuration recovery preserves failed bytes and budgets and re
   const recovered=await loadJob(root);assert.equal(recovered.state.phase,'queued');assert.deepEqual(recovered.state.sessions,before.state.sessions);assert.equal(recovered.state.total_submissions,0);assert.deepEqual(await readFile(file),bytes);
   await assert.rejects(recoverUnstartedTransport(ctx.projectRoot,'FAB-1','c'.repeat(40),now),/NOT_UNSTARTED/);
   ctx.config.source_revision='b'.repeat(40);
-  const result=await runAuthorSession(ctx,{lane:'spark',codexExecutable:process.execPath},{run:model.run,clock:()=>now});assert.equal(result.action,'review_handoff');assert.equal(result.totalSubmissions,1);assert.equal(model.calls,1);assert.deepEqual(await readFile(file),bytes);
+  const result=await runAuthorSession(ctx,{lane:'spark',codexExecutable:process.execPath},{run:model.run,clock:()=>now});assert.equal(result.readings[0].action,'review_handoff');assert.equal(result.readings[0].totalSubmissions,1);assert.equal(model.calls,1);assert.deepEqual(await readFile(file),bytes);
 });
 test('identical rejected author output checkpoints instead of consuming repeated model calls',async t=>{
   const {ctx,now}=await fixture(t,{verseCount:1}),model=fabricatedModelRun(value=>({...value,records:[]}));
@@ -206,7 +230,7 @@ test('author transport admits only fixed repair hints and hash-verified installe
 });
 test('author transport cannot use API-key auth, alternate models or successful tool activity',async t=>{
   const {ctx,now}=await fixture(t,{verseCount:1});
-  await assert.rejects(runAuthorSession(ctx,{lane:'spark',codexExecutable:process.execPath},{run:()=>({status:0,stdout:'Logged in using API key'}),clock:()=>now}),/CHATGPT_LOGIN_REQUIRED/);
+  assert.equal((await runAuthorSession(ctx,{lane:'spark',codexExecutable:process.execPath},{run:()=>({status:0,stdout:'Logged in using API key'}),clock:()=>now})).state,'blocked');
   assert.throws(()=>authorArguments({model:'fabricated-other-model',reasoning:'low'}),/MODEL_INVALID/);
   assert.equal(successfulModelResult({status:0,stdout:'{"type":"item.completed","item":{"type":"command_execution"}}\n{"type":"turn.completed"}'}),false);
   assert.equal(successfulModelResult({status:0,stdout:'{"type":"turn.failed"}'}),false);
@@ -367,11 +391,18 @@ test('tampered or wrong approved runtime cannot be completed by a locally valid 
 });
 test('installed v2 launcher executes actual modules and cannot silently reinstall v1 over live v2 jobs',async t=>{
   const {ctx,now}=await fixture(t,{verseCount:1});await cp(path.join(repo,'scripts'),path.join(ctx.releaseRoot,'scripts'),{recursive:true});
+  for(const file of ['app/shared/server-core.js','app/frontend/app.js']){await mkdir(path.dirname(path.join(ctx.releaseRoot,file)),{recursive:true});await cp(path.join(repo,file),path.join(ctx.releaseRoot,file));}
   await atomicJson(ctx.releaseRoot,'fixtures/pilot-content/app-config.json',{sharedStartDate:new Intl.DateTimeFormat('en-CA',{timeZone:'America/Detroit'}).format(new Date()),futureLookaheadDays:7});
   const run=(bin,args,options={})=>{const r=spawnSync(bin,args,{cwd:ctx.releaseRoot,encoding:'utf8',windowsHide:true,maxBuffer:2*1024*1024,...options});assert.equal(r.status,0,`${bin} failed: ${r.stderr}`);return r.stdout.trim();};
-  run('git',['init','-q']);run('git',['add','scripts','schemas','prompts','fixtures']);run('git',['-c','user.name=FABRICATED Test','-c','user.email=fabricated@example.invalid','-c','core.hooksPath=.no-test-hooks','commit','-qm','FABRICATED runtime test only']);const revision=run('git',['rev-parse','HEAD']);
+  run('git',['init','-q']);run('git',['add','scripts','schemas','prompts','fixtures','app']);run('git',['-c','user.name=FABRICATED Test','-c','user.email=fabricated@example.invalid','-c','core.hooksPath=.no-test-hooks','commit','-qm','FABRICATED runtime test only']);const revision=run('git',['rev-parse','HEAD']);
   const installer=path.join(ctx.releaseRoot,'scripts/install-mhc-native-runtime.mjs'),args=[installer,'--project-root',ctx.projectRoot,'--revision',revision,'--spark-automation-id','fabricated-spark','--luna-automation-id','fabricated-luna','--pipeline','v2'];
   const installed=JSON.parse(run(process.execPath,args));const invoke=(args)=>JSON.parse(run(process.execPath,[installed.launcher,...args],{cwd:os.tmpdir()}));
+  const runtimePointer=await readJson(path.join(ctx.runtimeRoot,'current.json')),installedRelease=path.join(ctx.runtimeRoot,'releases',runtimePointer.release),requireInstalled=createRequire(path.join(installedRelease,'scripts/prepare-service-status.mjs'));
+  assert.equal(typeof requireInstalled('../app/shared/server-core.js').preparationServiceStatus,'function');
+  assert.equal(typeof requireInstalled('../app/frontend/app.js').evaluateContentReadiness,'function');
+  const installedHealth=await import(pathToFileURL(path.join(installedRelease,'scripts/lib/live-horizon-health.mjs')).href);assert.equal(typeof installedHealth.verifyLiveHorizon,'function');
+  run(process.execPath,[path.join(installedRelease,'scripts/prepare-service-status.mjs'),'blocked','FABRICATED local closure test','FABRICATED staged only'],{cwd:ctx.projectRoot});
+  assert.equal((await readJson(path.join(ctx.privateRoot,'automation/staging/service-status/manifest-candidate.json'))).preparationStatus.state,'blocked');
   // Actual installed selection, packet preparation, admission and review
   // discovery, from an arbitrary cwd. No model or real content is involved.
   let report=invoke(['spark']);

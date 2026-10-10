@@ -9,6 +9,8 @@ async function main() {
   const args = process.argv.slice(2), command = args.shift();
   let role, extra={};
   if (command === 'tick' && args.length === 2 && args[0] === '--role') role = args[1];
+  else if(command==='recover-genesis16-preflight'&&args.length===6&&args[0]==='--job'&&args[2]==='--blocked-event'&&args[4]==='--packet-sha256')
+    extra={jobId:args[1],blockedEventSha256:args[3],packetSha256:args[5]};
   else if(['authorize-genesis15-review','genesis15-review-snapshot'].includes(command)&&args.length===2&&
     args[0]===(command==='authorize-genesis15-review'?'--receipt':'--output'))extra[args[0]]=args[1];
   else if (command.startsWith('publication-')) {
@@ -22,7 +24,9 @@ async function main() {
   const config = JSON.parse(await readFile(configPath, 'utf8'));
   const ctx = await supervisorContext(config, releaseRoot);
   let result;
-  if(['authorize-genesis15-review','genesis15-review-snapshot'].includes(command)) {
+  if(command==='recover-genesis16-preflight') {
+    result=await (await import('./lib/service-supervisor-preflight-recovery.mjs')).recoverGenesis16Preflight(ctx,extra);
+  } else if(['authorize-genesis15-review','genesis15-review-snapshot'].includes(command)) {
     const {verifiedHenryContext}=await import('./lib/service-supervisor-henry.mjs'),binding=await verifiedHenryContext(ctx),
       operator=await import('./lib/service-supervisor-operator-review.mjs'),
       relative=value=>path.isAbsolute(value)?path.relative(ctx.projectRoot,value):value;

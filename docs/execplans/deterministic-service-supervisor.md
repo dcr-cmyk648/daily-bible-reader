@@ -589,6 +589,23 @@ gates remain unchanged. Worker supplies checked source and fabricated tests only
 manager owns real snapshot, receipt creation/import, installation and live dispatch.
 This is one accepted incident decision, not standing retry permission.
 
+October 10 follow-up: manager installed 7835744, consumed the GEN15 exception and
+published its full layer. GEN16 then failed before reservation with
+`SUPERVISOR_CHILD_SCRIPTURE_REFUSED`. Read-only reconstruction found a legacy
+study-Bible edition copyright notice in inventory index 350, rather than policy
+prose; the exact unchanged packet hash is
+`90771784f80e5c3beb436ad156ae89ef81dbfad9c313c1752d909fdb3222bb42`.
+Correct only code-selected bibliography inputs, including unchanged retained
+registry records in final review; keep all untrusted outputs and prose strict and
+decode nested JSON before checks. The named manager-only zero-dispatch recovery
+in SUPERVISOR_AUTHORING preserves original history and adds one audited queued
+event after corrected runtime/packet validation. No deletion, new job nonce,
+budget reset, terminal child retry or fourth GEN15 review is authorized. Worker
+owns source/fabricated tests/read-only eligibility proof; manager owns repin,
+recovery import, real GEN16 dispatch and exact publication. Full fabricated flow
+covers research, synthesis, waiting-Henry and independent review with immutable
+legacy bibliography. Live Stage D and sustained scheduled publication remain open.
+
 Tests use conspicuously fabricated Scripture, source prose, references, IDs,
 connector responses, automation TOML and fake Codex binaries. No test calls a real
 model, Google write or separately billed API. Cover EDF ties/dependencies, civil

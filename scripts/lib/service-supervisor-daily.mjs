@@ -10,7 +10,7 @@ import {authorizePublicationScope} from './service-supervisor-scope.mjs';
 import {reconcileManifestBackedPrefix,extendActivePrefix} from './active-calendar.mjs';
 import {validatePublicationSnapshot,DAILY_REVIEW_ASSERTIONS} from './service-supervisor-publication-gates.mjs';
 import {executeBoundedChild} from './service-supervisor-exec.mjs';
-import {researchContract,synthesisContract,independentReviewContract,decodeResearch,admitResearch,assertChildPrivacy} from './service-supervisor-contracts.mjs';
+import {researchContract,synthesisContract,independentReviewContract,decodeResearch,admitResearch,assertChildPrivacy,assertResearchPacketPrivacy,assertDailyReviewPacketPrivacy} from './service-supervisor-contracts.mjs';
 import {verifiedResearchSources} from './service-supervisor-source-fetch.mjs';
 import {sourceInput} from './mhc-v2-service.mjs';
 import {loadLatestHenryReading} from './mhc-library-sync.mjs';
@@ -101,6 +101,20 @@ async function editorialContract(ctx) {
   const files=['docs/EDITORIAL_STANCE.md','docs/CONTENT_AND_RIGHTS.md','docs/COMMENTARY_WORKFLOW.md',
     '.agents/skills/draft-daily-commentary/SKILL.md'];
   return Object.fromEntries(await Promise.all(files.map(async file=>[file,await readFile(await confined(ctx.releaseRoot,file,false),'utf8')])));
+}
+export async function dailyResearchPacket(ctx,{entry,order,job,priorRegistry,foundation},dependencies={}) {
+  const sourceSchema=await readPrivate(ctx.releaseRoot,'schemas/source.schema.json'),policies=await editorialContract(ctx);
+  foundation=foundation===undefined?await (dependencies.foundation||dailyFoundation)(ctx,entry,new Date(job.createdAt)):foundation;
+  const packet={schemaVersion:'supervisor-daily-research-input/v1',readingId:entry.readingId,reading:entry,
+    workOrder:order,policies,sourceSchema:sourceSchema.$defs.source,
+    existingSourceInventory:priorRegistry.sources.map(({sourceId,title,authorOrOrganization,edition,urlOrCitation,includedReadings})=>
+      ({sourceId,title,authorOrOrganization,edition,urlOrCitation,includedReadings})),
+    registryContract:'Preserve existing records exactly. Reuse only a record already scoped to this reading; otherwise record a genuinely distinct accessed chapter/page/edition locator. Never invent a locator or count another chapter/mirror as an independent work.',
+    sourceAccessContract:{mode:ctx.config.children?.sourceAccessMode||'cli_content',
+      method:'Completed CLI page opens are discovery; source consultation needs returned page bytes and an exact selected excerpt.',
+      copyrightExcerptWords:25,publicDomainExcerptWords:200,rawModernBodiesStored:false},
+    foundation:foundation?{...foundation,sourceEvidence:undefined}:null};
+  assertResearchPacketPrivacy(packet);return packet;
 }
 export async function admitDailyOrder(ctx,order,now,dependencies={}) {
   const name=order?.schemaVersion==='rolling-study-work-order/v1'?'rolling-study-work-order':'protocol-backfill-work-order';
@@ -213,16 +227,7 @@ export async function runDailyWork(ctx,{journal,lease,order,deadline,wakeId=leas
       research={admission:JSON.parse(await checkedArtifact(ctx,job.research)),execution:{threadId:job.researchThreadId}};
       synthesis={output:{markdown:content.toString()},execution:{id:job.authorSessionId,threadId:job.authorThreadId}};
     } else {
-    const researchPacket={schemaVersion:'supervisor-daily-research-input/v1',readingId:entry.readingId,reading:entry,
-      workOrder:boundOrder,policies,sourceSchema:sourceSchema.$defs.source,
-      existingSourceInventory:priorRegistry.sources.map(({sourceId,title,authorOrOrganization,edition,urlOrCitation,includedReadings})=>
-        ({sourceId,title,authorOrOrganization,edition,urlOrCitation,includedReadings})),
-      registryContract:'Preserve existing records exactly. Reuse only a record already scoped to this reading; otherwise record a genuinely distinct accessed chapter/page/edition locator. Never invent a locator or count another chapter/mirror as an independent work.',
-      sourceAccessContract:{mode:ctx.config.children?.sourceAccessMode||'cli_content',
-        method:'Completed CLI page opens are discovery; source consultation needs returned page bytes and an exact selected excerpt.',
-        copyrightExcerptWords:25,publicDomainExcerptWords:200,rawModernBodiesStored:false},
-      foundation:foundation?{...foundation,sourceEvidence:undefined}:null};
-    assertChildPrivacy(researchPacket);
+    const researchPacket=await dailyResearchPacket(ctx,{entry,order:boundOrder,job,priorRegistry,foundation});
     research=await dailyChild(execute,ctx,{journal,lease,jobId:job.id,readingId:entry.readingId,kind:'daily-research',packet:researchPacket,
       schema:researchContract(researchPacket,sourceSchema),deadline,
       prompt:`Research this one reading under the supplied editorial/rights policy. Web consultation only; no shell/apps/MCP/agents. Do not quote Scripture. eventId must be null: code binds actual opened-page events. Include the verified local Henry foundation when supplied, with its exact locator and source ID. Stop only for documented coverage limits/diminishing returns, never count mirrors as independent works. Return the contract JSON with inputSha256 ${digest(jsonBytes(researchPacket))}.\n${JSON.stringify(researchPacket)}`},
@@ -292,7 +297,7 @@ export async function runDailyWork(ctx,{journal,lease,order,deadline,wakeId=leas
       foundation:foundation?{...foundation,sourceEvidence:undefined}:null,
       policies,research:research.admission,markdown:synthesis.output.markdown,metadata,registry,
       contentSha256:job.draft.contentSha256,metadataSha256:job.draft.metadataSha256,registrySha256:job.draft.registrySha256};
-    assertChildPrivacy(reviewPacket);
+    assertDailyReviewPacketPrivacy(reviewPacket,priorRegistry);
     const review=await dailyChild(execute,ctx,{journal,lease,jobId:job.id,readingId:entry.readingId,kind:'independent-review',packet:reviewPacket,
       schema:independentReviewContract(reviewPacket),deadline,authorThreadIds:[research.execution.threadId,synthesis.execution.threadId],
       prompt:`Independently review every claim and the complete exact study against the supplied real source-access evidence and editorial/rights policy. A machine-valid draft is unreviewed. Be explicit about omissions and source coverage limits. No tools, no Scripture wording, no publication. Approve only after all substantive assertions are true. Daily corrections array is empty; otherwise request changes. inputSha256 ${digest(jsonBytes(reviewPacket))}.\n${JSON.stringify(reviewPacket)}`},independentReviewContract,{...dependencies.exec,clock});

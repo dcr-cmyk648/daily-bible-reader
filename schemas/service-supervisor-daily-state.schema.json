@@ -11,7 +11,7 @@
     "sourceRevision": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
     "phase": {"enum": ["queued", "authoring", "waiting_henry", "review_pending", "editorial_attention", "approved", "publishing", "published", "blocked"]},
     "createdAt": {"type": "string", "format": "date-time"},
-    "workOrder": {"$ref": "#/$defs/artifact"}, "baseRegistry": {"$ref": "#/$defs/artifact"},
+    "workOrder": {"$ref": "#/$defs/artifact"}, "baseRegistry": {"$ref": "#/$defs/artifact"}, "preflightRecovery": {"$ref": "#/$defs/artifact"},
     "research": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/artifact"}]},
     "draft": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/draft"}]},
     "approvalPath": {"type": ["string", "null"]}, "approvalSha256": {"$ref": "#/$defs/hash"},

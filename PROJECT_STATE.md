@@ -2,10 +2,10 @@
 
 ## Latest verified service checkpoint
 
-Manager's authenticated service health at **17:59 UTC** is **not ready**:
-3/8 devotionals and 2/8 complete Henry layers; two devotional future days and
-one complete future day. Genesis 14 and Psalm 3/Proverbs are published with
-complete Henry layers. Genesis 15 retains its fallback; Genesis 16, Matthew 6,
+Manager's October 10 authenticated service health is **not ready**:
+3/8 devotionals and 3/8 complete Henry layers; two complete future days.
+Genesis 14, Genesis 15 and Psalm 3/Proverbs are published with complete layers.
+Genesis 16 failed before any child reservation; Matthew 6,
 and Genesis 17–19 are missing. Rerun authenticated health before any readiness claim.
 
 Recovery scope and standing authority: [recovery plan](docs/execplans/service-recovery-2026-10-10.md)
@@ -16,10 +16,10 @@ source review, atomic publication, access/sharing, immutable rollback and releas
 
 - WO-1 native fd5922d is installed. Both configured ChatGPT author preflights passed
   at 18:10 UTC; both Henry definitions remain ACTIVE; manager owns exact pin updates.
-- WO-3 C 649b221 cap1 trial is installed; daily/review thin routes remain ACTIVE.
-  Both fd Henry lanes remain ACTIVE. GEN15 has four repairs and two failed reviews;
-  all problematic packets are repaired; ten direct-prose violations retain red
-  Henry debt. GEN16 is the next eligible daily prefix; D remains gated. [Authoring](docs/SUPERVISOR_AUTHORING.md).
+- WO-3 C 7835744 cap1 is installed; all four BibleApp lanes remain ACTIVE.
+  GEN15's one manager exception succeeded and its full layer is published.
+  GEN16's bibliography privacy false positive has a checked source correction
+  and one manager-only zero-dispatch recovery; real retry and D remain gated. [Authoring](docs/SUPERVISOR_AUTHORING.md).
 - WO-2 466058d remains an unselected canary; backend/installed-phone promotion
   is held. Stored preparation heartbeats reach the private store, but the old
   backend drops the new fields. Scheduled-wake readback remains required.
@@ -39,11 +39,11 @@ actual health and the original manifest-backed selector after author preflight.
 Cooldowns, current priority, owners, attempts, sessions and leases remain authoritative.
 The immutable runtime includes the existing allowlisted public backend config.
 Manager owns installation, live preflight, source pins and C/D acceptance.
-C/D check: 708 fabricated/local tests, safety, 46 schemas, builds and asset
+C/D check: 733 fabricated/local tests, safety, 46 schemas, builds and asset
 verification passed. Exact native mechanical rejection may request only a genuinely
 unused packet repair; exhausted review responses and all native budgets persist.
-Manager accepted one audited GEN15 final review; exact receipt/import/dispatch
-and genuine GEN16/D proof remain manager-owned. Ordinary budgets stay spent.
+GEN15's audited exception is consumed; no fourth review is authorized.
+GEN16 recovery/import/dispatch and D proof remain manager-owned; budgets persist.
 Interface and policy: [Henry operations](docs/HENRY_V2_OPERATIONS.md#one-reading-lifecycle).
 
 The author remains gpt-6-luna at medium; retained gpt-5.6-luna fallback is low

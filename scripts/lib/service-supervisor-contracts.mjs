@@ -1,5 +1,6 @@
 import {digest,jsonBytes,fault} from './service-supervisor-store.mjs';
 import {assertSchemaValid} from './schema-validator.mjs';
+import {isDeepStrictEqual} from 'node:util';
 import {DAILY_REVIEW_ASSERTIONS} from './service-supervisor-publication-gates.mjs';
 
 const text=(maximum=4000,minimum=1)=>({type:'string',minLength:minimum,maxLength:maximum});
@@ -42,12 +43,60 @@ export function publicSourceUrl(value) {
     throw fault('SUPERVISOR_SOURCE_URL_INVALID');
   return url.href;
 }
-export function assertChildPrivacy(value) {
-  const body=typeof value==='string'?value:JSON.stringify(value);
-  if(/https?:\/\/(?:drive|docs|script)\.google\.com\b|\bsk-[A-Za-z0-9_-]{20,}|\bBearer\s+[A-Za-z0-9_.-]{20,}|\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/i.test(body))
-    throw fault('SUPERVISOR_CHILD_PRIVATE_DATA_REFUSED');
-  if(/(?:copyright|©)[^\n]{0,120}(?:ESV|Crossway)|(?:^|\n)\s*\d{1,3}\s+[^\n]{20,}\n\s*\d{1,3}\s+[^\n]{20,}\n\s*\d{1,3}\s+[^\n]{20,}/i.test(body))
-    throw fault('SUPERVISOR_CHILD_SCRIPTURE_REFUSED');
+const privateText=/https?:\/\/(?:drive|docs|script)\.google\.com\b|\bsk-[A-Za-z0-9_-]{20,}|\bBearer\s+[A-Za-z0-9_.-]{20,}|\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/i;
+const providerCopyright=/(?:copyright|©)[^\n]{0,120}(?:ESV|Crossway)/i;
+const numberedPassage=/(?:^|\n)\s*\d{1,3}\s+[^\n]{20,}\n\s*\d{1,3}\s+[^\n]{20,}\n\s*\d{1,3}\s+[^\n]{20,}/i;
+const scriptureAttribution=/\b(?:Scripture quotations?|Bible text|Scripture text)\b[^\n]{0,180}\b(?:ESV|Crossway|English Standard Version)\b|\b(?:ESV|English Standard Version)(?:®|\s+Bible)?\s*(?:[.;,:()®-]\s*)*(?:(?:text|translation)\s*)?(?:copyright|©)|(?:copyright|©)\s*(?:©\s*)?2001\b[^\n]{0,120}\b(?:ESV|Crossway)\b/i;
+function inspectPrivacy(value,{bibliographic=false}={},depth=0) {
+  if(depth>32)throw fault('SUPERVISOR_CHILD_PRIVATE_DATA_REFUSED');
+  if(typeof value==='string') {
+    if(privateText.test(value))throw fault('SUPERVISOR_CHILD_PRIVATE_DATA_REFUSED');
+    // Decode JSON envelopes and nested sourceJson/metadataJson. Serialization
+    // must not hide real line breaks, escaped email addresses or attribution.
+    if(/^\s*[\[{"]/.test(value)) {
+      let decoded;try{decoded=JSON.parse(value);}catch{}
+      if(decoded!==undefined&&decoded!==value){inspectPrivacy(decoded,{bibliographic},depth+1);return;}
+    }
+    if(numberedPassage.test(value)||scriptureAttribution.test(value)||!bibliographic&&providerCopyright.test(value))
+      throw fault('SUPERVISOR_CHILD_SCRIPTURE_REFUSED');
+  } else if(value&&typeof value==='object')for(const [key,item]of Object.entries(value)) {
+    inspectPrivacy(key,{},depth+1);
+    if(/^(?:esvText|scriptureText|passageText|verseText)$/i.test(key)&&typeof item==='string'&&item.trim())
+      throw fault('SUPERVISOR_CHILD_SCRIPTURE_REFUSED');
+    inspectPrivacy(item,{bibliographic},depth+1);
+  }
+}
+export function assertChildPrivacy(value) {inspectPrivacy(value);}
+export function assertResearchPacketPrivacy(packet) {
+  const {existingSourceInventory,...prose}=packet;assertChildPrivacy(prose);
+  if(!Array.isArray(existingSourceInventory))throw fault('SUPERVISOR_RESEARCH_INVENTORY_INVALID');
+  const fields=['sourceId','title','authorOrOrganization','edition','urlOrCitation','includedReadings'];
+  for(const record of existingSourceInventory) {
+    if(!record||Object.keys(record).length!==fields.length||fields.some(k=>!Object.hasOwn(record,k))||
+      fields.slice(0,-1).some(k=>typeof record[k]!=='string')||!Array.isArray(record.includedReadings)||
+      record.includedReadings.some(v=>typeof v!=='string'))throw fault('SUPERVISOR_RESEARCH_INVENTORY_INVALID');
+    // Only this code-selected bibliographic projection may describe a work's
+    // copyright. Actual translation attribution, passage/secret content and
+    // every other packet field retain their refusal gates. Outputs use the
+    // ordinary strict prose guard; arbitrary edition keys convey no exemption.
+    inspectPrivacy(record,{bibliographic:true});
+  }
+}
+export function assertDailyReviewPacketPrivacy(packet,priorRegistry) {
+  const {registry,...prose}=packet;assertChildPrivacy(prose);
+  const {sources,...header}=registry;assertChildPrivacy(header);
+  if(!Array.isArray(sources)||!Array.isArray(priorRegistry.sources))throw fault('SUPERVISOR_RESEARCH_INVENTORY_INVALID');
+  const prior=new Map(priorRegistry.sources.map(s=>[s.sourceId,s])),seen=new Set();
+  for(const source of sources) {
+    if(seen.has(source.sourceId))throw fault('SUPERVISOR_REGISTRY_EXISTING_SOURCE_CHANGED');seen.add(source.sourceId);
+    const retained=prior.get(source.sourceId);
+    if(!retained){assertChildPrivacy(source);continue;}
+    if(!isDeepStrictEqual(source,retained))throw fault('SUPERVISOR_REGISTRY_EXISTING_SOURCE_CHANGED');
+    const {sourceId,title,authorOrOrganization,edition,urlOrCitation,includedReadings,...other}=source;
+    assertChildPrivacy(other);
+    assertResearchPacketPrivacy({existingSourceInventory:[{sourceId,title,authorOrOrganization,edition,urlOrCitation,includedReadings}]});
+  }
+  if([...prior.keys()].some(id=>!seen.has(id)))throw fault('SUPERVISOR_REGISTRY_EXISTING_SOURCE_CHANGED');
 }
 export function decodeResearch(output,{packet,sourceSchema}) {
   assertSchemaValid(output,researchContract(packet,sourceSchema),{label:'Research output'});assertChildPrivacy(output);

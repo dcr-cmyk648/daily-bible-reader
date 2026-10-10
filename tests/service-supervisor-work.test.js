@@ -2,7 +2,7 @@ const test=require('node:test'),assert=require('node:assert/strict'),fs=require(
 const modules=Promise.all(['work','store','runtime','contracts'].map(name=>import(`../scripts/lib/service-supervisor-${name}.mjs`)));
 const now=new Date('2026-10-10T16:00:00Z'),repo=path.resolve(__dirname,'..'),
   sourceIds=['FABRICATED-henry','FABRICATED-independent'],urls=['https://example.invalid/FABRICATED-henry','https://example.invalid/FABRICATED-independent'];
-async function fixture(t,{changes=false,alwaysChanges=false,malformed=false,prefixShape=false,retainedReady=null}={}) {
+async function fixture(t,{changes=false,alwaysChanges=false,malformed=false,prefixShape=false,retainedReady=null,legacyBibliography=false}={}) {
   const [work,store,runtime,contracts]=await modules,root=await fs.mkdtemp(path.join(os.tmpdir(),'dbr-work-fabricated-'));
   t.after(async()=>{assert.equal(path.dirname(root),path.resolve(os.tmpdir()));assert.ok(path.basename(root).startsWith('dbr-work-fabricated-'));await fs.rm(root,{recursive:true,force:true});});
   const releaseRoot=path.join(root,'release'),write=async(relative,value)=>store.durableWrite(root,relative,Buffer.isBuffer(value)?value:store.jsonBytes(value));
@@ -52,6 +52,9 @@ async function fixture(t,{changes=false,alwaysChanges=false,malformed=false,pref
     scope:'FABRICATED chapter 1',urlOrCitation:i?urls[i]:foundation.locator,accessDate:'2026-10-10',accessMethod:'FABRICATED verified page',
     rightsStatus:'public_domain',license:'FABRICATED public-domain license',allowedUses:['original synthesis'],rawTextStorageAllowed:false,
     summaryUseStatus:'consulted',qualityTier:'primary',includedReadings:[],notes:'FABRICATED source; no actual Scripture.'});
+  const legacy=legacyBibliography?{...source(0),sourceId:'FABRICATED-retained-bibliography',urlOrCitation:'https://example.invalid/FABRICATED-retained',
+    title:'FABRICATED ESV Study Bible',edition:'FABRICATED bibliographic copyright © 2008 Crossway, ESV Study Bible edition.'}:null;
+  if(legacy)await store.durableWrite(root,'research/working/bridge-source-registry.json',store.jsonBytes({schemaVersion:'source-registry/v1',registryVersion:'FABRICATED-initial',updatedAt:null,sources:[legacy]}),{immutable:false});
   const exec={clock:()=>now,transport:async()=>({env:{},mcpNames:[],proof:{model:'gpt-6.1-sol',reasoningEffort:'high',billingRoute:'FABRICATED local test'}}),
     execute:async(_bin,argv,options)=>{
       const schema=JSON.parse(await fs.readFile(argv[argv.indexOf('--output-schema')+1])),kind=schema.properties.schemaVersion.const,
@@ -83,8 +86,14 @@ async function fixture(t,{changes=false,alwaysChanges=false,malformed=false,pref
       return {state:{phase:retainedReady||'absent'},authorization:{path:job.workOrder.path,sha256:job.workOrder.sha256,dailyJobId:job.id}};
     },authorHenry:async(_ctx,options)=>{authors++;assert.ok(options.dailyDependency);return {action:'review_handoff',published:false};},
     reviewHenry:async()=>{libraryReady=true;return {action:'publish_required',published:false};}};
-  return {ctx,work,store,dependencies,validationPlans,plan,counts:()=>({authors,reviews,researches,syntheses,validated})};
+  return {ctx,work,store,dependencies,validationPlans,plan,legacy,counts:()=>({authors,reviews,researches,syntheses,validated})};
 }
+test('retained copyright bibliography survives full research, synthesis, Henry dependency and independent daily review',async t=>{
+  const f=await fixture(t,{legacyBibliography:true}),result=await f.work.runStageC(f.ctx,{role:'preparation',now},f.dependencies);
+  assert.equal(result.action,'publish_required',result.code);assert.deepEqual(f.counts(),{authors:1,reviews:1,researches:1,syntheses:1,validated:1});
+  const registry=JSON.parse(await fs.readFile(path.join(f.ctx.projectRoot,'research/working/bridge-source-registry.json')));
+  assert.deepEqual(registry.sources.find(s=>s.sourceId===f.legacy.sourceId),f.legacy);
+});
 test('new unpublished reading reaches reviewed daily handoff through one bound Henry dependency without research replay',async t=>{
   const f=await fixture(t),result=await f.work.runStageC(f.ctx,{role:'preparation',now},f.dependencies);
   assert.equal(result.action,'publish_required');assert.equal(result.runComplete,false);

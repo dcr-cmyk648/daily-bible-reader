@@ -177,6 +177,32 @@ accepted ticks dispatch the one granted execution. Scheduled thin coordinators
 must never create/import a receipt or invoke either operator command. A changed
 installed config, source, basis or thread-evidence hash invalidates unused authority.
 
+The October 10 GEN16 pre-dispatch block was a bibliography false positive: the
+legacy copyright-to-ESV/Crossway pattern rejected an edition notice in the
+code-selected existing-source inventory. Research inputs now check only that
+six-field bibliographic projection with a distinction between edition copyright
+and translation attribution. Final-review inputs use the same boundary only for
+prior registry records that remain exactly equal; removed or changed prior records
+are refused. Other retained fields, new sources, research evidence, commentary,
+metadata and all child responses keep the strict prose/privacy guard. Recursive
+JSON decoding exposes escaped passage rows, attribution and secrets. No source
+access, quotation allowance, authoring budget or publication policy changes.
+
+Manager-only `recover-genesis16-preflight --job <id> --blocked-event <sha256>
+--packet-sha256 <sha256>` admits only the original GEN16 job
+`e1e14cd7fff6655f15cf4991db575d1b` from source `78357445c6e419816836883ba45dce0e115498ff`.
+After a corrected Stage C cap1 install, it verifies the current immutable runtime,
+no writers or pending work, the exact blocked journal event, three unchanged
+preflight-only states, saved work order/registry and unchanged corrected packet.
+Any prior child reservation or result, source fetch, repair, native job or reading
+publication disqualifies it. The old strict guard must reproduce the original
+typed Scripture refusal while the corrected packet passes. One immutable proof
+and one atomic queued event preserve the original job ID, source revision,
+timestamps, work order, registry and all earlier events. It dispatches nothing
+and refunds no budget. Exact reimport is a no-op even after a later child failure;
+replacement authority and other jobs are refused. Normal accepted ticks own the
+first child dispatch. Thin scheduled coordinators must never invoke this recovery.
+
 Thin prompts must finish four separate tool cells: shell handoff/dispatch, the one
 authorized native connector call, native-result receipt materialization, and then
 receipt resume. Never combine materialization and resume in a yielded cell.

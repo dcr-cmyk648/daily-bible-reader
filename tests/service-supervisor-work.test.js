@@ -110,6 +110,73 @@ for(const phase of ['approved','publishing'])test(`retained ${phase} dependency 
   const f=await fixture(t,{retainedReady:phase}),result=await f.work.runStageC(f.ctx,{role:'preparation',now},f.dependencies);
   assert.equal(result.action,'publish_required',result.code);assert.deepEqual(f.counts(),{authors:0,reviews:1,researches:1,syntheses:1,validated:1});
 });
+test('actual interrupted native approval finalizes its retained decision before default daily attachment and independent full-study review',async t=>{
+  const f=await fixture(t),[service,author,runner,henry,nativeStore,pipeline]=await Promise.all(
+    ['mhc-v2-service','mhc-v2-author-session','mhc-native-runner','service-supervisor-henry','mhc-v2-store','mhc-pipeline']
+      .map(n=>import(`../scripts/lib/${n}.mjs`)));
+  for(const name of ['schemas','prompts'])await fs.cp(path.join(repo,name),path.join(f.ctx.releaseRoot,name),{recursive:true});
+  f.ctx.config.children.codexExecutable=process.execPath;
+  const archive=Buffer.from('FABRICATED local archive bytes; no actual Scripture or commentary');
+  await f.store.durableWrite(f.ctx.projectRoot,'research/raw/matthew-henry/crosswire/MHC-2.2.zip',archive);
+  const manifest={source_id:'fabricated-henry',work_title:'FABRICATED TEST COMMENTARY',module_name:'MHC',module_version:'2.2',
+    source_version_date:'2026-01-01',retrieved_at:'2026-01-01',license:'Public domain FABRICATED TEST',archive_sha256:f.store.digest(archive),
+    source_format:'CrossWire SWORD zCom4 OSIS',versification:'KJV',source_url:'https://example.invalid/fabricated',download_url:'https://example.invalid/fabricated.zip'},
+    text='FABRICATED TEST COMMENTARY: the caretaker distributes parcels to needy households. Patient kindness benefits the village during its difficult season.',
+    hash=pipeline.sha256(text),{source_id,work_title,...provenance}=manifest,
+    unit={schema_version:'mhc-normalized-source/v3',source_id,work_title,source_unit_id:'FABRICATED:NAM:1:1',book_id:'NAM',chapter:1,
+      verse_start:1,verse_end:1,reference_label:'FABRICATED 1:1',unit_type:'verse_range',source_text:text,source_text_sha256:hash,
+      source_atoms:[{source_atom_id:'FABRICATED-atom',sequence:1,atom_type:'commentary',text,text_sha256:hash}],worker_source_sha256:hash,
+      excluded_scripture_sha256:null,verse_anchors:[],provenance};
+  await f.store.durableWrite(f.ctx.projectRoot,'private-commentary/mhc/source-manifest.json',f.store.jsonBytes(manifest));
+  await f.store.durableWrite(f.ctx.projectRoot,'private-commentary/mhc/normalized/NAM/001.jsonl',Buffer.from(JSON.stringify(unit)+'\n'));
+  await f.store.durableWrite(f.ctx.projectRoot,'private-commentary/mhc/normalized/NAM/001.manifest.json',f.store.jsonBytes({
+    source_archive_sha256:manifest.archive_sha256,book_id:'NAM',chapter:1,indexed_verse_count:1,normalized_batch_sha256:pipeline.normalizedBatchHash([unit])}));
+  const native=await service.serviceContext({projectRoot:f.ctx.projectRoot,releaseRoot:f.ctx.releaseRoot,
+    runtimeRoot:path.join(f.ctx.projectRoot,'private-content/automation/mhc-runtime'),launcher:path.join(f.ctx.projectRoot,'FABRICATED-launcher.mjs'),
+    config:{author_model:'gpt-6-luna',spark_automation_id:'FABRICATED-primary',luna_automation_id:'FABRICATED-fallback'}}),
+    binding={native,service,author,runner,pointer:{source_revision:'a'.repeat(40)}};
+  await fs.mkdir(native.runtimeRoot,{recursive:true});let calls=0;
+  const run=(_exe,args,opts)=>{
+    if(args[0]==='--version')return {status:0,stdout:'codex-cli 0.162.1'};
+    if(args[0]==='login')return {status:0,stderr:'Logged in using ChatGPT'};
+    if(args.includes('mcp'))return {status:0,stdout:'[]'};
+    const file=args[args.indexOf('--output-last-message')+1];
+    if(opts.input.startsWith('Availability preflight')){require('node:fs').writeFileSync(file,JSON.stringify({ok:true}));return {status:0,stdout:'{"type":"turn.completed"}\n'};}
+    calls++;const packet=JSON.parse(opts.input.split('SOURCE PACKET:\n')[1].split('\n\n')[0]);
+    require('node:fs').writeFileSync(file,nativeStore.bytesFor({schema_version:'mhc-evidence-candidate/v2',packet_id:packet.packet_id,
+      records:packet.requests.map(r=>({verse_id:r.verse_id,sentences:[{text:'FABRICATED: a thoughtful village helper hands out supplies, easing the hardship faced by local families.',evidence_ids:[r.evidence_ids[0]]}]}))}));
+    return {status:0,stdout:'{"type":"thread.started","thread_id":"FABRICATED-native-author"}\n{"type":"turn.completed"}\n'};
+  };
+  const deps={...f.dependencies,henry:{binding:async()=>binding,transport:async()=>({billingRoute:'FABRICATED local fixture'}),run,
+    exec:f.dependencies.dailyDependencies.exec},dailyDependencies:{...f.dependencies.dailyDependencies},
+    dependency:henry.prepareHenryDependency,authorHenry:henry.runHenryWork,reviewHenry:henry.reviewHenryWork,
+    henryJob:async()=>nativeStore.loadJob(path.join(native.jobRoot,'FABRICATED-0'))};
+  delete deps.dailyDependencies.attachment;
+  const interrupted=path.join(native.jobRoot,'FABRICATED-0','transactions');let fixtureError;
+  deps.reviewHenry=async(...args)=>{
+    await fs.writeFile(interrupted,'FABRICATED interruption before native transaction/library finalization');
+    try{return await henry.reviewHenryWork(...args);}catch(e){fixtureError=e;throw e;}
+  };
+  const blocked=await f.work.runStageC(f.ctx,{role:'preparation',now},deps);assert.equal(blocked.action,'blocked');
+  assert.equal(blocked.code,'EEXIST',fixtureError?.stack||JSON.stringify(blocked));
+  const retained=await nativeStore.loadJob(path.join(native.jobRoot,'FABRICATED-0'));
+  assert.equal(retained.state.phase,'approved');assert.equal(retained.state.total_submissions,1);assert.equal(calls,1);
+  await assert.rejects(fs.access(path.join(f.ctx.projectRoot,'private-commentary/mhc/stores/library/current.json')));
+  const decision=await fs.readFile(path.join(retained.directory,'review.json')),approvedSha=retained.state.review.approved_sha256;
+  assert.equal(path.dirname(interrupted),retained.directory);await fs.unlink(interrupted);
+  for(const key of ['dependency','daily']){const original=deps[key]||((await import('../scripts/lib/service-supervisor-daily.mjs')).runDailyWork);
+    deps[key]=async(...args)=>{try{return await original(...args);}catch(e){fixtureError=e;throw e;}};}
+  const result=await f.work.runStageC(f.ctx,{role:'preparation',now},deps);assert.equal(result.action,'publish_required',fixtureError?.stack||result.code);
+  const resumed=await nativeStore.loadJob(retained.directory);assert.equal(resumed.state.phase,'publishing');
+  assert.equal(resumed.state.total_submissions,1);assert.equal(resumed.state.review.approved_sha256,approvedSha);assert.equal(calls,1);
+  assert.deepEqual(await fs.readFile(path.join(retained.directory,'review.json')),decision);
+  assert.deepEqual(f.counts(),{authors:0,reviews:2,researches:1,syntheses:1,validated:1});
+  const journal=await f.store.openJournal(f.ctx.stateRoot),events=await journal.load(),daily=events.findLast(e=>e.kind==='daily_state').data.job,
+    request=await f.store.readPrivate(f.ctx.projectRoot,result.requestPath);
+  assert.equal(daily.phase,'approved');assert.equal(request.component,'daily');assert.notEqual(daily.authorThreadId,daily.reviewerThreadId);
+  assert.equal(events.filter(e=>e.kind==='henry_finalization_resumed').length,1);
+  assert.equal((await f.work.runStageC(f.ctx,{role:'preparation',now},deps)).requestPath,result.requestPath);assert.equal(calls,1);
+});
 test('actual calendar shape reconciles 55 tracked/66 published readings and stages only GEN16 as the 67th private entry',async t=>{
   const f=await fixture(t,{prefixShape:true}),result=await f.work.runStageC(f.ctx,{role:'preparation',now},f.dependencies);
   assert.equal(result.action,'publish_required',result.code);const snapshot=f.validationPlans[0];

@@ -13,8 +13,14 @@ The accepted D outer coordinators use `gpt-6-luna` / low for rote command,
 connector and receipt execution. Preserve the existing daily/review schedules,
 project and ACTIVE status; the manager applies this model change after genuine C
 acceptance. They never author, review prose, invent approval/health or decide a
-retry. Uncertainty and denial remain visible. Archive only their own code-verified
-healthy completed run. Substantive child models remain unchanged below.
+retry. Uncertainty and denial remain visible. There is no separate archive flag.
+Archive only their own run when the terminal status result has `kind:status`,
+`outcome:complete`, `runComplete:true`, `workOutcome:complete`, null `code` and
+`workCode`, and both `heartbeatDelivered:true` and `readerVisible:true`; a subsequent
+installed `status` must retain the accepted source/stage and report
+`lastOutcome:healthy_noop` with null `lastErrorCode`. These results follow durable
+authenticated health/readback. Any missing signal, retained debt or blocker leaves
+the chat open. Substantive child models remain unchanged below.
 
 The installed CLI chooses actual earliest-deadline-first forward work from an
 authenticated Detroit current-through-T+7 health measurement and original native
@@ -59,6 +65,13 @@ library is reviewed, the daily job resumes the exact saved research/synthesis,
 attaches the newest checksum-bound layer and receives independent full-study
 review. Local promotion rechecks the daily approval, native approval, source input,
 library and original target hashes before each write.
+
+If native review persisted `approved` before transaction/library finalization,
+dependency recovery and forward Henry publication resume `applyReviewV2` under the
+same native lock. They require the exact retained approval and current decision,
+unchanged input/source/candidates, and preserve submissions and review authority.
+Only after its library finalizer reaches `publishing` may default daily attachment
+and the independent full-study review continue. No author or review is repeated.
 
 The B publication protocol remains content-first and pointer-last. A daily
 transaction carrying a native Henry approval requires exact remote content and

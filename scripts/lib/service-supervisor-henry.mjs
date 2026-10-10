@@ -122,15 +122,43 @@ export async function prepareHenryDependency(ctx,{journal,lease,order,deadline},
     const raw=await readFile(await confined(ctx.projectRoot,daily.workOrder.path,false));
     if(digest(raw)!==daily.workOrder.sha256)throw fault('SUPERVISOR_HENRY_DEPENDENCY_AUTHORITY_CHANGED');
     const authorization={dailyJobId:daily.id,path:daily.workOrder.path,sha256:daily.workOrder.sha256};
-    try {return {...await loadJob(await confined(binding.native.jobRoot,readingId,false)),authorization};}catch(e){if(e.code!=='ENOENT')throw e;}
-    return {state:{phase:'absent'},authorization};
+    let job;try {job=await loadJob(await confined(binding.native.jobRoot,readingId,false));}catch(e){if(e.code!=='ENOENT')throw e;}
+    if(!job)return {state:{phase:'absent'},authorization};
+    return {...await resumeApprovedHenry(ctx,binding,{journal,lease,readingId,now:clock(),job}),authorization};
   });
+}
+// Both callers already hold the retained native runner lock. An approval event
+// may survive an interruption before transaction/library finalization. Resume
+// that exact decision; never reserve another author or independent review.
+async function resumeApprovedHenry(ctx,binding,{journal,lease,readingId,now,job:retained}) {
+  const job=retained||await loadJob(await confined(binding.native.jobRoot,readingId,false));
+  if(job.state.phase!=='approved')return job;
+  await journal.assertLease(lease,now);
+  const approvedSha256=job.state.review?.approved_sha256;
+  if(!approvedSha256)throw fault('SUPERVISOR_HENRY_APPROVAL_REQUIRED');
+  const approved=await readPrivate(job.directory,`approved/${approvedSha256}.json`),decision=await readPrivate(job.directory,'review.json');
+  if(job.state.blocker||digestObject(approved)!==approvedSha256||approved.schema_version!=='mhc-evidence-approved/v2'||
+    approved.reading_id!==readingId||approved.input_sha256!==job.input.input_sha256||
+    approved.review_basis_sha256!==job.state.review.review_basis_sha256||approved.review?.review_basis_sha256!==approved.review_basis_sha256||
+    digestObject(decision)!==digestObject(approved.review)||decision.status!=='approved'||!REVIEW_ASSERTIONS.every(k=>decision.assertions?.[k]===true))
+    throw fault('SUPERVISOR_HENRY_APPROVAL_CHANGED');
+  // buildReview checks the retained input, current source and every accepted
+  // candidate before applyReviewV2 repeats those checks and its finalizer.
+  await binding.service.buildReview(binding.native,readingId);
+  const result=await binding.service.applyReviewV2(binding.native,readingId,now);
+  await journal.assertLease(lease,now);
+  const resumed=await loadJob(await confined(binding.native.jobRoot,readingId,false));
+  if(result.action!=='publish_required'||resumed.state.phase!=='publishing'||resumed.state.review?.approved_sha256!==approvedSha256)
+    throw fault('SUPERVISOR_HENRY_APPROVAL_CHANGED');
+  await journal.append('henry_finalization_resumed',{readingId,inputSha256:job.input.input_sha256,approvedSha256,
+    decisionSha256:digestObject(decision),action:result.action,published:false},now,lease);
+  return resumed;
 }
 export async function prepareHenryPublication(ctx,{journal,lease,readingId,now=new Date()},dependencies={}) {
   const binding=await (dependencies.binding||verifiedHenryContext)(ctx);
   return binding.runner.withRunnerLock(binding.native,async()=>{
     await journal.assertLease(lease,now);
-    const job=await loadJob(await confined(binding.native.jobRoot,readingId,false));
+    const job=await resumeApprovedHenry(ctx,binding,{journal,lease,readingId,now});
     if(job.state.phase!=='publishing'||!job.state.review?.approved_sha256)throw fault('SUPERVISOR_HENRY_APPROVAL_REQUIRED');
     const library=await loadLatestHenryReading({libraryRoot:await confined(ctx.projectRoot,'private-commentary/mhc/stores/library',false),
       readingId,runtimeSchemaPath:path.join(ctx.releaseRoot,'schemas/mhc-runtime.schema.json')});

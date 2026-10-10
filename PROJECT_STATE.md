@@ -38,8 +38,10 @@ actual health and the original manifest-backed selector after author preflight.
 Cooldowns, current priority, owners, attempts, sessions and leases remain authoritative.
 The immutable runtime includes the existing allowlisted public backend config.
 Manager owns installation, live preflight, source pins and C/D acceptance.
-Rebased C/D check: 622 fabricated/local tests, safety, 45 schemas, builds and asset
-verification passed. Live GEN15/GEN16 C proof and D routing remain manager-owned.
+C/D check: 626 fabricated/local tests, safety, 45 schemas, builds and asset
+verification passed. Interrupted native approval finalization resumes its exact
+retained decision under the native lock before daily attachment or publication.
+Live GEN15/GEN16 C proof and D routing remain manager-owned.
 Interface and policy: [Henry operations](docs/HENRY_V2_OPERATIONS.md#one-reading-lifecycle).
 
 The author remains gpt-6-luna at medium; retained gpt-5.6-luna fallback is low

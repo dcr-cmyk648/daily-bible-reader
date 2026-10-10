@@ -112,6 +112,46 @@ test('C dependency adapter uses actual installed-policy selector, preflight and 
   assert.equal(f.getCalls(),1);
 });
 
+async function interruptNativeFinalization(f) {
+  const options={journal:f.journal,lease:f.lease,wakeId:'d'.repeat(32),readingId:f.readingId,deadline:f.now.getTime()+90*60000},
+    dependency=await f.henry.prepareHenryDependency(f.ctx,{...options,order:f.order},f.deps);
+  await f.henry.runHenryWork(f.ctx,{...options,dailyDependency:dependency.authorization},f.deps);
+  const {bundle}=await f.binding.service.buildReview(f.native,f.readingId),
+    decision={schema_version:'mhc-evidence-approval/v2',reading_id:f.readingId,review_basis_sha256:bundle.review_basis_sha256,
+      status:'approved',reviewer:'FABRICATED independent reviewer',reviewed_at:f.now.toISOString(),
+      findings:['FABRICATED exact source comparison'],assertions:Object.fromEntries(bundle.required_assertions.map(k=>[k,true])),corrections:[]},
+    directory=path.join(f.native.jobRoot,f.readingId),interruption=path.join(directory,'transactions');
+  await f.nativeStore.atomicJson(directory,'review.json',decision);await fs.writeFile(interruption,'FABRICATED interrupted finalization');
+  await assert.rejects(f.binding.runner.withRunnerLock(f.native,()=>f.binding.service.applyReviewV2(f.native,f.readingId,f.now)),{code:'EEXIST'});
+  const job=await f.nativeStore.loadJob(directory);assert.equal(job.state.phase,'approved');assert.equal(job.state.total_submissions,1);
+  assert.equal(path.dirname(interruption),directory);await fs.unlink(interruption);
+  return {options,job,decision};
+}
+test('forward Henry publication resumes actual approved native finalization under the retained lock without author or review replay',async t=>{
+  const f=await fixture(t),{options,job,decision}=await interruptNativeFinalization(f);
+  await f.nativeStore.atomicJson(f.ctx.projectRoot,'private-content/private-manifest.json',{readings:{[f.readingId]:{}}});
+  await f.nativeStore.atomicJson(f.ctx.projectRoot,`private-content/bridge/celebration-y3q4/${f.readingId}.metadata.json`,{readingId:f.readingId});
+  const result=await f.henry.prepareHenryPublication(f.ctx,{...options,now:f.now},f.deps);assert.equal(result.action,'publish_required');
+  const resumed=await f.nativeStore.loadJob(job.directory);assert.equal(resumed.state.phase,'publishing');assert.equal(resumed.state.total_submissions,1);
+  assert.equal(resumed.state.review.approved_sha256,job.state.review.approved_sha256);assert.equal(f.getCalls(),1);
+  assert.deepEqual(await f.store.readPrivate(job.directory,'review.json'),decision);
+  const metadata=await f.store.readPrivate(f.ctx.projectRoot,`private-content/bridge/celebration-y3q4/${f.readingId}.metadata.json`);
+  assert.equal(metadata.verseCommentaries[0].review_status,'approved');
+  assert.equal((await f.journal.load()).filter(e=>e.kind==='henry_finalization_resumed').length,1);
+  assert.equal((await f.henry.prepareHenryPublication(f.ctx,{...options,now:f.now},f.deps)).requestPath,result.requestPath);
+  assert.equal((await f.journal.load()).filter(e=>e.kind==='henry_finalization_resumed').length,1);
+});
+for(const changed of ['decision','source'])test(`approved dependency recovery rejects changed ${changed} before native library finalization`,async t=>{
+  const f=await fixture(t),{options,job,decision}=await interruptNativeFinalization(f);
+  if(changed==='decision')await f.nativeStore.atomicJson(job.directory,'review.json',{...decision,findings:['FABRICATED changed decision']});
+  else await fs.appendFile(path.join(f.ctx.projectRoot,'private-commentary/mhc/normalized/TST/001.jsonl'),'FABRICATED altered source bytes');
+  await assert.rejects(f.henry.prepareHenryDependency(f.ctx,{...options,order:f.order},f.deps),changed==='decision'?/APPROVAL_CHANGED/:undefined);
+  const retained=await f.nativeStore.loadJob(job.directory);assert.equal(retained.state.phase,'approved');assert.equal(retained.state.total_submissions,1);
+  assert.equal(retained.state.review.approved_sha256,job.state.review.approved_sha256);assert.equal(f.getCalls(),1);
+  await assert.rejects(fs.access(path.join(f.ctx.projectRoot,'private-commentary/mhc/stores/library/current.json')));
+  assert.equal((await f.journal.load()).filter(e=>e.kind==='henry_finalization_resumed').length,0);
+});
+
 test('native changes request receives one source-bound repair and a fresh independent review before the library finalizer',async t=>{
   const f=await fixture(t),options={journal:f.journal,lease:f.lease,wakeId:'d'.repeat(32),readingId:f.readingId,deadline:f.now.getTime()+90*60000},
     dependency=await f.henry.prepareHenryDependency(f.ctx,{...options,order:f.order},f.deps);

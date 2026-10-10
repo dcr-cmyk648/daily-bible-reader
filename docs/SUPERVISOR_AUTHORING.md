@@ -134,6 +134,49 @@ last success; other lane failures and `blockerRequiresResolution` remain. A part
 forward buffer stays running. Checkpointed, blocked, pending and mere no-op wakes
 cannot clear a lane failure, and no LLM Boolean grants recovery authority.
 
+Certain exhausted native review or editorial responses receive an immutable,
+hash-bound `henry_terminal_debt` record before EDF dispatch. It retains both
+failed execution/packet/output/admission proofs and the exact native source basis.
+EDF skips only that Henry component; a published fallback daily entry permits the
+next contiguous daily reading. A missing daily prefix entry still blocks advancement.
+Uncertain executions, capability failures and pending publication remain global
+guards. Debt remains red after the reading leaves the forward window and prevents
+historical work or healthy-no-op archiving. History-only changes and trivial
+candidate changes cannot renew a budget. Resumption requires checked native
+approval or an admitted native correction resolving an original mandatory finding.
+An exact completed same-role publication may record its own success and empty own
+error while another retained reading debt keeps the global outcome blocked;
+other lanes' failures remain unchanged.
+
+The manager accepted one **Genesis 15 final review exception on October 10** under
+the existing service authority. Native final-review policy has no response-count
+cap; the supervisor's default two responses remain spent and unchanged. This
+exception requires a separately imported immutable manager receipt conforming to
+`schemas/genesis15-operator-review-authorization.schema.json`. It binds exact
+supervisor source/manifest/config and native source/manifest/config, the full
+Genesis 15 input/event/review basis, both failed execution IDs and raw/packet
+hashes, all ten current mechanical findings, and checked prior CLI thread evidence.
+The sole execution is Sol 6.1/high, ephemeral, through existing ChatGPT login,
+independent of every author, repair and previous reviewer thread. It receives all
+five canonical packets, all 21 verses and both previous failed responses. Its
+15-minute maximum retains the wake's five-minute reserve; reservation is durable
+before dispatch. Only source-supported approved prose corrections passing schema,
+unique IDs, all eight assertions and unchanged reporting/copy gates may apply.
+Blocked, invalid, failed or uncertain output ends the exception permanently.
+There is no response correction, fourth response, author rerun or packet repair.
+Native application, library finalization and exact publication gates remain required.
+
+The manager uses the installed launcher's `genesis15-review-snapshot --output
+private-content/automation/service-supervisor/operator-review/binding.json` to
+obtain bindings without authority, writes the separately accepted receipt, then
+uses `authorize-genesis15-review --receipt
+private-content/automation/service-supervisor/operator-review/manager-receipt.json`.
+Import preserves exact receipt bytes and returns `dispatched:false`; exact reimport
+is idempotent even after completion and replacement receipts are refused. Normal
+accepted ticks dispatch the one granted execution. Scheduled thin coordinators
+must never create/import a receipt or invoke either operator command. A changed
+installed config, source, basis or thread-evidence hash invalidates unused authority.
+
 Thin prompts must finish four separate tool cells: shell handoff/dispatch, the one
 authorized native connector call, native-result receipt materialization, and then
 receipt resume. Never combine materialization and resume in a yielded cell.

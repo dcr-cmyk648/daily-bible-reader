@@ -3,12 +3,14 @@ import {readFile} from 'node:fs/promises';
 import path from 'node:path';
 import {supervisorContext, runSupervisor, supervisorStatus} from './lib/service-supervisor.mjs';
 import {safeCode} from './lib/service-supervisor-policy.mjs';
-import {fault, readPrivate, openJournal,durableWrite,jsonBytes,digest} from './lib/service-supervisor-store.mjs';
+import {fault, readPrivate, openJournal,durableWrite,jsonBytes,digest,confined} from './lib/service-supervisor-store.mjs';
 
 async function main() {
   const args = process.argv.slice(2), command = args.shift();
   let role, extra={};
   if (command === 'tick' && args.length === 2 && args[0] === '--role') role = args[1];
+  else if(['authorize-genesis15-review','genesis15-review-snapshot'].includes(command)&&args.length===2&&
+    args[0]===(command==='authorize-genesis15-review'?'--receipt':'--output'))extra[args[0]]=args[1];
   else if (command.startsWith('publication-')) {
     for(let i=0;i<args.length;i+=2) {
       if(!['--role','--request','--transaction','--operation','--receipt','--native-result'].includes(args[i])||!args[i+1]||extra[args[i]])throw fault('SUPERVISOR_ARGUMENTS_INVALID');
@@ -20,7 +22,18 @@ async function main() {
   const config = JSON.parse(await readFile(configPath, 'utf8'));
   const ctx = await supervisorContext(config, releaseRoot);
   let result;
-  if(command.startsWith('publication-')||command==='tick'&&['B','C','D'].includes(config.stage)) {
+  if(['authorize-genesis15-review','genesis15-review-snapshot'].includes(command)) {
+    const {verifiedHenryContext}=await import('./lib/service-supervisor-henry.mjs'),binding=await verifiedHenryContext(ctx),
+      operator=await import('./lib/service-supervisor-operator-review.mjs'),
+      relative=value=>path.isAbsolute(value)?path.relative(ctx.projectRoot,value):value;
+    if(command==='authorize-genesis15-review') {
+      const receiptPath=relative(extra['--receipt']);
+      if(!receiptPath.replaceAll('\\','/').startsWith('private-content/automation/service-supervisor/'))throw fault('SUPERVISOR_OPERATOR_REVIEW_SNAPSHOT_PATH_INVALID');
+      await (await import('./lib/service-supervisor-runtime.mjs')).assertNoWriters(ctx.projectRoot,ctx.stateRoot);
+      const receiptBytes=await readFile(await confined(ctx.projectRoot,receiptPath,false));
+      result=await operator.authorizeGenesis15Review(ctx,JSON.parse(receiptBytes),{binding,receiptBytes});
+    } else result=await operator.writeGenesis15ReviewSnapshot(ctx,{binding,output:relative(extra['--output']).replaceAll('\\','/')});
+  } else if(command.startsWith('publication-')||command==='tick'&&['B','C','D'].includes(config.stage)) {
     const publisher=await import('./lib/service-supervisor-publication.mjs');
     if(!['B','C','D'].includes(config.stage))throw fault('SUPERVISOR_PUBLICATION_CONFIG_INVALID');
     if(command==='publication-start'&&Object.keys(extra).length===2&&extra['--role']&&extra['--request']) {

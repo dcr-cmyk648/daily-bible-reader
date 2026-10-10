@@ -69,7 +69,7 @@ async function fixture(t,{changes=false,alwaysChanges=false,malformed=false,pref
         assertions:Object.fromEntries(Object.keys(schema.properties.assertions.properties).map(k=>[k,true])),
         findings:['FABRICATED independent substantive fixture review'],corrections:[],repairPacketId:null,coverageLimits:['FABRICATED only']};}
       await fs.writeFile(argv[argv.indexOf('--output-last-message')+1],store.jsonBytes(output));
-      const threadId=`FABRICATED-${kind}-${researches}-${syntheses}-${reviews}`;
+      const threadId=`FABRICATED-${kind.replaceAll('/','-')}-${researches}-${syntheses}-${reviews}`;
       return {status:0,stderr:'',stdout:[{type:'thread.started',thread_id:threadId},...items.map(item=>({type:'item.completed',item})),
         {type:'turn.completed'}].map(JSON.stringify).join('\n')+'\n'};
     }};
@@ -186,6 +186,44 @@ test('actual calendar shape reconciles 55 tracked/66 published readings and stag
   assert.equal(names.length,134);assert.equal(names.some(n=>n.startsWith(f.plan.entries[67].readingId)),false);
   const manifest=await f.store.readPrivate(f.ctx.projectRoot,'private-content/private-manifest.json');assert.equal(Object.keys(manifest.readings).length,66);
   assert.deepEqual(f.counts(),{authors:1,reviews:1,researches:1,syntheses:1,validated:1});
+});
+test('retained GEN15 Henry debt permits the exact GEN16 contiguous daily prefix without redispatching GEN15',async t=>{
+  const f=await fixture(t,{prefixShape:true}),held=f.plan.entries[65],next=f.plan.entries[66];
+  assert.equal(held.passages[0].chapter,15);assert.equal(next.passages[0].chapter,16);
+  f.dependencies.jobs=async()=>[{readingId:held.readingId,component:'henry',phase:'blocked',blocker:{scope:'reading',terminal:true,
+    code:'SUPERVISOR_CHILD_REPAIR_EXHAUSTED',proof:{sha256:'f'.repeat(64)}}}];
+  const oldHealth=f.dependencies.health;f.dependencies.health=async()=>{const health=structuredClone(await oldHealth());
+    health.currentHorizonHenryLayer.fallbackReadingIds=[held.readingId];return health;};
+  const result=await f.work.runStageC(f.ctx,{role:'preparation',now},f.dependencies);assert.equal(result.action,'publish_required',result.code);
+  assert.equal(f.validationPlans[0].plan.entries.length,67);assert.equal(f.validationPlans[0].plan.entries.at(-1).readingId,next.readingId);
+  const events=await (await f.store.openJournal(f.ctx.stateRoot)).load(),observation=events.findLast(e=>e.kind==='observation').data.selection;
+  assert.equal(observation.next.readingId,next.readingId);assert.equal(observation.debts[0].terminal,true);
+  assert.deepEqual(f.counts(),{authors:1,reviews:1,researches:1,syntheses:1,validated:1});
+});
+test('a missing daily entry with terminal Henry debt prevents skipping the broken contiguous prefix',async t=>{
+  const f=await fixture(t);f.dependencies.jobs=async()=>[{readingId:f.plan.entries[0].readingId,component:'henry',phase:'blocked',
+    blocker:{scope:'reading',terminal:true,code:'SUPERVISOR_CHILD_REPAIR_EXHAUSTED',proof:{sha256:'f'.repeat(64)}}}];
+  const result=await f.work.runStageC(f.ctx,{role:'preparation',now},f.dependencies);
+  assert.equal(result.code,'SUPERVISOR_CHILD_REPAIR_EXHAUSTED');assert.deepEqual(f.counts(),{authors:0,reviews:0,researches:0,syntheses:0,validated:0});
+});
+for(const guard of ['reserved','blocked','publication'])test(`forward progress never bypasses global ${guard} uncertainty or capability`,async t=>{
+  const f=await fixture(t),journal=await f.store.openJournal(f.ctx.stateRoot);
+  if(guard==='publication')await journal.append('publication_state',{transaction:{id:'f'.repeat(32),phase:'handoff'}},now);
+  else await journal.append('execution_state',{execution:{id:'f'.repeat(32),readingId:'FABRICATED-old',kind:'independent-review',phase:guard}},now);
+  const result=await f.work.runStageC(f.ctx,{role:'preparation',now},f.dependencies);
+  assert.equal(result.code,guard==='publication'?'SUPERVISOR_WAKE_PUBLICATION_PENDING':guard==='reserved'?'SUPERVISOR_CHILD_DISPATCH_UNCERTAIN':'SUPERVISOR_CHILD_CAPABILITY_BLOCK_RETAINED');
+  assert.deepEqual(f.counts(),{authors:0,reviews:0,researches:0,syntheses:0,validated:0});
+});
+test('retained outside-window Henry debt prevents historical selection and healthy no-op in Stage D',async t=>{
+  const f=await fixture(t);f.ctx.config.stage='D';f.ctx.config.maxReadingsPerWake=3;
+  const prior=f.dependencies.health;f.dependencies.health=async()=>({...await prior(),status:'ready',missingPreparedReadingIds:[],
+    currentHorizonHenryLayer:{status:'complete',fallbackReadingIds:[],unavailableReadingIds:[]}});
+  f.dependencies.jobs=async()=>[{readingId:'FABRICATED-earlier',component:'henry',phase:'review_pending',operatorReviewEligible:true,
+    blocker:{scope:'reading',terminal:true,code:'SUPERVISOR_CHILD_REPAIR_EXHAUSTED',proof:{sha256:'f'.repeat(64)}}}];
+  f.dependencies.henry={binding:async()=>{throw Error('FABRICATED historical selection forbidden');}};
+  const result=await f.work.runStageC(f.ctx,{role:'preparation',now},f.dependencies);
+  assert.equal(result.outcome,'blocked');assert.equal(result.code,'SUPERVISOR_CHILD_REPAIR_EXHAUSTED');
+  assert.deepEqual(f.counts(),{authors:0,reviews:0,researches:0,syntheses:0,validated:0});
 });
 test('four-lane round trip maps native state without resetting attempts and parks unsupported daily work',async t=>{
   const f=await fixture(t),{fourLaneCompatibility}=await import('../scripts/lib/service-supervisor-compatibility.mjs'),

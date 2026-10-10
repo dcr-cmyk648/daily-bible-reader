@@ -220,6 +220,20 @@ from the storage path. No global trust or approval setting is changed.
 
 ## Review and publication
 
+October 10 Genesis 15 incident: all four problematic canonical packets have already
+received their one native editorial repair. The remaining verse-1 packet has no
+mechanical finding. Two supervisor review responses are spent; ordinary retries
+and additional packet repairs remain forbidden. The manager accepted a separate,
+single source-bound final review exception, documented in
+[supervisor authoring](SUPERVISOR_AUTHORING.md). It uses an immutable manager receipt
+binding both runtime closures/configs, exact source/native head/review basis, both
+failed raw responses, all ten original mechanical findings and prior thread evidence.
+Only one independent ephemeral Sol 6.1/high ChatGPT response is admitted, with no
+response repair or retry. All eight assertions and existing prose, source-copy,
+schema, native approval, library and publication checks remain authoritative.
+The supervisor retains unresolved Henry debt while eligible contiguous daily work
+continues; this exception neither changes the native author prompt nor repins fd.
+
 The independent reviewer receives every sentence/evidence association, full source
 packets including uncited material needed to evaluate omissions, exact runtime
 drafts, concerns and editorial provenance. Approval binds the exact review basis,

@@ -8,6 +8,9 @@ import {assertCanonicalPath} from './mhc-native-paths.mjs';
 import {openJournal, confined, readPrivate, durableWrite, jsonBytes, digest, fault} from './service-supervisor-store.mjs';
 import {ROLES, inspectAutomations, selectEDF, failureClass, safeCode} from './service-supervisor-policy.mjs';
 import {assertSchemaValid} from './schema-validator.mjs';
+import {retainedHenryDebt} from './service-supervisor-debt.mjs';
+import {verifiedHenryContext} from './service-supervisor-henry.mjs';
+import {genesis15OperatorReview} from './service-supervisor-operator-review.mjs';
 
 async function defaultHealth(ctx, now) {
   const config = JSON.parse(await readFile(path.join(ctx.releaseRoot, 'config/pages-pwa-public.json'), 'utf8'));
@@ -17,18 +20,23 @@ async function defaultHealth(ctx, now) {
   return verifyLiveHorizon(liveHealthCredentialsFromStores(config, codes), {now,
     fetchImpl: (...args) => fetch(args[0], {...args[1], signal: AbortSignal.timeout(45000)})});
 }
-export async function defaultJobs(ctx, health) {
+export async function defaultJobs(ctx, health, {binding,journal}={}) {
   const root = await confined(ctx.projectRoot, 'private-content/automation/mhc-v2');
   const names = await readdir(root).catch(e => {if (e.code === 'ENOENT') return []; throw e;});
-  const jobs = [];
+  const jobs = [],debtJournal=journal||await openJournal(ctx.stateRoot),
+    debtIds=new Set(['C','D'].includes(ctx.config.stage)?(await debtJournal.load()).filter(e=>e.kind==='henry_terminal_debt').map(e=>e.data.readingId):[]),hasDebt=debtIds.size>0;
+  if(hasDebt&&!binding)binding=await verifiedHenryContext(ctx);
   for (const name of names) {
     if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{2,159}$/.test(name)) throw fault('SUPERVISOR_JOB_INVALID');
-    if (!health.readingIds.includes(name)) continue;
+    if (!health.readingIds.includes(name)&&!debtIds.has(name)) continue;
     const job = await loadJob(await confined(root, name, false));
     const eligibleFallback=['C','D'].includes(ctx.config.stage)&&job.state.phase==='fallback_pending'&&
       ['V2_CANDIDATE_EXHAUSTED','V2_SPARK_MODEL_UNAVAILABLE'].includes(job.state.blocker?.code);
-    jobs.push({readingId: job.input.reading_id, component: 'henry', phase: job.state.phase,
-      blocker: eligibleFallback?null:job.state.blocker, basisSha256: job.state.review?.approved_sha256 || job.input.input_sha256});
+    const debt=hasDebt?await retainedHenryDebt(ctx,{journal:debtJournal,binding,job}):null;
+    if(!health.readingIds.includes(name)&&!debt)continue;
+    const operator=debt&&job.state.phase==='review_pending'?await genesis15OperatorReview(ctx,{journal:debtJournal,binding,readingId:job.input.reading_id}):null;
+    jobs.push({readingId: job.input.reading_id, component: 'henry', phase: operator?'review_pending':debt?'blocked':job.state.phase,operatorReviewEligible:Boolean(operator),
+      blocker: debt|| (eligibleFallback?null:job.state.blocker), basisSha256: job.state.review?.approved_sha256 || job.input.input_sha256});
   }
   if(['C','D'].includes(ctx.config.stage)) {
     const daily=new Map();for(const event of await (await openJournal(ctx.stateRoot)).load())
@@ -80,7 +88,7 @@ export async function runSupervisor(ctx, {role, now = new Date(), runId, wakeId}
   let result, statusPath = null;
   try {
     await journal.append('run_started', {runId: lease.runId, role, sourceRevision: ctx.config.sourceRevision, stage: ctx.config.stage}, now, lease);
-    let observation, code = null;
+    let observation, code = null,progressAllowed=false;
     try {
       const inventory = await inspectAutomations(ctx.config.automations, dependencies.automations);
       const {plan, appConfig} = await (dependencies.plan || (() => loadHenryPlan(ctx.releaseRoot)))();
@@ -95,6 +103,7 @@ export async function runSupervisor(ctx, {role, now = new Date(), runId, wakeId}
       const publicationDebt=[...publications.values()].find(t=>['blocked','reconciliation_required','health_pending'].includes(t.phase)&&t.code);
       const configurationDebt = selection.debts.find(v => failureClass(v.code).scope === 'capability');
       code = inventory.findings[0]?.code || publicationDebt?.code || configurationDebt?.code || selection.debts.find(v => v.terminal)?.code || null;
+      progressAllowed=!code||!inventory.findings.length&&!publicationDebt&&!configurationDebt&&selection.debts.some(v=>v.terminal&&v.code===code);
       observation = {inventory, selection, measuredAt: new Date(now).toISOString()};
       await journal.append('observation', {runId: lease.runId, role, ...observation}, now, lease);
       const pending = Boolean(selection.next || selection.debts.length || !selection.forwardComplete);
@@ -111,7 +120,7 @@ export async function runSupervisor(ctx, {role, now = new Date(), runId, wakeId}
     try {
       const manifestBytes = await readFile(await confined(ctx.projectRoot, 'private-content/private-manifest.json', false));
       const manifest = JSON.parse(manifestBytes), buffer = result.buffer;
-      const verifiedCompletedReadingIds=['C','D'].includes(ctx.config.stage)&&result.outcome!=='blocked'?
+      const verifiedCompletedReadingIds=['C','D'].includes(ctx.config.stage)&&progressAllowed?
         await (await import('./service-supervisor-work.mjs')).verifiedWakePublications(ctx,{wakeId,role}):[],
         recovered=verifiedCompletedReadingIds.length>0;
       if(recovered)result={...result,verifiedCompletedReadingIds};
@@ -123,7 +132,7 @@ export async function runSupervisor(ctx, {role, now = new Date(), runId, wakeId}
           result.forwardComplete ? 'Complete forward buffer verified' : 'Forward devotional or Henry work remains',
         action: retained ? manifest.preparationStatus.action : result.outcome === 'blocked' ? 'Open BibleApp Manager in Codex' : '',
         heartbeat: {lane: logicalLane, lastOutcome: recovered?'success':result.outcome === 'blocked' ? 'blocked' : result.outcome === 'healthy_noop' ? 'no_op' : 'running',
-          lastErrorCode: result.code || '', ...(buffer ? {buffer} : {})}});
+          lastErrorCode: recovered?'':result.code || '', ...(buffer ? {buffer} : {})}});
       if (['blocked', 'approval_required'].includes(status.state) && result.outcome !== 'blocked') {
         result = {...result, outcome: 'blocked', code: 'SUPERVISOR_RETAINED_SERVICE_BLOCK'};
       }

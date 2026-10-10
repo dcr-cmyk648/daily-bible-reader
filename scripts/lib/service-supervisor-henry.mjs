@@ -12,6 +12,7 @@ import {REVIEW_ASSERTIONS,digestObject,candidateSchema,validateCandidate} from '
 import {assertSchemaValid} from './schema-validator.mjs';
 import {loadLatestHenryReading} from './mhc-library-sync.mjs';
 import {loadJob} from './mhc-v2-store.mjs';
+import {genesis15OperatorReview,genesis15ReviewSnapshot} from './service-supervisor-operator-review.mjs';
 
 export async function verifiedHenryContext(ctx) {
   const expected=ctx.config.henryRuntime;
@@ -224,7 +225,7 @@ async function reviewScope(ctx,native,readingId,now,dependencies) {
     !(await readPrivate(ctx.projectRoot,'private-content/private-manifest.json')).readings?.[readingId])
     throw fault('SUPERVISOR_HENRY_REVIEW_SCOPE_CHANGED');
 }
-function mechanicalFindings(records,sourceAtoms,pipeline,packetForVerse=()=>null) {
+export function mechanicalFindings(records,sourceAtoms,pipeline,packetForVerse=()=>null) {
   const findings=[];
   for(const record of records) {
     const details={verseId:record.verse_id,packetId:packetForVerse(record.verse_id)};
@@ -234,7 +235,7 @@ function mechanicalFindings(records,sourceAtoms,pipeline,packetForVerse=()=>null
   }
   return findings;
 }
-function reviewMechanicalFindings(bundle,pipeline) {
+export function reviewMechanicalFindings(bundle,pipeline) {
   const packetForVerse=verseId=>bundle.source_packets.find(p=>p.requests.some(r=>r.verse_id===verseId))?.packet_id||null;
   return bundle.results.flatMap(r=>mechanicalFindings(Object.entries(r.runtime.records).map(([verse_id,record])=>({...record,verse_id})),
     r.runtime.source_atoms,pipeline,packetForVerse));
@@ -524,7 +525,9 @@ export async function reviewHenryWork(ctx,{journal,lease,readingId,deadline},dep
     }
     const triage=await mechanicalHenryTriage(ctx,binding,{journal,lease,readingId,job,bundle,clock});
     if(triage)return triage;
-    const review=await boundedHenryReview(ctx,binding,{journal,lease,readingId,deadline,job,entry,bundle,threadIds,clock},dependencies);
+    const operator=await genesis15OperatorReview(ctx,{journal,binding,readingId}),
+      review=operator?await boundedOperatorReview(ctx,binding,{journal,lease,readingId,deadline,operator,threadIds,clock},dependencies):
+        await boundedHenryReview(ctx,binding,{journal,lease,readingId,deadline,job,entry,bundle,threadIds,clock},dependencies);
     await journal.assertLease(lease,clock());
     const base={reading_id:readingId,review_basis_sha256:bundle.review_basis_sha256,reviewer:`Sol 6.1 high independent execution ${review.execution.id}`,
       reviewed_at:clock().toISOString(),findings:review.output.findings};
@@ -545,4 +548,31 @@ export async function reviewHenryWork(ctx,{journal,lease,readingId,deadline},dep
     }
     throw fault('SUPERVISOR_HENRY_SUBSTANTIVE_REVIEW_BLOCKED');
   });
+}
+async function boundedOperatorReview(ctx,binding,{journal,lease,readingId,deadline,operator,threadIds,clock},dependencies) {
+  const {snapshot,authorization}=operator,packet={schemaVersion:'supervisor-genesis15-operator-review-input/v1',readingId,
+    authorizationSha256:authorization.sha256,nativeInputSha256:snapshot.binding.nativeInputSha256,nativeEventSha256:snapshot.binding.nativeEventSha256,
+    reviewBasisSha256:snapshot.binding.reviewBasisSha256,reading:snapshot.entry,reviewBasis:snapshot.bundle,
+    priorFailedResponses:snapshot.priorOutputs,mechanicalFindings:snapshot.mechanicalFindings},inputSha256=digest(jsonBytes(packet)),
+    pipeline=binding.pipeline||await import('./mhc-pipeline.mjs'),runtimeSchema=await readPrivate(binding.native.releaseRoot,'schemas/mhc-runtime.schema.json');
+  const assertBasis=async()=>{await journal.assertLease(lease,clock());const current=await genesis15ReviewSnapshot(ctx,{journal,binding,readingId});
+    if(digestObject(current.binding)!==digestObject(snapshot.binding))throw fault('SUPERVISOR_OPERATOR_REVIEW_BASIS_CHANGED');};
+  const validate=async output=>{await assertBasis();if(!['approved','blocked'].includes(output.verdict))throw fault('SUPERVISOR_HENRY_REVIEW_ACTION_INVALID');
+    await checkedReviewAction(output,{packet,job:snapshot.job,bundle:snapshot.bundle,pipeline,runtimeSchema});};
+  assertChildPrivacy(packet);await assertBasis();
+  const forbidden=[...threadIds,...snapshot.priorThreadIds,...(await journal.load()).filter(e=>e.kind==='execution_state'&&e.data.execution.readingId===readingId&&
+    ['independent-review','genesis15-operator-review'].includes(e.data.execution.kind)).map(e=>e.data.execution.threadId).filter(Boolean)],
+    result=await (dependencies.child||executeBoundedChild)(ctx,{journal,lease,jobId:operator.jobId,readingId,kind:operator.kind,packet,
+      schema:independentReviewContract(packet,{henryAssertions:REVIEW_ASSERTIONS}),deadline,authorThreadIds:forbidden,
+      prompt:`Perform the ONE manager-authorized independent Genesis 15 final review. Both prior failed responses remain spent and are evidence only, never approval. Compare every requested verse and sentence against all five exact public-domain source packets. Resolve every original substantive finding and every complete code-owned mechanical finding: ${JSON.stringify(snapshot.mechanicalFindings)}. State the substance directly without reporting Henry. Approved source-supported prose corrections may name unique existing verses only; all eight assertions must be true after those corrections, and no source copying or outside material is permitted. Return only approved with null repairPacketId, or blocked with null repairPacketId and empty corrections. No packet repair, changes_requested, tools, second response or guided correction is authorized. inputSha256 ${inputSha256}.\n${JSON.stringify(packet)}`},
+      {...dependencies.exec,executionBasis:snapshot.binding,admit:async output=>{await validate(output);return {
+        schemaVersion:'supervisor-genesis15-operator-review-admission/v1',authorizationSha256:authorization.sha256,
+        ...snapshot.binding,outputSha256:digest(jsonBytes(output))};}});
+  await validate(result.output);
+  const saved=await readFile(await confined(ctx.stateRoot,`executions/${result.execution.id}/packet.json`,false)),admission=result.admission;
+  if(digest(saved)!==inputSha256||result.execution.inputSha256!==inputSha256||result.execution.ordinal!==1||!admission||
+    admission.schemaVersion!=='supervisor-genesis15-operator-review-admission/v1'||admission.authorizationSha256!==authorization.sha256||
+    admission.outputSha256!==digest(jsonBytes(result.output))||Object.keys(snapshot.binding).some(k=>!Object.hasOwn(admission,k)||digestObject(admission[k])!==digestObject(snapshot.binding[k])))
+    throw fault('SUPERVISOR_OPERATOR_REVIEW_BASIS_CHANGED');
+  return result;
 }

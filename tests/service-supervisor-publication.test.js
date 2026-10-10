@@ -103,7 +103,7 @@ test('terminal C wake completion survives every status connector handoff and is 
   assert.equal(handoff.outcome,'complete');assert.equal(handoff.runComplete,true);assert.equal(handoff.workOutcome,'checkpointed');
   assert.equal((await f.publisher.publicationHandoff(f.ctx,handoff.transactionId)).runComplete,true);
 });
-async function completedWake(f,{other=false,legacy=false,incomplete=false,phase='complete'}={}) {
+async function completedWake(f,{other=false,legacy=false,incomplete=false,phase='complete',terminalDebt=false}={}) {
   f.ctx.config.stage='C';const initial=original();
   initial.preparationStatus={...initial.preparationStatus,state:'blocked',summary:'FABRICATED prior failure',action:'FABRICATED manager action',
     ...(legacy?{blockerRequiresResolution:true}:{}),lanes:{daily:{lastAttemptAt:now.toISOString(),lastOutcome:'blocked',lastErrorCode:'SUPERVISOR_HENRY_EDITORIAL_REPAIR_INVALID'},
@@ -124,8 +124,18 @@ async function completedWake(f,{other=false,legacy=false,incomplete=false,phase=
     proof=JSON.parse(await fs.readFile(path.join(f.ctx.stateRoot,transaction.health.path),'utf8'));
   if(incomplete){proof.health.missingPreparedReadingIds=[ids[7]];proof.health.currentHorizonHenryLayer.unavailableReadingIds=[ids[7]];}
   return {journal,wakeId,transaction,run:async(options={})=>supervisor.runSupervisor(f.ctx,{role:'preparation',now,wakeId,...options},
-    {clock:()=>now,health:async()=>proof.health,jobs:async()=>[],status:async(_ctx,prior,args)=>helper.preparationStatusCandidate(prior,args)})};
+    {clock:()=>now,health:async()=>proof.health,jobs:async()=>terminalDebt?[{readingId:ids[1],component:'henry',phase:'blocked',
+      blocker:{scope:'reading',terminal:true,code:'SUPERVISOR_CHILD_REPAIR_EXHAUSTED',proof:{sha256:'f'.repeat(64)}}}]:[],
+      status:async(_ctx,prior,args)=>helper.preparationStatusCandidate(prior,args)})};
 }
+test('exact owned publication records success while another terminal Henry reading and lane error keep global status blocked',async t=>{
+  const f=await fixture(t),c=await completedWake(f,{other:true,terminalDebt:true}),observed=await c.run();
+  assert.equal(observed.outcome,'blocked');assert.equal(observed.code,'SUPERVISOR_CHILD_REPAIR_EXHAUSTED');
+  assert.deepEqual(observed.verifiedCompletedReadingIds,[ids[0]]);
+  const event=(await c.journal.load()).findLast(e=>e.kind==='status_staged'),status=(await f.store.readPrivate(f.ctx.stateRoot,event.data.candidate)).preparationStatus;
+  assert.equal(status.state,'blocked');assert.equal(status.lastSuccessAt,now.toISOString());assert.equal(status.lanes.daily.lastOutcome,'success');
+  assert.equal(status.lanes.daily.lastErrorCode,'');assert.equal(status.lanes.review.lastErrorCode,'FABRICATED_REVIEW_FAILURE');
+});
 for(const blocker of ['own','other','legacy','incomplete'])test(`verified completed publication clears only owned failure and retains ${blocker} blockers appropriately`,async t=>{
   const f=await fixture(t),c=await completedWake(f,{other:blocker==='other',legacy:blocker==='legacy',incomplete:blocker==='incomplete'}),observed=await c.run();
   assert.deepEqual(observed.verifiedCompletedReadingIds,[ids[0]]);

@@ -35,16 +35,23 @@ export function selectEDF({plan, appConfig, health, jobs = [], role, now,include
   const allowed = new Map(window.entries.map(e => [e.readingId, e])), ids = new Set();
   const nodes = [], debts = [];
   for (const job of jobs) {
-    if (!allowed.has(job.readingId)) continue; // Outside-window artifacts remain intact, never enter forward dispatch.
+    if (!allowed.has(job.readingId)) {
+      // A verified supervisor terminal debt remains a global warning after its
+      // date leaves the window; its artifact never enters forward dispatch.
+      if(job.component==='henry'&&job.blocker?.scope==='reading'&&job.blocker.terminal===true&&
+        /^[a-f0-9]{64}$/.test(job.blocker.proof?.sha256||''))debts.push({readingId:job.readingId,component:'henry',terminal:true,
+          code:safeCode(job.blocker.code),outsideForwardWindow:true});
+      continue;
+    }
     if (!['daily', 'henry'].includes(job.component) || ids.has(`${job.readingId}:${job.component}`) ||
         !['queued', 'authoring', 'generating', 'fallback_pending', 'editorial_attention', 'review_pending', 'reviewing',
           'approved', 'publishing', 'verification_pending', 'published', 'blocked', 'debt'].includes(job.phase)) throw fault('SUPERVISOR_JOB_INVALID');
     ids.add(`${job.readingId}:${job.component}`);
     const entry = allowed.get(job.readingId);
     if (job.phase === 'blocked' || job.phase === 'debt' || job.phase === 'editorial_attention' || job.blocker) {
-      debts.push({readingId: job.readingId, component: job.component, terminal: ['blocked', 'editorial_attention'].includes(job.phase),
+      debts.push({readingId: job.readingId, component: job.component, terminal: job.blocker?.terminal===true||['blocked', 'editorial_attention'].includes(job.phase),
         code: safeCode(job.blocker?.code || 'SUPERVISOR_RETAINED_DEBT')});
-      if (job.phase !== 'editorial_attention') continue;
+      if (job.phase !== 'editorial_attention'&&job.operatorReviewEligible!==true) continue;
     }
     const publishedButMissing = job.phase === 'published' && (job.component === 'daily' ? buffer.devotionalGaps : buffer.henryGaps).includes(job.readingId);
     const action = publishedButMissing ? 'recover_publication' : phaseAction[job.phase];

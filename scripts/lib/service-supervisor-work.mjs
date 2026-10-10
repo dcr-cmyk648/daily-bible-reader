@@ -11,6 +11,7 @@ import {authenticatedForwardHealth} from './service-supervisor-scope.mjs';
 import {defaultJobs} from './service-supervisor.mjs';
 import {runDailyWork,latestDailyJob} from './service-supervisor-daily.mjs';
 import {runHenryWork,reviewHenryWork,repairHenryWork,prepareHenryDependency,prepareHenryPublication,verifiedHenryContext} from './service-supervisor-henry.mjs';
+import {retainExhaustedHenryReviews} from './service-supervisor-debt.mjs';
 
 async function optionalBytes(ctx,relative) {
   try{return await readFile(await confined(ctx.projectRoot,relative,false));}catch(e){if(e.code==='ENOENT')return null;throw e;}
@@ -89,15 +90,29 @@ export async function runStageC(ctx,{role,now=new Date()},dependencies={}) {
         wake.pending=null;
         wake.phase='working';
       }
+      const children=new Map();for(const event of await journal.load())if(event.kind==='execution_state')children.set(event.data.execution.id,event.data.execution);
+      if([...children.values()].some(e=>['reserved','uncertain'].includes(e.phase)))throw fault('SUPERVISOR_CHILD_DISPATCH_UNCERTAIN');
+      if([...children.values()].some(e=>e.phase==='blocked'))throw fault('SUPERVISOR_CHILD_CAPABILITY_BLOCK_RETAINED');
+      if([...publications.values()].some(t=>!['complete','blocked'].includes(t.phase)))throw fault('SUPERVISOR_WAKE_PUBLICATION_PENDING');
       if(wake.completed.length>=wake.maxReadings)wake.phase='complete';
       else {
         const {plan,appConfig}=await (dependencies.plan||(()=>loadHenryPlan(ctx.releaseRoot)))(),health=await (dependencies.health||authenticatedForwardHealth)(ctx,clock()),
           binding=dependencies.jobs?null:await (dependencies.henry?.binding||verifiedHenryContext)(ctx);
-        if(binding)await binding.runner.withRunnerLock(binding.native,()=>binding.service.reviewWorkOrderV2(binding.native,clock()));
-        const jobs=await (dependencies.jobs||defaultJobs)(ctx,health),selection=selectEDF({plan,appConfig,health,jobs,role,now:clock(),includeReview:true});
+        if(binding)await binding.runner.withRunnerLock(binding.native,async()=>{
+          await binding.service.reviewWorkOrderV2(binding.native,clock());
+          await retainExhaustedHenryReviews(ctx,{journal,lease,binding,readingIds:health.readingIds,clock});
+        });
+        const jobs=await (dependencies.jobs||defaultJobs)(ctx,health,{binding,journal}),selection=selectEDF({plan,appConfig,health,jobs,role,now:clock(),includeReview:true});
+        const capability=selection.debts.find(d=>/CONFIG|EXECUTABLE|MODEL_UNAVAILABLE|CLI|HELPER|ROUTE|LOGIN/.test(d.code));
+        if(capability)throw fault(capability.code);
         await journal.append('observation',{runId:wake.id,role,stage:ctx.config.stage,inventory,selection,measuredAt:clock().toISOString()},clock(),lease);
         let next=selection.next,order,historicalBinding;
-        if(!next&&selection.forwardComplete) {
+        if(next?.component==='daily') {
+          const broken=selection.debts.find(d=>selection.buffer.devotionalGaps.includes(d.readingId)&&
+            plan.entries.find(e=>e.readingId===d.readingId)?.dayIndex<=plan.entries.find(e=>e.readingId===next.readingId)?.dayIndex);
+          if(broken)throw fault(broken.code);
+        }
+        if(!next&&selection.forwardComplete&&!selection.debts.length) {
           // Retained review selection reconciles existing native publication
           // receipts. Historical author selection remains its native policy.
           const binding=await (dependencies.henry?.binding||verifiedHenryContext)(ctx);

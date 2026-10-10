@@ -561,6 +561,34 @@ Rollback is a controlled routing change, not deletion or restoration of old cont
 
 ## Validation and next handoff
 
+October 10 bounded manager decision: actual Genesis 15 has five primary submissions,
+four applied repairs covering every problematic canonical packet, and two failed
+ordinary review responses. Verse 1's unused packet has no mechanical finding;
+there is no remaining legal affected packet repair. Ten original reporting
+findings remain (including verse 2); nine described the unapplied second response's
+proposed derivative. Preserve both original responses and the original native head.
+
+Retain exhausted review/editorial evidence as reading-scoped terminal Henry debt
+before EDF dispatch; permit Genesis 16's exact next daily prefix because Genesis 15's
+fallback devotional is already published. Never skip a broken daily prefix, treat
+unresolved execution/publication/capability as scoped progress, clear global red debt,
+enter historical work while debt persists, or archive it as a healthy no-op.
+Exact new publication proof records only its publishing lane's success.
+
+Manager separately accepted one audited Genesis 15 final independent review under
+SERVICE_AUTHORITY. Native operations describe bounded packet repairs and source-bound
+final review but impose no final-review response count; the new supervisor's two
+ordinary transport slots remain exhausted. Add only the named manager-receipt
+interface documented in SUPERVISOR_AUTHORING, exact source/config/native/basis/old
+output/mechanical/thread bindings, and one durable-before-dispatch Sol 6.1/high
+ChatGPT execution lasting at most 15 minutes with five-minute wake reserve. No
+correction/retry slot, fourth response, native packet repair, author rerun, waived
+assertion, nonce or replacement receipt. Failure/block/uncertainty permanently ends
+this exception; independent source review and native approval/library/publication
+gates remain unchanged. Worker supplies checked source and fabricated tests only;
+manager owns real snapshot, receipt creation/import, installation and live dispatch.
+This is one accepted incident decision, not standing retry permission.
+
 Tests use conspicuously fabricated Scripture, source prose, references, IDs,
 connector responses, automation TOML and fake Codex binaries. No test calls a real
 model, Google write or separately billed API. Cover EDF ties/dependencies, civil

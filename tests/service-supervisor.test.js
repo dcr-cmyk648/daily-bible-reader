@@ -106,6 +106,15 @@ test('EDF unifies daily/Henry deadlines, dependencies and independent-review sel
   options.jobs.push({readingId: 'FABRICATED-2', component: 'henry', phase: 'publishing'});
   assert.equal(policy.selectEDF(options).next.action, 'recover_publication');
 });
+test('operator eligibility preserves terminal debt and an outside-window blocker cannot disappear or dispatch',async()=>{
+  const [,policy]=await modules,h=health(),job={readingId:'FABRICATED-0',component:'henry',phase:'review_pending',operatorReviewEligible:true,
+    blocker:{scope:'reading',terminal:true,code:'SUPERVISOR_CHILD_REPAIR_EXHAUSTED',proof:{sha256:'f'.repeat(64)}}},
+    options={plan:plan(),appConfig:appConfig(),health:h,role:'review-audit',now,jobs:[job]};
+  let selection=policy.selectEDF(options);assert.equal(selection.debts[0].terminal,true);assert.equal(selection.next.action,'review');
+  job.readingId='FABRICATED-previous';selection=policy.selectEDF(options);
+  assert.equal(selection.forwardComplete,true);assert.equal(selection.next,null);assert.equal(selection.debts[0].outsideForwardWindow,true);
+  assert.equal(selection.debts[0].terminal,true);
+});
 test('Detroit civil date scope rejects yesterday health and T+8 after midnight/DST', async () => {
   const [, policy] = await modules;
   assert.equal(policy.forwardWindow(plan(), appConfig(), new Date('2026-10-11T03:59:00Z')).today, '2026-10-10');

@@ -16,9 +16,10 @@ source review, atomic publication, access/sharing, immutable rollback and releas
 
 - WO-1 native fd5922d is installed. Both configured ChatGPT author preflights passed
   at 18:10 UTC; both Henry definitions remain ACTIVE; manager owns exact pin updates.
-- WO-3 C 82d9867 cap1 trial is installed; daily/review thin routes remain ACTIVE.
+- WO-3 C 649b221 cap1 trial is installed; daily/review thin routes remain ACTIVE.
   Both fd Henry lanes remain ACTIVE. GEN15 has four repairs and two failed reviews;
-  mandatory direct-prose violations hold GEN16/D. [Publication](docs/SUPERVISOR_PUBLICATION.md), [authoring](docs/SUPERVISOR_AUTHORING.md).
+  all problematic packets are repaired; ten direct-prose violations retain red
+  Henry debt. GEN16 is the next eligible daily prefix; D remains gated. [Authoring](docs/SUPERVISOR_AUTHORING.md).
 - WO-2 466058d remains an unselected canary; backend/installed-phone promotion
   is held. Stored preparation heartbeats reach the private store, but the old
   backend drops the new fields. Scheduled-wake readback remains required.
@@ -38,10 +39,11 @@ actual health and the original manifest-backed selector after author preflight.
 Cooldowns, current priority, owners, attempts, sessions and leases remain authoritative.
 The immutable runtime includes the existing allowlisted public backend config.
 Manager owns installation, live preflight, source pins and C/D acceptance.
-C/D check: 680 fabricated/local tests, safety, 45 schemas, builds and asset
+C/D check: 708 fabricated/local tests, safety, 46 schemas, builds and asset
 verification passed. Exact native mechanical rejection may request only a genuinely
 unused packet repair; exhausted review responses and all native budgets persist.
-GEN15 remaining-packet repair/new-basis review and GEN16/D proof are manager-owned.
+Manager accepted one audited GEN15 final review; exact receipt/import/dispatch
+and genuine GEN16/D proof remain manager-owned. Ordinary budgets stay spent.
 Interface and policy: [Henry operations](docs/HENRY_V2_OPERATIONS.md#one-reading-lifecycle).
 
 The author remains gpt-6-luna at medium; retained gpt-5.6-luna fallback is low
@@ -56,4 +58,3 @@ WO-2 canary 26cd630fe1ea0afa pins frontend 530161d86a2c1df1. Preserve the
 `AGENTS.md`, `README.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md`,
 `docs/CONTENT_AND_RIGHTS.md`, `docs/EDITORIAL_STANCE.md`,
 `docs/COMMENTARY_WORKFLOW.md` and `docs/RELEASE_STABILITY.md` are authoritative.
-Earlier checkpoints: [archive](docs/reports/state-archive-2026-09.md).

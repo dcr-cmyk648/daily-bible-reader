@@ -1,7 +1,7 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os');
 const {writeFileSync}=require('node:fs');
 const repo=path.resolve(__dirname,'..');
-async function fixture(t,{verseCount=1,readingCount=1,reportingVerseIds=[]}={}) {
+async function fixture(t,{verseCount=1,readingCount=1,reportingVerseIds=[],operatorGenesis15=false}={}) {
   const [service,author,runner,henry,store,nativeStore,pipeline,rolling]=await Promise.all([
     'mhc-v2-service','mhc-v2-author-session','mhc-native-runner','service-supervisor-henry','service-supervisor-store','mhc-v2-store','mhc-pipeline','rolling-study-work-order'
   ].map(name=>import(`../scripts/lib/${name}.mjs`)));
@@ -9,17 +9,20 @@ async function fixture(t,{verseCount=1,readingCount=1,reportingVerseIds=[]}={}) 
   t.after(async()=>{assert.equal(path.dirname(root),path.resolve(os.tmpdir()));assert.ok(path.basename(root).startsWith('dbr-supervisor-native-fabricated-'));await fs.rm(root,{recursive:true,force:true});});
   const releaseRoot=path.join(root,'release'),projectRoot=path.join(root,'project'),now=new Date('2026-10-10T16:00:00Z');
   await fs.mkdir(releaseRoot,{recursive:true});for(const name of ['schemas','prompts'])await fs.cp(path.join(repo,name),path.join(releaseRoot,name),{recursive:true});
-  const entry={planVersion:'FABRICATED-plan',readingId:'FABRICATED-native',dayIndex:1,kind:'chapter',passages:[{bookId:'TST',chapter:1,verseCount}]},
+  const bookId=operatorGenesis15?'GEN':'TST',chapter=operatorGenesis15?15:1;if(operatorGenesis15)verseCount=21;
+  const entry={planVersion:'FABRICATED-plan',readingId:'FABRICATED-native',dayIndex:1,kind:'chapter',passages:[{bookId,chapter,verseCount}]},
     plan={planVersion:entry.planVersion,entries:Array.from({length:readingCount},(_,i)=>({...entry,dayIndex:i+1,readingId:i?`FABRICATED-next-${i+1}`:entry.readingId}))},appConfig={sharedStartDate:'2026-10-10',futureLookaheadDays:7},
     sourceManifest={source_id:'fabricated-henry',work_title:'FABRICATED TEST COMMENTARY',module_name:'MHC',module_version:'2.2',source_version_date:'2026-01-01',retrieved_at:'2026-01-01',license:'Public domain FABRICATED TEST',archive_sha256:'a'.repeat(64),source_format:'CrossWire SWORD zCom4 OSIS',versification:'KJV',source_url:'https://example.invalid/fabricated',download_url:'https://example.invalid/fabricated.zip'},
     text='FABRICATED TEST COMMENTARY: the caretaker distributes parcels to needy households. Patient kindness benefits the village during its difficult season.',hash=pipeline.sha256(text),
-    {source_id,work_title,...provenance}=sourceManifest,unit={schema_version:'mhc-normalized-source/v3',source_id,work_title,source_unit_id:'FABRICATED:TST:1:1',book_id:'TST',chapter:1,verse_start:1,verse_end:verseCount,reference_label:`FABRICATED 1:1-${verseCount}`,unit_type:'verse_range',source_text:text,source_text_sha256:hash,source_atoms:[{source_atom_id:'FABRICATED-atom',sequence:1,atom_type:'commentary',text,text_sha256:hash}],worker_source_sha256:hash,excluded_scripture_sha256:null,verse_anchors:[],provenance};
+    {source_id,work_title,...provenance}=sourceManifest,unit={schema_version:'mhc-normalized-source/v3',source_id,work_title,source_unit_id:`FABRICATED:${bookId}:${chapter}:1`,book_id:bookId,chapter,verse_start:1,verse_end:verseCount,reference_label:`FABRICATED ${chapter}:1-${verseCount}`,unit_type:'verse_range',source_text:text,source_text_sha256:hash,source_atoms:[{source_atom_id:'FABRICATED-atom',sequence:1,atom_type:'commentary',text,text_sha256:hash}],worker_source_sha256:hash,excluded_scripture_sha256:null,verse_anchors:[],provenance},
+    units=operatorGenesis15?[[1,1],[2,6],[7,11],[12,16],[17,21]].map(([start,end])=>({...unit,source_unit_id:`FABRICATED:GEN:15:${start}`,
+      verse_start:start,verse_end:end,reference_label:`FABRICATED 15:${start}-${end}`,source_atoms:[{...unit.source_atoms[0],source_atom_id:`FABRICATED-atom-${start}`}]})):[unit],stem=String(chapter).padStart(3,'0');
   const write=(relative,value)=>nativeStore.atomicJson(projectRoot,relative,value);
   await nativeStore.atomicJson(releaseRoot,'fixtures/pilot-content/plan.json',plan);await nativeStore.atomicJson(releaseRoot,'fixtures/pilot-content/app-config.json',appConfig);
-  for(const d of ['private-content','private-commentary/mhc/normalized/TST','research/raw','research/working'])await fs.mkdir(path.join(projectRoot,d),{recursive:true});
+  for(const d of ['private-content',`private-commentary/mhc/normalized/${bookId}`,'research/raw','research/working'])await fs.mkdir(path.join(projectRoot,d),{recursive:true});
   await write('private-content/private-manifest.json',{readings:{}});await write('private-commentary/mhc/source-manifest.json',sourceManifest);
-  await fs.writeFile(path.join(projectRoot,'private-commentary/mhc/normalized/TST/001.jsonl'),JSON.stringify(unit)+'\n');
-  await write('private-commentary/mhc/normalized/TST/001.manifest.json',{source_archive_sha256:sourceManifest.archive_sha256,book_id:'TST',chapter:1,indexed_verse_count:verseCount,normalized_batch_sha256:pipeline.normalizedBatchHash([unit])});
+  await fs.writeFile(path.join(projectRoot,`private-commentary/mhc/normalized/${bookId}/${stem}.jsonl`),units.map(u=>JSON.stringify(u)+'\n').join(''));
+  await write(`private-commentary/mhc/normalized/${bookId}/${stem}.manifest.json`,{source_archive_sha256:sourceManifest.archive_sha256,book_id:bookId,chapter,indexed_verse_count:verseCount,normalized_batch_sha256:pipeline.normalizedBatchHash(units)});
   const native=await service.serviceContext({projectRoot,releaseRoot,runtimeRoot:path.join(projectRoot,'private-content/automation/mhc-runtime'),launcher:path.join(root,'FABRICATED-launcher.mjs'),config:{author_model:'gpt-6-luna',spark_automation_id:'FABRICATED-primary',luna_automation_id:'FABRICATED-fallback'}}),
     ctx={projectRoot,releaseRoot,stateRoot:path.join(projectRoot,'private-content/automation/service-supervisor/state'),config:{children:{codexExecutable:process.execPath}}},
     journal=await store.openJournal(ctx.stateRoot),lease=await journal.acquire('preparation',{now,durationMs:90*60*1000}),
@@ -573,6 +576,214 @@ for(const variant of ['already_used','no_violation','uncertain','capability','pr
   await assert.rejects(f.henry.reviewHenryWork(f.ctx,f.options,{...f.deps,exec}));assert.equal(calls,0);
   assert.equal((await f.nativeStore.loadJob(before.directory)).previous,before.previous);
   for(const saved of f.saved)assert.deepEqual(await fs.readFile(path.join(f.ctx.stateRoot,saved.execution.output.path)),saved.raw);
+});
+async function operatorFixture(t,{legacyMissingThreads=false}={}) {
+  const reporting=['GEN.15.2','GEN.15.4','GEN.15.5','GEN.15.6','GEN.15.8','GEN.15.9','GEN.15.10','GEN.15.11','GEN.15.13','GEN.15.17'],
+    f=await fixture(t,{operatorGenesis15:true,reportingVerseIds:reporting}),[executor,contracts,operator,debt]=await Promise.all(
+      ['service-supervisor-exec','service-supervisor-contracts','service-supervisor-operator-review','service-supervisor-debt'].map(n=>import(`../scripts/lib/${n}.mjs`))),
+    options={journal:f.journal,lease:f.lease,wakeId:'d'.repeat(32),readingId:f.readingId,deadline:f.now.getTime()+90*60000},
+    dependency=await f.henry.prepareHenryDependency(f.ctx,{...options,order:f.order},f.deps);
+  await f.henry.runHenryWork(f.ctx,{...options,dailyDependency:dependency.authorization},f.deps);
+  let basis=await f.binding.service.buildReview(f.native,f.readingId);
+  assert.equal(basis.bundle.source_packets.length,5);
+  for(const packet of basis.bundle.source_packets.slice(1)) {
+    const job=basis.job,sha=job.state.accepted[`${packet.packet_id}:spark`].candidate_sha256,
+      candidate=JSON.parse((await f.store.readPrivate(job.directory,`attempts/${sha}.json`)).bytes);
+    await f.nativeStore.atomicJson(job.directory,'review.json',{schema_version:'mhc-evidence-review-decision/v2',reading_id:f.readingId,
+      review_basis_sha256:basis.bundle.review_basis_sha256,reviewer:'FABRICATED historical reviewer',reviewed_at:f.now.toISOString(),
+      findings:['FABRICATED historical substantive packet request'],status:'changes_requested',packet_id:packet.packet_id});
+    await f.binding.runner.withRunnerLock(f.native,()=>f.binding.service.requestEditorialV2(f.native,f.readingId,f.now));
+    await f.nativeStore.atomicJson(job.directory,'editorial-repair.json',{schema_version:'mhc-evidence-editorial-repair/v2',input_sha256:job.input.input_sha256,
+      rejected_sha256:sha,status:'approved',reviewer:'FABRICATED historical repair',reviewed_at:f.now.toISOString(),findings:['FABRICATED retained historical repair'],candidate});
+    await f.binding.runner.withRunnerLock(f.native,()=>f.binding.service.editorialRepairV2(f.native,f.readingId,f.now));
+    await f.journal.append('henry_editorial_repair',{readingId:f.readingId,packetId:packet.packet_id,threadId:`FABRICATED-historical-repair-${packet.packet_id}`},f.now,f.lease);
+    basis=await f.binding.service.buildReview(f.native,f.readingId);
+  }
+  const packet={schemaVersion:'supervisor-henry-review-input/v1',readingId:f.readingId,reading:basis.entry,reviewBasis:basis.bundle},
+    jobId=`henry-${basis.job.input.input_sha256}-${basis.bundle.review_basis_sha256}`,schema=contracts.independentReviewContract(packet,{henryAssertions:basis.bundle.required_assertions}),saved=[];
+  for(let ordinal=1;ordinal<=2;ordinal++) {
+    const exec={clock:()=>f.now,transport:async()=>({env:{},mcpNames:[],proof:{billingRoute:'FABRICATED local old review'}}),execute:async(_exe,args)=>{
+      await fs.writeFile(args[args.indexOf('--output-last-message')+1],f.store.jsonBytes({schemaVersion:'independent-review/v1',readingId:f.readingId,
+        inputSha256:f.store.digest(f.store.jsonBytes(packet)),verdict:'approved',assertions:Object.fromEntries(basis.bundle.required_assertions.map(k=>[k,true])),
+        findings:['FABRICATED original substantive finding retained'],corrections:[],repairPacketId:null,coverageLimits:[]}));
+      return {status:0,stderr:'',stdout:`{"type":"thread.started","thread_id":"FABRICATED-prior-review-${ordinal}"}\n{"type":"turn.completed"}\n`};
+    },admit:async()=>{throw f.store.fault('SUPERVISOR_HENRY_REVIEW_ACTION_INVALID');}};
+    await assert.rejects(executor.executeBoundedChild(f.ctx,{...options,jobId,kind:'independent-review',packet,schema,prompt:'FABRICATED old failed response'},exec));
+    const execution=(await f.journal.load()).findLast(e=>e.kind==='execution_state').data.execution;
+    saved.push({execution,raw:await fs.readFile(path.join(f.ctx.stateRoot,execution.output.path))});
+  }
+  if(legacyMissingThreads)for(const {execution} of saved) {
+    const {threadId,threadIdentity,eventLog,eventsSha256,...legacy}=execution;
+    await f.journal.append('execution_state',{execution:legacy},f.now,f.lease);
+  }
+  f.ctx.config.schemaVersion='service-supervisor-config/v1';f.ctx.config.stage='C';f.ctx.config.sourceRevision='a'.repeat(40);f.ctx.config.maxReadingsPerWake=1;
+  const mapping=[],runtime=await import('../scripts/lib/service-supervisor-runtime.mjs');
+  for(const lane of ['daily','henry_primary','henry_recovery','review']) {
+    const file=path.join(f.ctx.projectRoot,`automations/${lane}.toml`);await fs.mkdir(path.dirname(file),{recursive:true});
+    await fs.writeFile(file,Object.entries({name:`FABRICATED ${lane}`,kind:'cron',status:'ACTIVE',rrule:'FREQ=DAILY;BYHOUR=3',model:'gpt-6-luna',
+      reasoning_effort:'low',execution_environment:'local',prompt:'FABRICATED manager-only operator fixture',cwds:[f.ctx.projectRoot]}).
+      map(([k,v])=>`${k} = ${JSON.stringify(v)}`).join('\n')+'\ntarget = { type = "project", project_id = "FABRICATED-project" }\n');mapping.push({lane,file});
+  }
+  f.ctx.config.automations=await runtime.captureInventory(mapping);f.ctx.config.children={model:'gpt-6.1-sol',reasoningEffort:'high',
+    codexExecutable:process.execPath,executableSha256:f.store.digest(await fs.readFile(process.execPath)),version:'codex-cli 0.162.1',sourceAccessMode:'cli_content'};
+  f.ctx.config.publicationResources={manifest:{fileId:'FABRICATED-MANIFEST',mimeType:'text/plain',parents:['FABRICATED-FOLDER'],permissionsSha256:'f'.repeat(64)},
+    folder:{fileId:'FABRICATED-FOLDER',mimeType:'application/vnd.google-apps.folder',parents:[],permissionsSha256:'f'.repeat(64)}};
+  const pinned=await pinNative(f);f.binding=await f.henry.verifiedHenryContext(f.ctx);f.deps={...f.deps,binding:async()=>f.binding};
+  const runtimeRoot=path.join(f.ctx.projectRoot,'private-content/automation/service-supervisor/runtime');f.ctx.runtimeRoot=runtimeRoot;
+  f.ctx.config.runtimeRoot=runtimeRoot;f.ctx.config.projectRoot=f.ctx.projectRoot;
+  const configBytes=f.store.jsonBytes(f.ctx.config),configSha256=f.store.digest(configBytes),manifest={schemaVersion:'service-supervisor-release/v1',
+    sourceRevision:f.ctx.config.sourceRevision,files:pinned.files.map(({raw,...file})=>file)},manifestBytes=f.store.jsonBytes(manifest),
+    manifestSha256=f.store.digest(manifestBytes),release=`${f.ctx.config.sourceRevision}-${manifestSha256.slice(0,16)}`;
+  for(const file of pinned.files)await f.store.durableWrite(runtimeRoot,`releases/${release}/${file.path}`,file.raw);
+  await f.store.durableWrite(runtimeRoot,`releases/${release}/manifest.json`,manifestBytes);
+  await f.store.durableWrite(runtimeRoot,`config-${configSha256}.json`,configBytes);
+  await f.store.durableWrite(runtimeRoot,'launcher.mjs',pinned.files.find(file=>file.path==='scripts/service-supervisor-launcher.mjs').raw);
+  await f.store.durableWrite(runtimeRoot,'current.json',f.store.jsonBytes({schemaVersion:'service-supervisor-pointer/v1',sourceRevision:f.ctx.config.sourceRevision,
+    release,manifestSha256,configSha256}));f.ctx.releaseRoot=path.join(runtimeRoot,'releases',release);
+  await f.binding.runner.withRunnerLock(f.binding.native,()=>debt.retainExhaustedHenryReviews(f.ctx,{journal:f.journal,lease:f.lease,binding:f.binding,
+    readingIds:[f.readingId],clock:()=>f.now}));
+  const snapshot=await operator.genesis15ReviewSnapshot(f.ctx,{journal:f.journal,binding:f.binding}),receipt={
+    schemaVersion:'genesis15-operator-review-authorization/v1',policyId:'genesis15-final-review-recovery-2026-10-10',decision:'authorize_one_final_review',
+    issuer:'BibleApp Manager',issuedAt:f.now.toISOString(),...snapshot.binding,policy:operator.operatorReviewPolicy};
+  await f.journal.release(f.lease,f.now);
+  const authorize=()=>operator.authorizeGenesis15Review(f.ctx,receipt,{binding:f.binding,clock:()=>f.now}),activate=async()=>{
+    f.lease=await f.journal.acquire('preparation',{now:f.now});options.lease=f.lease;};
+  let calls=0;
+  const exec={clock:()=>f.now,transport:async()=>({env:{},mcpNames:[],proof:{billingRoute:'FABRICATED local operator review'}}),execute:async(_exe,args,opts)=>{
+    calls++;assert.ok(opts.timeout<=900000);const schema=JSON.parse(await fs.readFile(args[args.indexOf('--output-schema')+1])),p=JSON.parse(opts.input.slice(opts.input.indexOf('\n')+1));
+    assert.equal(p.reviewBasis.source_packets.length,5);assert.equal(p.mechanicalFindings.length,10);assert.equal(p.priorFailedResponses.length,2);
+    await fs.writeFile(args[args.indexOf('--output-last-message')+1],f.store.jsonBytes({schemaVersion:'independent-review/v1',readingId:f.readingId,
+      inputSha256:schema.properties.inputSha256.const,verdict:'approved',assertions:Object.fromEntries(basis.bundle.required_assertions.map(k=>[k,true])),
+      findings:['FABRICATED independent complete source comparison and all original findings resolved'],corrections:reporting.map(verseId=>({verseId,
+        replacement:'FABRICATED: patient assistance from the village caretaker provides needy households with necessary parcels.',reason:'FABRICATED exact source-supported direct prose'})),repairPacketId:null,coverageLimits:[]}));
+    return {status:0,stderr:'',stdout:'{"type":"thread.started","thread_id":"FABRICATED-operator-review"}\n{"type":"turn.completed"}\n'};
+  }};
+  return {...f,operator,debt,options,basis,snapshot,receipt,saved,authorize,activate,exec,getOperatorCalls:()=>calls};
+}
+test('one audited Genesis 15 authorization imports without dispatch and performs exactly one gated review without changing old budgets',async t=>{
+  const f=await operatorFixture(t),before=f.basis.job;
+  assert.equal((await f.authorize()).dispatched,false);assert.equal((await f.authorize()).outcome,'already_authorized');assert.equal(f.getOperatorCalls(),0);
+  await f.activate();assert.equal((await f.henry.reviewHenryWork(f.ctx,f.options,{...f.deps,exec:f.exec})).action,'publish_required');assert.equal(f.getOperatorCalls(),1);
+  const job=await f.nativeStore.loadJob(before.directory);assert.equal(job.state.total_submissions,5);assert.equal(job.state.history.filter(e=>e.kind==='editorial_repair').length,4);
+  assert.equal(job.state.phase,'publishing');for(const saved of f.saved)assert.deepEqual(await fs.readFile(path.join(f.ctx.stateRoot,saved.execution.output.path)),saved.raw);
+  assert.equal(await f.debt.retainedHenryDebt(f.ctx,{journal:f.journal,binding:f.binding,job}),null);
+  const changedSource={...f.binding,service:{...f.binding.service,sourceInput:async()=>({input:{input_sha256:'f'.repeat(64)}})}};
+  await assert.rejects(f.debt.retainedHenryDebt(f.ctx,{journal:f.journal,binding:changedSource,job}),/DEBT_PROOF_CHANGED/);
+  const states=(await f.journal.load()).filter(e=>e.kind==='execution_state'&&e.data.execution.kind==='genesis15-operator-review').map(e=>e.data.execution);
+  assert.ok(states.some(e=>e.phase==='reserved'&&e.ordinal===1));assert.ok(states.some(e=>e.phase==='accepted'&&e.admission));
+  assert.equal(new Set(states.map(e=>e.id)).size,1);
+  await f.journal.release(f.options.lease,f.now);assert.equal((await f.authorize()).outcome,'already_authorized');assert.equal(f.getOperatorCalls(),1);
+});
+test('manager receipt binds exact original bytes and cannot be replaced or broadened',async t=>{
+  const f=await operatorFixture(t),raw=Buffer.from(JSON.stringify(f.receipt,null,4)+'\r\n');
+  const imported=await f.operator.authorizeGenesis15Review(f.ctx,f.receipt,{binding:f.binding,receiptBytes:raw,clock:()=>f.now});
+  assert.equal(imported.authorizationSha256,f.store.digest(raw));
+  const record=(await f.journal.load()).find(e=>e.kind==='genesis_review_authorized').data;
+  assert.deepEqual(await fs.readFile(path.join(f.ctx.stateRoot,record.authorization.path)),raw);
+  await assert.rejects(f.authorize(),/ALREADY_AUTHORIZED/);assert.equal(f.getOperatorCalls(),0);
+});
+test('installed operator CLI snapshot and exact-byte authorization work from arbitrary CWD without dispatch',async t=>{
+  const f=await operatorFixture(t),{spawnSync}=require('node:child_process'),launcher=path.join(f.ctx.runtimeRoot,'launcher.mjs'),
+    output='private-content/automation/service-supervisor/operator-review/FABRICATED-binding.json',
+    receiptPath='private-content/automation/service-supervisor/operator-review/FABRICATED-manager-receipt.json',
+    raw=Buffer.from(JSON.stringify(f.receipt,null,4)+'\r\n'),run=args=>{
+      const result=spawnSync(process.execPath,[launcher,...args],{cwd:os.tmpdir(),encoding:'utf8',windowsHide:true,timeout:30000});
+      assert.equal(result.status,0,result.stdout+result.stderr);return JSON.parse(result.stdout);};
+  assert.equal(run(['genesis15-review-snapshot','--output',output]).authorizationGranted,false);
+  await f.store.durableWrite(f.ctx.projectRoot,receiptPath,raw);
+  const imported=run(['authorize-genesis15-review','--receipt',receiptPath]);assert.equal(imported.outcome,'authorized');
+  assert.equal(imported.dispatched,false);assert.equal(imported.authorizationSha256,f.store.digest(raw));
+  assert.equal(run(['authorize-genesis15-review','--receipt',receiptPath]).outcome,'already_authorized');
+  assert.equal(f.getOperatorCalls(),0);assert.equal((await f.journal.load()).some(e=>e.kind==='execution_state'&&e.data.execution.kind==='genesis15-operator-review'),false);
+});
+test('unused manager authority cannot cross a supervisor stage/config change',async t=>{
+  const f=await operatorFixture(t);await f.authorize();await f.activate();f.ctx.config.stage='D';f.ctx.config.maxReadingsPerWake=3;
+  await assert.rejects(f.operator.genesis15OperatorReview(f.ctx,{journal:f.journal,binding:f.binding,readingId:f.readingId}),/BASIS_CHANGED/);
+  assert.equal(f.getOperatorCalls(),0);assert.equal((await f.journal.load()).some(e=>e.kind==='execution_state'&&e.data.execution.kind==='genesis15-operator-review'),false);
+});
+test('legacy failed CLI thread identities absent from admission metadata are recovered from checked events and excluded',async t=>{
+  const f=await operatorFixture(t,{legacyMissingThreads:true});
+  assert.ok(f.snapshot.priorThreadIds.includes('FABRICATED-prior-review-1'));assert.ok(f.snapshot.priorThreadIds.includes('FABRICATED-prior-review-2'));
+  await f.authorize();await f.activate();const exec={...f.exec,execute:async(...args)=>{const result=await f.exec.execute(...args);
+    result.stdout=result.stdout.replace('FABRICATED-operator-review','FABRICATED-prior-review-2');return result;}};
+  await assert.rejects(f.henry.reviewHenryWork(f.ctx,f.options,{...f.deps,exec}),/NOT_INDEPENDENT/);assert.equal(f.getOperatorCalls(),1);
+});
+for(const field of ['supervisorManifestSha256','supervisorConfigSha256','nativeEventSha256','reviewBasisSha256','mechanicalFindingsSha256','priorThreadEvidenceSha256'])
+test(`manager receipt refuses stale ${field} before authorization or dispatch`,async t=>{
+  const f=await operatorFixture(t);f.receipt[field]='f'.repeat(64);
+  await assert.rejects(f.authorize(),/BASIS_CHANGED/);assert.equal(f.getOperatorCalls(),0);
+  assert.equal((await f.journal.load()).some(e=>e.kind==='genesis_review_authorized'),false);
+});
+for(const variant of ['invalid','same-thread','blocked','uncertain'])test(`operator ${variant} response spends its only slot and never performs a correction`,async t=>{
+  const f=await operatorFixture(t);await f.authorize();await f.activate();let calls=0;
+  const exec={...f.exec,execute:async(...args)=>{
+    calls++;const result=await f.exec.execute(...args),argv=args[1],file=argv[argv.indexOf('--output-last-message')+1],output=JSON.parse(await fs.readFile(file));
+    if(variant==='same-thread')result.stdout=result.stdout.replace('FABRICATED-operator-review','FABRICATED-prior-review-1');
+    if(variant==='uncertain')result.stdout=result.stdout.replace('{"type":"turn.completed"}\n','');
+    if(variant==='invalid'){output.corrections=output.corrections.slice(0,1);await fs.writeFile(file,f.store.jsonBytes(output));}
+    if(variant==='blocked'){output.verdict='blocked';output.corrections=[];await fs.writeFile(file,f.store.jsonBytes(output));}
+    return result;
+  }};
+  await assert.rejects(f.henry.reviewHenryWork(f.ctx,f.options,{...f.deps,exec}));
+  assert.equal((await f.nativeStore.loadJob(f.basis.job.directory)).previous,f.basis.job.previous);
+  await assert.rejects(f.henry.reviewHenryWork(f.ctx,f.options,{...f.deps,exec}));assert.equal(calls,1);
+  for(const saved of f.saved)assert.deepEqual(await fs.readFile(path.join(f.ctx.stateRoot,saved.execution.output.path)),saved.raw);
+  const executions=(await f.journal.load()).filter(e=>e.kind==='execution_state'&&e.data.execution.kind==='genesis15-operator-review');
+  assert.equal(new Set(executions.map(e=>e.data.execution.id)).size,1);
+});
+test('spent native review becomes a checked reading blocker without changing native history or old outputs',async t=>{
+  const f=await mechanicalFixture(t,{alreadyRepaired:true,reportingVerseIds:['TST.1.1']}),debt=await import('../scripts/lib/service-supervisor-debt.mjs'),
+    {defaultJobs}=await import('../scripts/lib/service-supervisor.mjs');f.ctx.config.stage='C';
+  const options={journal:f.journal,lease:f.lease,binding:f.binding,readingIds:[f.readingId],clock:()=>f.now};
+  await debt.retainExhaustedHenryReviews(f.ctx,options);await debt.retainExhaustedHenryReviews(f.ctx,options);
+  let job=await f.nativeStore.loadJob(f.basis.job.directory),held=await debt.retainedHenryDebt(f.ctx,{journal:f.journal,binding:f.binding,job});
+  assert.equal(held.code,'SUPERVISOR_CHILD_REPAIR_EXHAUSTED');assert.equal(held.terminal,true);assert.equal(held.scope,'reading');
+  assert.equal(job.previous,f.basis.job.previous);assert.equal((await f.journal.load()).filter(e=>e.kind==='henry_terminal_debt').length,1);
+  const jobs=await defaultJobs(f.ctx,{readingIds:[f.readingId]},{binding:f.binding,journal:f.journal});assert.equal(jobs[0].phase,'blocked');
+  job=await f.nativeStore.appendState(job,'FABRICATED history-only event',{...job.state},f.now);
+  held=await debt.retainedHenryDebt(f.ctx,{journal:f.journal,binding:f.binding,job});assert.equal(held.code,'SUPERVISOR_HENRY_TERMINAL_BASIS_CHANGED');
+  assert.equal((await defaultJobs(f.ctx,{readingIds:[]},{binding:f.binding,journal:f.journal}))[0].blocker.terminal,true);
+  for(const saved of f.saved)assert.deepEqual(await fs.readFile(path.join(f.ctx.stateRoot,saved.execution.output.path)),saved.raw);
+  await fs.appendFile(path.join(f.ctx.stateRoot,f.saved[0].execution.output.path),' ');
+  await assert.rejects(debt.retainedHenryDebt(f.ctx,{journal:f.journal,binding:f.binding,job}),/DEBT_PROOF_CHANGED/);
+});
+test('genuine unused packet correction remains eligible after both old reviews fail',async t=>{
+  const f=await mechanicalFixture(t,{alreadyRepaired:true}),debt=await import('../scripts/lib/service-supervisor-debt.mjs');
+  await debt.retainExhaustedHenryReviews(f.ctx,{journal:f.journal,lease:f.lease,binding:f.binding,readingIds:[f.readingId],clock:()=>f.now});
+  assert.equal((await f.journal.load()).some(e=>e.kind==='henry_terminal_debt'),false);
+});
+test('one failed operator admission has no slot even after an unrelated native history event',async t=>{
+  const f=await operatorFixture(t);await f.authorize();await f.activate();
+  const exec={...f.exec,execute:async(...args)=>{const result=await f.exec.execute(...args),argv=args[1],file=argv[argv.indexOf('--output-last-message')+1],
+    output=JSON.parse(await fs.readFile(file));output.corrections=[];await fs.writeFile(file,f.store.jsonBytes(output));return result;}};
+  await assert.rejects(f.henry.reviewHenryWork(f.ctx,f.options,{...f.deps,exec}));
+  const job=await f.nativeStore.loadJob(f.basis.job.directory);await f.nativeStore.appendState(job,'FABRICATED unrelated history',{...job.state},f.now);
+  assert.equal(await f.operator.genesis15OperatorReview(f.ctx,{journal:f.journal,binding:f.binding,readingId:f.readingId}),null);
+  assert.equal(f.getOperatorCalls(),1);
+});
+test('accepted operator review resumes an interrupted native application from the same immutable response',async t=>{
+  const f=await operatorFixture(t);await f.authorize();await f.activate();
+  const interrupted={...f.binding,service:{...f.binding.service,applyReviewV2:async()=>{throw Error('FABRICATED before native apply');}}};
+  await assert.rejects(f.henry.reviewHenryWork(f.ctx,f.options,{...f.deps,binding:async()=>interrupted,exec:f.exec}),/before native apply/);
+  assert.equal(f.getOperatorCalls(),1);
+  assert.equal((await f.henry.reviewHenryWork(f.ctx,f.options,{...f.deps,exec:f.exec})).action,'publish_required');assert.equal(f.getOperatorCalls(),1);
+});
+test('exhausted source-bound editorial responses are terminal reading debt without a native repair or another child',async t=>{
+  const f=await mechanicalFixture(t,{exhausted:false,reportingVerseIds:['TST.1.1']}),debt=await import('../scripts/lib/service-supervisor-debt.mjs');
+  assert.equal((await f.henry.reviewHenryWork(f.ctx,f.options,f.deps)).action,'editorial_attention');
+  const before=await f.nativeStore.loadJob(f.basis.job.directory);let calls=0;
+  const exec={clock:()=>f.now,transport:async()=>({env:{},mcpNames:[],proof:{billingRoute:'FABRICATED exhausted editorial responses'}}),
+    execute:async(_exe,args,opts)=>{calls++;const schema=JSON.parse(await fs.readFile(args[args.indexOf('--output-schema')+1])),
+      packet=JSON.parse(opts.input.slice(opts.input.indexOf('\n')+1));
+      await fs.writeFile(args[args.indexOf('--output-last-message')+1],f.store.jsonBytes({schemaVersion:'henry-editorial-repair/v1',readingId:f.readingId,
+        inputSha256:schema.properties.inputSha256.const,verdict:'repaired',candidateJson:JSON.stringify(packet.original),findings:['FABRICATED unchanged reporting remains invalid']}));
+      return {status:0,stderr:'',stdout:`{"type":"thread.started","thread_id":"FABRICATED-failed-editorial-${calls}"}\n{"type":"turn.completed"}\n`};}};
+  await assert.rejects(f.henry.repairHenryWork(f.ctx,f.options,{...f.deps,exec}));assert.equal(calls,2);
+  await debt.retainExhaustedHenryReviews(f.ctx,{journal:f.journal,lease:f.lease,binding:f.binding,readingIds:[f.readingId],clock:()=>f.now});
+  const job=await f.nativeStore.loadJob(before.directory),held=await debt.retainedHenryDebt(f.ctx,{journal:f.journal,binding:f.binding,job});
+  assert.equal(held.terminal,true);assert.equal(held.code,'SUPERVISOR_CHILD_REPAIR_EXHAUSTED');assert.equal(job.previous,before.previous);
+  const marker=(await f.journal.load()).find(e=>e.kind==='henry_terminal_debt').data,proof=await f.store.readPrivate(f.ctx.stateRoot,marker.proof.path);
+  assert.equal(proof.kind,'henry-editorial-repair');assert.equal(proof.approvalGranted,false);assert.equal(proof.budgetReset,false);
 });
 for(const losesHealth of [false,true])test(`D adapter invokes the real native historical guard and its post-preflight health check (losesHealth=${losesHealth})`,async t=>{
   const f=await fixture(t,{readingCount:10}),now=new Date(f.now.getTime()+86400000);f.ctx.config.stage='D';

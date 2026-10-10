@@ -8,8 +8,8 @@ import {authorFailure} from './mhc-v2-model-errors.mjs';
 import {assertChildPrivacy} from './service-supervisor-contracts.mjs';
 
 const model='gpt-6.1-sol',reasoning='high';
-const kinds=new Set(['daily-research','daily-synthesis','independent-review','henry-editorial-repair']);
-const limits={'daily-research':20*60*1000,'daily-synthesis':20*60*1000,'independent-review':15*60*1000,'henry-editorial-repair':15*60*1000};
+const kinds=new Set(['daily-research','daily-synthesis','independent-review','henry-editorial-repair','genesis15-operator-review']);
+const limits={'daily-research':20*60*1000,'daily-synthesis':20*60*1000,'independent-review':15*60*1000,'henry-editorial-repair':15*60*1000,'genesis15-operator-review':15*60*1000};
 export function childEnvironment(environment=process.env) {
   // Only the existing local login/config and host executable path are inherited.
   const permitted=['PATH','SystemRoot','WINDIR','USERPROFILE','HOME','APPDATA','LOCALAPPDATA','TEMP','TMP','CODEX_HOME'];
@@ -36,6 +36,19 @@ export function privateEventLog(stdout) {
       ...(event.item.type==='web_search'?{action:{type:event.item.action?.type},resultsStored:false}:{textStored:false})};
     return JSON.stringify(safe);
   }).join('\n')+'\n';
+}
+export function checkedThreadIdentity(stdout,{redacted=false}={}) {
+  let events;try{events=stdout.trim().split('\n').filter(Boolean).map(line=>({line,event:JSON.parse(line)}));}
+  catch{throw fault('SUPERVISOR_CHILD_EVENTS_INVALID');}
+  if(redacted&&events.some(({event})=>event.type==='invalid_line'))throw fault('SUPERVISOR_CHILD_EVENTS_INVALID');
+  const starts=events.filter(({event})=>event.type==='thread.started');if(!starts.length)return null;
+  if(starts.length!==1)throw fault('SUPERVISOR_CHILD_EVENTS_INVALID');
+  const {line,event}=starts[0],allowed=redacted?['type','thread_id','eventSha256']:['type','thread_id'];
+  if(Object.keys(event).some(k=>!allowed.includes(k))||! /^[A-Za-z0-9][A-Za-z0-9._:-]{1,159}$/.test(event.thread_id||''))
+    throw fault('SUPERVISOR_CHILD_EVENTS_INVALID');
+  const original=redacted?JSON.stringify({type:'thread.started',thread_id:event.thread_id}):line;
+  if(redacted&&digest(Buffer.from(original))!==event.eventSha256)throw fault('SUPERVISOR_CHILD_EVENTS_INVALID');
+  return {threadId:event.thread_id,rawEventSha256:digest(Buffer.from(original))};
 }
 export async function verifyChildTransport(ctx,{run=spawnSync}={}) {
   const binding=ctx.config.children;
@@ -69,8 +82,8 @@ export function analyzeChildEvents(stdout,{kind,maxWebOperations=64,sourceAccess
   const permitted=kind==='daily-research'?['agent_message','reasoning','web_search']:['agent_message','reasoning'];
   if(events.some(e=>!e||typeof e.type!=='string'||['turn.failed','error'].includes(e.type)||
     e.item?.type&&!permitted.includes(e.item.type)))throw fault('SUPERVISOR_CHILD_TOOL_OR_TURN_FAILED');
-  const starts=events.filter(e=>e.type==='thread.started'),turns=events.filter(e=>e.type==='turn.completed');
-  if(starts.length!==1||typeof starts[0].thread_id!=='string'||!starts[0].thread_id||turns.length!==1)
+  const identity=checkedThreadIdentity(stdout),turns=events.filter(e=>e.type==='turn.completed');
+  if(!identity||turns.length!==1)
     throw fault('SUPERVISOR_CHILD_COMPLETION_REQUIRED');
   const web=events.filter(e=>e.type==='item.completed'&&e.item?.type==='web_search');
   if(web.length>maxWebOperations)throw fault('SUPERVISOR_CHILD_WEB_BUDGET_EXHAUSTED');
@@ -89,7 +102,7 @@ export function analyzeChildEvents(stdout,{kind,maxWebOperations=64,sourceAccess
       opened.push({eventId:item.id,url:url.href,kind:'completed_cli_open_requires_fetch',returnedContent:null});
   }
   if(kind==='daily-research'&&!opened.length)throw fault('SUPERVISOR_CHILD_SOURCE_ACCESS_UNVERIFIABLE');
-  return {threadId:starts[0].thread_id,opened,webOperations:web.length,eventsSha256:digest(Buffer.from(stdout))};
+  return {threadId:identity.threadId,opened,webOperations:web.length,eventsSha256:digest(Buffer.from(stdout))};
 }
 
 export async function streamChild(executable,args,options,{kind,maxWebOperations=64}={}) {
@@ -128,13 +141,23 @@ export async function executeBoundedChild(ctx,{journal,lease,jobId,readingId,kin
   const all=(await journal.load()).filter(e=>e.kind==='execution_state').reduce((m,e)=>m.set(e.data.execution.id,e.data.execution),new Map());
   // A new substantive native review basis permits a fresh review, never a
   // workaround for an unresolved dispatch or an unavailable review capability.
-  if(kind==='independent-review') {
-    const readingReviews=[...all.values()].filter(e=>e.readingId===readingId&&e.kind===kind);
+  if(['independent-review','genesis15-operator-review'].includes(kind)) {
+    const readingReviews=[...all.values()].filter(e=>e.readingId===readingId&&['independent-review','genesis15-operator-review'].includes(e.kind));
     if(readingReviews.some(e=>['reserved','uncertain'].includes(e.phase)))throw fault('SUPERVISOR_CHILD_DISPATCH_UNCERTAIN');
     if(readingReviews.some(e=>e.phase==='blocked'))throw fault('SUPERVISOR_CHILD_CAPABILITY_BLOCK_RETAINED');
   }
   const previous=new Map([...all.entries()].filter(([,e])=>e.jobId===jobId&&e.kind===kind));
   const values=[...previous.values()];
+  if(kind==='genesis15-operator-review') {
+    const record=(await journal.load()).find(e=>e.kind==='genesis_review_authorized')?.data;
+    if(!record||record.readingId!==readingId||record.sourceRevision!==ctx.config.sourceRevision||
+      jobId!==`genesis15-operator-${readingId}`||packet.authorizationSha256!==record.authorization.sha256||packet.repairPlan)
+      throw fault('SUPERVISOR_OPERATOR_REVIEW_AUTHORIZATION_REQUIRED');
+    const raw=await readFile(await confined(ctx.stateRoot,record.authorization.path,false)),receipt=JSON.parse(raw);
+    if(digest(raw)!==record.authorization.sha256||['nativeInputSha256','nativeEventSha256','reviewBasisSha256'].some(k=>packet[k]!==receipt[k]))
+      throw fault('SUPERVISOR_OPERATOR_REVIEW_AUTHORIZATION_CHANGED');
+    if([...all.values()].some(e=>e.kind===kind&&e.jobId!==jobId))throw fault('SUPERVISOR_OPERATOR_REVIEW_ALREADY_SPENT');
+  }
   if(values.some(e=>['reserved','uncertain'].includes(e.phase)))throw fault('SUPERVISOR_CHILD_DISPATCH_UNCERTAIN');
   if(values.some(e=>e.phase==='blocked'))throw fault('SUPERVISOR_CHILD_CAPABILITY_BLOCK_RETAINED');
   const accepted=values.find(e=>e.phase==='accepted'&&(e.inputSha256===inputSha256||e.repairOfInputSha256===inputSha256));
@@ -149,7 +172,7 @@ export async function executeBoundedChild(ctx,{journal,lease,jobId,readingId,kin
     }
     return {execution:accepted,output:JSON.parse(raw),admission};
   }
-  if(values.length>=2)throw fault('SUPERVISOR_CHILD_REPAIR_EXHAUSTED');
+  if(values.length>=(kind==='genesis15-operator-review'?1:2))throw fault('SUPERVISOR_CHILD_REPAIR_EXHAUSTED');
   const remaining=deadline-clock().getTime()-5*60*1000;
   if(remaining<60000)throw fault('SUPERVISOR_CHILD_DEADLINE');
   const transport=await (dependencies.transport||verifyChildTransport)(ctx),id=randomBytes(16).toString('hex'),base=`executions/${id}`;
@@ -182,16 +205,25 @@ export async function executeBoundedChild(ctx,{journal,lease,jobId,readingId,kin
   const result=await (dependencies.execute||streamChild)(ctx.config.children.codexExecutable,
     childArguments({kind,schemaPath,outputPath,mcpNames:transport.mcpNames}),{cwd:path.dirname(outputPath),env:transport.env,input:prompt,
       timeout:Math.min(limits[kind],remaining)},{kind});
-  await durableWrite(ctx.stateRoot,`${base}/events.jsonl`,Buffer.from(privateEventLog(result.stdout||'')));
+  const eventLogBytes=Buffer.from(privateEventLog(result.stdout||''));
+  await durableWrite(ctx.stateRoot,`${base}/events.jsonl`,eventLogBytes);
+  execution.eventLog={path:`${base}/events.jsonl`,sha256:digest(eventLogBytes)};
   await durableWrite(ctx.stateRoot,`${base}/stderr.json`,jsonBytes({sha256:digest(Buffer.from(result.stderr||'')),
     bytes:Buffer.byteLength(result.stderr||''),errorCode:result.error?.code||null}));
   try {
+    let identity,identityError;try{identity=checkedThreadIdentity(result.stdout||'');}catch(e){identityError=e;}
+    if(identity) {
+      const identityBytes=jsonBytes({...identity,rawEventsSha256:digest(Buffer.from(result.stdout||''))}),identityPath=`${base}/thread-identity.json`;
+      await durableWrite(ctx.stateRoot,identityPath,identityBytes);execution.threadIdentity={path:identityPath,sha256:digest(identityBytes)};
+      execution.threadId=identity.threadId;execution.eventsSha256=digest(Buffer.from(result.stdout||''));
+    }
     const failure=authorFailure(result);
     if(result.status!==0||result.error)throw fault(result.error?.code||failure?.code||'SUPERVISOR_CHILD_FAILED');
+    if(identityError)throw identityError;
     const sourceAccessMode=ctx.config.children.sourceAccessMode||'cli_content';
     if(kind==='daily-research'&&sourceAccessMode==='bounded_https'&&!dependencies.admit)throw fault('SUPERVISOR_CHILD_SOURCE_ACCESS_UNVERIFIABLE');
     const proof=analyzeChildEvents(result.stdout,{kind,sourceAccessMode});
-    if(['independent-review','henry-editorial-repair'].includes(kind)&&authorThreadIds.includes(proof.threadId))throw fault('SUPERVISOR_CHILD_REVIEW_NOT_INDEPENDENT');
+    if(['independent-review','henry-editorial-repair','genesis15-operator-review'].includes(kind)&&authorThreadIds.includes(proof.threadId))throw fault('SUPERVISOR_CHILD_REVIEW_NOT_INDEPENDENT');
     const raw=await readFile(await confined(ctx.stateRoot,`${base}/output.json`,false));
     if(!raw.length||raw.length>2*1024*1024)throw fault('SUPERVISOR_CHILD_OUTPUT_LIMIT');
     try{assertChildPrivacy(raw.toString());}catch(e){

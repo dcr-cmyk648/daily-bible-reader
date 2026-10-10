@@ -4,6 +4,7 @@ import {copyFile, mkdir, readFile, writeFile} from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import {inspectPaths} from "./check-repository-safety.mjs";
+import {hasUnselectedCanary, prepareUnselectedCanary} from "./lib/unselected-canary.mjs";
 
 const ROOT = process.cwd();
 const SOURCE = path.join(ROOT, "dist/pages");
@@ -26,6 +27,8 @@ function validateManifest(manifest) {
 }
 
 async function main() {
+  if (process.env.DBR_RELEASE_MODE === "unselected") return prepareUnselectedCanary();
+  if (await hasUnselectedCanary()) throw new Error("Installed-iPhone acceptance is pending; selected release publication is blocked.");
   const manifestText = await readFile(path.join(SOURCE, "release.json"), "utf8");
   const manifest = validateManifest(JSON.parse(manifestText));
   const publishedPaths = [];

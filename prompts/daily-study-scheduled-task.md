@@ -17,6 +17,17 @@ non-ready service notice and report the exact daily/Henry gaps. Never clear a He
 blocker merely because devotional publication succeeded. These instructions supersede
 older language that equates fallback-backed daily readiness with overall service ready.
 
+Every wake must publish a heartbeat, including a caught-up/no-op wake. Follow
+`docs/PREPARATION_HEARTBEAT.md`: stage `preparationStatus` with `lastRunAt`, retained
+`lastSuccessAt`, the `daily` lane receipt and the safe authenticated health report's
+`serviceBuffer`. Use `prepare-service-status.mjs ... --heartbeat <private receipt>`
+at start and completion/failure. Publish status only through the existing Drive
+connector after fetching the fresh manifest, merging status without changing its
+reading pointers, exact-byte readback and authenticated bootstrap verification.
+Do not call a staged candidate delivered, clear another lane's unresolved blocker,
+or report `ready` without full devotional-plus-Henry health. Manager installs this
+contract with the accepted runtime; no email or backend timer is added.
+
 Read `docs/SERVICE_AUTHORITY.md` first. Its September 24 standing maintenance
 authorization supersedes older blanket code-delivery approval restrictions.
 Publish safe blocked/approval/resolution status to the existing private manifest

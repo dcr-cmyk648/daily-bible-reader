@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "unselected-reader-canary/v1",
+  "id": "26cd630fe1ea0afa",
+  "frontendReleaseId": "530161d86a2c1df1",
+  "builtPwaReleaseId": "e33c4ad9efa4e1d9",
+  "url": "https://dcr-cmyk648.github.io/daily-bible-reader/web/pwa-canary/canaries/26cd630fe1ea0afa/",
+  "installedPhoneAcceptance": "pending",
+  "productionHashes": {
+    "web/release.json": "d9105bf44d05c4ee59c1666dbffcb7df902e2ad52725fb7189e7d3dbf154d88b",
+    "web/releases/844ce06fb805f5f4/styles.css": "3864c7e503fe567cf05542503d2f5f7e617755baee61ede205697267bf87193d",
+    "web/releases/844ce06fb805f5f4/app.js": "fce4b156f64cdafeec76be66e196bfd74a39fc2fc3f837419609553d46ad1023",
+    "web/releases/844ce06fb805f5f4/highlights.js": "6def2a5f4ae8b5f6d1b6a422340f22afb397c47c4fbe2d931e2487ce0ef0eb58",
+    "web/pwa-canary/index.html": "b6955300c61bff72da1a116cddcc2ec6cd66fa1a56a1a4cfd16bec1da747ddd8",
+    "web/pwa-canary/config.json": "93e8269836510dd750dd12601d5242aad064d15bf781cfee25b01474066d8e14",
+    "web/pwa-canary/manifest.webmanifest": "58583877c600ccdf12e3ccf993d5e88e6a321edd329321e7057a187b966dcccc",
+    "web/pwa-canary/service-worker.js": "c901a233c2457a1a3582352b244d02435f929a4c4531ce3594267bcb90cd5ac2",
+    "web/pwa-canary/assets/apple-touch-icon-180.png": "f6503479c46d15c5b2642c50b70535eb088ae2ae6e81bc090f67965f8d481653",
+    "web/pwa-canary/assets/bible-reader-icon-192.png": "9ef4b42cffd64cdda65685e9aec0e359c2f5737ee9e9b4bdc2c1edc57070c05d",
+    "web/pwa-canary/assets/bible-reader-icon-512.png": "27e71124a81df13cc26d12d6588397d1753a2e509d3f1ef96009392a8b4d0be1",
+    "web/pwa-canary/assets/pwa-client.8fcefb5ae56b5def.js": "7da2587f1014a727aa602debbf866368004e4c8b96a6ea54610873ddb69eaccb"
+  }
+}

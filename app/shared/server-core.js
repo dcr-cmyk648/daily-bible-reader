@@ -129,14 +129,59 @@
   }
 
   function preparationServiceStatus(manifest, identity) {
-    if (!identity || identity.authorId !== "dustin") return null;
+    if (!identity || !["dustin", "shane"].includes(identity.authorId)) return null;
     const value = manifest && manifest.preparationStatus;
     if (!value || value.schemaVersion !== "preparation-status/v1" ||
         !["running", "blocked", "approval_required", "ready"].includes(value.state) ||
         !Number.isFinite(Date.parse(value.updatedAt))) return null;
     const text = (input) => typeof input === "string" && input.length <= 240 && !/[\u0000-\u001f]/.test(input) ? input : "";
-    return {schemaVersion: value.schemaVersion, state: value.state, updatedAt: value.updatedAt,
-      summary: text(value.summary), action: text(value.action)};
+    const result = {schemaVersion: value.schemaVersion, state: value.state, updatedAt: value.updatedAt};
+    if (value.blockerRequiresResolution === true) result.blockerRequiresResolution = true;
+    for (const field of ["lastRunAt", "lastSuccessAt"]) {
+      if (typeof value[field] === "string" && value[field].length <= 40 && Number.isFinite(Date.parse(value[field]))) result[field] = value[field];
+    }
+    const buffer = value.buffer;
+    const ids = buffer && buffer.readingIds;
+    const gaps = buffer && [buffer.devotionalGaps, buffer.henryGaps, buffer.fallbackReadingIds];
+    if (buffer && buffer.schemaVersion === "service-buffer/v1" &&
+        /^\d{4}-\d{2}-\d{2}$/.test(buffer.effectiveDate) &&
+        Array.isArray(ids) && ids.length <= 8 && new Set(ids).size === ids.length &&
+        ids.every(id => typeof id === "string" && READING_ID.test(id)) &&
+        gaps.every(list => Array.isArray(list) && list.length <= ids.length &&
+          new Set(list).size === list.length && list.every(id => ids.includes(id))) &&
+        typeof buffer.measurementComplete === "boolean") {
+      const dailyGap = new Set(buffer.devotionalGaps);
+      const fullGap = new Set([...buffer.devotionalGaps, ...buffer.henryGaps, ...buffer.fallbackReadingIds]);
+      const prefix = (set) => { const index = ids.findIndex(id => set.has(id)); return index < 0 ? ids.length : index; };
+      const daily = buffer.measurementComplete ? prefix(dailyGap) : 0;
+      const complete = buffer.measurementComplete ? prefix(fullGap) : 0;
+      result.buffer = {schemaVersion: buffer.schemaVersion, effectiveDate: buffer.effectiveDate,
+        targetReadings: ids.length, readingIds: ids.slice(), measurementComplete: buffer.measurementComplete,
+        status: buffer.measurementComplete && complete === ids.length ? "ready" : "not_ready",
+        devotionalConsecutiveReadings: daily, completeConsecutiveReadings: complete,
+        devotionalFutureDays: Math.max(0, daily - 1), completeFutureDays: Math.max(0, complete - 1),
+        devotionalGaps: buffer.devotionalGaps.slice(), henryGaps: buffer.henryGaps.slice(),
+        fallbackReadingIds: buffer.fallbackReadingIds.slice()};
+    }
+    const lanes = {};
+    if (value.lanes && typeof value.lanes === "object") {
+        for (const lane of ["daily", "henry_primary", "henry_recovery", "review"]) {
+          const row = value.lanes[lane];
+          if (row && typeof row.lastAttemptAt === "string" && row.lastAttemptAt.length <= 40 &&
+              Number.isFinite(Date.parse(row.lastAttemptAt)) &&
+              ["running", "success", "no_op", "blocked", "error"].includes(row.lastOutcome) &&
+              (row.lastErrorCode === "" || /^[A-Z][A-Z0-9_]{0,79}$/.test(row.lastErrorCode))) {
+            lanes[lane] = {lastAttemptAt: row.lastAttemptAt, lastOutcome: row.lastOutcome, lastErrorCode: row.lastErrorCode};
+          }
+        }
+    }
+    if (Object.values(lanes).some(row => ["blocked", "error"].includes(row.lastOutcome))) result.hasUnresolvedLaneError = true;
+    if (identity.authorId === "dustin") {
+      result.summary = text(value.summary);
+      result.action = text(value.action);
+      if (value.lanes && typeof value.lanes === "object") result.lanes = lanes;
+    }
+    return result;
   }
 
   function parseManifest(manifest) {

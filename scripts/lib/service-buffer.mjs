@@ -25,6 +25,8 @@ export function serviceBufferReport(health) {
     status: complete ? 'ready' : 'not_ready',
     effectiveDate: health.effectiveDate || null,
     targetReadings: ids.length,
+    readingIds: ids,
+    fallbackReadingIds: henry?.fallbackReadingIds || [],
     devotionalConsecutiveReadings: measured ? dailyCount : 0,
     completeConsecutiveReadings: completeCount,
     devotionalFutureDays: measured ? Math.max(0, dailyCount - 1) : 0,

@@ -1007,7 +1007,7 @@ test("content readiness requires every end-to-end study component and exposes th
   });
 
   const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
-  assert.match(source, /The first later gap is \$\{gapDescription\}/);
+  assert.match(source, /Verse-by-verse commentary missing for/);
   assert.match(source, /offlineStatus\.dataset\.state = contentCount === windowEntries\.length/);
   assert.doesNotMatch(source, /Tomorrow's full study is not yet prepared/);
   assert.match(source, /contentDiagnosticsArePrivateToOwner/);

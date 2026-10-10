@@ -3,6 +3,7 @@
 import {readFile, readdir, stat} from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+import {hasUnselectedCanary, verifyUnselectedCanary} from "./lib/unselected-canary.mjs";
 
 const ROOT = process.cwd();
 const BUILT = path.join(ROOT, "dist/pages-pwa");
@@ -22,6 +23,7 @@ async function filesUnder(directory, prefix = "") {
 }
 
 async function main() {
+  if (await hasUnselectedCanary()) return verifyUnselectedCanary();
   const files = await filesUnder(BUILT);
   for (const relative of files) {
     const [built, published] = await Promise.all([

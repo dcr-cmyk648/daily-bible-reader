@@ -2697,38 +2697,65 @@
     };
   }
 
-  function publicationReadiness(entries, schedule, preparedIds) {
+  function evaluatePreparationReadiness({entries = [], schedule = {}, preparedIds = new Set(), payloads = new Map(),
+    service = null, now = Date.now()} = {}) {
     const start = schedule.status === "pilot_complete" ? entries.length : Math.max(0, schedule.calendarDayIndex - 1);
     const horizon = entries.slice(start, start + 8);
-    const gapIndex = horizon.findIndex((entry) => !preparedIds.has(entry.readingId));
-    const count = gapIndex < 0 ? horizon.length : gapIndex;
-    return {target: horizon.length, consecutiveReady: count, publicationOnly: true,
-      nextGapEntry: gapIndex < 0 ? null : horizon[gapIndex],
-      readyThroughEntry: count ? horizon[count - 1] : null,
-      state: gapIndex < 0 ? "green" : gapIndex < 2 ? "critical" : "warning"};
+    const payloadMap = payloads instanceof Map ? payloads : new Map(Object.entries(payloads || {}));
+    const buffer = service && service.buffer;
+    const measured = Boolean(buffer && buffer.measurementComplete === true && Array.isArray(buffer.readingIds) &&
+      Array.isArray(buffer.devotionalGaps) && Array.isArray(buffer.henryGaps) && Array.isArray(buffer.fallbackReadingIds));
+    const rows = horizon.map(entry => {
+      const payload = payloadMap.get(entry.readingId);
+      const report = payload ? readingPreparationReport(payload, entry) : null;
+      const measuredHere = measured && buffer.readingIds.includes(entry.readingId);
+      const devotional = preparedIds.has(entry.readingId) && (!report || report.prepared) &&
+        (!measuredHere || !buffer.devotionalGaps.includes(entry.readingId));
+      const commentary = payload && (payload.commentary || payload.metadata);
+      const henry = report ? entry.kind === "book_intro" ? bookCommentaryIsComplete(commentary, entry)
+        : hasCompleteHenryVerseLayer(payload, entry) : measuredHere && !buffer.henryGaps.includes(entry.readingId) &&
+          !buffer.fallbackReadingIds.includes(entry.readingId);
+      const knownHenryGap = measuredHere && (buffer.henryGaps.includes(entry.readingId) || buffer.fallbackReadingIds.includes(entry.readingId));
+      return {entry, report, devotional, complete: devotional && Boolean(henry) && !knownHenryGap,
+        henryMissing: devotional && Boolean(report || measuredHere) && (!henry || knownHenryGap),
+        fallback: devotional && Boolean((commentary && normalizedHenrySourceLink(commentary.henrySourceLink, entry, payload.sources)) ||
+          (measuredHere && buffer.fallbackReadingIds.includes(entry.readingId)))};
+    });
+    const prefix = (field) => { const gap = rows.findIndex(row => !row[field]); return gap < 0 ? rows.length : gap; };
+    const consecutiveReady = prefix("devotional");
+    const completeConsecutiveReadings = prefix("complete");
+    const completeFutureDays = Math.max(0, completeConsecutiveReadings - 1);
+    const heartbeatAt = service && service.lastRunAt;
+    const heartbeatTime = Date.parse(heartbeatAt);
+    const heartbeatKnown = Number.isFinite(heartbeatTime) && heartbeatTime <= now;
+    const heartbeatAgeHours = heartbeatKnown ? (now - heartbeatTime) / 3600000 : null;
+    const heartbeatStale = heartbeatKnown && heartbeatAgeHours >= 30;
+    const blocked = Boolean(service && (["blocked", "approval_required"].includes(service.state) || service.blockerRequiresResolution || service.hasUnresolvedLaneError ||
+      Object.values(service.lanes || {}).some(row => ["blocked", "error"].includes(row.lastOutcome))));
+    const fallbackCount = rows.filter(row => row.fallback).length;
+    const futureTarget = Math.max(0, rows.length - 1);
+    const red = blocked || !heartbeatKnown || heartbeatStale ||
+      consecutiveReady < Math.min(2, rows.length) || completeFutureDays < Math.min(3, futureTarget);
+    return {target: rows.length, consecutiveReady, completeConsecutiveReadings, completeFutureDays, futureTarget,
+      devotionalMissingCount: rows.filter(row => !row.devotional).length,
+      henryMissingCount: rows.filter(row => row.henryMissing).length, fallbackCount,
+      heartbeatKnown, heartbeatAt: heartbeatKnown ? heartbeatAt : null, heartbeatAgeHours, heartbeatStale, blocked,
+      nextGapEntry: rows.find(row => !row.complete)?.entry || null,
+      nextGapReport: rows.find(row => !row.complete)?.report || null,
+      readyThroughEntry: consecutiveReady ? horizon[consecutiveReady - 1] : null,
+      state: rows.length === 0 ? "green" : red ? "critical" :
+        completeFutureDays < Math.min(5, futureTarget) || fallbackCount ? "warning" : "green"};
+  }
+
+  function publicationReadiness(entries, schedule, preparedIds, service, now) {
+    return evaluatePreparationReadiness({entries, schedule, preparedIds, service, now});
   }
 
   function currentContentReadiness(payloadsInput) {
-    const entries = state.plan && Array.isArray(state.plan.entries) ? state.plan.entries : [];
-    if (!entries.length || !state.schedule) {
-      return {...evaluateContentReadiness([], payloadsInput, 0, 0), currentPlanDay: false};
-    }
-    const scheduleComplete = state.schedule.status === "pilot_complete";
-    const calendarIndex = Math.min(entries.length - 1, Math.max(0, state.schedule.calendarDayIndex - 1));
-    const startsTomorrow = state.schedule.status === "active";
-    const startIndex = scheduleComplete ? entries.length : startsTomorrow ? Math.min(entries.length, calendarIndex + 1) : 0;
-    const configuredTarget = Number.isInteger(state.config && state.config.preparedAheadDays)
-      ? Math.max(1, Math.min(7, state.config.preparedAheadDays))
-      : 3;
-    const target = scheduleComplete ? 0 : Math.min(configuredTarget, entries.length - startIndex);
-    const readiness = evaluateContentReadiness(entries, payloadsInput, startIndex, target);
-    return {
-      ...readiness,
-      currentPlanDay: state.schedule.status === "active",
-      startsTomorrow,
-      firstEntry: entries[startIndex] || null,
-      firstReport: readiness.reports[0] || null
-    };
+    return evaluatePreparationReadiness({entries: state.plan && state.plan.entries || [],
+      schedule: state.plan && state.config ? calculateSchedule(state.plan, state.config, new Date()) : {},
+      preparedIds: state.preparedReadingIds, payloads: payloadsInput || state.privatePayloadByReadingId,
+      service: state.bootstrap && state.bootstrap.preparationStatus});
   }
 
   function bootstrapRecordIsFresh(record, nowInput, credential) {
@@ -3529,53 +3556,54 @@
     return missing.length > visible.length ? `${list}, plus ${missing.length - visible.length} more` : list;
   }
 
+  function preparationNotice(readiness, service, owner) {
+    const blocked = service && (["approval_required", "blocked"].includes(service.state) || service.blockerRequiresResolution || service.hasUnresolvedLaneError ||
+      Object.values(service.lanes || {}).some(row => ["blocked", "error"].includes(row.lastOutcome)));
+    if (!blocked && (!readiness || readiness.target === 0 || readiness.state === "green")) return null;
+    const date = value => new Date(value).toLocaleDateString("en-US", {month: "short", day: "numeric", timeZone: "America/Detroit"});
+    const messages = [];
+    let title = "Study preparation needs attention";
+    if (blocked) {
+      title = service.state === "approval_required" ? "Study preparation needs approval" : "Study preparation is blocked";
+      if (owner) messages.push(service.summary, service.action,
+        service.state === "approval_required" ? "Open BibleApp Manager in Codex to review and approve the request." : "",
+        "Status recorded " + new Date(service.updatedAt).toLocaleString("en-US", {timeZone: "America/Detroit"}) + ".");
+      else messages.push("Preparation has stopped. Some upcoming study material is unavailable.");
+    }
+    if (readiness && readiness.target) {
+      if (readiness.heartbeatStale) {
+        title = "Preparation hasn't run since " + date(readiness.heartbeatAt);
+        messages.push("Preparation hasn't run since " + date(readiness.heartbeatAt) + ".");
+      } else if (!readiness.heartbeatKnown) messages.push("Preparation heartbeat is unavailable; recent service activity cannot be confirmed.");
+      if (owner) {
+        messages.push(readiness.completeFutureDays + " complete future days available (devotional plus Henry layer).");
+        if (readiness.devotionalMissingCount) messages.push(readiness.devotionalMissingCount + " of " + readiness.target + " studies unavailable in today's eight-day window.");
+        if (readiness.henryMissingCount) messages.push("Verse-by-verse commentary missing for " + readiness.henryMissingCount + " of " + readiness.target + " readings.");
+        if (readiness.fallbackCount) messages.push(readiness.fallbackCount + " readings retain full-commentary links; condensed verse layers are pending.");
+        if (readiness.heartbeatKnown) messages.push("Last run " + Math.floor(readiness.heartbeatAgeHours) + " hours ago.");
+        if (service && service.lastSuccessAt) messages.push("Last successful run " + date(service.lastSuccessAt) + ".");
+        for (const [lane, row] of Object.entries(service && service.lanes || {})) {
+          messages.push(lane.replaceAll("_", " ") + ": " + row.lastOutcome.replaceAll("_", " ") + (row.lastErrorCode ? " (" + row.lastErrorCode + ")" : "") + ".");
+        }
+      } else if (!blocked) {
+        messages.push(readiness.fallbackCount || readiness.henryMissingCount
+          ? "Some verse commentary is unavailable; full-commentary links remain where provided."
+          : "The upcoming study buffer is incomplete.");
+      }
+    }
+    return {title, message: messages.filter(Boolean).join(" "),
+      state: blocked && owner && service.state === "approval_required" ? "approval" : blocked ? "critical" : readiness.state};
+  }
+
   function renderContentReadiness(readiness) {
     const alert = element("contentReadinessAlert");
-    const service = contentDiagnosticsArePrivateToOwner() && state.bootstrap && state.bootstrap.preparationStatus;
-    if (service && ["approval_required", "blocked"].includes(service.state)) {
-      alert.hidden = false;
-      alert.dataset.state = service.state === "approval_required" ? "approval" : "critical";
-      alert.setAttribute("role", "alert");
-      element("contentReadinessTitle").textContent = service.state === "approval_required"
-        ? "Approval needed to prepare studies" : "Study preparation is blocked";
-      element("contentReadinessMessage").textContent = [service.summary, service.action,
-        service.state === "approval_required" ? "Open BibleApp Manager in Codex to review and approve the request." : "",
-        `Status recorded ${new Date(service.updatedAt).toLocaleString()}.`].filter(Boolean).join(" ");
-      return;
-    }
-    alert.setAttribute("role", "status");
-    if (!readiness || readiness.state === "green" || readiness.target === 0) {
-      alert.hidden = true;
-      return;
-    }
-    alert.hidden = false;
-    alert.dataset.state = readiness.state;
-    if (readiness.publicationOnly) {
-      element("contentReadinessTitle").textContent = "The week ahead is not fully prepared";
-      const through = readiness.readyThroughEntry && preparationDateForEntry(readiness.readyThroughEntry);
-      element("contentReadinessMessage").textContent =
-        `${readiness.consecutiveReady} of ${readiness.target} studies prepared for today through seven days ahead. ` +
-        (through ? `Prepared through ${fullCalendarDate(through)}. ` : "") +
-        `The first missing study is ${preparationEntryDescription(readiness.nextGapEntry)}.`;
-      return;
-    }
-    const firstReady = Boolean(readiness.firstReport && readiness.firstReport.prepared);
-    const firstLabel = readiness.startsTomorrow ? "Tomorrow's study" : "The first scheduled study";
-    element("contentReadinessTitle").textContent = firstReady
-      ? "The week ahead is not fully prepared"
-      : `${firstLabel} needs attention`;
-    if (contentDiagnosticsArePrivateToOwner()) {
-      const gap = readiness.nextGapEntry;
-      const gapDescription = preparationEntryDescription(gap);
-      const missing = conciseMissingComponents(readiness.nextGapReport);
-      element("contentReadinessMessage").textContent = firstReady
-        ? `${preparationEntryDescription(readiness.firstEntry)} is fully prepared. The first later gap is ${gapDescription}; it is missing ${missing}.`
-        : `${gapDescription} is missing ${missing}. Its configured ESV passage and discussion remain available while the study material is completed.`;
-    } else {
-      element("contentReadinessMessage").textContent = firstReady
-        ? `${firstLabel} is fully prepared; a later reading is still being prepared.`
-        : `${firstLabel} is still being prepared. Its configured ESV passage and discussion remain available.`;
-    }
+    const notice = preparationNotice(readiness, state.bootstrap && state.bootstrap.preparationStatus, contentDiagnosticsArePrivateToOwner());
+    alert.hidden = !notice;
+    if (!notice) return;
+    alert.dataset.state = notice.state;
+    alert.setAttribute("role", ["critical", "approval"].includes(notice.state) ? "alert" : "status");
+    element("contentReadinessTitle").textContent = notice.title;
+    element("contentReadinessMessage").textContent = notice.message;
   }
 
   function renderSelectedDay(day) {
@@ -3623,8 +3651,7 @@
 
   function renderCalendar() {
     if (!state.plan || !state.config) return;
-    renderContentReadiness(publicationReadiness(state.plan.entries,
-      calculateSchedule(state.plan, state.config, new Date()), state.preparedReadingIds));
+    renderContentReadiness(currentContentReadiness());
     if (!state.calendarMonthDate) {
       const today = datePartsInTimeZone(new Date(), state.config.timezone);
       state.calendarMonthDate = dateOnlyFromParts({...today, day: 1});
@@ -4749,7 +4776,7 @@
 
   function resumeApplication() {
     const dateChanged = refreshCurrentCalendarDate();
-    if (dateChanged && state.view === "home") renderCalendar();
+    if (state.view === "home") renderCalendar();
     resumeOnlineWork();
   }
 
@@ -5180,6 +5207,8 @@
     dateOnlyForDay,
     datePartsInTimeZone,
     evaluateContentReadiness,
+    evaluatePreparationReadiness,
+    preparationNotice,
     esvReferenceForPassage,
     esvUrlForPassages,
     extractNumberedVerseText,

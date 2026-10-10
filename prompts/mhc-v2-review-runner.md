@@ -50,3 +50,13 @@ and reasoning setting. If the host
 requires elevation, request only the returned installed local command; a denial
 is a controller block, never generation/model failure. Final output contains only
 the reading, stage, real outcome and blocker, without private content or IDs.
+# Heartbeat on every wake
+
+Follow `docs/PREPARATION_HEARTBEAT.md` and publish a `review` lane receipt even
+when no review/publication is eligible. Use the authenticated `service:live-health`
+measurement's `serviceBuffer`, stage via `prepare-service-status.mjs ... --heartbeat
+<private receipt>`, then use the existing fresh-manifest merge/exact-readback
+publication. Preserve all content pointers and unresolved other-lane blockers.
+Staging is not delivery. A fallback-backed devotional window never permits a
+`ready` status without complete Henry coverage. Manager owns runtime installation
+and saved automation activation; leave both Henry author lanes paused.

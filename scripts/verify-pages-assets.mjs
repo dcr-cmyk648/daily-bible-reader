@@ -3,6 +3,7 @@
 import {readFile} from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+import {hasUnselectedCanary, verifyUnselectedCanary} from "./lib/unselected-canary.mjs";
 
 const ROOT = process.cwd();
 const BUILT = path.join(ROOT, "dist/pages");
@@ -17,6 +18,7 @@ async function same(relativePath) {
 }
 
 async function main() {
+  if (await hasUnselectedCanary()) return verifyUnselectedCanary();
   const builtManifest = JSON.parse(await readFile(path.join(BUILT, "release.json"), "utf8"));
   const publishedManifest = JSON.parse(await readFile(path.join(PUBLISHED, "release.json"), "utf8"));
   if (JSON.stringify(builtManifest) !== JSON.stringify(publishedManifest)) {

@@ -8,11 +8,9 @@ devotional future days, and no complete future days. October 13–17 is missing;
 Genesis 14, Psalm 3/Proverbs, and Genesis 15 have fallback-only Henry layers.
 This is the latest verified checkpoint; rerun live health before any service claim.
 
-The October 10 recovery findings and staged work orders are in
-[`docs/execplans/service-recovery-2026-10-10.md`](docs/execplans/service-recovery-2026-10-10.md).
-Apply the user's standing project authority. Preserve privacy, source review,
-atomic publication, access/sharing, immutable rollback, and the release gates in
-the policy documents listed below.
+Recovery findings and work orders: [recovery plan](docs/execplans/service-recovery-2026-10-10.md).
+Apply standing authority while preserving privacy, source review, atomic publication,
+access/sharing, immutable rollback and release gates in the policies below.
 
 ## Current sequencing
 
@@ -24,13 +22,26 @@ the policy documents listed below.
 - WO-4 owns documentation hygiene. Keep both Henry author lanes paused; daily
   preparation and review/audit remain active. Leave non-BibleApp automations alone.
 
-The 2026-10-01 highlight cleanup is the latest code release in this checkout;
-see [`docs/reports/state-archive-2026-09.md`](docs/reports/state-archive-2026-09.md)
-for earlier checkpoints. Historical reliability
-evidence is retained in [`docs/reports/service-reliability-2026-09-28.md`](docs/reports/service-reliability-2026-09-28.md).
+The 2026-10-01 highlight cleanup supplies selected production assets.
+Earlier checkpoints: [archive](docs/reports/state-archive-2026-09.md).
+Historical evidence: [reliability report](docs/reports/service-reliability-2026-09-28.md).
+
+## WO-2 checked unselected canary
+
+Local candidate based on WO-1 fe7bb36: heartbeat/buffer status, shared short notices,
+Dustin operational detail and one manifest-plus-payload evaluator are implemented.
+Daily/no-op/retry receipts retain other-lane and legacy blockers; downloaded
+payloads cannot hide known manifest/Henry gaps. Fabricated October 6/8/10,
+cross-lane, CLI and cache-isolation regressions pass. Combined check: 494 tests.
+
+Canary 26cd630fe1ea0afa pins frontend 530161d86a2c1df1; selected frontend
+844ce06fb805f5f4 / PWA 8fcefb5ae56b5def remain byte-identical. See
+[contract](docs/PREPARATION_HEARTBEAT.md) and [phone/release procedure](docs/execplans/wo2-reader-canary-acceptance.md).
+Manager cleared safe source/unselected-assets push. No backend deployment,
+private publication or saved automation change. The old backend strips heartbeat:
+live delivery needs the manager's backend/phone gate and scheduled-wake readback.
 
 ## Required policy references
-
 `AGENTS.md`, `README.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md`,
 `docs/CONTENT_AND_RIGHTS.md`, `docs/EDITORIAL_STANCE.md`,
 `docs/COMMENTARY_WORKFLOW.md`, and `docs/RELEASE_STABILITY.md` remain authoritative.
@@ -38,20 +49,12 @@ Do not treat archived operational reports as current permission or readiness.
 
 ## WO-1 release candidate
 
-Prepared the approved gpt-6-luna primary (medium), retaining only gpt-5.6-luna
-(low) after candidate exhaustion. Added ChatGPT-only preflight before claim,
-deterministic provider/configuration blocks, two-checkpoint transport/ownership
-bounds, 24-hour leases, and a three-reading forward drain with independent review.
-Legacy submissions retain provenance; stale never-authored jobs record an explicit
-configuration rebind preserving old budgets/history. Immutable runtime packaging
-now verifies the status helper and its exact shared status/health dependencies.
-
-Manager verified both configured models through the new tools-disabled structured
-preflight at 14:55 UTC on October 10: CLI 0.162.1, ChatGPT-only route, both codes
-null. The earlier child approval denial is resolved under the original authority;
-the private checksum-bound receipt is preserved. Full check passes all 485 tests;
-public artifacts are unchanged. Runtime/bootstrap installation follows the push.
-Manager alone owns
-installed preflight, live health and author-lane resumption. Other automations and
-dirty canonical files remain untouched. Commands, proof and WO-2/WO-3 interfaces:
+Released fe7bb36: approved gpt-6-luna primary (medium), gpt-5.6-luna fallback
+(low), ChatGPT-only preflight, bounded retries, 24-hour leases, three-reading
+drain and independent review. Legacy provenance/budgets survive explicit rebinds;
+runtime packaging verifies exact status/health dependencies. Manager's 14:55 UTC
+preflight verified both models on CLI 0.162.1 through ChatGPT; private proof is
+preserved. WO-1 check passed 485 tests with public assets unchanged. Manager owns
+installed preflight, live health and author-lane resumption. WO-1 reports runtime
+installed at fe7bb36; verify hashes separately. Commands and WO-2/WO-3 interfaces:
 [Henry recovery release](docs/execplans/henry-recovery-release-2026-10-10.md).

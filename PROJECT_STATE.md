@@ -16,9 +16,9 @@ source review, atomic publication, access/sharing, immutable rollback and releas
 
 - WO-1 native fd5922d is installed. Both configured ChatGPT author preflights passed
   at 18:10 UTC; both Henry definitions remain ACTIVE; manager owns exact pin updates.
-- WO-3 C d1d5930 cap1 trial is installed; daily/review thin routes remain ACTIVE.
-  Both fd Henry lanes remain ACTIVE. GEN15 applied four distinct packet repairs;
-  an ineligible review action holds GEN16/D. [Publication](docs/SUPERVISOR_PUBLICATION.md), [authoring](docs/SUPERVISOR_AUTHORING.md).
+- WO-3 C 82d9867 cap1 trial is installed; daily/review thin routes remain ACTIVE.
+  Both fd Henry lanes remain ACTIVE. GEN15 has four repairs and two failed reviews;
+  mandatory direct-prose violations hold GEN16/D. [Publication](docs/SUPERVISOR_PUBLICATION.md), [authoring](docs/SUPERVISOR_AUTHORING.md).
 - WO-2 466058d remains an unselected canary; backend/installed-phone promotion
   is held. Stored preparation heartbeats reach the private store, but the old
   backend drops the new fields. Scheduled-wake readback remains required.
@@ -38,10 +38,10 @@ actual health and the original manifest-backed selector after author preflight.
 Cooldowns, current priority, owners, attempts, sessions and leases remain authoritative.
 The immutable runtime includes the existing allowlisted public backend config.
 Manager owns installation, live preflight, source pins and C/D acceptance.
-C/D check: 669 fabricated/local tests, safety, 45 schemas, builds and asset
-verification passed. Native approval, candidate and review-action admission retain
-exact native basis/budgets; verified publication success clears only its own lane.
-GEN15's original remaining action correction and GEN16/D proof are manager-owned.
+C/D check: 680 fabricated/local tests, safety, 45 schemas, builds and asset
+verification passed. Exact native mechanical rejection may request only a genuinely
+unused packet repair; exhausted review responses and all native budgets persist.
+GEN15 remaining-packet repair/new-basis review and GEN16/D proof are manager-owned.
 Interface and policy: [Henry operations](docs/HENRY_V2_OPERATIONS.md#one-reading-lifecycle).
 
 The author remains gpt-6-luna at medium; retained gpt-5.6-luna fallback is low

@@ -224,18 +224,41 @@ async function reviewScope(ctx,native,readingId,now,dependencies) {
     !(await readPrivate(ctx.projectRoot,'private-content/private-manifest.json')).readings?.[readingId])
     throw fault('SUPERVISOR_HENRY_REVIEW_SCOPE_CHANGED');
 }
-function checkedRepairCandidate(output,packet) {
+function mechanicalFindings(records,sourceAtoms,pipeline,packetForVerse=()=>null) {
+  const findings=[];
+  for(const record of records) {
+    const details={verseId:record.verse_id,packetId:packetForVerse(record.verse_id)};
+    if(pipeline.findSourceReportingPhrase(record.blurb))findings.push({code:'V2_REVIEW_SOURCE_REPORTING',...details});
+    const copy=pipeline.validateSourceCopyRisk({records:[record],sourceAtoms,requireCitedSource:true});
+    if(!copy.valid)findings.push({code:'V2_REVIEW_SOURCE_COPY',...details,findings:copy.errors});
+  }
+  return findings;
+}
+function reviewMechanicalFindings(bundle,pipeline) {
+  const packetForVerse=verseId=>bundle.source_packets.find(p=>p.requests.some(r=>r.verse_id===verseId))?.packet_id||null;
+  return bundle.results.flatMap(r=>mechanicalFindings(Object.entries(r.runtime.records).map(([verse_id,record])=>({...record,verse_id})),
+    r.runtime.source_atoms,pipeline,packetForVerse));
+}
+function checkedRepairCandidate(output,packet,pipeline) {
   if(output.verdict!=='repaired')throw fault('SUPERVISOR_HENRY_EDITORIAL_REPAIR_BLOCKED');
   let candidate,validation;
   try{candidate=JSON.parse(output.candidateJson);}catch{validation={valid:false,diagnostics:[{code:'V2_CANDIDATE_JSON_INVALID'}]};}
-  if(candidate!==undefined){assertChildPrivacy(candidate);validation=validateCandidate(candidate,packet);}
+  if(candidate!==undefined){assertChildPrivacy(candidate);validation=validateCandidate(candidate,packet);
+    // The native candidate validator remains authoritative; the native approval
+    // direct-prose gate also applies before a repaired candidate is accepted.
+    const reporting=validation.records.filter(r=>pipeline.findSourceReportingPhrase(r.blurb))
+      .map(r=>({code:'V2_REVIEW_SOURCE_REPORTING',verseId:r.verse_id,packetId:packet.packet_id}));
+    if(reporting.length)validation={...validation,valid:false,diagnostics:[...validation.diagnostics,...reporting]};
+  }
   if(!validation?.valid) {
     const error=fault('SUPERVISOR_HENRY_EDITORIAL_REPAIR_INVALID');error.diagnostics=validation?.diagnostics||[{code:'V2_CANDIDATE_JSON_INVALID'}];throw error;
   }
   return candidate;
 }
 async function boundedHenryRepair(ctx,binding,{journal,lease,job,packet,input,authorIds,deadline,clock},dependencies) {
-  const jobId=`henry-editorial-${job.input.input_sha256}-${packet.packet_id}`,baseSha256=digest(jsonBytes(input)),
+  const pipeline=binding.pipeline||await import('./mhc-pipeline.mjs'),
+    mechanical=mechanicalFindings(validateCandidate(input.original,packet).records,Object.fromEntries(packet.evidence.map(e=>[e.evidence_id,{text:e.text}])),pipeline,()=>packet.packet_id),
+    jobId=`henry-editorial-${job.input.input_sha256}-${packet.packet_id}`,baseSha256=digest(jsonBytes(input)),
     executions=async()=>[...(await journal.load()).filter(e=>e.kind==='execution_state'&&e.data.execution.jobId===jobId&&
       e.data.execution.kind==='henry-editorial-repair').reduce((m,e)=>m.set(e.data.execution.id,e.data.execution),new Map()).values()];
   const prior=await executions();
@@ -252,12 +275,12 @@ async function boundedHenryRepair(ctx,binding,{journal,lease,job,packet,input,au
   const execute=dependencies.child||executeBoundedChild,
     call=async repairPacket=>execute(ctx,{journal,lease,jobId,readingId:input.readingId,kind:'henry-editorial-repair',packet:repairPacket,
       schema:henryRepairContract(repairPacket),deadline,authorThreadIds:authorIds,
-      prompt:`Perform the one permitted native substantive editorial repair. Any repairPlan is the sole remaining transport correction of the exact failed candidate, not another native application. Compare every sentence with exact cited public-domain atoms; rewrite source-copy overlap without omitting supported meaning. Preserve scope, identities, relationships, qualifications and alternatives. Return candidateJson using the exact mhc-evidence-candidate/v2 schema; no tools, external material or publication. If no safe complete repair exists, return blocked. inputSha256 ${digest(jsonBytes(repairPacket))}.\n${JSON.stringify({...repairPacket,candidateSchema})}`},
-      {...dependencies.exec,admit:async(output)=>{await assertBasis();const candidate=checkedRepairCandidate(output,packet);
+      prompt:`Perform the one permitted native substantive editorial repair. Any repairPlan is the sole remaining transport correction of the exact failed candidate, not another native application. Code-owned original mechanical findings: ${JSON.stringify(mechanical)}. Compare every sentence with exact cited public-domain atoms; rewrite source-copy overlap without omitting supported meaning. State the source substance directly; never attribute it to Henry or introduce any source-reporting phrase. Preserve scope, identities, relationships, qualifications and alternatives. Return candidateJson using the exact mhc-evidence-candidate/v2 schema; no tools, external material or publication. If no safe complete repair exists, return blocked. inputSha256 ${digest(jsonBytes(repairPacket))}.\n${JSON.stringify({...repairPacket,candidateSchema})}`},
+      {...dependencies.exec,admit:async(output)=>{await assertBasis();const candidate=checkedRepairCandidate(output,packet,pipeline);
         return {schemaVersion:'supervisor-henry-candidate-admission/v1',nativeInputSha256:job.input.input_sha256,
           nativeEventSha256:job.previous,packetId:packet.packet_id,candidateSha256:digestObject(candidate)};}});
   const finish=async result=>{
-    await assertBasis();const candidate=checkedRepairCandidate(result.output,packet),admission=result.admission;
+    await assertBasis();const candidate=checkedRepairCandidate(result.output,packet,pipeline),admission=result.admission;
     if(admission&&(admission.schemaVersion!=='supervisor-henry-candidate-admission/v1'||admission.nativeInputSha256!==job.input.input_sha256||
       admission.nativeEventSha256!==job.previous||admission.packetId!==packet.packet_id||admission.candidateSha256!==digestObject(candidate))||
       result.execution.ordinal===2&&!admission)throw fault('SUPERVISOR_HENRY_EDITORIAL_BASIS_CHANGED');
@@ -276,7 +299,7 @@ async function boundedHenryRepair(ctx,binding,{journal,lease,job,packet,input,au
       raw=await readFile(await confined(ctx.stateRoot,`executions/${first.id}/output.json`,false));
     if(digest(originalPacket)!==baseSha256||digest(raw)!==first.output?.sha256)throw fault('SUPERVISOR_CHILD_ACCEPTED_OUTPUT_CHANGED');
     assertChildPrivacy(raw.toString());const output=JSON.parse(raw);assertSchemaValid(output,henryRepairContract(input),{label:'Retained Henry repair envelope'});
-    let rejected;try{checkedRepairCandidate(output,packet);}catch(e){if(e.code!=='SUPERVISOR_HENRY_EDITORIAL_REPAIR_INVALID')throw e;rejected=e;}
+    let rejected;try{checkedRepairCandidate(output,packet,pipeline);}catch(e){if(e.code!=='SUPERVISOR_HENRY_EDITORIAL_REPAIR_INVALID')throw e;rejected=e;}
     if(!rejected)throw fault('SUPERVISOR_HENRY_EDITORIAL_BASIS_CHANGED');
     const proof={schemaVersion:'supervisor-henry-admission-rejected/v1',executionId:first.id,inputSha256:baseSha256,
       nativeInputSha256:job.input.input_sha256,nativeEventSha256:job.previous,packetId:packet.packet_id,
@@ -325,7 +348,7 @@ export async function repairHenryWork(ctx,{journal,lease,readingId,deadline},dep
       rejectedSha256,packet,original,findings:job.state.blocker.findings||[],allowedRepairCount:1};
     assertChildPrivacy(input);
     const authorIds=await (dependencies.authorThreads||authorThreads)(binding.native,readingId),repair=await boundedHenryRepair(ctx,binding,
-      {journal,lease,job,packet,input,authorIds,deadline,clock},dependencies),candidate=checkedRepairCandidate(repair.output,packet);
+      {journal,lease,job,packet,input,authorIds,deadline,clock},dependencies),candidate=checkedRepairCandidate(repair.output,packet,binding.pipeline||await import('./mhc-pipeline.mjs'));
     const decision={schema_version:'mhc-evidence-editorial-repair/v2',input_sha256:job.input.input_sha256,rejected_sha256:rejectedSha256,
       status:'approved',reviewer:`Sol 6.1 high source-bound repair ${repair.execution.id}`,reviewed_at:clock().toISOString(),findings:repair.output.findings,candidate};
     await journal.assertLease(lease,clock());
@@ -356,18 +379,54 @@ async function checkedReviewAction(output,{packet,job,bundle,pipeline,runtimeSch
   if(output.repairPacketId!==null||!REVIEW_ASSERTIONS.every(k=>output.assertions[k]===true))invalid('V2_REVIEW_APPROVAL_INVALID');
   const corrections=new Map(output.corrections.map(c=>[c.verseId,c]));
   if(corrections.size!==output.corrections.length)invalid('V2_DUPLICATE_REVIEW_CORRECTION');
-  for(const result of structuredClone(bundle.results)) {
+  const results=structuredClone(bundle.results);
+  for(const result of results) {
     for(const [verseId,record] of Object.entries(result.runtime.records)) {
       const correction=corrections.get(verseId);
       if(correction){record.blurb=correction.replacement;corrections.delete(verseId);}
-      if(pipeline.findSourceReportingPhrase(record.blurb))invalid('V2_REVIEW_SOURCE_REPORTING',{verseId});
-      const copy=pipeline.validateSourceCopyRisk({records:[record],sourceAtoms:result.runtime.source_atoms,requireCitedSource:true});
-      if(!copy.valid)invalid('V2_REVIEW_SOURCE_COPY',{verseId,findings:copy.errors});
     }
     result.runtime.review_status='approved';
     try{assertSchemaValid(result.runtime,runtimeSchema,{label:'Native corrected runtime'});}catch{invalid('V2_REVIEW_CORRECTION_INVALID');}
   }
   if(corrections.size)invalid('V2_UNKNOWN_REVIEW_CORRECTION',{verseIds:[...corrections.keys()]});
+  const mechanical=reviewMechanicalFindings({...bundle,results},pipeline);
+  if(mechanical.length){const error=fault('SUPERVISOR_HENRY_REVIEW_ACTION_INVALID');error.diagnostics=mechanical;throw error;}
+}
+async function mechanicalHenryTriage(ctx,binding,{journal,lease,readingId,job,bundle,clock}) {
+  const pipeline=binding.pipeline||await import('./mhc-pipeline.mjs'),findings=reviewMechanicalFindings(bundle,pipeline);
+  if(!findings.length)return null;
+  const executions=[...(await journal.load()).filter(e=>e.kind==='execution_state'&&e.data.execution.readingId===readingId)
+    .reduce((m,e)=>m.set(e.data.execution.id,e.data.execution),new Map()).values()];
+  if(executions.some(e=>['reserved','uncertain'].includes(e.phase)))throw fault('SUPERVISOR_CHILD_DISPATCH_UNCERTAIN');
+  if(executions.some(e=>e.phase==='blocked'))throw fault('SUPERVISOR_CHILD_CAPABILITY_BLOCK_RETAINED');
+  const packet=bundle.source_packets.find(p=>findings.some(f=>f.packetId===p.packet_id)&&
+    !job.state.history.some(e=>e.kind==='editorial_repair'&&e.packet_id===p.packet_id));
+  // Already repaired packets remain reviewer correction tasks. Mechanical
+  // triage can never reopen their repair allowance or grant prose approval.
+  if(!packet)return null;
+  await journal.assertLease(lease,clock());
+  const current=await binding.service.buildReview(binding.native,readingId);
+  if(job.state.phase!=='review_pending'||current.job.previous!==job.previous||current.bundle.review_basis_sha256!==bundle.review_basis_sha256||
+    digest(jsonBytes(reviewMechanicalFindings(current.bundle,pipeline)))!==digest(jsonBytes(findings)))throw fault('SUPERVISOR_HENRY_REVIEW_BASIS_CHANGED');
+  const chapter=job.input.chapters.find(c=>c.batches.some(p=>p.packet_id===packet.packet_id)),lane=job.state.owners[`${chapter.book_id}.${chapter.chapter}`],
+    candidateSha256=job.state.accepted[`${packet.packet_id}:${lane}`].candidate_sha256,
+    proof={schemaVersion:'supervisor-henry-mechanical-rejection/v1',readingId,nativeInputSha256:job.input.input_sha256,
+      nativeEventSha256:job.previous,reviewBasisSha256:bundle.review_basis_sha256,packetId:packet.packet_id,candidateSha256,
+      findings,approvalGranted:false,allowedNativeRepairs:1},proofBytes=jsonBytes(proof),
+    base=`henry-mechanical/${readingId}/${job.previous}`,proofPath=`${base}/rejection.json`;
+  assertChildPrivacy(proof);await durableWrite(ctx.stateRoot,proofPath,proofBytes);
+  const decisionPath=`private-content/automation/mhc-v2/${readingId}/review.json`,
+    old=await readFile(await confined(ctx.projectRoot,decisionPath)).catch(e=>{if(e.code==='ENOENT')return null;throw e;});
+  if(old)await durableWrite(ctx.stateRoot,`${base}/previous-decision-${digest(old)}.json`,old);
+  const decision={schema_version:'mhc-evidence-review-decision/v2',reading_id:readingId,review_basis_sha256:bundle.review_basis_sha256,
+    reviewer:`Code-owned native mechanical rejection ${digest(proofBytes)}`,reviewed_at:clock().toISOString(),
+    findings:findings.map(f=>JSON.stringify(f)),status:'changes_requested',packet_id:packet.packet_id};
+  await durableWrite(ctx.projectRoot,decisionPath,jsonBytes(decision),{immutable:false});
+  const result=await binding.service.requestEditorialV2(binding.native,readingId,clock());
+  await journal.append('henry_mechanical_rejection',{readingId,packetId:packet.packet_id,candidateSha256,
+    nativeEventSha256:job.previous,reviewBasisSha256:bundle.review_basis_sha256,proof:{path:proofPath,sha256:digest(proofBytes)},
+    decisionSha256:digest(jsonBytes(decision)),approvalGranted:false},clock(),lease);
+  return result;
 }
 async function boundedHenryReview(ctx,binding,{journal,lease,readingId,deadline,job,entry,bundle,threadIds,clock},dependencies) {
   // Keep the original packet/job key byte-identical so an existing first review
@@ -381,6 +440,7 @@ async function boundedHenryReview(ctx,binding,{journal,lease,readingId,deadline,
       approvedProseCorrections:{uniqueExistingVerseIds:true,replacementLength:[20,1200],reasonMinimumLength:3,
         allRequiredAssertionsTrue:true,preserveSourceMeaningScopeAndQualification:true,noSourceReportingOrSourceCopy:true,repairPacketId:null},
       blockedWhenNeitherEligibleRepairNorSafeApprovedCorrectionsSuffice:true};
+  const mechanical=reviewMechanicalFindings(bundle,pipeline);
   assertChildPrivacy(packet);
   const executions=async()=>[...(await journal.load()).filter(e=>e.kind==='execution_state'&&e.data.execution.jobId===jobId&&e.data.execution.kind==='independent-review')
     .reduce((m,e)=>m.set(e.data.execution.id,e.data.execution),new Map()).values()],prior=await executions(),
@@ -401,7 +461,7 @@ async function boundedHenryReview(ctx,binding,{journal,lease,readingId,deadline,
     execute=dependencies.child||executeBoundedChild,
     call=async p=>{await assertBasis();return execute(ctx,{journal,lease,jobId,readingId,kind:'independent-review',packet:p,schema:independentReviewContract(p,{henryAssertions:REVIEW_ASSERTIONS}),
       deadline,authorThreadIds:[...threadIds,...(await executions()).map(e=>e.threadId).filter(Boolean)],
-      prompt:`Independently compare every requested verse and sentence with its exact cited public-domain atoms. Preserve identities, relationships, qualifications, alternatives and verse scope. Never approve merely because JSON validates. Code-owned current action policy: ${JSON.stringify(actions)}. changes_requested may name only an eligibleRepairPacketId and must have empty corrections. Never request another full repair of an already repaired packet. Approved prose corrections are permitted only if every required substantive assertion is true after those exact source-supported changes; otherwise return blocked with null repairPacketId and empty corrections. No tools or outside material. A repairPlan is only the sole remaining response/action correction against its exact saved output/diagnostics, not a new reviewer budget or native repair. Return inputSha256 ${digest(jsonBytes(p))}.\n${JSON.stringify(p)}`},
+      prompt:`Independently compare every requested verse and sentence with its exact cited public-domain atoms. Preserve identities, relationships, qualifications, alternatives and verse scope. Never approve merely because JSON validates. Code-owned current action policy: ${JSON.stringify(actions)}. Complete code-owned native mechanical findings: ${JSON.stringify(mechanical)}. Any approval must resolve every listed reporting/copy violation across all compiled verses, as well as all substantive findings; source-reporting attribution to Henry is forbidden. changes_requested may name only an eligibleRepairPacketId and must have empty corrections. Never request another full repair of an already repaired packet. Approved prose corrections are permitted only if every required substantive assertion is true after those exact source-supported changes; otherwise return blocked with null repairPacketId and empty corrections. No tools or outside material. A repairPlan is only the sole remaining response/action correction against its exact saved output/diagnostics, not a new reviewer budget or native repair. Return inputSha256 ${digest(jsonBytes(p))}.\n${JSON.stringify(p)}`},
       {...dependencies.exec,executionBasis,admit:output=>admit(output,p)});},
     finish=async result=>{await assertBasis();
       const saved=await readFile(await confined(ctx.stateRoot,`executions/${result.execution.id}/packet.json`,false)),savedPacket=JSON.parse(saved),
@@ -462,6 +522,8 @@ export async function reviewHenryWork(ctx,{journal,lease,readingId,deadline},dep
       if(event.kind==='execution_state'&&event.data.execution.kind==='henry-editorial-repair'&&
         event.data.execution.readingId===readingId&&event.data.execution.threadId)threadIds.push(event.data.execution.threadId);
     }
+    const triage=await mechanicalHenryTriage(ctx,binding,{journal,lease,readingId,job,bundle,clock});
+    if(triage)return triage;
     const review=await boundedHenryReview(ctx,binding,{journal,lease,readingId,deadline,job,entry,bundle,threadIds,clock},dependencies);
     await journal.assertLease(lease,clock());
     const base={reading_id:readingId,review_basis_sha256:bundle.review_basis_sha256,reviewer:`Sol 6.1 high independent execution ${review.execution.id}`,

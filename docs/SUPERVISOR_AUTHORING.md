@@ -79,6 +79,28 @@ response using the native diagnostic and same source/job head. No new review job
 author submission or native packet repair is granted. Changed source/head/proof,
 uncertainty, capability blocks and an unsuccessful second response stay blocked.
 
+Before dispatching Henry review, deterministic triage checks every compiled verse
+with the pinned native source-reporting and source-copy gates. Complete findings
+appear in the initial review prompt and its sole guided response correction;
+approval admission reports all remaining violations, not only the first. Repair
+candidate admission preserves `validateCandidate` and also enforces the native
+approval's direct-prose gate, so a repair cannot introduce Henry attribution.
+
+An observed mechanical violation in a genuinely unrepaired canonical packet may
+produce a code-owned native changes request under the existing native lock. Its
+immutable rejection binds the exact source/input, native head, review basis,
+candidate, packet and complete findings, preserves the prior decision bytes and
+explicitly grants no approval. Native history still limits that packet to one
+applied source-bound repair with its original two response attempts. Only an
+admitted corrected candidate that resolves the genuine violation can change the
+native basis. Both spent responses of an older exhausted review remain untouched;
+triage never retries that basis or repairs an already repaired packet. Remaining
+violations in already repaired packets require independently supported approved
+prose corrections on the new basis, or a block. Uncertain/capability-blocked
+dispatches, changed source and altered rejection proofs stop the transition.
+Native transition recovery uses its retained phase/history after interruption;
+it never repeats an already recorded changes request.
+
 When a new daily draft lacks a reviewed Henry library entry, C records
 `waiting_henry`; it does not invent a fallback. The native read-only exact-reading
 selector admits a dependency only from the same canonical journal's current EDF

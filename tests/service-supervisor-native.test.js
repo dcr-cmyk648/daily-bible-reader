@@ -1,7 +1,7 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os');
 const {writeFileSync}=require('node:fs');
 const repo=path.resolve(__dirname,'..');
-async function fixture(t,{verseCount=1,readingCount=1}={}) {
+async function fixture(t,{verseCount=1,readingCount=1,reportingVerseIds=[]}={}) {
   const [service,author,runner,henry,store,nativeStore,pipeline,rolling]=await Promise.all([
     'mhc-v2-service','mhc-v2-author-session','mhc-native-runner','service-supervisor-henry','service-supervisor-store','mhc-v2-store','mhc-pipeline','rolling-study-work-order'
   ].map(name=>import(`../scripts/lib/${name}.mjs`)));
@@ -40,7 +40,7 @@ async function fixture(t,{verseCount=1,readingCount=1}={}) {
     const file=args[args.indexOf('--output-last-message')+1];
     if(options.input?.startsWith('Availability preflight')){writeFileSync(file,JSON.stringify({ok:true}));return {status:0,stdout:'{"type":"turn.completed"}\n'};}
     assert.ok(options.input?.startsWith('Condense the supplied verified public-domain Henry source packet.'));calls++;
-    const packet=JSON.parse(options.input.split('SOURCE PACKET:\n')[1].split('\n\n')[0]),candidate={schema_version:'mhc-evidence-candidate/v2',packet_id:packet.packet_id,records:packet.requests.map(r=>({verse_id:r.verse_id,sentences:[{text:'FABRICATED: a thoughtful village helper hands out supplies, easing the hardship faced by local families.',evidence_ids:[r.evidence_ids[0]]}]}))};
+    const packet=JSON.parse(options.input.split('SOURCE PACKET:\n')[1].split('\n\n')[0]),candidate={schema_version:'mhc-evidence-candidate/v2',packet_id:packet.packet_id,records:packet.requests.map(r=>({verse_id:r.verse_id,sentences:[{text:`FABRICATED: ${reportingVerseIds.includes(r.verse_id)?'Henry says ':''}a thoughtful village helper hands out supplies, easing the hardship faced by local families.`,evidence_ids:[r.evidence_ids[0]]}]}))};
     writeFileSync(file,nativeStore.bytesFor(candidate));return {status:0,stdout:'{"type":"thread.started","thread_id":"FABRICATED-native-author"}\n{"type":"turn.completed"}\n'};
   };
   const binding={native,service,author,runner,pointer:{source_revision:'a'.repeat(40)}},deps={binding:async()=>binding,transport:async()=>({billingRoute:'FABRICATED local fixture'}),clock:()=>now,run};
@@ -431,6 +431,148 @@ for(const invalid of ['already_used','assertions','unknown','duplicate','copy','
   assert.equal(states.filter(e=>e.ordinal===1&&e.phase==='accepted').length,0);
   assert.ok(states.some(e=>e.ordinal===1&&e.phase==='failed'&&e.admissionRejected));
   assert.equal((await f.nativeStore.loadJob(f.reviewJob.directory)).state.history.filter(e=>e.kind==='editorial_repair').length,1);
+});
+async function mechanicalFixture(t,{alreadyRepaired=false,reportingVerseIds=['TST.1.1','TST.1.9'],exhausted=true}={}) {
+  const f=await fixture(t,{verseCount:9,reportingVerseIds}),[executor,contracts]=await Promise.all(['service-supervisor-exec','service-supervisor-contracts'].map(n=>import(`../scripts/lib/${n}.mjs`))),
+    options={journal:f.journal,lease:f.lease,wakeId:'d'.repeat(32),readingId:f.readingId,deadline:f.now.getTime()+90*60000},
+    dependency=await f.henry.prepareHenryDependency(f.ctx,{...options,order:f.order},f.deps);
+  await f.henry.runHenryWork(f.ctx,{...options,dailyDependency:dependency.authorization},f.deps);
+  let basis=await f.binding.service.buildReview(f.native,f.readingId);
+  if(alreadyRepaired) {
+    const packet=basis.bundle.source_packets[0],job=basis.job,key=`${packet.packet_id}:spark`,sha=job.state.accepted[key].candidate_sha256,
+      candidate=JSON.parse((await f.store.readPrivate(job.directory,`attempts/${sha}.json`)).bytes);
+    // Model a retained historical native repair that passed the native candidate
+    // validator but had not yet passed its separate approval direct-prose gate.
+    await f.nativeStore.atomicJson(job.directory,'review.json',{schema_version:'mhc-evidence-review-decision/v2',reading_id:f.readingId,
+      review_basis_sha256:basis.bundle.review_basis_sha256,reviewer:'FABRICATED historical reviewer',reviewed_at:f.now.toISOString(),
+      findings:['FABRICATED retained source request'],status:'changes_requested',packet_id:packet.packet_id});
+    await f.binding.runner.withRunnerLock(f.native,()=>f.binding.service.requestEditorialV2(f.native,f.readingId,f.now));
+    await f.nativeStore.atomicJson(job.directory,'editorial-repair.json',{schema_version:'mhc-evidence-editorial-repair/v2',input_sha256:job.input.input_sha256,
+      rejected_sha256:sha,status:'approved',reviewer:'FABRICATED historical source-bound repair',reviewed_at:f.now.toISOString(),
+      findings:['FABRICATED historical native repair'],candidate});
+    await f.binding.runner.withRunnerLock(f.native,()=>f.binding.service.editorialRepairV2(f.native,f.readingId,f.now));
+    basis=await f.binding.service.buildReview(f.native,f.readingId);
+  }
+  const packet={schemaVersion:'supervisor-henry-review-input/v1',readingId:f.readingId,reading:basis.entry,reviewBasis:basis.bundle},
+    jobId=`henry-${basis.job.input.input_sha256}-${basis.bundle.review_basis_sha256}`,schema=contracts.independentReviewContract(packet,{henryAssertions:basis.bundle.required_assertions}),
+    saved=[];
+  if(exhausted)for(let ordinal=1;ordinal<=2;ordinal++) {
+    const exec={clock:()=>f.now,transport:async()=>({env:{},mcpNames:[],proof:{billingRoute:'FABRICATED local old review'}}),
+      execute:async(_exe,args)=>{
+        await fs.writeFile(args[args.indexOf('--output-last-message')+1],f.store.jsonBytes({schemaVersion:'independent-review/v1',readingId:f.readingId,
+          inputSha256:f.store.digest(f.store.jsonBytes(packet)),verdict:'approved',assertions:Object.fromEntries(basis.bundle.required_assertions.map(k=>[k,true])),
+          findings:['FABRICATED retained mechanically rejected old response'],corrections:[],repairPacketId:null,coverageLimits:[]}));
+        return {status:0,stderr:'',stdout:`{"type":"thread.started","thread_id":"FABRICATED-old-review-${ordinal}"}\n{"type":"turn.completed"}\n`};
+      },admit:async()=>{throw f.store.fault('SUPERVISOR_HENRY_REVIEW_ACTION_INVALID');}};
+    await assert.rejects(executor.executeBoundedChild(f.ctx,{...options,jobId,kind:'independent-review',packet,schema,
+      prompt:'FABRICATED retained old-basis reviewer response'},exec),/REVIEW_ACTION_INVALID/);
+    const execution=(await f.journal.load()).findLast(e=>e.kind==='execution_state').data.execution;
+    saved.push({execution,raw:await fs.readFile(path.join(f.ctx.stateRoot,execution.output.path))});
+  }
+  return {...f,options,basis,oldJobId:jobId,saved};
+}
+test('mechanical triage rejects a genuine unrepaired packet before any reviewer dispatch without granting approval',async t=>{
+  const f=await mechanicalFixture(t,{exhausted:false});let calls=0;
+  const result=await f.henry.reviewHenryWork(f.ctx,f.options,{...f.deps,exec:{execute:async()=>{calls++;throw Error('FABRICATED forbidden reviewer');}}});
+  assert.equal(result.action,'editorial_attention');assert.equal(calls,0);
+  const job=await f.nativeStore.loadJob(f.basis.job.directory);assert.equal(job.state.total_submissions,2);assert.equal(job.state.review,null);
+  assert.equal(job.state.blocker.packet_id,f.basis.bundle.source_packets[0].packet_id);
+  assert.deepEqual(job.state.blocker.findings.map(s=>JSON.parse(s).verseId),['TST.1.1','TST.1.9']);
+  const event=(await f.journal.load()).findLast(e=>e.kind==='henry_mechanical_rejection');assert.equal(event.data.approvalGranted,false);
+  const proof=await f.store.readPrivate(f.ctx.stateRoot,event.data.proof.path);assert.equal(proof.nativeEventSha256,f.basis.job.previous);
+  assert.equal(proof.reviewBasisSha256,f.basis.bundle.review_basis_sha256);assert.equal(proof.approvalGranted,false);
+});
+test('exhausted old reviews permit only a genuine remaining packet repair then a materially new source-bound review basis',async t=>{
+  const f=await mechanicalFixture(t,{alreadyRepaired:true}),target=f.basis.bundle.source_packets[1],oldCandidateSha=f.basis.job.state.accepted[`${target.packet_id}:spark`].candidate_sha256,
+    oldCandidate=await fs.readFile(path.join(f.basis.job.directory,`attempts/${oldCandidateSha}.json`));
+  let repairs=0,reviews=0;
+  const exec={clock:()=>f.now,transport:async()=>({env:{},mcpNames:[],proof:{billingRoute:'FABRICATED local mechanical recovery'}}),execute:async(_exe,args,opts)=>{
+    const schema=JSON.parse(await fs.readFile(args[args.indexOf('--output-schema')+1])),p=JSON.parse(opts.input.slice(opts.input.indexOf('\n')+1)),
+      fields={schemaVersion:schema.properties.schemaVersion.const,readingId:f.readingId,inputSha256:schema.properties.inputSha256.const};let output,thread;
+    if(fields.schemaVersion==='henry-editorial-repair/v1') {
+      repairs++;thread=`FABRICATED-mechanical-repair-${repairs}`;const candidate=structuredClone(p.original);
+      assert.ok(opts.input.includes('V2_REVIEW_SOURCE_REPORTING'));assert.equal(p.packet.packet_id,target.packet_id);
+      if(repairs===2){assert.ok(p.repairPlan.findings.some(d=>d.code==='V2_REVIEW_SOURCE_REPORTING'));
+        candidate.records.forEach(r=>r.sentences[0].text='FABRICATED: steady help from the local caretaker makes the hard season easier for households short of supplies.');}
+      output={...fields,verdict:'repaired',candidateJson:JSON.stringify(candidate),findings:['FABRICATED direct source-supported reporting correction']};
+    } else {
+      reviews++;thread='FABRICATED-fresh-mechanical-review';assert.ok(opts.input.includes('Complete code-owned native mechanical findings'));
+      assert.ok(opts.input.includes('"verseId":"TST.1.1"'));assert.ok(!opts.input.includes('"verseId":"TST.1.9"'));
+      assert.notEqual(p.reviewBasis.review_basis_sha256,f.basis.bundle.review_basis_sha256);
+      output={...fields,verdict:'approved',assertions:Object.fromEntries(f.basis.bundle.required_assertions.map(k=>[k,true])),
+        findings:['FABRICATED independent comparison after meaningful native repair'],corrections:[{verseId:'TST.1.1',
+          replacement:'FABRICATED: patient assistance from the village caretaker provides needy households with necessary parcels.',reason:'FABRICATED source-supported direct prose'}],repairPacketId:null,coverageLimits:[]};
+    }
+    await fs.writeFile(args[args.indexOf('--output-last-message')+1],f.store.jsonBytes(output));
+    return {status:0,stderr:'',stdout:`{"type":"thread.started","thread_id":"${thread}"}\n{"type":"turn.completed"}\n`};
+  }};
+  assert.equal((await f.henry.reviewHenryWork(f.ctx,f.options,{...f.deps,exec})).action,'editorial_attention');assert.equal(reviews,0);
+  assert.equal((await f.henry.repairHenryWork(f.ctx,f.options,{...f.deps,exec})).action,'review_handoff');assert.equal(repairs,2);
+  const changed=await f.binding.service.buildReview(f.native,f.readingId);assert.notEqual(changed.bundle.review_basis_sha256,f.basis.bundle.review_basis_sha256);
+  assert.notEqual(changed.job.state.accepted[`${target.packet_id}:spark`].candidate_sha256,oldCandidateSha);
+  assert.deepEqual(await fs.readFile(path.join(f.basis.job.directory,`attempts/${oldCandidateSha}.json`)),oldCandidate);
+  assert.equal((await f.henry.reviewHenryWork(f.ctx,f.options,{...f.deps,exec})).action,'publish_required');assert.equal(reviews,1);
+  const job=await f.nativeStore.loadJob(f.basis.job.directory);assert.equal(job.state.total_submissions,2);assert.equal(job.state.history.filter(e=>e.kind==='editorial_repair').length,2);
+  for(const saved of f.saved)assert.deepEqual(await fs.readFile(path.join(f.ctx.stateRoot,saved.execution.output.path)),saved.raw);
+  const states=(await f.journal.load()).filter(e=>e.kind==='execution_state'&&e.data.execution.jobId===f.oldJobId);
+  assert.equal(new Set(states.map(e=>e.data.execution.id)).size,2);assert.ok(states.every(e=>e.data.execution.phase!=='accepted'));
+});
+test('review prompt and its sole guided correction expose every remaining compiled reporting violation',async t=>{
+  const f=await mechanicalFixture(t,{alreadyRepaired:true,reportingVerseIds:['TST.1.1','TST.1.2','TST.1.3'],exhausted:false});let reviews=0;
+  const exec={clock:()=>f.now,transport:async()=>({env:{},mcpNames:[],proof:{billingRoute:'FABRICATED local complete-diagnostic review'}}),execute:async(_exe,args,opts)=>{
+    reviews++;const schema=JSON.parse(await fs.readFile(args[args.indexOf('--output-schema')+1])),p=JSON.parse(opts.input.slice(opts.input.indexOf('\n')+1));
+    for(const verseId of ['TST.1.1','TST.1.2','TST.1.3'])assert.ok(opts.input.includes(`"verseId":"${verseId}"`));
+    if(reviews===2)assert.deepEqual(p.repairPlan.findings.map(d=>d.verseId),['TST.1.2','TST.1.3']);
+    const output={schemaVersion:'independent-review/v1',readingId:f.readingId,inputSha256:schema.properties.inputSha256.const,
+      verdict:'approved',assertions:Object.fromEntries(f.basis.bundle.required_assertions.map(k=>[k,true])),
+      findings:['FABRICATED complete direct source comparison'],corrections:(reviews===1?['TST.1.1']:['TST.1.1','TST.1.2','TST.1.3']).map(verseId=>({verseId,
+        replacement:'FABRICATED: patient assistance from the village caretaker provides needy households with necessary parcels.',reason:'FABRICATED supported direct prose'})),repairPacketId:null,coverageLimits:[]};
+    await fs.writeFile(args[args.indexOf('--output-last-message')+1],f.store.jsonBytes(output));
+    return {status:0,stderr:'',stdout:`{"type":"thread.started","thread_id":"FABRICATED-complete-reporting-review-${reviews}"}\n{"type":"turn.completed"}\n`};
+  }};
+  assert.equal((await f.henry.reviewHenryWork(f.ctx,f.options,{...f.deps,exec})).action,'publish_required');assert.equal(reviews,2);
+  const job=await f.nativeStore.loadJob(f.basis.job.directory);assert.equal(job.state.history.filter(e=>e.kind==='editorial_repair').length,1);
+  const states=(await f.journal.load()).filter(e=>e.kind==='execution_state'&&e.data.execution.jobId===f.oldJobId).map(e=>e.data.execution);
+  assert.ok(states.some(e=>e.ordinal===1&&e.phase==='failed'&&e.admissionRejected));assert.ok(states.some(e=>e.ordinal===2&&e.phase==='accepted'));
+});
+test('mechanical rejection resumes its durable exact proof after interruption without requesting another repair',async t=>{
+  const f=await mechanicalFixture(t),before=f.basis.job,base=path.join(f.ctx.stateRoot,`henry-mechanical/${f.readingId}/${before.previous}`),
+    binding={...f.binding,service:{...f.binding.service,requestEditorialV2:async()=>{throw Error('FABRICATED before native mechanical transition');}}};
+  await assert.rejects(f.henry.reviewHenryWork(f.ctx,f.options,{...f.deps,binding:async()=>binding}),/before native mechanical/);
+  const proof=await fs.readFile(path.join(base,'rejection.json'));
+  assert.equal((await f.henry.reviewHenryWork(f.ctx,f.options,f.deps)).action,'editorial_attention');
+  assert.deepEqual(await fs.readFile(path.join(base,'rejection.json')),proof);
+  const job=await f.nativeStore.loadJob(before.directory);assert.equal(job.state.history.filter(e=>e.kind==='review_changes_requested').length,1);
+  await assert.rejects(f.henry.reviewHenryWork(f.ctx,f.options,f.deps),/REVIEW_BASIS_CHANGED/);
+  for(const saved of f.saved)assert.deepEqual(await fs.readFile(path.join(f.ctx.stateRoot,saved.execution.output.path)),saved.raw);
+});
+test('native mechanical transition survives interruption before the supervisor journal receipt without replay',async t=>{
+  const f=await mechanicalFixture(t),before=f.basis.job;let requests=0;
+  const binding={...f.binding,service:{...f.binding.service,requestEditorialV2:async(...args)=>{
+    requests++;await f.binding.service.requestEditorialV2(...args);throw Error('FABRICATED after native mechanical transition');}}};
+  await assert.rejects(f.henry.reviewHenryWork(f.ctx,f.options,{...f.deps,binding:async()=>binding}),/after native mechanical/);
+  const job=await f.nativeStore.loadJob(before.directory);assert.equal(job.state.phase,'editorial_attention');
+  assert.equal(job.state.history.filter(e=>e.kind==='review_changes_requested').length,1);assert.equal(requests,1);
+  assert.equal((await f.binding.service.reviewWorkOrderV2(f.native,f.now)).action,'editorial_attention');
+  await assert.rejects(f.henry.reviewHenryWork(f.ctx,f.options,{...f.deps,binding:async()=>binding}));assert.equal(requests,1);
+  const proof=await f.store.readPrivate(f.ctx.stateRoot,`henry-mechanical/${f.readingId}/${before.previous}/rejection.json`);
+  assert.equal(proof.nativeEventSha256,before.previous);assert.equal(proof.approvalGranted,false);
+  for(const saved of f.saved)assert.deepEqual(await fs.readFile(path.join(f.ctx.stateRoot,saved.execution.output.path)),saved.raw);
+});
+for(const variant of ['already_used','no_violation','uncertain','capability','proof','source'])test(`mechanical triage ${variant} cannot expand an exhausted review budget or reuse a packet repair`,async t=>{
+  const f=await mechanicalFixture(t,{alreadyRepaired:variant==='already_used',reportingVerseIds:variant==='no_violation'?[]:variant==='already_used'?['TST.1.1']:['TST.1.9']});
+  let calls=0;const exec={execute:async()=>{calls++;throw Error('FABRICATED forbidden child');}},before=await f.nativeStore.loadJob(f.basis.job.directory);
+  if(['uncertain','capability'].includes(variant))await f.journal.append('execution_state',{execution:{...f.saved[1].execution,
+    phase:variant==='uncertain'?'uncertain':'blocked'}},f.now,f.lease);
+  if(variant==='source')await fs.appendFile(path.join(f.ctx.projectRoot,'private-commentary/mhc/normalized/TST/001.jsonl'),'FABRICATED changed source');
+  if(variant==='proof') {
+    const binding={...f.binding,service:{...f.binding.service,requestEditorialV2:async()=>{throw Error('FABRICATED before native rejection transition');}}};
+    await assert.rejects(f.henry.reviewHenryWork(f.ctx,f.options,{...f.deps,binding:async()=>binding,exec}),/before native rejection/);
+    await fs.appendFile(path.join(f.ctx.stateRoot,`henry-mechanical/${f.readingId}/${before.previous}/rejection.json`),' ');
+  }
+  await assert.rejects(f.henry.reviewHenryWork(f.ctx,f.options,{...f.deps,exec}));assert.equal(calls,0);
+  assert.equal((await f.nativeStore.loadJob(before.directory)).previous,before.previous);
+  for(const saved of f.saved)assert.deepEqual(await fs.readFile(path.join(f.ctx.stateRoot,saved.execution.output.path)),saved.raw);
 });
 for(const losesHealth of [false,true])test(`D adapter invokes the real native historical guard and its post-preflight health check (losesHealth=${losesHealth})`,async t=>{
   const f=await fixture(t,{readingCount:10}),now=new Date(f.now.getTime()+86400000);f.ctx.config.stage='D';

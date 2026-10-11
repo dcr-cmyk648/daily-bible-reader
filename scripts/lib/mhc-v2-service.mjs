@@ -1,4 +1,4 @@
-import {readFile,readdir,mkdir} from 'node:fs/promises';
+import {readFile,readdir,mkdir,lstat} from 'node:fs/promises';
 import path from 'node:path';
 import {isDeepStrictEqual} from 'node:util';
 import {VERSION,MODELS,MAX_SUBMISSIONS,REVIEW_ASSERTIONS,candidateSchema,passageScope,compileReading,validateCandidate,chapterRuntime,digestObject} from './mhc-v2.mjs';
@@ -16,6 +16,7 @@ import {configuredModels,jobModels} from './mhc-v2-author-config.mjs';
 import {stageAuthorBlock} from './mhc-v2-author-status.mjs';
 import {openJournal} from './service-supervisor-store.mjs';
 import {measuredBuffer} from './service-supervisor-policy.mjs';
+import {assertNativeWriterAllowed} from './mhc-native-supervisor-guard.mjs';
 
 const HOUR=60*60*1000;
 const chapterKey=c=>`${c.book_id}.${c.chapter}`;
@@ -30,11 +31,12 @@ async function historicalForwardHealth(ctx,now) {
 }
 const command=(ctx,args)=>{const argv=[process.execPath,ctx.launcher,...args];return {argv,command:process.platform==='win32'?'& '+argv.map(v=>`'${v.replaceAll("'","''")}'`).join(' '):argv.map(v=>`'${v.replaceAll("'","'\\''")}'`).join(' ')};};
 
-export async function serviceContext(ctx) {
+export async function serviceContext(ctx,{readOnly=false}={}) {
   const {plan,appConfig}=await loadHenryPlan(ctx.releaseRoot);
   const privateRoot=path.join(ctx.projectRoot,'private-content'),mhcRoot=path.join(ctx.projectRoot,'private-commentary/mhc');
   const jobRoot=await confined(ctx.projectRoot,'private-content/automation/mhc-v2');
-  await mkdir(jobRoot,{recursive:true,mode:0o700});
+  const exists=await lstat(jobRoot).catch(error=>{if(error.code==='ENOENT')return null;throw error;});
+  if(!exists&&!readOnly){await assertNativeWriterAllowed(ctx);await mkdir(jobRoot,{recursive:true,mode:0o700});}
   return {...ctx,privateRoot,mhcRoot,jobRoot,plan,appConfig};
 }
 
@@ -74,7 +76,7 @@ export async function sourceInput(ctx,entry) {
 }
 
 async function allJobs(ctx,{readOnly=false}={}) {
-  const names=await readdir(ctx.jobRoot,{withFileTypes:true}),jobs=[];
+  const names=await readdir(ctx.jobRoot,{withFileTypes:true}).catch(error=>{if(readOnly&&error.code==='ENOENT')return [];throw error;}),jobs=[];
   for(const d of names){
     if(!d.isDirectory()||d.isSymbolicLink()||!validReading(d.name))throw new Error('V2_JOB_DIRECTORY_INVALID');
     const directory=await confined(ctx.jobRoot,d.name,{missing:false});
@@ -135,6 +137,7 @@ async function selection(ctx,jobs,now) {
 // preserving the exact legacy attempt and all v2 budgets. Scheduled selection
 // never calls this function and still observes every shared cooldown.
 export async function migrateCurrentV2(ctx,readingId,attemptSha256,reason,now=new Date()) {
+  await assertNativeWriterAllowed(ctx);
   if(!validReading(readingId)||!/^[a-f0-9]{64}$/.test(String(attemptSha256))||typeof reason!=='string'||reason.trim().length<20||reason.length>1000)throw new Error('V2_MIGRATION_ARGUMENTS');
   const entry=ctx.plan.entries.find(e=>e.readingId===readingId),window=henryPriorityWindow(ctx.appConfig,now);
   const manifest=await readJson(await confined(ctx.privateRoot,'private-manifest.json',{missing:false}));
@@ -371,6 +374,7 @@ async function defaultAuthorAdmission(ctx,lane,now,health) {
 
 export async function startV2(ctx,lane,now=new Date(),{requestedReadingId,requestedDailyWorkOrder,requestedHistoricalAuthorization}={},
   {health=historicalForwardHealth}={}) {
+  await assertNativeWriterAllowed(ctx);
   if(!MODELS[lane])throw new Error('V2_MODEL_NOT_ALLOWED');
   if(requestedDailyWorkOrder!==undefined&&requestedReadingId===undefined)throw new Error('V2_DAILY_DEPENDENCY_READING_REQUIRED');
   if(requestedHistoricalAuthorization!==undefined&&(requestedReadingId===undefined||requestedDailyWorkOrder!==undefined))throw new Error('V2_HISTORICAL_ARGUMENTS_INVALID');
@@ -431,6 +435,7 @@ async function ownershipWake(ctx,job,now){
 }
 
 export async function advanceV2(ctx,readingId,sessionId,now=new Date()) {
+  await assertNativeWriterAllowed(ctx);
   let {job}=await checkedJob(ctx,readingId);
   if(job.state.phase!=='generating')return report(ctx,job,{action:job.state.phase==='review_pending'?'review_handoff':'none'});
   if(job.state.session?.id!==sessionId)throw new Error('V2_SESSION_MISMATCH');
@@ -488,6 +493,7 @@ export async function buildReview(ctx,readingId) {
 }
 
 export async function reopenReviewV2(ctx,readingId,approvedSha256,reviewer,reason,now=new Date()) {
+  await assertNativeWriterAllowed(ctx);
   if(!/^[a-f0-9]{64}$/.test(String(approvedSha256))||typeof reviewer!=='string'||reviewer.trim().length<2||reviewer.length>200||typeof reason!=='string'||reason.trim().length<20||reason.length>2000)throw new Error('V2_REOPEN_ARGUMENTS');
   let {job}=await checkedJob(ctx,readingId);
   const prior=job.state.history.filter(e=>e.kind==='approval_reopened').at(-1);
@@ -520,6 +526,7 @@ async function editorialOrder(ctx,job){
 }
 
 export async function reviewWorkOrderV2(ctx,now=new Date()) {
+  await assertNativeWriterAllowed(ctx);
   let jobs=(await allJobs(ctx)).filter(j=>j.state);const window=henryPriorityWindow(ctx.appConfig,now);
   jobs.sort((a,b)=>{const recovery=j=>['approved','publishing'].includes(j.state.phase)?0:1;const tier=j=>j.input.schedule_date>=window.today?0:1;return tier(a)-tier(b)||recovery(a)-recovery(b)||a.input.schedule_date.localeCompare(b.input.schedule_date);});
   for(let job of jobs){
@@ -545,6 +552,7 @@ export async function reviewWorkOrderV2(ctx,now=new Date()) {
 }
 
 export async function editorialRepairV2(ctx,readingId,now=new Date()) {
+  await assertNativeWriterAllowed(ctx);
   let {job}=await checkedJob(ctx,readingId);
   if(job.state.phase!=='editorial_attention')throw new Error('V2_EDITORIAL_PHASE_INVALID');
   const next=editorialTarget(job),rejected=next.hash;
@@ -567,6 +575,7 @@ export async function editorialRepairV2(ctx,readingId,now=new Date()) {
 }
 
 export async function requestEditorialV2(ctx,readingId,now=new Date()) {
+  await assertNativeWriterAllowed(ctx);
   let {job,bundle}=await buildReview(ctx,readingId);
   if(job.state.phase!=='review_pending')throw new Error('V2_REVIEW_REPAIR_PHASE_INVALID');
   const decision=await readJson(await confined(job.directory,'review.json',{missing:false}));
@@ -580,6 +589,7 @@ export async function requestEditorialV2(ctx,readingId,now=new Date()) {
 }
 
 export async function applyReviewV2(ctx,readingId,now=new Date()) {
+  await assertNativeWriterAllowed(ctx);
   let {job,bundle}=await buildReview(ctx,readingId);
   if(!['review_pending','approved','publishing'].includes(job.state.phase))throw new Error('V2_REVIEW_PHASE_INVALID');
   let approved;
@@ -621,6 +631,6 @@ export async function applyReviewV2(ctx,readingId,now=new Date()) {
 
 export async function statusV2(ctx) {
   const readings=[];
-  for(const job of await allJobs(ctx)){if(!job.state){readings.push({readingId:job.input.reading_id,state:'initializing',published:false});continue;}const value=report(ctx,job);if(value.published&&!await publicationMatches(ctx,job)){value.published=false;value.state='publication_verification_debt';}readings.push(value);}
+  for(const job of await allJobs(ctx,{readOnly:true})){if(!job.state){readings.push({readingId:job.input.reading_id,state:'initializing',published:false});continue;}const value=report(ctx,job);if(value.published&&!await publicationMatches(ctx,job)){value.published=false;value.state='publication_verification_debt';}readings.push(value);}
   return {pipeline:VERSION,readings};
 }

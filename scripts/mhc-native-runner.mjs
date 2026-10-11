@@ -6,6 +6,7 @@ import {advanceRunner,startRunner,withRunnerLock} from "./lib/mhc-native-runner.
 import {serviceContext,startV2,advanceV2,reviewWorkOrderV2,applyReviewV2,statusV2,editorialRepairV2,requestEditorialV2,migrateCurrentV2,reopenReviewV2} from "./lib/mhc-v2-service.mjs";
 import {runAuthorSession,authorPreflight} from './lib/mhc-v2-author-session.mjs';
 import {recoverClientUpgrade} from './lib/mhc-v2-client-upgrade.mjs';
+import {assertNativeWriterAllowed} from './lib/mhc-native-supervisor-guard.mjs';
 
 const json=async file=>JSON.parse(await readFile(file,"utf8"));
 let activePipeline=null;
@@ -29,9 +30,10 @@ async function legacyReview(ctx,reviewCommand,reviewArgs){
 async function main(){
   const [command,...args]=process.argv.slice(2),ctx=await context();let result;
   activePipeline=ctx.config.pipeline_version;
+  if(!['author-preflight','status'].includes(command))await assertNativeWriterAllowed(ctx);
   if(ctx.config.pipeline_version==='mhc-evidence-author/v2'){
     result=await withRunnerLock(ctx,async()=>{
-      const service=await serviceContext(ctx);
+      const service=await serviceContext(ctx,{readOnly:['author-preflight','status'].includes(command)});
       if(command==='author-preflight')return authorPreflight(service,{codexExecutable:option(args,'--codex-executable')}).then(({options,mcpNames,...receipt})=>receipt);
       if(command==='author-run')return runAuthorSession(service,{lane:option(args,'--lane'),codexExecutable:option(args,'--codex-executable'),maxReadings:args.includes('--max-readings')?Number(option(args,'--max-readings')):3});
       if(command==='recover-client-upgrade')return recoverClientUpgrade(service,option(args,'--reading'),option(args,'--prior-codex'),option(args,'--codex-executable'));
@@ -46,7 +48,7 @@ async function main(){
       if(command==='reviewer'&&args[0]==='repair')return editorialRepairV2(service,option(args,'--reading'));
       if(command==='reviewer'&&args[0]==='request-repair')return requestEditorialV2(service,option(args,'--reading'));
       throw Error('V2 supports spark, luna, advance, status, reviewer work-order/apply/repair. Legacy commands cannot mutate a v2 job.');
-    });
+    },{readOnly:['author-preflight','status'].includes(command)});
     process.stdout.write(`${JSON.stringify(result)}\n`);
     if(result.state==='blocked')process.exitCode=1;
     return;
@@ -54,10 +56,13 @@ async function main(){
   if(command==="spark"||command==="luna")result=await withRunnerLock(ctx,()=>startRunner(ctx,{lane:command}));
   else if(command==="advance")result=await withRunnerLock(ctx,()=>advanceRunner(ctx,{checkpointId:option(args,"--checkpoint")}));
   else if(command==="reviewer"){
+    const output=await withRunnerLock(ctx,async()=>{
     const [reviewCommand,...reviewArgs]=args,mapping={"work-order":[path.join(ctx.releaseRoot,"scripts/mhc-native-review-work-order.mjs")],prepare:[path.join(ctx.releaseRoot,"scripts/mhc-native-worker.mjs"),"review-prepare"],apply:[path.join(ctx.releaseRoot,"scripts/mhc-native-worker.mjs"),"review-apply"],finalize:[path.join(ctx.releaseRoot,"scripts/mhc-native-worker.mjs"),"review-finalize"]};
     if(!mapping[reviewCommand])throw Error(usage());
     const {spawnSync}=await import("node:child_process"),child=spawnSync(process.execPath,[...mapping[reviewCommand],...reviewArgs],{cwd:ctx.projectRoot,encoding:"utf8",windowsHide:true,timeout:120000,env:{...process.env,MHC_NATIVE_VERIFIED_RUNNER:"1",MHC_NATIVE_TRACKED_ROOT:ctx.releaseRoot}});
-    if(child.status!==0)throw Error(`Native reviewer command failed: ${String(child.stderr||"").trim()}`);process.stdout.write(child.stdout);return;
+    if(child.status!==0)throw Error(`Native reviewer command failed: ${String(child.stderr||"").trim()}`);return child.stdout;
+    });
+    process.stdout.write(output);return;
   } else throw Error(usage());
   process.stdout.write(`${JSON.stringify(result)}\n`);
 }

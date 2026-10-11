@@ -139,6 +139,20 @@ signal enums plus the actual exit status. It suppresses interrupted child output
 and leaves dispatch unverified; it grants no replay or budget reset. Normal
 structured controller results retain their original bytes and exit status.
 
+Independent native writers read and validate the canonical supervisor event chain
+before claiming the runner lock and again before entering its mutation callback.
+Every retained `native_source_state` transaction stays exclusive through `ready`,
+`dispatched`, `captured` and `prepared`; only its own `complete` or `failed` state
+releases it. Unknown source phases, malformed or unreadable existing journals and
+redirected paths fail closed without repair. A genuinely absent supervisor directory
+retains standalone behavior. Native author/job/review/recovery entries repeat the
+guard; inspection/preflight locks grant no mutation authority. Native status
+inspection observes partial jobs without creating missing job/event directories.
+Every legacy reviewer command holds the same runner lock through its child writes.
+The supervisor's
+source reservation must use the same native lock before recording its initial
+`ready` event, so a source transaction cannot begin beside an existing writer.
+
 The ignored `private-content/automation/mhc-v2/<readingId>/` directory contains:
 
 - immutable `input.json` with source, plan, scope and packet hashes;

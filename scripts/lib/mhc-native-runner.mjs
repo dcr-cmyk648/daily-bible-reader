@@ -5,6 +5,8 @@ import {spawnSync} from "node:child_process";
 import {assertCanonicalPath} from "./mhc-native-paths.mjs";
 import {latestDetroitSparkSlot} from "./mhc-native-state.mjs";
 import {assertSchemaValid} from "./schema-validator.mjs";
+import {assertNativeWriterAllowed} from './mhc-native-supervisor-guard.mjs';
+export {nativeSourceGuardVersion} from './mhc-native-supervisor-guard.mjs';
 
 export const CHECKPOINT_VERSION="mhc-native-runner-checkpoint/v1";
 export const MAX_VALIDATED_CHUNKS=16;
@@ -51,11 +53,15 @@ export async function readCheckpoint({checkpointRoot,checkpointId,schema,manifes
 
 export async function writeCheckpoint({file,value,schema}) {value=seal(value);assertSchemaValid(value,schema,{label:"Native runner checkpoint"});await assertCanonicalPath(path.dirname(file),file,{allowMissing:true});await atomicJson(file,value);return value;}
 
-export async function withRunnerLock({runtimeRoot},operation) {
+export async function withRunnerLock(context,operation,{readOnly=false}={}) {
+  // readOnly is for native inspection/preflight or a peer's own journal work,
+  // never authority to call a Henry mutator (those repeat the same guard).
+  const {runtimeRoot}=context;
+  if(!readOnly)await assertNativeWriterAllowed(context);
   const lock=await assertCanonicalPath(runtimeRoot,path.join(runtimeRoot,"runner.lock"),{allowMissing:true});
   const acquire=async retry=>{try{await mkdir(lock,{mode:0o700});await writeFile(path.join(lock,"owner.json"),`${JSON.stringify({pid:process.pid,created_at:new Date().toISOString()})}\n`,{mode:0o600});}catch(error){if(error.code!=="EEXIST")throw error;let active=true;try{const owner=await json(path.join(lock,"owner.json"));process.kill(owner.pid,0);}catch(check){if(check.code==="ESRCH")active=false;else if(check.code==="EPERM")active=true;else{const stat=await lstat(lock).catch(()=>null);active=Boolean(stat&&Date.now()-stat.mtimeMs<5*60*1000);}}if(active||!retry)throw Error("Another native runner operation is active.");await rm(lock,{recursive:true,force:true});return acquire(false);}};
   await acquire(true);
-  try{return await operation();}finally{await rm(lock,{recursive:true,force:true});}
+  try{if(!readOnly)await assertNativeWriterAllowed(context);return await operation();}finally{await rm(lock,{recursive:true,force:true});}
 }
 
 export async function findOpenCheckpoint({checkpointRoot,lane,schema,manifestSha256}) {
@@ -103,6 +109,7 @@ async function reconcileAssembly(context,checkpoint,checkpointFile,now){
 }
 
 export async function startRunner(context,{lane,now}) {
+  await assertNativeWriterAllowed(context);
   const fixedTime=now;context={...context,clock:()=>fixedTime??new Date()};now=context.clock();
   await assertCanonicalPath(context.projectRoot,context.checkpointRoot,{allowMissing:true});
   await mkdir(context.checkpointRoot,{recursive:true,mode:0o700});let open=await findOpenCheckpoint({checkpointRoot:context.checkpointRoot,lane,schema:context.checkpointSchema,manifestSha256:context.manifestSha256});
@@ -114,6 +121,7 @@ export async function startRunner(context,{lane,now}) {
 async function terminalize(context,checkpoint,file,now){const failed=context.workerRunner?context.workerRunner(["fail","--work-item",checkpoint.work_item_path,"--code","NATIVE_CANDIDATE_UNRESOLVED"]):runWorker({...context,args:["fail","--work-item",checkpoint.work_item_path,"--code","NATIVE_CANDIDATE_UNRESOLVED"]});if(!failed.ok)throw Error(`Native runner terminalization failed: ${failed.stderr}`);if(checkpoint.lane==="luna"){const recorded=context.attemptRecorder?context.attemptRecorder(checkpoint.reading_id):runAttemptRecord({...context,readingId:checkpoint.reading_id});if(!recorded.ok)throw Error(`Native runner failure accounting failed: ${recorded.stderr}`);}checkpoint={...checkpoint,state:"blocked",last_code:"NATIVE_CANDIDATE_UNRESOLVED"};await writeCheckpoint({file,value:checkpoint,schema:context.checkpointSchema});return publicResult({checkpoint,launcher:context.launcher,action:"none",state:"terminal_model_failure",code:"NATIVE_CANDIDATE_UNRESOLVED",now});}
 
 export async function advanceRunner(context,{checkpointId,now}) {
+  await assertNativeWriterAllowed(context);
   const liveClock=now===undefined;const fixedTime=now;context={...context,clock:()=>fixedTime??new Date()};now=context.clock();
   const loaded=await readCheckpoint({checkpointRoot:context.checkpointRoot,checkpointId,schema:context.checkpointSchema,manifestSha256:context.manifestSha256});let checkpoint=loaded.value;const file=loaded.file;
   if(checkpoint.state==="complete")return publicResult({checkpoint,launcher:context.launcher,action:"review_handoff",state:"complete_reading_unreviewed",now});

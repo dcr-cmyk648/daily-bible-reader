@@ -9,6 +9,7 @@ import {authorFailure} from './mhc-v2-model-errors.mjs';
 import {configuredModels,jobModels,authorEffort,LEGACY_MODELS} from './mhc-v2-author-config.mjs';
 import {stageAuthorBlock} from './mhc-v2-author-status.mjs';
 import {sha256} from './mhc-pipeline.mjs';
+import {assertNativeWriterAllowed} from './mhc-native-supervisor-guard.mjs';
 
 const authorActions=new Set(['author_candidate','repair_candidate']);
 export const selectionBindingVersion='requested-reading/v1';
@@ -135,6 +136,7 @@ async function performPreflight(ctx,{lane='spark',codexExecutable},dependencies=
 }
 
 export async function runAuthorSession(ctx,{lane,codexExecutable,maxReadings=3,requestedReadingId,requestedDailyWorkOrder,requestedHistoricalAuthorization},dependencies={}) {
+  await assertNativeWriterAllowed(ctx);
   if(!Number.isInteger(maxReadings)||maxReadings<1||maxReadings>3)throw Error('V2_AUTHOR_RUN_CAP_INVALID');
   if(requestedReadingId!==undefined&&maxReadings!==1)throw Error('V2_AUTHOR_REQUESTED_READING_CAP_INVALID');
   if(requestedDailyWorkOrder!==undefined&&(requestedReadingId===undefined||maxReadings!==1))throw Error('V2_AUTHOR_DAILY_WORK_ORDER_CAP_INVALID');

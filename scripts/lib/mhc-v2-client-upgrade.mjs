@@ -6,10 +6,12 @@ import {digestObject} from './mhc-v2.mjs';
 import {jobModels} from './mhc-v2-author-config.mjs';
 import {sha256} from './mhc-pipeline.mjs';
 import {modelRequiresNewClient} from './mhc-v2-model-errors.mjs';
+import {assertNativeWriterAllowed} from './mhc-native-supervisor-guard.mjs';
 
 // Explicit operator recovery of a provider-rejected, never-authored request.
 // The caller holds the installed global lock. No model call or budget reset.
 export async function recoverClientUpgrade(ctx,readingId,priorExecutable,executable,now=new Date(),run=spawnSync){
+  await assertNativeWriterAllowed(ctx);
   const root=await confined(ctx.jobRoot,readingId,{missing:false}),job=await loadJob(root),state=job.state;
   if(state?.phase!=='queued'||state.total_submissions!==0||state.pending_attempt||Object.keys(state.accepted).length||Object.keys(state.rejected).length||state.history.some(e=>e.kind==='client_upgrade_recovered'))throw Error('V2_CLIENT_RECOVERY_NOT_ELIGIBLE');
   const chapter=job.input.chapters.find(c=>c.batches.length),packet=chapter?.batches[0],lane=state.session?.lane;

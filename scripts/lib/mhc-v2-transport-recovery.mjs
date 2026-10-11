@@ -3,11 +3,13 @@ import path from 'node:path';
 import {loadJob,confined,readJson,appendState} from './mhc-v2-store.mjs';
 import {digestObject} from './mhc-v2.mjs';
 import {jobModels} from './mhc-v2-author-config.mjs';
+import {assertNativeWriterAllowed} from './mhc-native-supervisor-guard.mjs';
 
 // Explicit installer recovery under its existing global lock. This is confined
 // to a first CLI configuration rejection before any model response or candidate.
 // It never clears an attempt, extends a deadline or authorizes a model fallback.
 export async function recoverUnstartedTransport(projectRoot,readingId,revision,now=new Date()) {
+  await assertNativeWriterAllowed({projectRoot});
   if(!/^[A-Za-z0-9][A-Za-z0-9._:-]{2,159}$/.test(readingId)||!/^[a-f0-9]{40}$/.test(revision))throw Error('V2_TRANSPORT_RECOVERY_ARGUMENTS');
   const root=await confined(projectRoot,`private-content/automation/mhc-v2/${readingId}`,{missing:false}),job=await loadJob(root),state=job.state;
   if(!['generating','queued'].includes(state?.phase)||state.total_submissions!==0||state.pending_attempt||Object.keys(state.accepted).length||Object.keys(state.rejected).length||state.session?.lane!=='spark'||Object.values(state.sessions).some(s=>s.submissions!==0)||state.history.some(e=>e.kind==='unstarted_transport_recovered'))throw Error('V2_TRANSPORT_RECOVERY_NOT_UNSTARTED');

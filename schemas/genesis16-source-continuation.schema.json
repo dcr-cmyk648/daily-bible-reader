@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daily-bible-reader.local/schemas/genesis16-source-continuation.schema.json",
+  "title": "One append-only manager continuation of the same GEN16 research response",
+  "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion", "managerAccepted", "purpose", "jobId", "executionId", "threadId", "blockedEventSha256", "blockedJobEventSha256", "basisEventSha256", "inputSha256", "outputSha256", "eventLogSha256", "identitySha256", "schemaSha256", "failedReceiptSha256", "failedEventSha256", "diagnosticReceiptSha256", "diagnosticResultSha256", "reservationHashes", "priorMappingsSha256", "sourceId", "sourceWorkSha256", "originalExcerptSha256", "urlOrCitation", "originalAccessedUrl", "effectiveAccessedUrl", "identityTerms", "sourceRevision", "manifestSha256", "configSha256", "nativePins", "historicalPins", "issuedAt", "expiresAt"],
+  "properties": {
+    "schemaVersion": {"const": "genesis16-source-continuation/v1"}, "managerAccepted": {"const": true}, "purpose": {"const": "same_response_NET_locator_continuation"},
+    "jobId": {"type": "string", "pattern": "^[a-f0-9]{32}$"}, "executionId": {"type": "string", "pattern": "^[a-f0-9]{32}$"},
+    "threadId": {"type": "string", "minLength": 1, "maxLength": 160},
+    "blockedEventSha256": {"$ref": "#/$defs/hash"}, "blockedJobEventSha256": {"$ref": "#/$defs/hash"}, "basisEventSha256": {"$ref": "#/$defs/hash"},
+    "inputSha256": {"$ref": "#/$defs/hash"}, "outputSha256": {"$ref": "#/$defs/hash"}, "eventLogSha256": {"$ref": "#/$defs/hash"}, "identitySha256": {"$ref": "#/$defs/hash"}, "schemaSha256": {"$ref": "#/$defs/hash"},
+    "failedReceiptSha256": {"$ref": "#/$defs/hash"}, "failedEventSha256": {"$ref": "#/$defs/hash"}, "diagnosticReceiptSha256": {"$ref": "#/$defs/hash"}, "diagnosticResultSha256": {"$ref": "#/$defs/hash"},
+    "reservationHashes": {"type": "array", "minItems": 5, "maxItems": 5, "items": {"$ref": "#/$defs/hash"}}, "priorMappingsSha256": {"$ref": "#/$defs/hash"},
+    "sourceId": {"type": "string", "minLength": 1, "maxLength": 100}, "sourceWorkSha256": {"$ref": "#/$defs/hash"}, "originalExcerptSha256": {"$ref": "#/$defs/hash"},
+    "urlOrCitation": {"type": "string", "minLength": 1, "maxLength": 4000}, "originalAccessedUrl": {"type": "string", "minLength": 1, "maxLength": 4000}, "effectiveAccessedUrl": {"type": "string", "minLength": 1, "maxLength": 4000},
+    "identityTerms": {"type": "array", "minItems": 2, "maxItems": 8, "items": {"type": "string", "minLength": 4, "maxLength": 300}},
+    "sourceRevision": {"type": "string", "pattern": "^[a-f0-9]{40}$"}, "manifestSha256": {"$ref": "#/$defs/hash"}, "configSha256": {"$ref": "#/$defs/hash"},
+    "nativePins": {"$ref": "#/$defs/pins"}, "historicalPins": {"type": "object", "additionalProperties": false,
+      "required": ["failedSupervisor", "failedNative", "diagnosticSupervisor", "diagnosticNative"], "properties": {
+        "failedSupervisor": {"$ref": "#/$defs/pins"}, "failedNative": {"$ref": "#/$defs/pins"}, "diagnosticSupervisor": {"$ref": "#/$defs/pins"}, "diagnosticNative": {"$ref": "#/$defs/pins"}
+      }}, "issuedAt": {"type": "string", "format": "date-time"}, "expiresAt": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "pins": {"type": "object", "additionalProperties": false, "required": ["sourceRevision", "manifestSha256", "configSha256"], "properties": {
+      "sourceRevision": {"type": "string", "pattern": "^[a-f0-9]{40}$"}, "manifestSha256": {"$ref": "#/$defs/hash"}, "configSha256": {"$ref": "#/$defs/hash"}
+    }}
+  }
+}

@@ -174,6 +174,9 @@ export async function executeBoundedChild(ctx,{journal,lease,jobId,readingId,kin
         ctx.config.children.sourceAccessMode!=='code_consultation'||binding.correctedInputSha256!==inputSha256||binding.runtime.sourceRevision!==ctx.config.sourceRevision||
         binding.runtime.configSha256!==digest(jsonBytes(ctx.config))||
         binding.admission.sha256!==accepted.admission?.sha256)throw fault('SUPERVISOR_CHILD_ACCEPTED_OUTPUT_CHANGED');
+      if(binding.schemaVersion==='genesis16-source-continuation-proof/v1')
+        await (await import('./service-supervisor-source-continuation.mjs')).verifyAcceptedSourceContinuation(ctx,accepted,inputSha256);
+      else if(binding.schemaVersion!=='genesis16-research-revalidation-proof/v1')throw fault('SUPERVISOR_CHILD_ACCEPTED_OUTPUT_CHANGED');
     }
     const raw=await readFile(await confined(ctx.stateRoot,accepted.output.path,false));
     if(digest(raw)!==accepted.output.sha256)throw fault('SUPERVISOR_CHILD_ACCEPTED_OUTPUT_CHANGED');

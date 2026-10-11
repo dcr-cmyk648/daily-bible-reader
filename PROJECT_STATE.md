@@ -13,13 +13,13 @@ source review, atomic publication, access/sharing, immutable rollback and releas
 
 ## Current sequencing
 
-- WO-1 native 49e844f is installed; both actual author preflights passed.
+- WO-1 native af6a37e is installed; both actual author preflights passed.
   Historical admission correctly returned no eligible target while the buffer is incomplete.
-- WO-3 C 49e844f cap1 is installed; all four BibleApp lanes remain ACTIVE.
+- WO-3 C af6a37e cap1 is installed; all four BibleApp lanes remain ACTIVE.
   GEN15's one manager exception succeeded and its full layer is published.
-  GEN16 retains research ordinal1; its consultation failed on NET after four
-  source reservations. That receipt stays failed. Source-only diagnostics/checkpoints
-  await review and one manager request; no retry, admission or D acceptance. [Authoring](docs/SUPERVISOR_AUTHORING.md).
+  GEN16 retains ordinal1; the old consultation receipt stays failed. Its actual NET
+  diagnostic returned HTTP403, consuming reservation5 with no checkpoint.
+  Legacy NET continuation awaits reviewed source and a manager grant; no admission or D acceptance. [Authoring](docs/SUPERVISOR_AUTHORING.md).
 - WO-2 466058d remains an unselected canary; backend/installed-phone promotion
   is held. Stored preparation heartbeats reach the private store, but the old
   backend drops the new fields. Scheduled-wake readback remains required.

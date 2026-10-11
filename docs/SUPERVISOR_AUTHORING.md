@@ -302,6 +302,49 @@ Thin coordinators must never issue or run diagnostic authority. The manager owns
 its actual request after source review/release. Append-only continuation is a
 separate future contract requiring acceptance after the actual NET diagnostic.
 
+The manager accepted a narrowly bound append-only source continuation after the
+actual diagnostic returned HTTP 403 with a complete HTML body and no checkpoint.
+`continue-genesis16-sources --receipt <confined-private-receipt>` requires
+`genesis16-source-continuation/v1`, the same retained GEN16 response/ordinal1,
+original blocked execution/job and input/output/schema/thread-event hashes,
+failed receipt/event, completed diagnostic/result/attempt, all five source debts,
+an exact current journal-head basis and fresh supervisor/native runtime pins.
+Historical failed-consultation and diagnostic supervisor/native pins are separate
+bindings verified through their immutable archived manifests/configs. Current
+Stage C cap1, code consultation, quiescence, installation lease and a maximum
+15-minute grant remain mandatory. Thin coordinators never issue/run this command.
+
+Only NET's exact manager-discovered legacy Learning Environment locator is
+eligible. Its native web reference and cached crawl description are discovery
+metadata, with no origin-freshness, HTTP status or returned-byte claim. A derived
+working copy changes only NET's accessed locator before consultation; an immutable
+audit preserves original/effective record hashes, original citation/edition/work,
+exact selected-excerpt hash, identity terms and the correction reason. Raw research
+bytes never change. The old manager mappings remain hash-bound data, not reused
+authority. Anonymous bounded HTTPS must independently return the original literal
+excerpt and the accepted identity terms. No native-web text transport, source
+substitution, access-control workaround or automatic alternate locator is allowed.
+
+NET is consulted first, then all other consulted remote records and the genuine
+local Henry foundation. Every fresh logical request consumes the same job's
+remaining budget, initially 59 of 64; earlier uncheckpointed successes are fetched
+again. Rights, PDF/HTTPS limits, cumulative quotation, source identity and final
+aggregate coverage stay unchanged. Each passing checkpoint survives later failure
+but confers no reuse, admission, review or publication authority. Any failure
+permanently consumes this continuation; a reservation without a durable prepared
+event is uncertain even when orphan proof files exist. Replacement grants and
+fresh research responses cannot reset any old debt or reopen either old command.
+
+After complete aggregate validation, immutable audit/admission/proof artifacts
+and a prepared event precede the same execution's ordinal1 accepted state and
+its audited queued job state. Crash completion from the verified prepared event
+fetches nothing. Exact completed replay verifies the full history, runtime/native
+pins, all checkpoint/artifact/attempt bindings and aggregate rights/coverage; it
+cannot requeue a later job failure. Accepted child reuse performs the same proof
+verification. Ordinary subsequent ticks alone own synthesis/Henry/independent
+review/private publication. The worker does not install, issue grants or consult
+real sources; the manager owns those actions after source review and green CI.
+
 Thin prompts must finish four separate tool cells: shell handoff/dispatch, the one
 authorized native connector call, native-result receipt materialization, and then
 receipt resume. Never combine materialization and resume in a yielded cell.

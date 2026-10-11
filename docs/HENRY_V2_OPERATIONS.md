@@ -10,6 +10,34 @@ operational wording below: see
 The primary is `gpt-6-luna` at medium; retained fallback is `gpt-5.6-luna` at low.
 Activation remains pending genuine installed preflight and manager sequencing.
 
+## October 11 source repair and author holds
+
+The accepted `955b2f6` atomizer already prevents excluded Scripture from returning
+through fallback. Compilation additionally rejects a commentary atom matching
+the normalized unit's recorded excluded-Scripture hash; contaminated v3 caches
+fail closed without replacement. The October 11 approved GEN19 policy applies
+only to `LTP-0032-GEN-019` verses 15–18 and the four exact source ID/hash pairs
+`024-025:a002`–`a005`. It preserves indexed ranges, adds those atoms to the existing
+12–14 context, and displays both original source ranges as shared treatment.
+`no-distinct-comment` means no covering indexed unit, not absence of Henry's
+related discussion. Archive/atom/range drift rejects compilation. The normal
+marker, requirement, citation, copy, packet and review gates remain unchanged.
+
+An optional private `automation/mhc-author-holds.json` follows
+`schemas/mhc-author-holds.schema.json` and binds holds to the active plan and exact
+reading IDs. The manager changes this local record only under the normal native
+lock while authoring is quiescent. Invalid schema, unknown reading or wrong plan
+fails closed. Missing records mean no holds. A hold removes author eligibility;
+it grants no source/model authority, never expires automatically, and cannot
+clear forward debt or authorize historical work. Later eligible forward readings
+can proceed through normal selection and dispatch. Clearing a hold restores the
+ordinary earliest-eligible order. A genuinely eligible GEN19 still precedes PSA4.
+An active generating owner remains protected, including a held owner; another
+author cannot claim concurrent work. Held job histories, leases, attempts,
+partial inputs, cooldowns and budgets remain untouched. Global runtime, source,
+authentication and configuration failures still block normally. Review and
+publication retain their independent source-bound gates.
+
 ## What changes
 
 The author produces one representation: verse records containing sentences and

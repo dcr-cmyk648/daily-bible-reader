@@ -51,7 +51,7 @@ export function compileReading({entry,planVersion,scheduleDate,sourceManifest,ch
     const scope=passageScope(passage);
     const units=chapters.find(c=>c.bookId===passage.bookId&&c.chapter===passage.chapter)?.units;
     if(!units)throw new Error('V2_SOURCE_MISSING');
-    const spec=buildChapterJobSpec({units,sourceManifest,model:MODELS.spark,bookId:passage.bookId,chapter:passage.chapter,verseCount:passage.verseCount,verseStart:scope.start,generatedAt:'1970-01-01T00:00:00.000Z',promptVersion:VERSION});
+    const spec=buildChapterJobSpec({units,sourceManifest,readingId:entry.readingId,model:MODELS.spark,bookId:passage.bookId,chapter:passage.chapter,verseCount:passage.verseCount,verseStart:scope.start,generatedAt:'1970-01-01T00:00:00.000Z',promptVersion:VERSION});
     const evidence=spec.sourceUnits.flatMap(u=>u.source_atoms.map(a=>({evidence_id:a.source_atom_id,source_unit_id:u.source_unit_id,reference_label:u.reference_label,text:a.text,text_sha256:a.text_sha256})));
     if(new Set(evidence.map(e=>e.evidence_id)).size!==evidence.length||evidence.some(e=>!e.text||sha256(e.text)!==e.text_sha256))throw new Error('V2_SOURCE_INTEGRITY');
     const byId=new Map(evidence.map(e=>[e.evidence_id,e]));

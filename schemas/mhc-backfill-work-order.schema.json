@@ -54,6 +54,7 @@
         "horizonDate": {"type": "string", "format": "date"},
         "forwardDebtCount": {"type": "integer", "minimum": 0},
         "awaitingReviewCount": {"type": "integer", "minimum": 0},
+        "heldReadingCount": {"type": "integer", "minimum": 0},
         "historicalDebtCount": {"type": "integer", "minimum": 0},
         "nextEligibleAt": {"type": ["string", "null"], "format": "date-time"}
       },

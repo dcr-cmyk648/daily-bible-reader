@@ -3,6 +3,7 @@ import {readFile} from "node:fs/promises";
 import path from "node:path";
 import {inflateSync} from "node:zlib";
 import {validateAgainstSchema} from "./schema-validator.mjs";
+import {approvedSourceCoverage} from "./mhc-approved-source-scope.mjs";
 
 export const MHC_SOURCE = Object.freeze({
   sourceId: "crosswire-mhc-2.2",
@@ -929,29 +930,31 @@ export function validateBookIntroOutput(output, {schema, units, bookId, expected
   return {valid: errors.length === 0, errors, warnings};
 }
 
-export function chapterCoverageForVerse(units, verse) {
+export function chapterCoverageForVerse(units, verse, sourceScope) {
   const verseUnits = units.filter((unit) => unit.unit_type === "verse_range" &&
     Number.isInteger(unit.verse_start) && Number.isInteger(unit.verse_end));
   const covering = verseUnits.filter((unit) =>
     Number.isInteger(unit.verse_start) && verse >= unit.verse_start && verse <= unit.verse_end);
   if (covering.length) {
-    return {
+    return approvedSourceCoverage(units,verse,{
       coverageType: covering.some((unit) => unit.verse_start === verse && unit.verse_end === verse) ? "direct" : "range-derived",
       sourceUnits: covering
-    };
+    },sourceScope);
   }
   const distance = (unit) => verse < unit.verse_start ? unit.verse_start - verse : verse - unit.verse_end;
   const nearestDistance = verseUnits.length ? Math.min(...verseUnits.map(distance)) : null;
   const surrounding = nearestDistance === null
     ? units.filter((unit) => unit.unit_type === "chapter_intro").slice(0, 1)
     : verseUnits.filter((unit) => distance(unit) === nearestDistance);
-  return {coverageType: "no-distinct-comment", sourceUnits: surrounding};
+  return approvedSourceCoverage(units,verse,{coverageType: "no-distinct-comment", sourceUnits: surrounding},sourceScope);
 }
 
 function workerSourceUnit(unit) {
   if (!Array.isArray(unit.source_atoms) || !unit.source_atoms.length) {
     throw new Error(`${unit.source_unit_id} has no normalized commentary atoms. Re-normalize this chapter with ${NORMALIZED_SCHEMA_VERSION}.`);
   }
+  if(unit.excluded_scripture_sha256&&unit.source_atoms.some(atom=>atom.atom_type==='commentary'&&
+      sha256(atom.text)===unit.excluded_scripture_sha256))throw new Error('MHC_SCRIPTURE_ATOM_EXCLUDED');
   return {
     schema_version: unit.schema_version,
     source_id: unit.source_id,
@@ -977,6 +980,7 @@ export function buildChapterJobSpec({
   chapter,
   verseCount,
   verseStart = 1,
+  readingId,
   generatedAt,
   promptVersion = PROMPT_VERSION,
   schemaVersion = COMMENTARY_SCHEMA_VERSION
@@ -987,7 +991,8 @@ export function buildChapterJobSpec({
   const sourceHash = normalizedBatchHash(selectedUnits);
   const jobId = `${bookId}-${String(chapter).padStart(3, "0")}`;
   const requestedRecords = Array.from({length: verseCount}, (_, index) => bookId+'.'+chapter+'.'+(verseStart+index)).map((verseId, index) => {
-    const coverage = chapterCoverageForVerse(selectedUnits, verseStart + index);
+    const coverage = chapterCoverageForVerse(selectedUnits, verseStart + index,
+      {readingId,sourceArchiveSha256:sourceManifest.archive_sha256});
     if (!coverage.sourceUnits.length) {
       throw new Error(`${verseId} has no normalized source unit or deterministic surrounding treatment.`);
     }

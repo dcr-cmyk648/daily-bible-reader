@@ -30,12 +30,15 @@ remain PAUSED and unchanged. No paid API, purchase or global policy change.
 fallback links; its GEN15/GEN16 regression passed. `955b2f6` keeps excluded Scripture
 out of normalization fallback; 903 local tests, safety, CI and Pages passed.
 Existing GEN16/MAT6/GEN17/GEN18 input hashes, budgets and author provenance persist.
-GEN19's 15–18 source allowlists omit relevant adjacent commentary. Automatic
-approval review rejected the previously held scope-change delegation; authorization
-is pending through Claude manager. No retry or workaround was made. The ordinary
-PSA4 author selector stops behind GEN19; no PSA4 author job or model run occurred.
-A live `approval_required` notice now names that decision and queue blockage.
-Exact manifest readback and authenticated bootstrap confirm its delivery.
+The user's October 11 09:45 approval covers the compiler's excluded-Scripture hash
+guard and only GEN19 15–18's four verified rescue atoms from 24–25, with shared
+labels. The scoped repair preserves archived/indexed sources and original budgets.
+Validated private author holds permit later eligible forward readings without
+changing held job history; clearing a hold restores earliest-eligible priority.
+Active generating ownership and global runtime/auth failures remain barriers.
+Source bindings and immutable runtime staging require manager verification before
+installation or author launch. No GEN19/PSA4 author job is created by this repair.
+The manager reports the resolved running notice is reader-visible.
 The supervisor stays in observation/trial until its own ordinary new devotional
 is published and verified. Legacy recovery publications do not qualify it.
 Consolidation remains held; daily stays on the proven path.

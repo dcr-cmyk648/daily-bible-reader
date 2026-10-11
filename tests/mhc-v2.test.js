@@ -158,6 +158,94 @@ async function fixture(t,{verseCount=12,chapterCount=1,readingCount=1}={}) {
   return {ctx,now:new Date('2026-09-13T15:16:00Z')};
 }
 async function writeCandidate(report,mutate=x=>x) {const packet=await readJson(report.sourcePath);const value=mutate(candidate(packet));await writeFile(report.candidatePath,bytesFor(value));return value;}
+
+async function heldPairFixture(t) {
+  const f=await fixture(t,{verseCount:1,chapterCount:2,readingCount:2});
+  for(const [index,id] of ['LTP-0032-GEN-019','LTP-0033-PSA-004'].entries()){
+    f.ctx.plan.entries[index].readingId=id;
+    await atomicJson(f.ctx.privateRoot,`bridge/celebration-y3q4/${id}.metadata.json`,{readingId:id,
+      henrySourceLink:{sourceId:'fabricated-henry',title:'FABRICATED paired-source test',note:'FABRICATED FALLBACK ONLY',url:'https://example.invalid/fabricated'}});
+  }
+  await atomicJson(f.ctx.privateRoot,'private-manifest.json',{readings:Object.fromEntries(f.ctx.plan.entries.map(e=>[e.readingId,{}]))});
+  f.hold=()=>atomicJson(f.ctx.privateRoot,'automation/mhc-author-holds.json',{schema_version:'mhc-author-holds/v1',plan_version:f.ctx.plan.planVersion,
+    held_readings:{'LTP-0032-GEN-019':{reason_code:'FABRICATED_SOURCE_HOLD',held_at:f.now.toISOString()}}});
+  return f;
+}
+
+test('held GEN19 permits the later paired Psalm4 native author without the old requested-reading mismatch',async t=>{
+  const f=await heldPairFixture(t),id='LTP-0033-PSA-004';
+  const old=await selectAuthorWorkV2(f.ctx,{requestedReadingId:id,lane:'spark'},f.now);
+  assert.equal(old.code,'V2_REQUESTED_READING_MISMATCH');assert.equal(old.readingId,'LTP-0032-GEN-019');
+  await f.hold();const before=await jobBytes(f.ctx.jobRoot),holdBytes=await readFile(path.join(f.ctx.privateRoot,'automation/mhc-author-holds.json'));
+  const selected=await selectAuthorWorkV2(f.ctx,{requestedReadingId:id,lane:'spark'},f.now);
+  assert.equal(selected.action,'selected');assert.equal(selected.readingId,id);assert.deepEqual(await jobBytes(f.ctx.jobRoot),before);
+  await atomicJson(f.ctx.privateRoot,'automation/mhc-author-holds.json',{schema_version:'mhc-author-holds/v1',plan_version:f.ctx.plan.planVersion,held_readings:{}});
+  const restored=await selectAuthorWorkV2(f.ctx,{requestedReadingId:id,lane:'spark'},f.now);
+  assert.equal(restored.code,'V2_REQUESTED_READING_MISMATCH');assert.equal(restored.readingId,'LTP-0032-GEN-019');
+  assert.deepEqual(await jobBytes(f.ctx.jobRoot),before);await f.hold();
+  const model=fabricatedModelRun(),result=await runAuthorSession(f.ctx,{lane:'spark',codexExecutable:process.execPath,maxReadings:1,requestedReadingId:id},{run:model.run,clock:()=>f.now});
+  assert.equal(result.action,'review_handoff');assert.equal(result.readingId,id);assert.equal(result.readings.length,1);assert.equal(result.validatedBatches,2);
+  assert.equal(model.calls,2);assert.deepEqual(await readdir(f.ctx.jobRoot),[id]);
+  assert.deepEqual(await readFile(path.join(f.ctx.privateRoot,'automation/mhc-author-holds.json')),holdBytes);
+  const job=await loadJob(path.join(f.ctx.jobRoot,id));assert.equal(job.state.total_submissions,2);
+  assert.equal(Date.parse(job.state.session.deadline_at)-Date.parse(job.state.session.started_at),60*60*1000);
+});
+
+test('held queued GEN19 history, expired lease and original author budget stay byte-identical',async t=>{
+  const f=await heldPairFixture(t),sources=await sourceInput(f.ctx,f.ctx.plan.entries[0]);
+  let held=await createJob(f.ctx.jobRoot,sources.input,new Date(f.now.getTime()-25*60*60*1000),{spark:'gpt-5.3-codex-spark',luna:'gpt-5.6-luna'});
+  held=await appendState(held,'FABRICATED retained held queue',{...held.state,phase:'queued'},f.now);
+  await f.hold();const before=await jobBytes(held.directory);
+  const result=await startV2(f.ctx,'spark',f.now,{requestedReadingId:'LTP-0033-PSA-004'});
+  assert.equal(result.readingId,'LTP-0033-PSA-004');assert.equal(result.action,'author_candidate');assert.deepEqual(await jobBytes(held.directory),before);
+  const denied=await startV2(f.ctx,'spark',f.now,{requestedReadingId:'LTP-0032-GEN-019'});
+  assert.equal(denied.code,'V2_AUTHOR_HELD');assert.deepEqual(await jobBytes(held.directory),before);
+});
+
+test('an active held native owner still prevents a concurrent author and direct advance',async t=>{
+  const f=await heldPairFixture(t),work=await startV2(f.ctx,'spark',f.now,{requestedReadingId:'LTP-0032-GEN-019'});
+  await f.hold();const before=await jobBytes(f.ctx.jobRoot);
+  for(const result of [await startV2(f.ctx,'spark',f.now,{requestedReadingId:'LTP-0033-PSA-004'}),await startV2(f.ctx,'spark',f.now),await advanceV2(f.ctx,work.readingId,sessionId(work),f.now)])assert.equal(result.code,'V2_AUTHOR_HELD');
+  assert.deepEqual(await jobBytes(f.ctx.jobRoot),before);
+});
+
+test('a hold added between native admission and final selection cannot hide a genuine active owner',async t=>{
+  const f=await heldPairFixture(t);await startV2(f.ctx,'spark',f.now,{requestedReadingId:'LTP-0032-GEN-019'});
+  const before=await jobBytes(f.ctx.jobRoot);let changed=false;
+  // The admission context copy occurs after observing the original active owner.
+  // This fabricated side effect simulates an external atomic hold update there.
+  Object.defineProperty(f.ctx,'fabricatedHoldRace',{enumerable:true,get(){
+    changed=true;writeFileSync(path.join(f.ctx.privateRoot,'automation/mhc-author-holds.json'),bytesFor({schema_version:'mhc-author-holds/v1',plan_version:f.ctx.plan.planVersion,
+      held_readings:{'LTP-0032-GEN-019':{reason_code:'FABRICATED_HOLD_RACE',held_at:f.now.toISOString()}}}));return 'FABRICATED';
+  }});
+  const result=await startV2(f.ctx,'spark',f.now);
+  assert.equal(changed,true);assert.equal(result.code,'V2_AUTHOR_HELD');assert.equal(result.readingId,'LTP-0032-GEN-019');
+  assert.deepEqual(await jobBytes(f.ctx.jobRoot),before);assert.deepEqual(await readdir(f.ctx.jobRoot),['LTP-0032-GEN-019']);
+});
+
+test('held partial input without event history does not become a generating owner or get rebound',async t=>{
+  const f=await heldPairFixture(t),sources=await sourceInput(f.ctx,f.ctx.plan.entries[0]),directory=path.join(f.ctx.jobRoot,'LTP-0032-GEN-019');
+  await mkdir(path.join(directory,'events'),{recursive:true});await atomicJson(directory,'input.json',sources.input,{immutable:true});
+  await f.hold();const before=await jobBytes(directory);
+  const result=await startV2(f.ctx,'spark',f.now,{requestedReadingId:'LTP-0033-PSA-004'});
+  assert.equal(result.action,'author_candidate');assert.equal(result.readingId,'LTP-0033-PSA-004');assert.deepEqual(await jobBytes(directory),before);
+});
+
+test('malformed or wrong-plan author holds reject before native mutation',async t=>{
+  const f=await heldPairFixture(t),before=await jobBytes(f.ctx.jobRoot);
+  for(const holds of [{schema_version:'mhc-author-holds/v1',plan_version:'WRONG',held_readings:{}},{schema_version:'mhc-author-holds/v1',plan_version:f.ctx.plan.planVersion,held_readings:{UNKNOWN:{reason_code:'FABRICATED_HOLD',held_at:f.now.toISOString()}}},{not:'a hold'}]){
+    await atomicJson(f.ctx.privateRoot,'automation/mhc-author-holds.json',holds);
+    await assert.rejects(startV2(f.ctx,'spark',f.now,{requestedReadingId:'LTP-0033-PSA-004'}),/V2_AUTHOR_HOLDS/);
+    assert.deepEqual(await jobBytes(f.ctx.jobRoot),before);
+  }
+});
+
+test('held earlier reading cannot bypass a global ChatGPT login failure',async t=>{
+  const f=await heldPairFixture(t);await f.hold();const before=await jobBytes(f.ctx.jobRoot),model=fabricatedModelRun();
+  const run=(bin,args,options)=>args[0]==='login'?{status:0,stderr:'FABRICATED Logged in using API key'}:model.run(bin,args,options);
+  const result=await runAuthorSession(f.ctx,{lane:'spark',codexExecutable:process.execPath,maxReadings:1,requestedReadingId:'LTP-0033-PSA-004'},{run,clock:()=>f.now});
+  assert.equal(result.code,'V2_AUTHOR_MODEL_UNAVAILABLE');assert.equal(model.calls,0);assert.deepEqual(await jobBytes(f.ctx.jobRoot),before);
+});
 const sessionId=report=>report.advanceArgv.at(-1);
 function fabricatedModelRun(transform=x=>x,{model=MODELS.spark}={}){
   let calls=0;

@@ -68,7 +68,7 @@ function metadataFor(metadataByReadingId, readingId) {
   return metadataByReadingId && metadataByReadingId[readingId] || null;
 }
 
-export function selectMhcBackfillCandidate({plan, appConfig, metadataByReadingId, manifestReadingIds, pendingReadingIds = new Set(), attemptState = null, now = new Date(), cooldownMs = MHC_BACKFILL_COOLDOWN_MS}) {
+export function selectMhcBackfillCandidate({plan, appConfig, metadataByReadingId, manifestReadingIds, pendingReadingIds = new Set(), heldReadingIds = new Set(), attemptState = null, now = new Date(), cooldownMs = MHC_BACKFILL_COOLDOWN_MS}) {
   const entries = orderedEntries(plan);
   const window = henryPriorityWindow(appConfig,now);
   const manifest = manifestReadingIds instanceof Set ? manifestReadingIds : new Set(manifestReadingIds || []);
@@ -86,13 +86,13 @@ export function selectMhcBackfillCandidate({plan, appConfig, metadataByReadingId
     const attempt = state.attempts[entry.readingId] || null;
     const attemptedAtMs = attempt ? Date.parse(attempt.attemptedAt) : null;
     const nextEligibleAt = attemptedAtMs === null ? null : new Date(attemptedAtMs + cooldownMs).toISOString();
-    return [{entry, metadata, pending, attempt, attemptedAtMs, nextEligibleAt, coolingDown: attemptedAtMs !== null && currentMs < attemptedAtMs + cooldownMs}];
+    return [{entry, metadata, pending, held:heldReadingIds.has(entry.readingId), attempt, attemptedAtMs, nextEligibleAt, coolingDown: attemptedAtMs !== null && currentMs < attemptedAtMs + cooldownMs}];
   });
   const forward = candidates.filter(candidate => candidate.entry.dayIndex >= window.currentDay);
   // Forward debt keeps priority even while it is cooling down. Other eligible
   // forward dates may proceed, but historical work waits for this tier to clear.
   const tier = forward.length ? forward : candidates;
-  const eligible = tier.filter((candidate) => !candidate.coolingDown && !candidate.pending)
+  const eligible = tier.filter((candidate) => !candidate.coolingDown && !candidate.pending && !candidate.held)
     .sort((left, right) => forward.length ? left.entry.dayIndex - right.entry.dayIndex :
       (left.attemptedAtMs ?? -Infinity) - (right.attemptedAtMs ?? -Infinity) || left.entry.dayIndex - right.entry.dayIndex);
   const cooling = tier.filter((candidate) => candidate.coolingDown)
@@ -105,6 +105,7 @@ export function selectMhcBackfillCandidate({plan, appConfig, metadataByReadingId
       selectableCount: eligible.length,
       coolingDownCount: cooling.length,
       awaitingReviewCount: tier.filter(candidate=>candidate.pending).length,
+      heldReadingCount: tier.filter(candidate=>candidate.held).length,
       cooldownSeconds: cooldownMs / 1000,
       selectionPolicy: HENRY_SELECTION_POLICY,
       priorityTier: forward.length ? "forward" : "historical",

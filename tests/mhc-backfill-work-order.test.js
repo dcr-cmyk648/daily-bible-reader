@@ -32,6 +32,14 @@ const fallback = (readingId) => ({
   }
 });
 
+test('held forward debt permits later forward work but never opens historical priority',()=>{
+  const args={plan,metadataByReadingId:new Map(plan.entries.map(e=>[e.readingId,fallback(e.readingId)])),
+    manifestReadingIds:['FAB-001','FAB-002','FAB-003'],now:'2026-08-02T12:00:00Z',heldReadingIds:new Set(['FAB-002'])};
+  const later=selectMhcBackfillCandidate(args);assert.equal(later.candidate.entry.readingId,'FAB-003');assert.equal(later.queue.heldReadingCount,1);
+  const onlyHeld=selectMhcBackfillCandidate({...args,manifestReadingIds:['FAB-001','FAB-002']});
+  assert.equal(onlyHeld.candidate,null);assert.equal(onlyHeld.queue.priorityTier,'forward');assert.equal(onlyHeld.queue.forwardDebtCount,1);
+});
+
 test("the queue selects only valid published fallbacks and rotates least-recent eligible attempts", () => {
   const metadata = new Map([
     ["FAB-001", fallback("FAB-001")],

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daily-bible-reader.local/schemas/mhc-author-holds.schema.json",
+  "title": "Private plan-bound Matthew Henry author holds",
+  "type": "object",
+  "required": ["schema_version", "plan_version", "held_readings"],
+  "properties": {
+    "schema_version": {"const": "mhc-author-holds/v1"},
+    "plan_version": {"type": "string", "minLength": 1, "maxLength": 200},
+    "held_readings": {
+      "type": "object",
+      "propertyNames": {"pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,159}$"},
+      "additionalProperties": {
+        "type": "object",
+        "required": ["reason_code", "held_at"],
+        "properties": {
+          "reason_code": {"type": "string", "pattern": "^[A-Z][A-Z0-9_:-]{2,79}$"},
+          "held_at": {"type": "string", "format": "date-time"}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -256,3 +256,64 @@ test("the rolling-study CLI selects Genesis introduction after the D092-ready pr
     rmSync(root, {recursive: true, force: true});
   }
 });
+
+test("daily CLI selects missing Genesis 16 despite retained Genesis 15 Henry review debt", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "dbr-daily-henry-independent-"));
+  try {
+    for (const directory of ["scripts", "config", "fixtures", "schemas"]) {
+      cpSync(path.join(ROOT, directory), path.join(root, directory), {recursive: true});
+    }
+    const activePlan = json("config/active-calendar/celebration-bridge-long-term-active.json");
+    const privatePlan = json("fixtures/pilot-content/plan.json");
+    privatePlan.entries = activePlan.entries.slice(0, 66);
+    writeFileSync(path.join(root, "fixtures/pilot-content/plan.json"), JSON.stringify(privatePlan));
+    const artifactDirectory = path.join(root, "private-content/bridge/celebration-y3q4");
+    mkdirSync(artifactDirectory, {recursive: true});
+    const manifest = {readings: {}};
+    for (const entry of activePlan.entries.slice(63, 66)) {
+      const artifact = reviewedArtifact(entry);
+      delete artifact.metadata.verseCommentaries;
+      artifact.metadata.henrySourceLink = {
+        sourceId: "FABRICATED-henry-full-work", title: "FABRICATED full commentary",
+        url: "https://example.test/FABRICATED-complete-henry",
+        note: "FABRICATED test-only verified full-work fallback; native review is pending."
+      };
+      writeFileSync(path.join(artifactDirectory, `${entry.readingId}.metadata.json`), JSON.stringify(artifact.metadata));
+      writeFileSync(path.join(artifactDirectory, `${entry.readingId}.md`), artifact.markdownBytes);
+      manifest.readings[entry.readingId] = {};
+    }
+    writeFileSync(path.join(root, "private-content/private-manifest.json"), JSON.stringify(manifest));
+    // This retained, conspicuously fabricated debt is outside daily publication
+    // readiness. The daily CLI must neither read nor reset the Henry journal.
+    const debtDirectory = path.join(root, "private-content/automation/mhc-v2/FABRICATED-GEN-015");
+    mkdirSync(debtDirectory, {recursive: true});
+    const debtPath = path.join(debtDirectory, "state.json");
+    const debtBytes = JSON.stringify({label: "FABRICATED retained Henry review debt",
+      reading_id: "LTP-0027-GEN-015", status: "review_exhausted"});
+    writeFileSync(debtPath, debtBytes);
+    const run = () => spawnSync(process.execPath, ["scripts/rolling-study-work-order.mjs", "--today", "2026-10-10"], {
+      cwd: root, encoding: "utf8"
+    });
+    const result = run();
+    assert.equal(result.status, 0, result.stderr);
+    const order = JSON.parse(result.stdout);
+    assert.equal(order.action, "prepare_publish");
+    assert.equal(order.reading.readingId, "LTP-0028-GEN-016");
+    assert.equal(order.reading.civilDate, "2026-10-13");
+    assert.equal(order.targetDate, "2026-10-17");
+    assert.equal(order.planExtensionRequired, true);
+    assert.equal(order.guards.maxReadings, 1);
+    assert.equal(readFileSync(debtPath, "utf8"), debtBytes);
+    // Independence must not hide a stale devotional or an invalid fallback.
+    const priorPath = path.join(artifactDirectory, "LTP-0027-GEN-015.metadata.json");
+    const prior = JSON.parse(readFileSync(priorPath, "utf8"));
+    prior.henrySourceLink.url = "http://example.test/FABRICATED-invalid-fallback";
+    writeFileSync(priorPath, JSON.stringify(prior));
+    const invalid = run();
+    assert.equal(invalid.status, 0, invalid.stderr);
+    assert.equal(JSON.parse(invalid.stdout).reading.readingId, "LTP-0027-GEN-015");
+    assert.equal(readFileSync(debtPath, "utf8"), debtBytes);
+  } finally {
+    rmSync(root, {recursive: true, force: true});
+  }
+});

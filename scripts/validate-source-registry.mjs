@@ -39,6 +39,8 @@ export function validateRegistryProvenance(registry) {
     assert(!ids.has(source.sourceId), `${source.sourceId}: duplicate source ID`);
     ids.add(source.sourceId);
 
+    assert(typeof source.urlOrCitation === "string" && source.urlOrCitation.trim().length > 0,
+      `${source.sourceId}: source requires a nonempty string urlOrCitation`);
     const locator = normalizedLocator(source.urlOrCitation);
     const prior = locators.get(locator);
     assert(!prior, `${source.sourceId}: duplicates locator already used by ${prior}`);

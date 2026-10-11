@@ -28,6 +28,17 @@ test("source inventory accepts evidenced consultation without claiming inclusion
   assert.deepEqual(report.byStatus, {consulted: 1});
 });
 
+test("source provenance rejects malformed citation fields before normalization", async () => {
+  const {validateRegistryProvenance} = await validator();
+  for (const urlOrCitation of [undefined, null, 12, [], {}, "", " \t\n"]) {
+    assert.throws(() => validateRegistryProvenance({sources: [source({urlOrCitation})]}),
+      /source requires a nonempty string urlOrCitation/);
+  }
+  assert.equal(validateRegistryProvenance({sources: [source({
+    urlOrCitation: "FABRICATED Author, Fabricated book, chapter 16 (test-only bibliographic citation)."
+  })]}).total, 1);
+});
+
 test("additive registries may name prior source-set versions without repeating the current version", async () => {
   const {supportsSourceSetVersion, validateRegistryProvenance} = await validator();
   const registry = {

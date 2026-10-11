@@ -7,14 +7,15 @@ Manager's October 10 authenticated service health is **not ready**:
 Genesis 14, Genesis 15 and Psalm 3/Proverbs are published with complete layers.
 Genesis 16's research is retained but source access is unverified; Matthew 6 and Genesis 17–19 are missing. Rerun authenticated health before any readiness claim.
 
-Recovery scope and standing authority: [recovery plan](docs/execplans/service-recovery-2026-10-10.md)
-and [service authority](docs/SERVICE_AUTHORITY.md). Preserve privacy, independent
-source review, atomic publication, access/sharing, immutable rollback and release gates.
+Recovery scope and standing authority: [recovery plan](docs/execplans/service-recovery-2026-10-10.md) and [service authority](docs/SERVICE_AUTHORITY.md).
+Preserve privacy, independent source review, atomic publication, access/sharing, immutable rollback and release gates.
 
 ## Current sequencing
 
-- WO-1 native af6a37e is installed; both actual author preflights passed.
-  Historical admission correctly returned no eligible target while the buffer is incomplete.
+- Daily recovery candidate: proven `63283db` plus approved 6 Luna metadata compatibility and citation-field guard.
+  CLI regression selects missing GEN16 despite GEN15 Henry debt; invalid fallback remains stale.
+  Source validation only; no runtime install or new devotional publication.
+- WO-1 native af6a37e is installed; both actual author preflights passed. Historical admission returned no eligible target while the buffer is incomplete.
 - WO-3 C af6a37e cap1 is installed; all four BibleApp lanes remain ACTIVE.
   GEN15's one manager exception succeeded and its full layer is published.
   GEN16 retains ordinal1; the old consultation receipt stays failed. Its actual NET
@@ -46,8 +47,7 @@ verification passed. Exact native mechanical rejection may request only a genuin
 unused packet repair; exhausted review responses and all native budgets persist.
 GEN15's audited exception is consumed; no fourth review is authorized.
 Native repin and GEN16 source admission/import remain manager-owned; D is gated.
-Authors remain gpt-6-luna/medium and proven gpt-5.6-luna/low; runs are ephemeral
-and ChatGPT-only. [Henry operations](docs/HENRY_V2_OPERATIONS.md) apply; no API fallback.
+Authors remain gpt-6-luna/medium and proven gpt-5.6-luna/low; runs are ephemeral and ChatGPT-only. [Henry operations](docs/HENRY_V2_OPERATIONS.md) apply; no API fallback.
 
 ## Reader releases and durable policy
 

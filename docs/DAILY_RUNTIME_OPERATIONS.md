@@ -20,6 +20,17 @@ bootstrap or compatibility check does not prove that a devotional was published
 or that the full horizon is ready. The manager must resume the preserved work
 order through research, source review, all gates and genuine live readback.
 
+The October 10 recovery candidate retains the proven `63283db` daily path.
+Its rolling evaluator already ignores Henry job debt on a published reading
+with a verified full-commentary fallback; no supervisor or Henry writer is
+needed to select the earliest missing devotional. The narrow compatibility
+overlay adds the already approved `gpt-6-luna` runtime metadata value and guards
+the source registry's `urlOrCitation` field before locator normalization.
+Freeze and verify those two overlay files separately from the base revision;
+do not point this daily bootstrap at a newer supervisor release. Install and
+saved-prompt readback remain manager steps, and publication still requires
+the full source, private-content and exact-readback gates.
+
 Tests must distinguish historical calibration scenarios from the changing
 prepared-prefix fixture. Historical scenarios build an explicit prefix from the
 immutable active calendar; current-content tests derive the expected count from

@@ -8,7 +8,10 @@ The October 10 WO-1 configuration/retry contract supersedes historical Spark
 operational wording below: see
 [Henry recovery release](execplans/henry-recovery-release-2026-10-10.md).
 The primary is `gpt-6-luna` at medium; retained fallback is `gpt-5.6-luna` at low.
-Activation remains pending genuine installed preflight and manager sequencing.
+The manager installed accepted source `dde81ae` with 205 hash-verified files on
+October 11. Actual installed ChatGPT preflight passed for both models. GEN19 and
+the paired Psalm 4/Proverbs reading subsequently passed independent review, exact
+publication readback and complete-service health; see PROJECT_STATE and private receipts.
 
 ## October 11 source repair and author holds
 

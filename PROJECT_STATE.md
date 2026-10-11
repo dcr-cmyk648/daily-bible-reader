@@ -1,55 +1,57 @@
-# Project state — October 10, 2026
+# Project state — October 11 recovery
 
-## WO-3 devotional-priority repair — held for manager review
+## Actual service
+The five missing October 13–17 devotionals and October 18's Psalm 4/Proverbs
+reading are published with source review, independent review, exact payload and
+manifest readback, and authenticated reader readiness. Latest actual window:
+8/8 devotionals, 6/8 complete Henry layers; seven devotional future days and five
+complete future days. MAT6, GEN17 and GEN18 passed full source review and normal
+bounded repairs before publication. GEN19 and PSA4 retain verified complete-source
+fallback links; these do not count as complete verse layers.
 
-The narrow HOL/fallback patch is rebased alone onto reviewed `origin/main`
-`89e8684`. Native-source transaction commits `49343ce`/`ce06038` are excluded.
-The earliest missing devotional owns forward author/review/publication selection
-before Henry debt. A verified, actually consulted complete public-domain Henry
-page can supply the exact full-source link when the library pointer or catalog
-reading is absent. Daily approval promotion and publication recheck the admitted
-research, registry, metadata and approval hashes. No URL is invented or derived.
-Corrupt referenced library artifacts, invalid fallback, real daily blockers,
-capability failures, uncertainty, journal/native budgets and rollback gates fail closed.
+## Installed runtimes and schedules
+Daily is ACTIVE at 03:00/15:00 Eastern on proven `63283db`, with only two frozen
+compatibility overlays: approved 6 Luna metadata and the citation-field guard.
+Devotional gaps are selected independently of Henry debt. A saved prepublication
+freshness gate requires exact current protocol/hash proof and private validation
+including the new candidate. GEN19's historical layout was corrected without
+changing its semantic paragraphs or citations; the selector now reports no gap.
+Native Henry `955b2f6` has 202 hash-verified immutable files; manifest
+`905d4444a8bb54c60dd519302f079c46d3ecc85fcad4cd969193ee6199ba70a3`.
+CLI 0.162.1 and both actual ChatGPT preflights passed: primary 6 Luna/medium,
+retained 5.6 Luna/low only after eligible exhaustion. Both author tasks are ACTIVE.
+Independent review is ACTIVE on Sol 6.1/high at 08:15/20:15, with up to three
+sequential publications per bounded wake. The normal forward review queue is
+drained. The four current saved definitions match exactly; seven unrelated tasks
+remain PAUSED and unchanged. No paid API, purchase or global policy change.
 
-The exact GEN15/GEN16 regression covers eligible, exhausted, operator-review,
-review-pending, approved and publishing Henry states with a measured Henry gap.
-Post-rebase safety/full-check logs and frozen patch hashes are retained in the
-ignored WO-3 proof packet. Production private drafts are absent in this checkout.
-Push, runtime installation, source/author grants and automation switches are held.
+## Released fixes and remaining gates
+`377a802` removes devotional head-of-line blocking and admits reviewed Henry
+fallback links; its GEN15/GEN16 regression passed. `955b2f6` keeps excluded Scripture
+out of normalization fallback; 903 local tests, safety, CI and Pages passed.
+Existing GEN16/MAT6/GEN17/GEN18 input hashes, budgets and author provenance persist.
+GEN19's 15–18 source allowlists omit relevant adjacent commentary. Automatic
+approval review rejected the previously held scope-change delegation; authorization
+is pending through Claude manager. No retry or workaround was made. The ordinary
+PSA4 author selector stops behind GEN19; no PSA4 author job or model run occurred.
+A live `approval_required` notice now names that decision and queue blockage.
+Exact manifest readback and authenticated bootstrap confirm its delivery.
+The supervisor stays in observation/trial until its own ordinary new devotional
+is published and verified. Legacy recovery publications do not qualify it.
+Consolidation remains held; daily stays on the proven path.
 
-## Manager-reported recovery checkpoint
-
-The manager reports all October 13–17 devotionals actually published, exactly
-read back and reader-ready: 8/8 devotionals and 3/8 Henry layers. WO-3 did not
-independently query live health in this code task. The five proven `63283db`
-legacy-runtime publications do not qualify the new supervisor. It remains
-observation/trial until its own ordinary new devotional is published and verified
-end to end. Root has released only WO-1's one-reading GEN16 native author run;
-WO-3 has no new author/source budget or independent Henry-review assignment.
-
-## Preserved operational gates
-
-The manager owns installed pins, four-lane inventory, source transactions,
-publication and C/D acceptance. Historical failed GEN16 source grants and spent
-reservations remain unchanged; this patch mutates no legacy journal.
-Native `requested-reading/v1` preserves actual preflight, exact one-reading
-selection, same-journal ownership, sessions, submissions, leases and cooldowns.
-`historical-selection/v1` requires actual authenticated current-through-T+7
-health and an expiring in-memory selection rechecked after author preflight.
-Native authors remain approved 6 Luna/medium and controller-proven 5.6 Luna/low;
-executions are ephemeral ChatGPT-only. No paid API fallback is authorized.
-[Henry operations](docs/HENRY_V2_OPERATIONS.md), [daily runtime operations](docs/DAILY_RUNTIME_OPERATIONS.md)
-and [supervisor authoring](docs/SUPERVISOR_AUTHORING.md) retain detailed contracts.
-
-## Reader releases and durable policy
-
+## Reader and next verification
 Selected frontend `844ce06fb805f5f4` / PWA `8fcefb5ae56b5def` remain unchanged.
-WO-2 canary `26cd630fe1ea0afa` pins frontend `530161d86a2c1df1`; installed-phone
-and backend promotion remain held under the [release gate](docs/execplans/wo2-reader-canary-acceptance.md).
-WO-4 owns broader documentation hygiene. Non-BibleApp automations are untouched.
-[Recovery](docs/execplans/service-recovery-2026-10-10.md) and [service authority](docs/SERVICE_AUTHORITY.md)
-preserve privacy, independent review, exact publication readback and immutable rollback.
-`AGENTS.md`, `README.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md`,
-`docs/CONTENT_AND_RIGHTS.md`, `docs/EDITORIAL_STANCE.md`,
-`docs/COMMENTARY_WORKFLOW.md` and `docs/RELEASE_STABILITY.md` are authoritative.
+WO-2 canary `26cd630fe1ea0afa` remains unpromoted. Matching backend
+`5d9dd7e6b06df851` is locally ready; cloud staging needs the existing Google session.
+Version-33 deployment history and prior credential paths were checked. One exact
+sign-in question is routed through Claude manager; the combined installed-iPhone
+check waits for backend staging. Old bootstrap delivers the approval notice but
+still strips heartbeat fields. Immutable version-23 USER_ACCESSING rollback stays.
+The existing 03:45 Eastern one-shot will verify the actual next 03:00 daily run
+and fresh health, then pause. That scheduled run has not yet been observed.
+Re-read the canonical private Claude manager inbox before every major step/check-in.
+Ignored recovery/publication receipts retain exact hashes, current buffer and pins.
+[Recovery](docs/execplans/service-recovery-2026-10-10.md), [authority](docs/SERVICE_AUTHORITY.md),
+[Henry](docs/HENRY_V2_OPERATIONS.md), [daily](docs/DAILY_RUNTIME_OPERATIONS.md),
+[release gates](docs/RELEASE_STABILITY.md), and AGENTS/README/security/editorial policy govern.

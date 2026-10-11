@@ -359,7 +359,7 @@ export function extractCommentaryAtoms(xml, sourceUnitId, unitType) {
     else candidates.push({atomType: "commentary", text});
   });
 
-  if (!candidates.some((candidate) => candidate.atomType === "commentary")) {
+  if (!paragraphs.length && !candidates.some((candidate) => candidate.atomType === "commentary")) {
     const titleSet = new Set(titles);
     normalizeOsisText(sourceXml).split(/\n{2,}/).map((text) => text.trim()).filter(Boolean).forEach((text) => {
       if (!titleSet.has(text)) candidates.push({atomType: "commentary", text});

@@ -97,14 +97,18 @@ test('EDF unifies daily/Henry deadlines, dependencies and independent-review sel
   h.status = 'not_ready'; h.missingPreparedReadingIds = ['FABRICATED-7'];
   h.currentHorizonHenryLayer = {status: 'debt', fallbackReadingIds: ['FABRICATED-0', 'FABRICATED-2'], unavailableReadingIds: ['FABRICATED-7']};
   const options = {plan: plan(), appConfig: appConfig(), health: h, role: 'preparation', now, jobs: []};
-  assert.equal(policy.selectEDF(options).next.readingId, 'FABRICATED-0');
-  assert.equal(policy.selectEDF(options).next.action, 'henry_author');
+  assert.equal(policy.selectEDF(options).next.readingId, 'FABRICATED-7');
+  assert.equal(policy.selectEDF(options).next.action, 'daily_author');
   options.jobs = [{readingId: 'FABRICATED-0', component: 'henry', phase: 'review_pending'}];
-  assert.equal(policy.selectEDF(options).next.readingId, 'FABRICATED-2');
-  assert.equal(policy.selectEDF({...options, role: 'review-audit'}).next.action, 'review');
+  assert.equal(policy.selectEDF(options).next.readingId, 'FABRICATED-7');
+  assert.equal(policy.selectEDF({...options, role: 'review-audit'}).next, null);
   assert.equal(policy.selectEDF(options).work.some(v => v.readingId === 'FABRICATED-7' && v.component === 'henry'), false);
   options.jobs.push({readingId: 'FABRICATED-2', component: 'henry', phase: 'publishing'});
-  assert.equal(policy.selectEDF(options).next.action, 'recover_publication');
+  assert.equal(policy.selectEDF(options).next.action, 'daily_author');
+  options.jobs.push({readingId:'FABRICATED-7',component:'daily',phase:'review_pending'});
+  assert.equal(policy.selectEDF({...options,role:'review-audit'}).next.readingId,'FABRICATED-7');
+  h.missingPreparedReadingIds=[];
+  assert.equal(policy.selectEDF(options).next.action,'recover_publication');
 });
 test('operator eligibility preserves terminal debt and an outside-window blocker cannot disappear or dispatch',async()=>{
   const [,policy]=await modules,h=health(),job={readingId:'FABRICATED-0',component:'henry',phase:'review_pending',operatorReviewEligible:true,

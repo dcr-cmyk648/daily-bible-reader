@@ -70,7 +70,11 @@ export function selectEDF({plan, appConfig, health, jobs = [], role, now,include
       nodes.push({readingId: entry.readingId, component, scheduleDate: entry.scheduleDate, action, basisSha256: null});
     }
   }
-  const runnable = nodes.filter(n => role === 'review-audit' ? ['review', 'publish', 'recover_publication'].includes(n.action) : includeReview||n.action !== 'review')
+  // Drain the earliest devotional gap before Henry author/review/publication
+  // debt. A blocked daily gap cannot authorize work on a later prefix entry.
+  const earliestGap=window.entries.find(e=>buffer.devotionalGaps.includes(e.readingId));
+  const runnable = nodes.filter(n => !earliestGap || n.component==='daily'&&n.readingId===earliestGap.readingId)
+    .filter(n => role === 'review-audit' ? ['review', 'publish', 'recover_publication'].includes(n.action) : includeReview||n.action !== 'review')
     .sort((a, b) => a.scheduleDate.localeCompare(b.scheduleDate) || rank[a.action] - rank[b.action] || a.readingId.localeCompare(b.readingId));
   return {effectiveDate: window.today, buffer, work: runnable, debts,
     next: runnable[0] || null, forwardComplete: buffer.status === 'ready'};

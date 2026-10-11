@@ -8,6 +8,7 @@ import {sourceInput} from './mhc-v2-service.mjs';
 import {loadHenryPlan} from './mhc-priority.mjs';
 import {loadLatestHenryReading} from './mhc-library-sync.mjs';
 import {digestObject} from './mhc-v2.mjs';
+import {verifiedDailyHenryFallback} from './service-supervisor-henry-fallback.mjs';
 
 export async function verifyCurrentPublicationApproval(ctx,transaction,dependencies={}) {
   if(!['reading','daily_henry_binding'].includes(transaction.kind))return null;
@@ -72,7 +73,14 @@ export async function verifyCurrentPublicationApproval(ctx,transaction,dependenc
       throw fault('SUPERVISOR_DAILY_HENRY_ATTACHMENT_CHANGED');
   } else if(['C','D'].includes(ctx.config.stage)) {
     const {plan}=await loadHenryPlan(ctx.releaseRoot);
-    if(plan.entries.find(e=>e.readingId===id)?.kind==='chapter')throw fault('SUPERVISOR_DAILY_HENRY_APPROVAL_REQUIRED');
+    const entry=plan.entries.find(e=>e.readingId===id);
+    if(entry?.kind==='chapter') {
+      if(!job.draft?.inputRoot||!job.draft.metadataPath)throw fault('SUPERVISOR_DAILY_HENRY_APPROVAL_REQUIRED');
+      const staged=await readFile(await confined(job.draft.inputRoot,job.draft.metadataPath,false)),
+        registryBytes=await readFile(await confined(job.draft.inputRoot,'research/working/bridge-source-registry.json',false));
+      if(digest(staged)!==job.metadataSha256||digest(registryBytes)!==job.registrySha256)throw fault('SUPERVISOR_DAILY_INPUT_CHANGED');
+      verifiedDailyHenryFallback({entry,metadata:JSON.parse(staged),registry:JSON.parse(registryBytes),research:JSON.parse(evidence)});
+    }
   }
   return {kind:'daily_job',approvedSha256:reference.sha256,authorSessionId:job.authorSessionId,reviewerSessionId:job.reviewerSessionId,
     currentStateSha256:record.sha256,...(henry?{henry}:{}),elapsedMs:Math.ceil(performance.now()-started)};

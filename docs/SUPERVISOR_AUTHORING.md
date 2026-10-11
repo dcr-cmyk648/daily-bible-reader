@@ -34,6 +34,27 @@ The original Henry controller uses `gpt-6-luna` / medium and its controller-prov
 `gpt-5.6-luna` / low fallback; source, ownership, submission budgets and cooldowns
 remain authoritative.
 
+The October 10 devotional-priority repair is held for manager review, uninstalled.
+While authenticated health has devotional gaps, selection permits only work for
+the earliest missing devotional, including its independent review and publication;
+Henry review/publication debt cannot take that slot. Reading-scoped Henry debt
+remains visible but does not become a daily-prefix blocker. An actual daily
+blocker, capability failure, uncertain child or incomplete publication still stops
+the wake. Forward Henry resumes after the devotional horizon is complete.
+
+If the current Henry pointer is absent or its validated catalog has no artifact
+for this reading, the daily study can carry an explicit `henrySourceLink` from an
+actually consulted complete public-domain Henry source. Code requires its exact
+registered URL, reading inclusion and original admitted page-access evidence;
+discovery, invented URLs and the local archive citation alone are insufficient.
+The ordinary independent review must confirm full coverage of every configured
+chapter. Approval promotion and each publication authorization recheck the same
+hash-bound metadata, registry and research evidence. There is no Henry author or
+review dependency on this path. An unverified/missing fallback stops the daily
+job; corrupt or missing referenced library artifacts and changed native approvals
+remain failures. This repair grants no new source transaction, model execution,
+installation, automation ownership, publication or D acceptance authority.
+
 Consultation requires actual successful completed page access. Lossy CLI snippets
 are discovery evidence only. In `bounded_https` mode code retrieves a completed
 open's exact public HTTPS page anonymously, checks DNS and every redirect, enforces

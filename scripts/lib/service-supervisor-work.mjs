@@ -108,7 +108,7 @@ export async function runStageC(ctx,{role,now=new Date()},dependencies={}) {
         await journal.append('observation',{runId:wake.id,role,stage:ctx.config.stage,inventory,selection,measuredAt:clock().toISOString()},clock(),lease);
         let next=selection.next,order,historicalBinding;
         if(next?.component==='daily') {
-          const broken=selection.debts.find(d=>selection.buffer.devotionalGaps.includes(d.readingId)&&
+          const broken=selection.debts.find(d=>d.component==='daily'&&selection.buffer.devotionalGaps.includes(d.readingId)&&
             plan.entries.find(e=>e.readingId===d.readingId)?.dayIndex<=plan.entries.find(e=>e.readingId===next.readingId)?.dayIndex);
           if(broken)throw fault(broken.code);
         }

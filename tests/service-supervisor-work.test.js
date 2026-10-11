@@ -2,7 +2,7 @@ const test=require('node:test'),assert=require('node:assert/strict'),fs=require(
 const modules=Promise.all(['work','store','runtime','contracts'].map(name=>import(`../scripts/lib/service-supervisor-${name}.mjs`)));
 const now=new Date('2026-10-10T16:00:00Z'),repo=path.resolve(__dirname,'..'),
   sourceIds=['FABRICATED-henry','FABRICATED-independent'],urls=['https://example.invalid/FABRICATED-henry','https://example.invalid/FABRICATED-independent'];
-async function fixture(t,{changes=false,alwaysChanges=false,malformed=false,prefixShape=false,retainedReady=null,legacyBibliography=false,sourceMode='cli_content',unconsultedCitation=false,priorSourceBudget=false}={}) {
+async function fixture(t,{changes=false,alwaysChanges=false,malformed=false,prefixShape=false,retainedReady=null,legacyBibliography=false,sourceMode='cli_content',unconsultedCitation=false,priorSourceBudget=false,fullLink=false}={}) {
   const [work,store,runtime,contracts]=await modules,root=await fs.mkdtemp(path.join(os.tmpdir(),'dbr-work-fabricated-'));
   t.after(async()=>{assert.equal(path.dirname(root),path.resolve(os.tmpdir()));assert.ok(path.basename(root).startsWith('dbr-work-fabricated-'));await fs.rm(root,{recursive:true,force:true});});
   const releaseRoot=path.join(root,'release'),write=async(relative,value)=>store.durableWrite(root,relative,Buffer.isBuffer(value)?value:store.jsonBytes(value));
@@ -53,6 +53,11 @@ async function fixture(t,{changes=false,alwaysChanges=false,malformed=false,pref
     scope:'FABRICATED chapter 1',urlOrCitation:i?urls[i]:foundation.locator,accessDate:'2026-10-10',accessMethod:'FABRICATED verified page',
     rightsStatus:'public_domain',license:'FABRICATED public-domain license',allowedUses:['original synthesis'],rawTextStorageAllowed:false,
     summaryUseStatus:'consulted',qualityTier:'primary',includedReadings:[],notes:'FABRICATED source; no actual Scripture.'});
+  const fallbackId='FABRICATED-full-Henry',fallbackUrl='https://example.invalid/FABRICATED-complete-Henry-chapter',
+    includedIds=fullLink?[...sourceIds,fallbackId]:sourceIds,
+    fullSource={...source(1),sourceId:fallbackId,title:'FABRICATED Matthew Henry Complete Commentary',
+      authorOrOrganization:'Matthew Henry (FABRICATED test record)',urlOrCitation:fallbackUrl},
+    link={sourceId:fallbackId,title:'FABRICATED full chapter',url:fallbackUrl,note:'FABRICATED complete chapter fallback; no real source or Scripture.'};
   const legacy=legacyBibliography?{...source(0),sourceId:'FABRICATED-retained-bibliography',urlOrCitation:'https://example.invalid/FABRICATED-retained',
     title:'FABRICATED ESV Study Bible',edition:'FABRICATED bibliographic copyright © 2008 Crossway, ESV Study Bible edition.'}:null;
   if(legacy)await store.durableWrite(root,'research/working/bridge-source-registry.json',store.jsonBytes({schemaVersion:'source-registry/v1',registryVersion:'FABRICATED-initial',updatedAt:null,sources:[legacy]}),{immutable:false});
@@ -65,13 +70,16 @@ async function fixture(t,{changes=false,alwaysChanges=false,malformed=false,pref
         eventId:null,accessedUrl:urls[i],evidenceExcerpt:'FABRICATED source evidence',claimNotes:['FABRICATED supported claim'],inclusionReason:'FABRICATED fixture',
         independenceKey:`FABRICATED work ${i}`,limitations:['FABRICATED only']})),claims:[{claimId:'FABRICATED-claim',claim:'FABRICATED supported claim',sourceIds}],
         representedCategories:['FABRICATED historical'],missingCategories:[],stoppingReason:'FABRICATED no real research',limitations:['FABRICATED only']};
+        if(fullLink)output.records.push({...output.records[1],sourceJson:JSON.stringify(fullSource),accessedUrl:fallbackUrl});
         if(unconsultedCitation)output.records.push({...output.records[1],sourceJson:JSON.stringify({...source(1),sourceId:'FABRICATED-unconsulted',
           urlOrCitation:'https://example.invalid/FABRICATED-unconsulted',summaryUseStatus:'discovered'})});
         items=sourceMode==='code_consultation'?['search','other','find_in_page'].map((type,i)=>({id:`FABRICATED-web-${i}`,type:'web_search',action:{type}})):
           [{id:'FABRICATED-open',type:'web_search',action:{type:'open_page',url:urls[1]},results:[{url:urls[1],content:'FABRICATED source evidence'}]}];
+        if(fullLink)items.push({id:'FABRICATED-full-open',type:'web_search',action:{type:'open_page',url:fallbackUrl},
+          results:[{url:fallbackUrl,content:'FABRICATED source evidence'}]});
       } else if(kind==='daily-synthesis/v1') {syntheses++;output={...fields,metadataJson:JSON.stringify({schemaVersion:'commentary/v3',readingId:fields.readingId,
-        generation:{humanReviewStatus:'unreviewed'},label:`FABRICATED study ${syntheses}`}),markdown:`FABRICATED non-Scripture study ${syntheses}`,
-          includedSourceIds:unconsultedCitation?[...sourceIds,'FABRICATED-unconsulted']:sourceIds,coverageLimits:['FABRICATED only']};if(malformed&&syntheses===1)output={label:'FABRICATED malformed first response'};
+        generation:{humanReviewStatus:'unreviewed'},label:`FABRICATED study ${syntheses}`,...(fullLink?{henrySourceLink:link}:{})}),markdown:`FABRICATED non-Scripture study ${syntheses}`,
+          includedSourceIds:unconsultedCitation?[...includedIds,'FABRICATED-unconsulted']:includedIds,coverageLimits:['FABRICATED only']};if(malformed&&syntheses===1)output={label:'FABRICATED malformed first response'};
       } else {reviews++;output={...fields,verdict:alwaysChanges||changes&&reviews===1?'changes_requested':'approved',
         assertions:Object.fromEntries(Object.keys(schema.properties.assertions.properties).map(k=>[k,true])),
         findings:['FABRICATED independent substantive fixture review'],corrections:[],repairPacketId:null,coverageLimits:['FABRICATED only']};}
@@ -96,7 +104,8 @@ async function fixture(t,{changes=false,alwaysChanges=false,malformed=false,pref
       return {state:{phase:retainedReady||'absent'},authorization:{path:job.workOrder.path,sha256:job.workOrder.sha256,dailyJobId:job.id}};
     },authorHenry:async(_ctx,options)=>{authors++;assert.ok(options.dailyDependency);return {action:'review_handoff',published:false};},
     reviewHenry:async()=>{libraryReady=true;return {action:'publish_required',published:false};}};
-  return {ctx,work,store,dependencies,validationPlans,plan,legacy,counts:()=>({authors,reviews,researches,syntheses,validated})};
+  if(fullLink)delete dependencies.dailyDependencies.attachment;
+  return {ctx,work,store,dependencies,validationPlans,plan,health,legacy,counts:()=>({authors,reviews,researches,syntheses,validated})};
 }
 test('retained copyright bibliography survives full research, synthesis, Henry dependency and independent daily review',async t=>{
   const f=await fixture(t,{legacyBibliography:true}),result=await f.work.runStageC(f.ctx,{role:'preparation',now},f.dependencies);
@@ -148,7 +157,7 @@ for(const phase of ['approved','publishing'])test(`retained ${phase} dependency 
   const f=await fixture(t,{retainedReady:phase}),result=await f.work.runStageC(f.ctx,{role:'preparation',now},f.dependencies);
   assert.equal(result.action,'publish_required',result.code);assert.deepEqual(f.counts(),{authors:0,reviews:1,researches:1,syntheses:1,validated:1});
 });
-test('actual interrupted native approval finalizes its retained decision before default daily attachment and independent full-study review',async t=>{
+test('retained legacy dependency finalizes interrupted native approval before default daily attachment and full-study review',async t=>{
   const f=await fixture(t),[service,author,runner,henry,nativeStore,pipeline]=await Promise.all(
     ['mhc-v2-service','mhc-v2-author-session','mhc-native-runner','service-supervisor-henry','mhc-v2-store','mhc-pipeline']
       .map(n=>import(`../scripts/lib/${n}.mjs`)));
@@ -189,7 +198,13 @@ test('actual interrupted native approval finalizes its retained decision before 
     exec:f.dependencies.dailyDependencies.exec},dailyDependencies:{...f.dependencies.dailyDependencies},
     dependency:henry.prepareHenryDependency,authorHenry:henry.runHenryWork,reviewHenry:henry.reviewHenryWork,
     henryJob:async()=>nativeStore.loadJob(path.join(native.jobRoot,'FABRICATED-0'))};
-  delete deps.dailyDependencies.attachment;
+  // Explicitly seed the retained legacy waiting_henry route. New daily work
+  // with no library uses a verified full link instead of creating this debt.
+  const legacyDependency=()=>{deps.dailyDependencies.attachment=async()=>{
+    delete deps.dailyDependencies.attachment;
+    throw Object.assign(Error('FABRICATED retained legacy dependency'),{code:'MHC_READING_ABSENT'});
+  };};
+  legacyDependency();
   const interrupted=path.join(native.jobRoot,'FABRICATED-0','transactions');let fixtureError;
   deps.reviewHenry=async(...args)=>{
     await fs.writeFile(interrupted,'FABRICATED interruption before native transaction/library finalization');
@@ -204,6 +219,7 @@ test('actual interrupted native approval finalizes its retained decision before 
   assert.equal(path.dirname(interrupted),retained.directory);await fs.unlink(interrupted);
   for(const key of ['dependency','daily']){const original=deps[key]||((await import('../scripts/lib/service-supervisor-daily.mjs')).runDailyWork);
     deps[key]=async(...args)=>{try{return await original(...args);}catch(e){fixtureError=e;throw e;}};}
+  legacyDependency();
   const result=await f.work.runStageC(f.ctx,{role:'preparation',now},deps);assert.equal(result.action,'publish_required',fixtureError?.stack||result.code);
   const resumed=await nativeStore.loadJob(retained.directory);assert.equal(resumed.state.phase,'publishing');
   assert.equal(resumed.state.total_submissions,1);assert.equal(resumed.state.review.approved_sha256,approvedSha);assert.equal(calls,1);
@@ -238,8 +254,77 @@ test('retained GEN15 Henry debt permits the exact GEN16 contiguous daily prefix 
   assert.equal(observation.next.readingId,next.readingId);assert.equal(observation.debts[0].terminal,true);
   assert.deepEqual(f.counts(),{authors:1,reviews:1,researches:1,syntheses:1,validated:1});
 });
-test('a missing daily entry with terminal Henry debt prevents skipping the broken contiguous prefix',async t=>{
-  const f=await fixture(t);f.dependencies.jobs=async()=>[{readingId:f.plan.entries[0].readingId,component:'henry',phase:'blocked',
+for(const phase of ['eligible','exhausted','operator_review','review_pending','approved','publishing'])
+test(`today's GEN16 devotional wins over GEN15 ${phase} Henry work and uses a consulted full link`,async t=>{
+  const f=await fixture(t,{prefixShape:true,fullLink:true}),held=f.plan.entries[65],next=f.plan.entries[66],
+    terminal=['exhausted','operator_review'].includes(phase),job={readingId:held.readingId,component:'henry',
+      phase:terminal?'review_pending':phase==='eligible'?'queued':phase,...(terminal?{blocker:{scope:'reading',terminal:true,
+        code:'SUPERVISOR_CHILD_REPAIR_EXHAUSTED',proof:{sha256:'f'.repeat(64)}},operatorReviewEligible:phase==='operator_review'}:{})};
+  assert.equal(held.readingId,'LTP-0027-GEN-015');assert.equal(next.readingId,'LTP-0028-GEN-016');
+  f.health.currentHorizonHenryLayer.fallbackReadingIds=[held.readingId];
+  f.dependencies.jobs=async()=>[job];
+  f.dependencies.dependency=()=>{throw Error('Henry dependency must not run');};
+  f.dependencies.authorHenry=()=>{throw Error('Henry author must not run');};
+  f.dependencies.reviewHenry=()=>{throw Error('Henry review must not run');};
+  const result=await f.work.runStageC(f.ctx,{role:'preparation',now},f.dependencies);
+  assert.equal(result.action,'publish_required',result.code);
+  assert.equal(f.validationPlans[0].plan.entries.length,67);
+  const journal=await f.store.openJournal(f.ctx.stateRoot),events=await journal.load(),
+    observation=events.findLast(e=>e.kind==='observation').data.selection,
+    daily=events.findLast(e=>e.kind==='daily_state').data.job,
+    metadata=await f.store.readPrivate(daily.draft.inputRoot,daily.draft.metadataPath);
+  assert.equal(observation.next.component,'daily');assert.equal(observation.next.readingId,next.readingId);
+  assert.ok(observation.buffer.henryGaps.includes(held.readingId));
+  assert.equal(metadata.henrySourceLink.sourceId,'FABRICATED-full-Henry');assert.equal(metadata.verseCommentaries,undefined);
+  assert.equal(daily.henryApproval,undefined);assert.equal(events.some(e=>e.kind==='daily_state'&&e.data.job.phase==='waiting_henry'),false);
+  assert.deepEqual(f.counts(),{authors:0,reviews:1,researches:1,syntheses:1,validated:1});
+  const {verifyCurrentPublicationApproval}=await import('../scripts/lib/service-supervisor-approval.mjs'),
+    transaction={kind:'reading',component:'daily',readingId:next.readingId,approval:{path:daily.approvalPath,sha256:daily.approvalSha256}};
+  assert.equal((await verifyCurrentPublicationApproval(f.ctx,transaction)).kind,'daily_job');
+  await fs.appendFile(path.join(f.ctx.projectRoot,daily.research.path),'FABRICATED tamper');
+  await assert.rejects(verifyCurrentPublicationApproval(f.ctx,transaction),/SOURCE_EVIDENCE_CHANGED/);
+});
+
+test('Henry debt on the missing devotional itself does not block its verified full-link fallback',async t=>{
+  const f=await fixture(t,{fullLink:true});f.dependencies.jobs=async()=>[{readingId:f.plan.entries[0].readingId,component:'henry',phase:'blocked',
+    blocker:{scope:'reading',terminal:true,code:'SUPERVISOR_CHILD_REPAIR_EXHAUSTED',proof:{sha256:'f'.repeat(64)}}}];
+  const result=await f.work.runStageC(f.ctx,{role:'preparation',now},f.dependencies);
+  assert.equal(result.action,'publish_required',result.code);assert.deepEqual(f.counts(),{authors:0,reviews:1,researches:1,syntheses:1,validated:1});
+});
+
+test('absent Henry library without a verified full link fails closed without Henry author/review dispatch',async t=>{
+  const f=await fixture(t);delete f.dependencies.dailyDependencies.attachment;
+  const result=await f.work.runStageC(f.ctx,{role:'preparation',now},f.dependencies);
+  assert.equal(result.code,'SUPERVISOR_DAILY_HENRY_FALLBACK_UNVERIFIED');
+  assert.deepEqual(f.counts(),{authors:0,reviews:0,researches:1,syntheses:1,validated:0});
+});
+
+for(const artifactPresent of [false,true])test(`validated Henry catalog ${artifactPresent?'missing referenced file fails closed':'missing reading permits full-link fallback'}`,async t=>{
+  const f=await fixture(t,{fullLink:true}),readingId=f.plan.entries[0].readingId,
+    catalog={schema_version:'mhc-library-catalog/v1',plan_version:f.plan.planVersion,
+      readings:artifactPresent?[{reading_id:readingId,file:'FABRICATED-missing.json',sha256:'f'.repeat(64)}]:[]},
+    bytes=f.store.jsonBytes(catalog),pointer={schema_version:'mhc-library-pointer/v1',plan_version:f.plan.planVersion,
+      catalog_file:'FABRICATED-catalog.json',catalog_sha256:f.store.digest(bytes)};
+  await f.store.durableWrite(f.ctx.projectRoot,'private-commentary/mhc/stores/library/FABRICATED-catalog.json',bytes);
+  await f.store.durableWrite(f.ctx.projectRoot,'private-commentary/mhc/stores/library/current.json',f.store.jsonBytes(pointer));
+  const result=await f.work.runStageC(f.ctx,{role:'preparation',now},f.dependencies);
+  assert.equal(result.action,artifactPresent?'blocked':'publish_required',result.code);
+  assert.deepEqual(f.counts(),{authors:0,reviews:artifactPresent?0:1,researches:1,syntheses:1,validated:artifactPresent?0:1});
+  const events=await (await f.store.openJournal(f.ctx.stateRoot)).load();
+  assert.equal(events.some(e=>e.kind==='daily_state'&&e.data.job.phase==='waiting_henry'),false);
+});
+
+test('a corrupt newest Henry pointer cannot be hidden by an otherwise verified full link',async t=>{
+  const f=await fixture(t,{fullLink:true});
+  await f.store.durableWrite(f.ctx.projectRoot,'private-commentary/mhc/stores/library/current.json',Buffer.from('FABRICATED corrupt pointer'));
+  const result=await f.work.runStageC(f.ctx,{role:'preparation',now},f.dependencies);
+  assert.equal(result.action,'blocked');assert.deepEqual(f.counts(),{authors:0,reviews:0,researches:1,syntheses:1,validated:0});
+  const events=await (await f.store.openJournal(f.ctx.stateRoot)).load();
+  assert.equal(events.some(e=>e.kind==='daily_state'&&e.data.job.phase==='waiting_henry'),false);
+});
+
+test('a missing daily entry with terminal daily debt prevents skipping the broken contiguous prefix',async t=>{
+  const f=await fixture(t);f.dependencies.jobs=async()=>[{readingId:f.plan.entries[0].readingId,component:'daily',phase:'blocked',
     blocker:{scope:'reading',terminal:true,code:'SUPERVISOR_CHILD_REPAIR_EXHAUSTED',proof:{sha256:'f'.repeat(64)}}}];
   const result=await f.work.runStageC(f.ctx,{role:'preparation',now},f.dependencies);
   assert.equal(result.code,'SUPERVISOR_CHILD_REPAIR_EXHAUSTED');assert.deepEqual(f.counts(),{authors:0,reviews:0,researches:0,syntheses:0,validated:0});

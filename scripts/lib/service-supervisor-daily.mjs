@@ -20,6 +20,7 @@ import {loadJob} from './mhc-v2-store.mjs';
 import {digestObject} from './mhc-v2.mjs';
 import {verifyCurrentPublicationApproval} from './service-supervisor-approval.mjs';
 import {validateRegistryProvenance} from '../validate-source-registry.mjs';
+import {verifiedDailyHenryFallback} from './service-supervisor-henry-fallback.mjs';
 
 const version='service-supervisor-daily-state/v1';
 export async function latestDailyJob(journal,readingId) {
@@ -49,13 +50,15 @@ export async function promoteApprovedDaily(ctx,{journal,lease,job,now},dependenc
   assertSchemaValid(approval,await readPrivate(ctx.releaseRoot,'schemas/service-supervisor-editorial-approval.schema.json'),{label:'Daily independent approval'});
   if(approval.status!=='approved'||approval.contentSha256!==job.contentSha256||approval.metadataSha256!==job.metadataSha256||
     approval.registrySha256!==job.registrySha256)throw fault('SUPERVISOR_DAILY_APPROVAL_CHANGED');
-  if(job.henryApproval)await verifyCurrentPublicationApproval(ctx,{kind:'reading',component:'daily',readingId:job.readingId,
+  await ownedDraftRoot(ctx,job.draft.inputRoot);
+  const stagedMetadata=JSON.parse(await readFile(await confined(job.draft.inputRoot,job.draft.metadataPath,false))),
+    requiresHenryCheck=Boolean(job.henryApproval||stagedMetadata.henrySourceLink);
+  if(requiresHenryCheck)await verifyCurrentPublicationApproval(ctx,{kind:'reading',component:'daily',readingId:job.readingId,
     approval:{path:job.approvalPath,sha256:job.approvalSha256}},dependencies);
   const order=JSON.parse(await checkedArtifact(ctx,job.workOrder));await admitDailyOrder(ctx,order,now,dependencies);
   const writes=[{path:job.draft.contentPath,sha256:job.contentSha256,original:job.draft.originalContentSha256},
     {path:job.draft.metadataPath,sha256:job.metadataSha256,original:job.draft.originalMetadataSha256},
     {path:'research/working/bridge-source-registry.json',sha256:job.registrySha256,original:job.draft.priorRegistrySha256}];
-  await ownedDraftRoot(ctx,job.draft.inputRoot);
   const bytes=[];
   for(const write of writes) {
     const raw=await readFile(await confined(job.draft.inputRoot,write.path,false));
@@ -68,7 +71,7 @@ export async function promoteApprovedDaily(ctx,{journal,lease,job,now},dependenc
     await journal.assertLease(lease,new Date(now));
     const latest=await latestDailyJob(journal,job.readingId);
     if(latest.approvalSha256!==job.approvalSha256||!['approved','publishing'].includes(latest.phase))throw fault('SUPERVISOR_DAILY_APPROVAL_REVOKED');
-    if(job.henryApproval)await verifyCurrentPublicationApproval(ctx,{kind:'reading',component:'daily',readingId:job.readingId,
+    if(requiresHenryCheck)await verifyCurrentPublicationApproval(ctx,{kind:'reading',component:'daily',readingId:job.readingId,
       approval:{path:job.approvalPath,sha256:job.approvalSha256}},dependencies);
     const hash=await optionalHash(ctx.projectRoot,writes[i].path);
     if(hash!==writes[i].sha256&&hash!==writes[i].original)throw fault('SUPERVISOR_DAILY_INPUT_PROMOTION_CONFLICT');
@@ -167,10 +170,22 @@ function registryForReading(prior,research,includedIds,readingId,now) {
   }
   validateRegistryProvenance(next);return next;
 }
-async function defaultAttachment(ctx,entry) {
+async function defaultAttachment(ctx,entry,{metadata,registry,research}) {
   if(entry.kind!=='chapter')return {};
-  const library=await loadLatestHenryReading({libraryRoot:await confined(ctx.projectRoot,'private-commentary/mhc/stores/library',false),
-    readingId:entry.readingId,runtimeSchemaPath:path.join(ctx.releaseRoot,'schemas/mhc-runtime.schema.json')});
+  const libraryRoot=await confined(ctx.projectRoot,'private-commentary/mhc/stores/library');
+  // Only an absent pointer or absent catalog reading is fallback eligibility.
+  // Missing/corrupt referenced artifacts and changed approvals stay failures.
+  try{await readFile(await confined(libraryRoot,'current.json'));}catch(e){
+    if(e.code!=='ENOENT')throw e;
+    return verifiedDailyHenryFallback({entry,metadata,registry,research});
+  }
+  let library;
+  try{library=await loadLatestHenryReading({libraryRoot,
+    readingId:entry.readingId,runtimeSchemaPath:path.join(ctx.releaseRoot,'schemas/mhc-runtime.schema.json')});}
+  catch(e){
+    if(e.code!=='MHC_READING_ABSENT')throw e;
+    return verifiedDailyHenryFallback({entry,metadata,registry,research});
+  }
   const job=await loadJob(await confined(ctx.projectRoot,`private-content/automation/mhc-v2/${entry.readingId}`,false));
   if(!['publishing','published'].includes(job.state.phase)||!job.state.review?.approved_sha256)throw fault('SUPERVISOR_DAILY_HENRY_APPROVAL_REQUIRED');
   const relative=`private-content/automation/mhc-v2/${entry.readingId}/approved/${job.state.review.approved_sha256}.json`,
@@ -238,7 +253,7 @@ export async function runDailyWork(ctx,{journal,lease,order,deadline,wakeId=leas
     const researchPacket=await dailyResearchPacket(ctx,{entry,order:boundOrder,job,priorRegistry,foundation});
     research=await dailyChild(execute,ctx,{journal,lease,jobId:job.id,readingId:entry.readingId,kind:'daily-research',packet:researchPacket,
       schema:researchContract(researchPacket,sourceSchema),deadline,
-      prompt:`Research this one reading under the supplied editorial/rights policy. Web consultation only; no shell/apps/MCP/agents. Do not quote Scripture. eventId must be null: code binds actual opened-page events. Include the verified local Henry foundation when supplied, with its exact locator and source ID. Stop only for documented coverage limits/diminishing returns, never count mirrors as independent works. Return the contract JSON with inputSha256 ${digest(jsonBytes(researchPacket))}.\n${JSON.stringify(researchPacket)}`},
+      prompt:`Research this one reading under the supplied editorial/rights policy. Web consultation only; no shell/apps/MCP/agents. Do not quote Scripture. eventId must be null: code binds actual opened-page events. Include the verified local Henry foundation when supplied, with its exact locator and source ID. Also consult a real HTTPS page containing the complete public-domain Matthew Henry commentary for this exact reading, recording its actual URL and complete-work identity for a possible full-text fallback. A discovered URL or the local archive alone is not proof of that page. Stop only for documented coverage limits/diminishing returns, never count mirrors as independent works. Return the contract JSON with inputSha256 ${digest(jsonBytes(researchPacket))}.\n${JSON.stringify(researchPacket)}`},
       packet=>researchContract(packet,sourceSchema),{...dependencies.exec,clock,admit:async(output,proof)=>{
         const decoded=decodeResearch(output,{packet:proof.packet,sourceSchema});
         const consult=ctx.config.children.sourceAccessMode==='code_consultation',
@@ -267,7 +282,7 @@ export async function runDailyWork(ctx,{journal,lease,order,deadline,wakeId=leas
       workOrder:boundOrder,policies,research:research.admission,metadataSchema:await readPrivate(ctx.releaseRoot,'schemas/commentary.schema.json')};
     assertChildPrivacy(synthesisPacket);
     synthesis=await dailyChild(execute,ctx,{journal,lease,jobId:job.id,readingId:entry.readingId,kind:'daily-synthesis',packet:synthesisPacket,
-      schema:synthesisContract(synthesisPacket),deadline,prompt:`Write the complete one-reading daily study using only verified source evidence. No tools or Scripture wording. Metadata is commentary/v3, draft and unreviewed; code supplies hashes, provenance and reviewed Henry attachments. Return exact JSON, metadataJson encodes the existing metadata schema. Use inputSha256 ${digest(jsonBytes(synthesisPacket))}.\n${JSON.stringify(synthesisPacket)}`},synthesisContract,{...dependencies.exec,clock});
+      schema:synthesisContract(synthesisPacket),deadline,prompt:`Write the complete one-reading daily study using only verified source evidence. No tools or Scripture wording. Metadata is commentary/v3, draft and unreviewed; code supplies hashes, provenance and reviewed Henry attachments. Include henrySourceLink only for an actually consulted complete public-domain Matthew Henry page covering this exact reading; use that record's exact sourceId and URL, include its sourceId, and describe the full-chapter fallback truthfully. Never invent or derive a link from the local archive. Return exact JSON, metadataJson encodes the existing metadata schema. Use inputSha256 ${digest(jsonBytes(synthesisPacket))}.\n${JSON.stringify(synthesisPacket)}`},synthesisContract,{...dependencies.exec,clock});
     assertChildPrivacy(synthesis.output);
     if(foundation&&!synthesis.output.includedSourceIds.includes(foundation.sourceId))throw fault('SUPERVISOR_DAILY_HENRY_FOUNDATION_MISSING');
     registry=registryForReading(priorRegistry,research.admission,synthesis.output.includedSourceIds,entry.readingId,new Date(job.createdAt));
@@ -275,8 +290,8 @@ export async function runDailyWork(ctx,{journal,lease,order,deadline,wakeId=leas
     if(metadata.readingId!==entry.readingId||metadata.schemaVersion!=='commentary/v3'||metadata.generation?.humanReviewStatus!=='unreviewed')
       throw fault('SUPERVISOR_DAILY_SYNTHESIS_BINDING_FAILED');
     let attachment;
-    try{attachment=await (dependencies.attachment||defaultAttachment)(ctx,entry);}catch(e){
-      if(!['ENOENT','MHC_READING_ABSENT'].includes(e.code))throw e;
+    try{attachment=await (dependencies.attachment||defaultAttachment)(ctx,entry,{metadata,registry,research:research.admission});}catch(e){
+      if(!dependencies.attachment||!['ENOENT','MHC_READING_ABSENT'].includes(e.code))throw e;
       job.phase='waiting_henry';job.authorSessionId=synthesis.execution.id;job.authorThreadId=synthesis.execution.threadId;
       await saveJob(ctx,journal,lease,job,clock());return {action:'henry_dependency_required',job,published:false};
     }
@@ -314,7 +329,7 @@ export async function runDailyWork(ctx,{journal,lease,order,deadline,wakeId=leas
     assertDailyReviewPacketPrivacy(reviewPacket,priorRegistry);
     const review=await dailyChild(execute,ctx,{journal,lease,jobId:job.id,readingId:entry.readingId,kind:'independent-review',packet:reviewPacket,
       schema:independentReviewContract(reviewPacket),deadline,authorThreadIds:[research.execution.threadId,synthesis.execution.threadId],
-      prompt:`Independently review every claim and the complete exact study against the supplied real source-access evidence and editorial/rights policy. A machine-valid draft is unreviewed. Be explicit about omissions and source coverage limits. No tools, no Scripture wording, no publication. Approve only after all substantive assertions are true. Daily corrections array is empty; otherwise request changes. inputSha256 ${digest(jsonBytes(reviewPacket))}.\n${JSON.stringify(reviewPacket)}`},independentReviewContract,{...dependencies.exec,clock});
+      prompt:`Independently review every claim and the complete exact study against the supplied real source-access evidence and editorial/rights policy. A machine-valid draft is unreviewed. If metadata contains henrySourceLink, sourceAccessHonest and coverageReviewed also require that the actual consulted public-domain complete Henry page covers every configured chapter of this exact reading, rather than a concise edition, book index or partial extract. Be explicit about omissions and source coverage limits. No tools, no Scripture wording, no publication. Approve only after all substantive assertions are true. Daily corrections array is empty; otherwise request changes. inputSha256 ${digest(jsonBytes(reviewPacket))}.\n${JSON.stringify(reviewPacket)}`},independentReviewContract,{...dependencies.exec,clock});
     if(review.output.verdict!=='approved'||review.output.corrections.length||!DAILY_REVIEW_ASSERTIONS.every(k=>review.output.assertions[k]===true)) {
       if(review.output.verdict==='changes_requested'&&!job.repair) {
         job.repair={schemaVersion:'supervisor-editorial-repair/v1',reviewExecutionId:review.execution.id,

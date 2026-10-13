@@ -152,6 +152,17 @@ async function collect(command, args, timeout = 10000) {
     child.on('close', code => {clearTimeout(timer); if (code !== 0) reject(new Error('PROCESS_QUERY_FAILED')); else resolve(output);});
   });
 }
+export async function readLinuxProcessIdentity(pid, readStat = readFile) {
+  if (!Number.isSafeInteger(pid) || pid < 1) return null;
+  try {const raw = await readStat(`/proc/${pid}/stat`, 'utf8'); const fields = raw.slice(raw.lastIndexOf(')') + 2).split(' ');
+    return fields[0] === 'Z' ? null : {pid, birth: fields[19]};
+  } catch (error) {
+    // procfs can lose the task after open and return ESRCH during read.
+    // Both absence codes mean gone; permission, I/O and other errors still throw.
+    if (error.code === 'ENOENT' || error.code === 'ESRCH') return null;
+    throw error;
+  }
+}
 export async function processIdentity(pid) {
   if (!Number.isSafeInteger(pid) || pid < 1) return null;
   if (process.platform === 'win32') {
@@ -160,11 +171,7 @@ export async function processIdentity(pid) {
       `$p=Get-CimInstance Win32_Process -Filter "ProcessId=${pid}"; if($p){[Console]::Write($p.CreationDate.ToUniversalTime().Ticks.ToString())}`]);
     return output.trim() ? {pid, birth: output.trim()} : null;
   }
-  if (process.platform === 'linux') {
-    try {const raw = await readFile(`/proc/${pid}/stat`, 'utf8'); const fields = raw.slice(raw.lastIndexOf(')') + 2).split(' ');
-      return fields[0] === 'Z' ? null : {pid, birth: fields[19]};
-    } catch (error) {if (error.code === 'ENOENT') return null; throw error;}
-  }
+  if (process.platform === 'linux') return readLinuxProcessIdentity(pid);
   fail('PROCESS_IDENTITY_UNSUPPORTED');
 }
 async function alive(identity) {return identity && JSON.stringify(await processIdentity(identity.pid)) === JSON.stringify(identity);}

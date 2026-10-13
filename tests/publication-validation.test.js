@@ -6,7 +6,7 @@ import path from 'node:path';
 import os from 'node:os';
 import {fileURLToPath} from 'node:url';
 import {sha256, fingerprintWorkspace, fingerprintTree, startValidation, runValidation, validationStatus,
-  inspectBindings, atomicJson, processIdentity, terminateTree, validationCommands, DEFAULT_POLICY} from '../scripts/lib/publication-validation.mjs';
+  inspectBindings, atomicJson, processIdentity, readLinuxProcessIdentity, terminateTree, validationCommands, DEFAULT_POLICY} from '../scripts/lib/publication-validation.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const bytes = v => JSON.stringify(v, null, 2) + '\n';
@@ -156,6 +156,54 @@ test('total deadline is independent of a generously bounded gate', async t => {
   const f = await fixture(t, {delay: 3000});
   const result = await f.localRun({...DEFAULT_POLICY, totalMs: 1100, heartbeatMs: 100});
   assert.equal(result.receipt.state, 'blocked'); assert.equal((await f.status(result.run)).blockerCode, 'TOTAL_TIMEOUT');
+});
+
+test('Linux proc identity distinguishes absent tasks from permission, I/O and unknown read failures', async () => {
+  const pid = 4242, stat = state => `${pid} (FABRICATED task with a ) in its name) ${[state, ...Array(18).fill('0'), '123456789'].join(' ')}`;
+  const reader = async (file, encoding) => {assert.equal(file, `/proc/${pid}/stat`); assert.equal(encoding, 'utf8'); return stat('S');};
+  assert.deepEqual(await readLinuxProcessIdentity(pid, reader), {pid, birth: '123456789'});
+  assert.equal(await readLinuxProcessIdentity(pid, async () => stat('Z')), null);
+  for (const code of ['ENOENT', 'ESRCH']) assert.equal(await readLinuxProcessIdentity(pid, async () => {throw Object.assign(new Error('FABRICATED absent task'), {code});}), null);
+  for (const code of ['EACCES', 'EPERM', 'EIO', 'EINVAL', 'FABRICATED_UNKNOWN']) {
+    const error = Object.assign(new Error('FABRICATED proc read failure'), {code});
+    await assert.rejects(readLinuxProcessIdentity(pid, async () => {throw error;}), actual => actual === error);
+  }
+  await assert.rejects(readLinuxProcessIdentity(pid, async () => {throw new Error('FABRICATED untyped read failure');}), /FABRICATED untyped/);
+});
+
+test('proc ESRCH after observed worker absence still records WORKER_KILLED and cleans the orphan tree', async t => {
+  const f = await fixture(t, {delay: 15000}), launched = await f.start();
+  const receipt = await waitFor(() => json(path.join(launched.run, 'receipt.json')), r => r.steps[0]?.child);
+  process.kill(receipt.worker.pid, 'SIGKILL');
+  await waitFor(() => processIdentity(receipt.worker.pid), identity => identity === null);
+  let procReads = 0;
+  const identity = pid => pid === receipt.worker.pid ? readLinuxProcessIdentity(pid, async (file, encoding) => {
+    assert.equal(file, `/proc/${pid}/stat`); assert.equal(encoding, 'utf8'); procReads++;
+    throw Object.assign(new Error('ESRCH: FABRICATED task reaped between open and read'), {code: 'ESRCH', syscall: 'read'});
+  }) : processIdentity(pid);
+  const cleaned = [];
+  const status = await validationStatus(launched.run, {...f.helper, requestSha256: f.requestSha256}, {identity, kill: async target => {cleaned.push(target); return terminateTree(target);}});
+  assert.equal(procReads, 1); assert.equal(status.blockerCode, 'WORKER_KILLED'); assert.equal(status.state, 'blocked');
+  assert.equal(status.validationReady, false); assert.equal(status.publicationHeld, true); assert.match(status.statusForUser, /^STATUS FOR USER:/);
+  assert.ok(cleaned.some(target => target.pid === receipt.steps[0].child.pid && target.birth === receipt.steps[0].child.birth));
+  assert.equal(await processIdentity(receipt.steps[0].child.pid), null);
+  assert.equal((await json(path.join(launched.run, 'blocker.json'))).code, 'WORKER_KILLED');
+  await assert.rejects(access(path.join(launched.run, 'completion.json')), {code: 'ENOENT'});
+});
+
+test('unknown proc identity read errors remain durable evidence blockers and never validate publication', async t => {
+  for (const code of ['EACCES', 'EIO', 'FABRICATED_UNKNOWN']) {
+    const f = await fixture(t, {delay: 15000}), launched = await f.start();
+    const receipt = await waitFor(() => json(path.join(launched.run, 'receipt.json')), r => r.steps[0]?.child);
+    let procReads = 0;
+    const identity = pid => pid === receipt.worker.pid ? readLinuxProcessIdentity(pid, async () => {
+      procReads++; throw Object.assign(new Error('FABRICATED unknown proc read error'), {code});
+    }) : processIdentity(pid);
+    const status = await validationStatus(launched.run, {...f.helper, requestSha256: f.requestSha256}, {identity});
+    assert.equal(procReads, 1); assert.equal(status.blockerCode, 'STATUS_EVIDENCE_MISSING'); assert.equal(status.state, 'blocked');
+    assert.equal(status.validationReady, false); assert.equal(status.publicationHeld, true);
+    await assert.rejects(access(path.join(launched.run, 'completion.json')), {code: 'ENOENT'});
+  }
 });
 
 test('killed detached worker becomes a durable user blocker and status terminates its orphan tree', async t => {

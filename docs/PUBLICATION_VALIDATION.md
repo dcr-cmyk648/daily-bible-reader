@@ -181,6 +181,12 @@ gate after worker death. Linux gate groups are detached and killed as groups.
 Reused PIDs are never killed. Unsupported or unavailable process identity fails
 closed. A hard-killed worker may leave a running receipt; status makes its blocker
 durable rather than interpreting that receipt as successful.
+Linux proc reads classify only `ENOENT` and `ESRCH` as task absence. The latter
+can occur when the task is reaped after the stat file is opened; see
+[Linux proc task lookup](https://github.com/torvalds/linux/blob/master/fs/proc/base.c).
+Permission, I/O and unknown read errors remain evidence blockers. This Linux
+classification change requires a newly accepted helper manifest/install; retain
+prior installs and their successful receipts without replaying publications.
 Status also retains each attempted cleanup result, including failed termination.
 
 Keep requests, mappings, logs, receipts, copies and bundles in ignored private

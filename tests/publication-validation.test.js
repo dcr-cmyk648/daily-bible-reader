@@ -18,9 +18,11 @@ async function waitFor(read, predicate, deadline = 30000) {
   while (Date.now() < until) {value = await read(); if (predicate(value)) return value; await sleep(75);}
   throw Error('FABRICATED regression polling deadline exceeded: ' + JSON.stringify(value));
 }
-async function fixture(t, {delay = 0, failGate = '', signalGate = '', mutateBundle = false, orphan = false, realNpm = false} = {}) {
+async function fixture(t, {delay = 0, failGate = '', signalGate = '', mutateBundle = false, orphan = false, realNpm = false, holdSource = false} = {}) {
   const temp = await mkdtemp(path.join(os.tmpdir(), 'dbr-offline-validation-test-'));
   const workspace = path.join(temp, 'workspace'), helperRoot = path.join(temp, 'helper'), runsRoot = path.join(temp, 'runs');
+  // Test controls are siblings of the workspace/helper, outside every bound input.
+  const releaseGatePath = path.join(temp, 'release-source-gate'), heldGatePath = path.join(temp, 'source-gate-held');
   const active = [];
   t.after(async () => {
     for (const run of active) {const receipt = await json(path.join(run, 'receipt.json')).catch(() => null);
@@ -61,7 +63,7 @@ async function fixture(t, {delay = 0, failGate = '', signalGate = '', mutateBund
   // real publication path exists. It keeps a nested process for tree-kill tests.
   const npmCli = realNpm ? (process.env.npm_execpath || path.join(path.dirname(process.execPath), 'node_modules/npm/bin/npm-cli.js')) : path.join(temp, 'fabricated-npm.mjs');
   if (!realNpm) await save(npmCli, `// FABRICATED TEST npm CLI, no network\nimport {spawn} from 'node:child_process';\nimport {readFile} from 'node:fs/promises';\nimport path from 'node:path';\nconst gate=process.argv[3];const pkg=JSON.parse(await readFile('package.json','utf8'));if(!pkg.scripts[gate])throw Error('FABRICATED npm script absent');\nconst child=spawn(process.execPath,[path.join(process.cwd(),'scripts/fabricated-gate.mjs'),gate],{stdio:'inherit'});\nchild.on('close',(code,signal)=>{if(signal)process.kill(process.pid,signal);else process.exitCode=code??1;});\n`);
-  await save(path.join(workspace, 'scripts/fabricated-gate.mjs'), `// CONSPICUOUSLY FABRICATED VALIDATION GATE\nimport {mkdir,writeFile,readFile} from 'node:fs/promises';\nimport {spawn} from 'node:child_process';\nconst gate=process.argv[2];\nconsole.log('FABRICATED gate '+gate);\n${orphan ? `if(gate==='validate:sources') spawn(process.execPath,['-e',${JSON.stringify(`setTimeout(()=>require('node:fs').writeFileSync(${JSON.stringify(path.join(temp, 'orphan-marker'))},'FABRICATED ORPHAN SURVIVED'),3500)`)}],{stdio:'ignore'});` : ''}\nawait new Promise(r=>setTimeout(r,gate==='validate:sources'?${delay}:5));\nif(gate===${JSON.stringify(signalGate)})process.kill(process.pid,'SIGTERM');\nelse if(gate===${JSON.stringify(failGate)})process.exitCode=7;\nelse if(gate==='bundle:private'){\n${mutateBundle ? `await writeFile(${JSON.stringify(rolePaths.candidate)},'FABRICATED MUTATED ATTACHMENT');` : ''}\nconst out='private-content/bundles/celebration-bridge-review';await mkdir(out,{recursive:true});\nawait writeFile(out+'/manifest.json',JSON.stringify({safety:{approvedForPublication:false},readings:[{readingId:${JSON.stringify(readingId)}}]}));\n}\n`);
+  await save(path.join(workspace, 'scripts/fabricated-gate.mjs'), `// CONSPICUOUSLY FABRICATED VALIDATION GATE\nimport {mkdir,writeFile,readFile,access} from 'node:fs/promises';\nimport {spawn} from 'node:child_process';\nconst gate=process.argv[2];\nconsole.log('FABRICATED gate '+gate);\n${orphan ? `if(gate==='validate:sources') spawn(process.execPath,['-e',${JSON.stringify(`setTimeout(()=>require('node:fs').writeFileSync(${JSON.stringify(path.join(temp, 'orphan-marker'))},'FABRICATED ORPHAN SURVIVED'),3500)`)}],{stdio:'ignore'});` : ''}\n${holdSource ? `if(gate==='validate:sources'){await writeFile(${JSON.stringify(heldGatePath)},'FABRICATED GATE HELD');const deadline=Date.now()+45000;while(!await access(${JSON.stringify(releaseGatePath)}).then(()=>true,e=>{if(e.code==='ENOENT')return false;throw e;})){if(Date.now()>=deadline)throw Error('FABRICATED gate release deadline exceeded');await new Promise(r=>setTimeout(r,100));}}` : ''}\nawait new Promise(r=>setTimeout(r,gate==='validate:sources'?${delay}:5));\nif(gate===${JSON.stringify(signalGate)})process.kill(process.pid,'SIGTERM');\nelse if(gate===${JSON.stringify(failGate)})process.exitCode=7;\nelse if(gate==='bundle:private'){\n${mutateBundle ? `await writeFile(${JSON.stringify(rolePaths.candidate)},'FABRICATED MUTATED ATTACHMENT');` : ''}\nconst out='private-content/bundles/celebration-bridge-review';await mkdir(out,{recursive:true});\nawait writeFile(out+'/manifest.json',JSON.stringify({safety:{approvedForPublication:false},readings:[{readingId:${JSON.stringify(readingId)}}]}));\n}\n`);
   await save(path.join(workspace, 'package.json'), {name: 'fabricated-validation-test', scripts: Object.fromEntries(['validate:sources', 'validate:private', 'validate', 'safety', 'check:published', 'bundle:private'].map(gate => [gate, 'node scripts/fabricated-gate.mjs ' + gate]))});
   await save(path.join(workspace, 'package-lock.json'), {label: 'FABRICATED LOCKFILE'});
   const request = {schemaVersion: 'publication-validation-request/v1', readingId, workspace,
@@ -82,19 +84,27 @@ async function fixture(t, {delay = 0, failGate = '', signalGate = '', mutateBund
       publicationHeld: true, validationReady: false, requestSha256, helperSha256: helper.helperSha256, updatedAt: new Date().toISOString(), steps: []});
     const receipt = await runValidation(run, {policy}); return {run, receipt};
   };
-  return {temp, workspace, helper, request, requestFile, requestSha256, start, status, localRun, save, rolePaths, track: run => active.push(run)};
+  return {temp, workspace, helper, request, requestFile, requestSha256, start, status, localRun, save, rolePaths, releaseGatePath, heldGatePath, track: run => active.push(run)};
 }
 
-test('detached long checks return quickly, survive the caller, heartbeat and pass only all six durable gates', async t => {
-  const f = await fixture(t, {delay: 7500});
-  const before = Date.now(), launched = await f.start();
-  assert.ok(Date.now() - before < 5000, 'start does not wait for the long gate');
+test('detached start returns before gate release, heartbeats and passes only all six durable gates', {timeout: 60000}, async t => {
+  const f = await fixture(t, {holdSource: true});
+  assert.equal(path.dirname(f.releaseGatePath), f.temp);
+  assert.ok(!f.request.artifacts.some(a => a.path === f.releaseGatePath));
+  assert.ok(!f.request.privateTrees.some(tree => !path.relative(tree.path, f.releaseGatePath).startsWith('..')));
+  await assert.rejects(access(f.releaseGatePath), {code: 'ENOENT'});
+  const launched = await f.start();
+  // The gate cannot finish until this caller creates its release file.
+  await assert.rejects(access(path.join(launched.run, 'completion.json')), {code: 'ENOENT'});
   const progress = await waitFor(() => json(path.join(launched.run, 'receipt.json')), r => r.steps.length === 1 && r.steps[0].child);
+  await waitFor(() => access(f.heldGatePath).then(() => true, e => {if (e.code === 'ENOENT') return false; throw e;}), Boolean);
   const first = await f.status(launched.run); assert.equal(first.state, 'running'); assert.equal(first.validationReady, false); assert.equal(first.publicationHeld, true);
   assert.ok(progress.worker.pid !== process.pid); assert.ok(progress.steps[0].child.pid > 0);
-  await sleep(5200);
-  const heartbeating = await json(path.join(launched.run, 'receipt.json'));
+  const heartbeating = await waitFor(() => json(path.join(launched.run, 'receipt.json')), r => Date.parse(r.updatedAt) > Date.parse(progress.updatedAt));
   assert.equal(heartbeating.steps.length, 1); assert.ok(Date.parse(heartbeating.updatedAt) > Date.parse(progress.updatedAt), 'heartbeat progresses independently of gate completion');
+  assert.equal(heartbeating.steps[0].state, 'running');
+  await assert.rejects(access(path.join(launched.run, 'completion.json')), {code: 'ENOENT'});
+  await writeFile(f.releaseGatePath, 'FABRICATED GATE RELEASED', {flag: 'wx'});
   await waitFor(() => json(path.join(launched.run, 'receipt.json')), r => ['passed', 'blocked'].includes(r.state));
   const final = await f.status(launched.run); assert.equal(final.state, 'passed', JSON.stringify(final));
   assert.equal(final.validationReady, true); assert.equal(final.publicationHeld, true);

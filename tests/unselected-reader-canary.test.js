@@ -46,7 +46,7 @@ test("canary worker activation cannot prune production caches or cache a private
   const names = ["dbr-pages-shell-v1-fabricated-old", "dbr-pages-shell-v1-fabricated-current",
     `dbr-unselected-${record.id}-${record.id}`];
   const context = {URL, Set, Date, JSON, Response,
-    self: {location: {href: record.url + "service-worker.js"}, addEventListener: (type, listener) => {events[type] = listener;},
+    self: {registration: {scope: record.url}, location: {href: record.url + "service-worker.js"}, addEventListener: (type, listener) => {events[type] = listener;},
       clients: {claim: async () => {}}, skipWaiting() {}},
     caches: {keys: async () => names, delete: async name => {deleted.push(name);}, open: async () => ({addAll: async urls => {requests.push(...urls);}, put: async () => {}})}};
   vm.runInNewContext(read(`web/pwa-canary/canaries/${record.id}/service-worker.js`).toString(), context);

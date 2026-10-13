@@ -1,9 +1,9 @@
 {
   "schemaVersion": "unselected-reader-canary/v1",
-  "id": "26cd630fe1ea0afa",
-  "frontendReleaseId": "530161d86a2c1df1",
-  "builtPwaReleaseId": "e33c4ad9efa4e1d9",
-  "url": "https://dcr-cmyk648.github.io/daily-bible-reader/web/pwa-canary/canaries/26cd630fe1ea0afa/",
+  "id": "db2a843f2ed0b875",
+  "frontendReleaseId": "d860b9cb39f4f2b8",
+  "builtPwaReleaseId": "0215ec22e0320d30",
+  "url": "https://dcr-cmyk648.github.io/daily-bible-reader/web/pwa-canary/canaries/db2a843f2ed0b875/",
   "installedPhoneAcceptance": "pending",
   "productionHashes": {
     "web/release.json": "d9105bf44d05c4ee59c1666dbffcb7df902e2ad52725fb7189e7d3dbf154d88b",

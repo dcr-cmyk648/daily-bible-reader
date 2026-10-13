@@ -15,6 +15,7 @@ private sharing, authenticated named ready/complete and native published all pas
 Matthew 7 was already recovered by the October 12 20:15 reviewer; fresh exact
 bytes/live health verify it without repeated review, authoring or publication.
 Original failures, receipts, immutable versions and budgets remain.
+A Linux proc absence defect is fixed with three regressions; original GEN20 proof stands.
 
 ## Runtimes, schedules and validation
 Daily remains ACTIVE at 03:00/15:00 Eastern on `63283db`, exactly two frozen
@@ -25,8 +26,8 @@ Primary `gpt-6-luna`/medium, gated retained `gpt-5.6-luna`/low and independent
 Sol 6.1/high reviewer retain existing identities, models, schedules and projects.
 MAT7 validation returned -1 after 109,507 ms without explicit tool yield; its
 separate chat failed on capacity. An npm timeout is not established.
-Accepted helper `de12d9e`, manifest
-`64148a739bfe5141fad78057ec7d3472ad6a633fa3a23c6b27a77b8839eb1324`,
+Accepted helper `6d3caa0`, manifest
+`448e741f2cc697f27dec0009bedd98752cbe1a325f1fb594541e51f9108938c4`,
 is independently installed/active. Reviewer pins its two files, typed approved
 inputs, detached worker, six receipts/logs, 15-minute check/35-minute total limits
 and durable interruption blockers. Verified completion admits the normal publisher.
@@ -38,7 +39,7 @@ Supervisor stays observation/trial until its OWN ordinary new devotional succeed
 end to end; recovery/helper publications do not qualify automation consolidation.
 
 ## Canary and remaining phone gate
-Checked/pushed `c693ba1`: 945 tests, 942 passed, zero failures, three existing
+Checked/pushed `6d3caa0`: 948 tests, 945 passed, zero failures, three existing
 PDF-runtime skips; CI and Pages succeeded. Unselected `2b4524cd5635c307` / frontend
 `e6fb72a5afa9b6a3` is live; public release/worker bytes and MIME match exactly.
 Client release/scope identification silently activates same-release workers and

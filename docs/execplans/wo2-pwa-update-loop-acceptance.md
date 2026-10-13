@@ -1,7 +1,7 @@
 # WO-2 installed-PWA update loop — October 13, 2026
 
-Status: immutable candidate prepared; final full check passed; production and
-phone gate held. Full check: 929 tests, 926 passed, zero failed, three existing
+Status: bounded full-window warning follow-up checked; production and phone gate
+held. Final follow-up check: 931 tests, 928 passed, zero failed, three existing
 PDF tests skipped because their exact pinned bundled Python is unavailable.
 The PDF security pin is unchanged. Focused PWA tests: 27/27, zero skipped.
 Ignored private-draft validation is absent in this worker; private publications
@@ -9,7 +9,7 @@ and their validation remain manager-owned.
 The manager owns the final commit/push slot, backend staging, refreshed live
 health, combined human request, promotion and PROJECT_STATE.md update.
 
-Candidate: `db2a843f2ed0b875`, frontend `d860b9cb39f4f2b8`, source PWA build
+Released SW candidate: `db2a843f2ed0b875`, frontend `d860b9cb39f4f2b8`, source PWA build
 `0215ec22e0320d30`. [Exact canary URL](https://dcr-cmyk648.github.io/daily-bible-reader/web/pwa-canary/canaries/db2a843f2ed0b875/).
 The installed canary's shell/worker ID is `db2a843f2ed0b875`; the source PWA build
 ID is a separate artifact. Required heartbeat backend stays **`5d9dd7e6b06df851`**:
@@ -22,6 +22,27 @@ They are preserved separately in ignored `tmp/wo2-approved-heartbeat-5d9/dist/ap
 The manager verifies that actual backend before the combined phone gate; neither
 bundle is cloud-staged by this worker. Production remains frontend `844ce06fb805f5f4` and PWA
 `8fcefb5ae56b5def`.
+
+## Final full-window warning guard
+
+The manager's fabricated seven-of-eight complete window exposed an inherited
+five-future-day green threshold. That could hide the newly entering T+7 gap.
+The amber threshold now compares complete future days with the actual future
+target. Existing red thresholds and fallback warnings stay unchanged. Regression
+tests prove a missing published reading stays amber despite complete cached
+payloads, and fully complete terminal windows of one, two, three and seven total
+readings stay green without requiring nonexistent days. The focused preparation
+tests pass 15/15 with no skips.
+The compiled final frontend also passes an isolated fabricated VM smoke:
+seven-of-eight with full cached payloads renders amber with a missing-study notice;
+a fully complete three-reading terminal window is green with no notice. This is
+not a live browser or installed-phone pass.
+
+**Use the new phone candidate `2b4524cd5635c307`, frontend `e6fb72a5afa9b6a3`,
+source PWA build `ff651cf2614bf2c3`:**
+[exact candidate URL](https://dcr-cmyk648.github.io/daily-bible-reader/web/pwa-canary/canaries/2b4524cd5635c307/).
+The previously published db2 directory, client and frontend remain immutable.
+The approved frozen heartbeat backend remains `5d9dd7e6b06df851`.
 
 ## Evidence and limits
 

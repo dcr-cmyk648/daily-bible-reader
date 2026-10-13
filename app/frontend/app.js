@@ -2744,7 +2744,7 @@
       nextGapReport: rows.find(row => !row.complete)?.report || null,
       readyThroughEntry: consecutiveReady ? horizon[consecutiveReady - 1] : null,
       state: rows.length === 0 ? "green" : red ? "critical" :
-        completeFutureDays < Math.min(5, futureTarget) || fallbackCount ? "warning" : "green"};
+        completeFutureDays < futureTarget || fallbackCount ? "warning" : "green"};
   }
 
   function publicationReadiness(entries, schedule, preparedIds, service, now) {

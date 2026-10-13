@@ -1,0 +1,26 @@
+{
+  "name": "Bible Reader — recovery canary",
+  "short_name": "Reader canary",
+  "description": "Private two-person daily Bible reading and discussion.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0b1110",
+  "theme_color": "#0b1110",
+  "icons": [
+    {
+      "src": "../../assets/bible-reader-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "../../assets/bible-reader-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "id": "/daily-bible-reader/web/pwa-canary/canaries/2b4524cd5635c307/",
+  "orientation": "any"
+}

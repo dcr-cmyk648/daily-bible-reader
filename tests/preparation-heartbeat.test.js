@@ -64,7 +64,7 @@ test("fabricated October 6/8/10 windows render amber/red/red and name the actual
   }
 });
 
-test("green needs at least five complete future days and a fresh heartbeat; a ready receipt cannot suppress debt", async () => {
+test("green needs the complete actual horizon and a fresh heartbeat; a ready receipt cannot suppress debt", async () => {
   const {input} = await scenario(10, 8, 6, "2026-10-10T05:00:00Z");
   // Any fallback remains amber, even when five complete future days remain.
   assert.equal(app.evaluatePreparationReadiness(input).state, "warning");
@@ -76,6 +76,40 @@ test("green needs at least five complete future days and a fresh heartbeat; a re
   assert.equal(app.evaluatePreparationReadiness(input).state, "critical");
   delete input.service.lastRunAt;
   assert.equal(app.evaluatePreparationReadiness(input).state, "critical");
+});
+
+test("seven of eight published studies stay amber even when every downloaded payload is complete", async () => {
+  const {input, payload, horizon} = await scenario(10, 7, 7, "2026-10-10T05:00:00Z");
+  input.payloads = new Map(horizon.map(entry => [entry.readingId, payload(entry)]));
+  const readiness = app.evaluatePreparationReadiness(input);
+  assert.equal(readiness.completeFutureDays, 6);
+  assert.equal(readiness.futureTarget, 7);
+  assert.equal(readiness.devotionalMissingCount, 1);
+  assert.equal(readiness.state, "warning");
+  const owner = rendered(readiness, input.service);
+  assert.equal(owner.contentReadinessAlert.hidden, false);
+  assert.match(owner.contentReadinessMessage.textContent, /1 of 8 studies unavailable/);
+  const shared = rendered(readiness, input.service, false);
+  assert.equal(shared.contentReadinessAlert.hidden, false);
+  assert.match(shared.contentReadinessMessage.textContent, /upcoming study buffer is incomplete/);
+});
+
+test("a fully complete shorter end-of-plan window is green without demanding seven nonexistent future days", () => {
+  const {entries, payload} = preparationFixture();
+  for (const count of [1, 2, 3, 7]) {
+    const horizon = entries.slice(-count);
+    const service = {state: "running", lastRunAt: "2026-10-10T05:00:00Z"};
+    const readiness = app.evaluatePreparationReadiness({entries,
+      schedule: {status: "active", calendarDayIndex: horizon[0].dayIndex},
+      preparedIds: new Set(horizon.map(entry => entry.readingId)),
+      payloads: new Map(horizon.map(entry => [entry.readingId, payload(entry)])),
+      service, now: Date.parse("2026-10-10T15:00:00Z")});
+    assert.equal(readiness.target, count);
+    assert.equal(readiness.futureTarget, count - 1);
+    assert.equal(readiness.completeFutureDays, count - 1);
+    assert.equal(readiness.state, "green");
+    assert.equal(app.preparationNotice(readiness, service, true), null);
+  }
 });
 
 test("complete downloaded payloads cannot hide missing manifest membership or a measured Henry gap", async () => {

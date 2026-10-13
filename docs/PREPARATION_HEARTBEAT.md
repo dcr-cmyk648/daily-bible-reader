@@ -76,11 +76,13 @@ new entering day stays unknown until it has real evidence.
 Complete future days are the contiguous complete prefix after today, consistent
 with `service-buffer/v1`. Complete means devotional plus full reviewed Henry
 layer (book overview on introduction days), never a fallback link. Green requires
-at least five such future days and heartbeat age below 30 hours. Three or four
-future days, or any measured fallback in the window, is amber. Zero to two future
-days, missing today/tomorrow, stale or unknown heartbeat, and explicit operational
-blocks are red. Thresholds cap at the actual remaining plan length for its terminal
-window. A `ready` label cannot suppress an independently measured shortfall.
+the complete actual remaining window, up to seven future days, and heartbeat age
+below 30 hours. Any remaining complete-window gap or measured fallback is amber
+unless a red condition applies. Zero to two future days, missing today/tomorrow,
+stale or unknown heartbeat, and explicit operational blocks are red. Thresholds
+cap at the actual remaining plan length for its terminal window; a fully complete
+shorter window stays green. A `ready` label cannot suppress an independently
+measured shortfall.
 
 Both calendar and payload-download renders call this evaluator. Resume/reopen
 recalculates heartbeat age even when the calendar date is unchanged. The notice

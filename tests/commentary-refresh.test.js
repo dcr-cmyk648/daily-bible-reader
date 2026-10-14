@@ -150,6 +150,7 @@ test("successful background discussion cannot erase a commentary failure indicat
     state: {currentEntry: {readingId: "FABRICATED-READING-A"}, commentSyncToken: 0,
       adapter: {listComments: async () => []}, store: {getAll: async () => []}},
     recoverServerAccess: async () => true, replaceCommentSnapshots: async () => {},
+    captureReadingView: () => ({}), readingViewIsCurrent: () => true, readerSessionIsCurrent: () => true,
     updateReadingCompletion() {}, renderComments: async () => {}, loadCachedDiscussion: async () => {},
     setSyncStatus: text => { discussionStatus = text; }
   };
@@ -170,11 +171,16 @@ function persistenceSandbox(tracker, controller, initial) {
   const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
   const persist = source.slice(source.indexOf("  async function persistPrivatePayload("), source.indexOf("  function mayUseOfflineFallback("));
   const state = {privatePayloadByReadingId: new Map([["FABRICATED-READING-A", initial]]),
+    plan: {entries: [{...require("./helpers/preparation-fixture.js").preparationFixture().entries[0], readingId: "FABRICATED-READING-A"}]},
     config: {}, view: "reading", currentEntry: {readingId: "FABRICATED-READING-A"}};
   const rendered = [];
   const sandbox = {state, privatePayloadRequests: tracker, commentaryRefresh: controller,
+    captureReadingView: () => ({}), readingViewIsCurrent: () => true, readerSessionIsCurrent: () => true,
+    privatePayloadIsPrepared: app.privatePayloadIsPrepared,
+    appError: (message, code) => Object.assign(new Error(message), {code}),
     privatePayloadRevision: app.privatePayloadRevision, renderCommentary: value => rendered.push(value),
     notifyHighlightCommentaryUpdate() {}, setSyncStatus() {}};
+  sandbox.setReadingDiscussionAvailable = () => {};
   vm.createContext(sandbox); vm.runInContext(persist, sandbox);
   return {state, rendered, persist: sandbox.persistPrivatePayload};
 }
@@ -199,8 +205,10 @@ test("out-of-order reading responses cannot replace a newer accepted payload", a
   const tracker = app.createPrivatePayloadRequestTracker();
   const oldRequest = tracker.begin(["FABRICATED-READING-A", "FABRICATED-READING-B"]);
   const newest = tracker.begin(["FABRICATED-READING-A"]);
-  const old = {metadata: {readingId: "FABRICATED-READING-A", commentaryVersion: "fabricated/old"}};
-  const fresh = {metadata: {...old.metadata, commentaryVersion: "fabricated/new"}};
+  const fixture = require("./helpers/preparation-fixture.js").preparationFixture();
+  const initial = fixture.payload({...fixture.entries[0], readingId: "FABRICATED-READING-A"});
+  const old = {metadata: {...initial.commentary, commentaryVersion: "fabricated/old"}, sources: initial.sources};
+  const fresh = {metadata: {...old.metadata, commentaryVersion: "fabricated/new"}, sources: initial.sources};
   const h = setup(async () => ({state: "refreshed"}));
   const p = persistenceSandbox(tracker, h.controller, old);
   assert.equal(await p.persist("FABRICATED-READING-A", fresh, newest), true);

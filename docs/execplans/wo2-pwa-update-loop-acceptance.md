@@ -1,13 +1,104 @@
 # WO-2 installed-PWA update loop — October 13, 2026
 
+## October 14 content-service recovery addendum
+
+Current local candidate is `bc807348628702da`, frontend `d2331e5f07272b57`, source
+PWA `e17da696d5c31341`; use `config/unselected-reader-canary.json`. Its prepared
+[URL](https://dcr-cmyk648.github.io/daily-bible-reader/web/pwa-canary/canaries/bc807348628702da/)
+is not published yet. GitHub push/publication, Google deployment
+and promotion are held for the manager's overnight release window. All private
+publication must finish before 06:30 Eastern; 06:30–23:30 publication is reserved
+only for a missing devotional today/tomorrow. The recovered reader has no exception.
+
+The 08:31 and 08:38 iPhone reports showed a generic fatal banner with confirmed
+access, eight cached entries and disabled Open/comments. Production assets were
+unchanged. The GEN21 manifest switch was 08:34:15.765 Eastern; success heartbeat
+was 08:37:48.093. First failure therefore precedes the pointer switch. Only GEN21's
+pointer changed; immutable candidate/readback matched. There is no retained device
+exception. Review/publication overlap and recovery after completion are timing
+evidence, not proof of a particular error or an inconsistent manifest interval.
+
+Exact Oct 1 production source was already cache-first, restored typed drafts,
+and used background revalidation. It did not validate every saved payload's
+reading/prepared state, mapped content-service refresh faults to failed refresh,
+and could fatally close the whole reader when an uncached open failed. The new
+client rejects expired/context/plan/reading mismatches and unprepared placeholders,
+validates incoming content before cache acceptance, and retains a validated saved
+study on explicitly recognized content/transport faults. Existing bounded retries
+and manual Retry commentary remain visible independently of discussion sync.
+Without usable content, it clears the previous study and Scripture, preserves the
+draft, disables only that reading's discussion controls, and keeps Home/other
+saved readings usable. A validated retry restores the study. Explicit denial stays
+denial; programming/storage errors remain fatal with a safe code and a finite
+operation label. No raw message/stack, reading IDs, comments, credentials or
+identity enter the retained public fatal diagnostic.
+
+Independent review reproduced four blockers before acceptance: a pending open
+returning after Home, a null summary paragraph replacing a good cache, a delayed
+A draft reaching B and autosaving under B, and stale Scripture heading/tabs.
+The repair validates renderable shapes before replacement, scopes awaited reading,
+draft, discussion and Scripture UI by reading/load generation/reader session,
+captures draft-save and submit reading keys, and clears old Scripture headings,
+tabs and highlight/verse-sheet context. Deferred DOM regressions cover A→B and
+A→Home→A, actual draft writes, submission after navigation, obsolete refreshes
+and replacement sessions. Validated legacy v1/v2 summaries, book introductions,
+complete Henry and full-source fallbacks remain supported. Focused checks pass
+92/92 with no skips; final full-repository acceptance is recorded separately below.
+
+Final October 14 local check: **965 total, 962 passed, zero failed, three existing
+PDF skips**. The PDF runtime/security pin is unchanged; ignored private drafts are
+absent in this worker. The manager's published private-content gate remains
+separate (475/475). Log: ignored `tmp/wo2-content-recovery-final-check.log`, SHA-256
+`07fcfb7e4f49a5e3bb366b74334bffb77b6b6ac1c9b23ecfed085f64a89bc7fe`.
+All 201 previously tracked public assets match HEAD byte-for-byte; all four frozen
+approved backend files match their retained hashes. Source-backed canary verification
+passes. No live browser/phone pass, GitHub push, Google upload or promotion is claimed.
+
+Batch/rate inspection: priority warming requests two hot readings, full-window
+warming requests up to eight, and health splits its eight-reading request into
+four-reading groups. They consume the same reading-batch allowance for Dustin
+when using Dustin's credential; overlap does not prove exhaustion. Generic legacy
+server source uses UserProperties; the Oct 1/current token builder replaces this
+with ScriptCache keyed by reader hash and bucket. The frozen approved 5d backend
+is per-reader, so shared owner properties must not be inferred as its behavior.
+Google's [property scopes](https://developers.google.com/apps-script/reference/properties/properties-service#getuserproperties)
+and [execution identity](https://developers.google.com/apps-script/guides/web#permissions)
+explain the legacy concern. Actual deployed variant/incident error remains
+unverified. No identity, rate limit, warming policy or health cadence was changed;
+no live hammer test or diagnostic account was used.
+
+TokenBridge response generation embeds JSON in an unbounded inline postMessage
+script line. Node health parsing does not exercise WebKit execution of it. This
+is an unproven live-only candidate, not an established line-limit cause; retained
+release history rejects line length as sufficient. The healthy 19.3-second Node
+response is below 45 seconds but does not prove iPhone transport health. Frozen
+approved backend 5d is unchanged. Any future backend transport change needs a
+separate concrete proposal and gate, not silent substitution.
+
+For the ONE manager-owned combined phone gate, after overnight publication and
+matching backend verification: install the exact FINAL candidate, confirm its
+frontend/server IDs, cold-launch and reopen twice without clearing data, open a
+prepared reading and inspect the separate commentary refresh status, confirm
+the existing draft remains correct when switching prepared dates and returning
+Home, verify no previous passage heading or tabs remain, save/remove one reversible highlight or
+comment, and confirm the original production icon still opens. A real content
+failure must retain a valid saved study with Retry commentary; an uncached failure
+must not display another reading or disable Home. If a fatal occurs, report only
+its visible code plus lastFatal time/phase/operation from build details. Do not
+provoke live failures or copy private text/codes into evidence. Fabricated DOM
+tests cover failure/denial cases; they are not a phone pass. The manager refreshes
+actual buffer/heartbeat expectations and retains all earlier shell/backend gates.
+
+## Previous October 13 acceptance
+
 Status: bounded full-window warning follow-up checked; production and phone gate
 held. Final follow-up check: 931 tests, 928 passed, zero failed, three existing
 PDF tests skipped because their exact pinned bundled Python is unavailable.
 The PDF security pin is unchanged. Focused PWA tests: 27/27, zero skipped.
 Ignored private-draft validation is absent in this worker; private publications
 and their validation remain manager-owned.
-The manager owns the final commit/push slot, backend staging, refreshed live
-health, combined human request, promotion and PROJECT_STATE.md update.
+The manager owns the overnight push/publication slot, backend staging, refreshed
+live health, combined human request and promotion. WO-2 updates PROJECT_STATE.md.
 
 Released SW candidate: `db2a843f2ed0b875`, frontend `d860b9cb39f4f2b8`, source PWA build
 `0215ec22e0320d30`. [Exact canary URL](https://dcr-cmyk648.github.io/daily-bible-reader/web/pwa-canary/canaries/db2a843f2ed0b875/).

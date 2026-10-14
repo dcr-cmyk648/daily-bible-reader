@@ -1422,7 +1422,7 @@ test("cached readings paint first, then use one confirmed recovery to rerender a
   assert.match(cacheFlow, /const access = await recoverServerAccess\(\);/);
   assert.doesNotMatch(revalidation, /navigator\.onLine/);
   assert.match(revalidation, /state\.readingRevalidationById\.get\(entry\.readingId\)/);
-  assert.match(revalidation, /await persistPrivatePayload\(entry\.readingId, payload, request\);/);
+  assert.match(revalidation, /persistPrivatePayload\(entry\.readingId, payload, request\)/);
   assert.doesNotMatch(revalidation, /renderCommentary\(/);
   assert.match(revalidation, /if \(explicitAccessFailure\(error\)\) \{\s*state\.serverAccessConfirmed = false;\s*handleFatalError\(error\);\s*return \{state: "denied"\};/);
   assert.match(loadReading, /setSyncStatus\("Saved reading shown · checking for updates"\)/);
@@ -1438,20 +1438,29 @@ test("a synchronized Henry revision reaches the active verse panel after comment
   const source = fs.readFileSync(path.join(__dirname, "../app/frontend/app.js"), "utf8");
   const persist = source.slice(source.indexOf("async function persistPrivatePayload"), source.indexOf("function mayUseOfflineFallback"));
   const notify = source.slice(source.indexOf("function notifyHighlightCommentaryUpdate"), source.indexOf("function registerHighlightEnhancer"));
-  const oldPayload = {metadata: {readingId: "FABRICATED-OPEN", commentaryVersion: "fabricated/v1"}};
-  const newPayload = {metadata: {...oldPayload.metadata, verseCommentary: {generation_timestamp: "2026-09-14T12:00:00Z"}}};
+  const fixture = require("./helpers/preparation-fixture.js").preparationFixture();
+  const entry = {...fixture.entries[0], readingId: "FABRICATED-OPEN"};
+  const initial = fixture.payload(entry);
+  const oldPayload = {metadata: {...initial.commentary, commentaryVersion: "fabricated/v1"}, sources: initial.sources};
+  const newPayload = {metadata: {...oldPayload.metadata, verseCommentary: {...oldPayload.metadata.verseCommentary,
+    generation_timestamp: "2026-09-14T12:00:00Z"}}, sources: initial.sources};
   const calls = [];
   let rendered = oldPayload.metadata;
   const state = {
     privatePayloadByReadingId: new Map([["FABRICATED-OPEN", oldPayload]]),
+    plan: {entries: [entry]},
     config: {}, view: "reading", currentEntry: {readingId: "FABRICATED-OPEN"},
     highlightEnhancer: {updateCommentary(value) { calls.push(value); }}
   };
   const sandbox = {
+    privatePayloadIsPrepared: app.privatePayloadIsPrepared,
+    captureReadingView: () => ({}), readingViewIsCurrent: () => true, readerSessionIsCurrent: () => true,
+    appError: (message, code) => Object.assign(new Error(message), {code}),
     state, newPayload, privatePayloadRevision: app.privatePayloadRevision,
     commentaryRefresh: {confirm() {}},
     renderCommentary(value) { rendered = value; },
     highlightContext() { return {readingId: rendered.readingId, verseCommentary: rendered.verseCommentary}; },
+    setReadingDiscussionAvailable() {},
     setSyncStatus() {}
   };
   vm.createContext(sandbox);

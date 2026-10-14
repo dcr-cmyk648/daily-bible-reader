@@ -80,6 +80,7 @@
     activeCalendarDate: null,
     authorizationPromise: null,
     lastAccessRecoveryFailureAt: 0,
+    lastFatal: null,
     serverAccessConfirmed: false,
     bootstrap: null,
     calendarMonthDate: null,
@@ -104,6 +105,9 @@
     readerCode: "",
     readerCodeSubmitting: false,
     readingRevalidationById: new Map(),
+    readingUnavailableId: null,
+    readingLoadToken: 0,
+    readerSessionEpoch: 0,
     schedule: null,
     selectedCalendarDate: null,
     session: null,
@@ -127,6 +131,7 @@
   };
 
   const privatePayloadRequests = createPrivatePayloadRequestTracker();
+  const readerFailureOperations = new WeakMap();
   const commentaryRefresh = createCommentaryRefreshController({
     refresh: () => revalidateOpenReading(state.currentEntry),
     isActive: (readingId) => state.view === "reading" && state.currentEntry &&
@@ -2022,6 +2027,7 @@
   }
 
   function renderCommentary(commentary, sources) {
+    element("sourceAuditDisclosure").hidden = false;
     const overview = element("overviewContent");
     const dailyIntroduction = commentary.dailyIntroduction || {markdown: commentary.overview, sourceIds: []};
     renderSafeMarkdown(dailyIntroduction.markdown || "Orientation unavailable.", overview);
@@ -2468,6 +2474,47 @@
       Date.parse(record.expiresAt) > now && (!planVersion || record.planVersion === planVersion));
   }
 
+  function privatePayloadIsPrepared(payload, entry) {
+    const commentary = payload && (payload.commentary || payload.metadata);
+    if (!entry || !commentary || commentary.readingId !== entry.readingId ||
+        privatePayloadNeedsBlockingRefresh(payload) || !privatePayloadHasRenderableShape(payload)) return false;
+    if (commentary.schemaVersion === "commentary/v3") return readingPreparationReport(payload, entry).prepared;
+    if (!["commentary/v1", "commentary/v2"].includes(commentary.schemaVersion)) return false;
+    const summary = normalizedCommentarySummary(commentary);
+    const comprehensive = normalizedComprehensiveSynthesis(commentary, entry.kind === "book_intro");
+    const sourceIds = Array.from(new Set([...summary.paragraphs.flatMap(paragraph => paragraph.sourceIds || []), ...comprehensive.sourceIds || []]));
+    return readingPreparationReport({...payload, commentary: {...commentary, schemaVersion: "commentary/v3",
+      dailyIntroduction: commentary.dailyIntroduction || {markdown: commentary.overview, sourceIds},
+      commentarySummary: summary, comprehensiveSynthesis: comprehensive}}, entry).prepared;
+  }
+
+  function privatePayloadHasRenderableShape(payload) {
+    const object = value => value !== null && typeof value === "object" && !Array.isArray(value);
+    const commentary = payload && (payload.commentary || payload.metadata);
+    if (!object(commentary) || !Array.isArray(payload.sources) || !payload.sources.every(object)) return false;
+    const citedText = value => object(value) && typeof value.markdown === "string" &&
+      Array.isArray(value.sourceIds) && value.sourceIds.every(id => typeof id === "string");
+    for (const key of ["dailyIntroduction", "practicalTakeaway", "comprehensiveSynthesis"]) {
+      if (commentary[key] !== undefined && !citedText(commentary[key])) return false;
+    }
+    if (commentary.commentarySummary !== undefined && (!object(commentary.commentarySummary) ||
+        !Array.isArray(commentary.commentarySummary.paragraphs) || !commentary.commentarySummary.paragraphs.every(citedText))) return false;
+    for (const key of ["sections", "keyInsights"]) {
+      if (commentary[key] !== undefined && (!Array.isArray(commentary[key]) || !commentary[key].every(citedText))) return false;
+    }
+    if (commentary.coverage !== undefined && (!object(commentary.coverage) ||
+        ["representedCategories", "missingCategories", "majorDisagreements", "limitations"].some(key =>
+          commentary.coverage[key] !== undefined && (!Array.isArray(commentary.coverage[key]) ||
+            !commentary.coverage[key].every(value => typeof value === "string"))))) return false;
+    return true;
+  }
+
+  function privateRecordIsUsable(record, entry, context, now, planVersion) {
+    return Boolean(record && record.readingId === (entry && entry.readingId) &&
+      (record.cacheContext === context || !record.cacheContext && context === "apps-script") &&
+      privateRecordIsFresh(record, now, planVersion) && privatePayloadIsPrepared(record.payload, entry));
+  }
+
   function privateCacheContext() {
     return state.adapter && state.adapter.cacheContext || "apps-script";
   }
@@ -2812,11 +2859,10 @@
   }
 
   async function cachedPrivatePayload(readingId) {
-    const record = await state.store.get("privateContent", readingId);
+    const record = await readingStep("cache-lookup", () => state.store.get("privateContent", readingId));
     const context = privateCacheContext();
-    const contextMatches = record && (record.cacheContext === context ||
-      (!record.cacheContext && context === "apps-script"));
-    if (!contextMatches || !privateRecordIsFresh(record, Date.now(), state.plan && state.plan.planVersion)) {
+    const entry = state.plan && state.plan.entries.find(item => item.readingId === readingId);
+    if (!hasPreparedReading(entry) || !privateRecordIsUsable(record, entry, context, Date.now(), state.plan && state.plan.planVersion)) {
       if (record) await state.store.delete("privateContent", readingId);
       state.privatePayloadByReadingId.delete(readingId);
       return null;
@@ -2848,30 +2894,47 @@
   }
 
   async function persistPrivatePayload(readingId, payload, request) {
+    const context = captureReadingView(readingId);
     if (request && !privatePayloadRequests.isCurrent(readingId, request)) return false;
+    const entry = state.plan && state.plan.entries.find(item => item.readingId === readingId);
+    const commentary = payload && (payload.commentary || payload.metadata);
+    if (!entry || !commentary || commentary.readingId !== readingId) {
+      throw appError("Private commentary did not match the selected reading.", "CONTENT_MISMATCH");
+    }
+    if (!privatePayloadIsPrepared(payload, entry)) {
+      throw appError("The fresh private study is not a validated prepared reading.", "CONTENT_INVALID");
+    }
     const previous = state.privatePayloadByReadingId.get(readingId);
     state.privatePayloadByReadingId.set(readingId, payload);
     const maxAgeSeconds = Number(state.config && state.config.privateContentCacheMaxAgeSeconds || 0);
     if (Number.isInteger(maxAgeSeconds) && maxAgeSeconds > 0 && maxAgeSeconds <= 1209600) {
       const cachedAt = new Date();
-      await state.store.put("privateContent", {
+      await readingStep("cache-write", () => state.store.put("privateContent", {
         readingId,
         cacheContext: privateCacheContext(),
         planVersion: state.plan.planVersion,
         cachedAt: cachedAt.toISOString(),
         expiresAt: new Date(cachedAt.getTime() + maxAgeSeconds * 1000).toISOString(),
         payload
-      });
+      }));
     }
-    if (request && !privatePayloadRequests.isCurrent(readingId, request)) return false;
+    if (!readerSessionIsCurrent(context) || request && !privatePayloadRequests.isCurrent(readingId, request)) return false;
     commentaryRefresh.confirm(readingId);
-    if (previous && privatePayloadRevision(previous) !== privatePayloadRevision(payload) &&
-        state.view === "reading" && state.currentEntry && state.currentEntry.readingId === readingId) {
+    if ((state.readingUnavailableId === readingId || previous && privatePayloadRevision(previous) !== privatePayloadRevision(payload)) &&
+        readingViewIsCurrent(context)) {
       const commentary = payload && (payload.commentary || payload.metadata);
       if (commentary && commentary.readingId === readingId) {
-        renderCommentary(commentary, payload.sources || state.sources || []);
+        const wasUnavailable = state.readingUnavailableId === readingId;
+        try { renderCommentary(commentary, payload.sources || state.sources || []); }
+        catch (error) { throw tagReaderFailure(error, "render-study"); }
+        state.readingUnavailableId = null;
+        setReadingDiscussionAvailable(true);
         notifyHighlightCommentaryUpdate();
         setSyncStatus("Study updated to the newest version");
+        if (wasUnavailable) {
+          if (state.currentEntry.kind === "chapter") loadScripture(state.currentEntry).catch(() => {});
+          refreshComments({background: true, readingId}).catch(() => {});
+        }
       }
     }
     return true;
@@ -2898,6 +2961,72 @@
 
   function transportFailure(error) {
     return Boolean(!error || ["BRIDGE_UNAVAILABLE", "SERVER_ERROR", "SERVER_TIMEOUT", "SERVER_UNAVAILABLE"].includes(error.code));
+  }
+
+  function recoverableContentFailure(error) {
+    return Boolean(error && (contentServiceFailure(error) || ["RATE_LIMITED", "READING_NOT_FOUND", "INVALID_READING", "OFFLINE_CONTENT_UNAVAILABLE"].includes(error.code) ||
+      ["BRIDGE_UNAVAILABLE", "SERVER_ERROR", "SERVER_TIMEOUT", "SERVER_UNAVAILABLE"].includes(error.code)));
+  }
+
+  const FATAL_CODES = new Set(["UNAVAILABLE", "CLIENT_TYPE_ERROR", "CLIENT_RANGE_ERROR", "CLIENT_SYNTAX_ERROR",
+    "LOCAL_STORAGE_FULL", "AUTH_REQUIRED", "ACCESS_DENIED", "WRONG_EXECUTION_IDENTITY", "READER_CODE_REQUIRED",
+    "READER_CODE_INVALID", "CONTENT_ACCESS_DENIED", "CONTENT_INVALID", "CONTENT_MISMATCH", "SOURCE_REGISTRY_INVALID",
+    "INVALID_MANIFEST", "INVALID_PLAN", "PLAN_VERSION_MISMATCH", "INVALID_SERVER_CONFIG", "RATE_LIMITED",
+    "BRIDGE_UNAVAILABLE", "SERVER_ERROR", "SERVER_TIMEOUT", "SERVER_UNAVAILABLE", "OFFLINE_CONTENT_UNAVAILABLE",
+    "COMMENT_STORE_BUSY", "COMMENT_STORE_UNAVAILABLE", "HIGHLIGHT_STORE_BUSY", "HIGHLIGHT_STORE_UNAVAILABLE",
+    "READING_NOT_FOUND", "INVALID_READING"]);
+  const FATAL_PHASES = new Set(["startup", "reading-open", "library-open", "content-refresh"]);
+  const READER_OPERATIONS = new Set(["unknown", "cached-discussion", "draft-restore", "cache-lookup",
+    "payload-fetch", "payload-validation", "cache-write", "render-study", "cache-inspector"]);
+
+  function tagReaderFailure(error, operation) {
+    if (error && typeof error === "object" && READER_OPERATIONS.has(operation) && !readerFailureOperations.has(error)) {
+      readerFailureOperations.set(error, operation);
+    }
+    return error;
+  }
+
+  async function readingStep(operation, work) {
+    try { return await work(); } catch (error) { throw tagReaderFailure(error, operation); }
+  }
+
+  function safeFatalErrorCode(error) {
+    if (error && FATAL_CODES.has(error.code)) return error.code;
+    const names = new Map([["TypeError", "CLIENT_TYPE_ERROR"], ["RangeError", "CLIENT_RANGE_ERROR"],
+      ["SyntaxError", "CLIENT_SYNTAX_ERROR"], ["QuotaExceededError", "LOCAL_STORAGE_FULL"]]);
+    return names.get(error && error.name) || "UNAVAILABLE";
+  }
+
+  function fatalDiagnosticKey() {
+    return "dbr-reader-last-fatal/v1:" + (root.location ? new URL("./", root.location.href).pathname : "local");
+  }
+
+  function readFatalDiagnostic() {
+    try {
+      const raw = root.localStorage.getItem(fatalDiagnosticKey());
+      if (!raw || raw.length > 512) return null;
+      const value = JSON.parse(raw);
+      if (!value || !FATAL_CODES.has(value.code) || !FATAL_PHASES.has(value.phase) ||
+          typeof value.at !== "string" || value.at.length > 40 || !Number.isFinite(Date.parse(value.at))) return null;
+      return {code: value.code, at: value.at, phase: value.phase,
+        operation: READER_OPERATIONS.has(value.operation) ? value.operation : "unknown"};
+    } catch (_) { return null; }
+  }
+
+  function recordFatalDiagnostic(error, phase) {
+    const diagnostic = {code: safeFatalErrorCode(error), at: new Date().toISOString(),
+      phase: FATAL_PHASES.has(phase) ? phase : state.view === "reading" ? "reading-open" : "startup",
+      operation: error && typeof error === "object" && readerFailureOperations.get(error) || "unknown"};
+    state.lastFatal = diagnostic;
+    // Public codes/times only. No message, stack, reading, identity or credential.
+    try { root.localStorage.setItem(fatalDiagnosticKey(), JSON.stringify(diagnostic)); } catch (_) {}
+    const inspector = element("cacheInspector");
+    if (inspector) {
+      let previous = {};
+      try { previous = JSON.parse(inspector.textContent); } catch (_) {}
+      inspector.textContent = JSON.stringify({...previous, lastFatal: diagnostic}, null, 2);
+    }
+    return diagnostic;
   }
 
   function retainedCalendarFailureStatus(error) {
@@ -2946,21 +3075,28 @@
   }
 
   async function readingPayloadWithCache(readingId) {
+    const context = captureReadingView(readingId);
     const cached = await cachedPrivatePayload(readingId);
+    if (!readingViewIsCurrent(context)) throw appError("The reading selection changed.", "CONTENT_INVALID");
     if (cached) return {payload: cached, source: "cache"};
     const access = await recoverServerAccess();
+    if (!readingViewIsCurrent(context)) throw appError("The reading selection changed.", "CONTENT_INVALID");
     if (access === null) throw appError("Secure reader access was denied.", "AUTH_REQUIRED");
     if (!access) {
       throw appError("This reading has not been downloaded and secure access is not yet confirmed.", "OFFLINE_CONTENT_UNAVAILABLE");
     }
     try {
       const request = privatePayloadRequests.begin([readingId]);
-      const payload = await state.adapter.getReadingPayload(readingId);
-      const accepted = await persistPrivatePayload(readingId, payload, request);
-      return {payload: accepted ? payload : state.privatePayloadByReadingId.get(readingId) || payload,
-        source: accepted ? "network" : "cache"};
+      const payload = await readingStep("payload-fetch", () => state.adapter.getReadingPayload(readingId));
+      if (!readingViewIsCurrent(context)) throw appError("The reading selection changed.", "CONTENT_INVALID");
+      const accepted = await readingStep("payload-validation", () => persistPrivatePayload(readingId, payload, request));
+      const current = accepted ? payload : state.privatePayloadByReadingId.get(readingId);
+      const entry = state.plan.entries.find(item => item.readingId === readingId);
+      if (!privatePayloadIsPrepared(current, entry)) throw appError("No validated current study is available.", "CONTENT_INVALID");
+      return {payload: current, source: accepted ? "network" : "cache"};
     } catch (error) {
-      if (!mayUseOfflineFallback(error)) throw error;
+      if (!readingViewIsCurrent(context)) throw error;
+      if (!recoverableContentFailure(error)) throw error;
       const fallback = await cachedPrivatePayload(readingId);
       if (!fallback) throw error;
       return {payload: fallback, source: "cache"};
@@ -3001,7 +3137,7 @@
       epoch += 1;
       cancelTimer();
       pending = null;
-      current = {readingId: null, phase: "idle", attempt: 0, checkedAt: null};
+      current = {readingId: null, phase: "idle", attempt: 0, checkedAt: null, errorCode: null};
       options.onChange({...current});
     }
     function select(readingId) {
@@ -3013,7 +3149,12 @@
       if (!readingId || current.readingId !== readingId) return;
       epoch += 1;
       cancelTimer();
-      emit({phase: "confirmed", attempt: 0, checkedAt: now()});
+      emit({phase: "confirmed", attempt: 0, checkedAt: now(), errorCode: null, contentUnavailable: false});
+    }
+    function unavailable(readingId, errorCode) {
+      select(readingId);
+      cancelTimer();
+      emit({phase: "unavailable", contentUnavailable: true, errorCode: FATAL_CODES.has(errorCode) ? errorCode : "UNAVAILABLE"});
     }
     function pause() {
       cancelTimer();
@@ -3029,6 +3170,7 @@
       const run = Promise.resolve().then(() => options.refresh(readingId)).catch(() => ({state: "failed"}))
         .then((result) => {
           if (token !== epoch || current.readingId !== readingId) return result;
+          emit({errorCode: result.errorCode && FATAL_CODES.has(result.errorCode) ? result.errorCode : null});
           if (result.state === "refreshed") confirm(readingId);
           else if (result.state === "denied" || result.state === "inactive") clear();
           else if (result.state === "retryable" && delays[current.attempt - 1] !== undefined &&
@@ -3044,7 +3186,7 @@
       pending = run;
       return run;
     }
-    return {select, confirm, pause, clear, request, snapshot: () => ({...current})};
+    return {select, confirm, unavailable, pause, clear, request, snapshot: () => ({...current})};
   }
 
   function commentaryRefreshPresentation(snapshot) {
@@ -3052,15 +3194,23 @@
       saved: "Commentary update not yet checked",
       checking: "Checking commentary for updates…",
       retrying: "Saved commentary · retrying update check…",
-      failed: "Saved commentary · couldn’t check for updates"
+      failed: "Saved commentary · couldn’t check for updates",
+      unavailable: "Study unavailable for this reading · retry to check content"
     };
+    if (snapshot.contentUnavailable) {
+      phases.saved = "Study unavailable for this reading";
+      phases.checking = "Checking unavailable study content…";
+      phases.retrying = "Study unavailable · retrying content check…";
+      phases.failed = "Study unavailable · couldn’t load content";
+    }
     const checkedTime = snapshot.checkedAt === null ? "" : new Intl.DateTimeFormat(undefined, {
       hour: "numeric", minute: "2-digit"
     }).format(new Date(snapshot.checkedAt));
     return {
       text: snapshot.phase === "confirmed" ? `Commentary checked at ${checkedTime}` :
-        (phases[snapshot.phase] || "") + (checkedTime ? ` · last checked at ${checkedTime}` : ""),
-      retryVisible: ["saved", "retrying", "failed"].includes(snapshot.phase)
+        (phases[snapshot.phase] || "") + (checkedTime ? ` · last checked at ${checkedTime}` : "") +
+        (snapshot.errorCode && FATAL_CODES.has(snapshot.errorCode) ? ` · error ${snapshot.errorCode}` : ""),
+      retryVisible: ["saved", "retrying", "failed", "unavailable"].includes(snapshot.phase)
     };
   }
 
@@ -3100,26 +3250,32 @@
     }
     const existing = state.readingRevalidationById.get(entry.readingId);
     if (existing) return existing;
+    const context = captureReadingView(entry.readingId);
     const run = async () => {
       const access = await recoverServerAccess();
+      if (!readingViewIsCurrent(context)) return {state: "not_open"};
       if (access === null) return {state: "denied"};
       if (!access) return {state: "retryable"};
       try {
         const request = privatePayloadRequests.begin([entry.readingId]);
-        const payload = await state.adapter.getReadingPayload(entry.readingId);
+        const payload = await readingStep("payload-fetch", () => state.adapter.getReadingPayload(entry.readingId));
+        if (!readingViewIsCurrent(context)) return {state: "not_open"};
         const commentary = payload && (payload.commentary || payload.metadata);
         if (!commentary || commentary.readingId !== entry.readingId) {
           throw appError("Private commentary did not match the selected reading.", "CONTENT_MISMATCH");
         }
-        const accepted = await persistPrivatePayload(entry.readingId, payload, request);
+        const accepted = await readingStep("payload-validation", () => persistPrivatePayload(entry.readingId, payload, request));
         return {state: accepted ? "refreshed" : "retryable"};
       } catch (error) {
+        if (!readingViewIsCurrent(context)) return {state: "not_open"};
         if (explicitAccessFailure(error)) {
           state.serverAccessConfirmed = false;
           handleFatalError(error);
           return {state: "denied"};
         }
-        return {state: transportFailure(error) ? "retryable" : "failed"};
+        if (recoverableContentFailure(error)) return {state: "retryable", errorCode: safeFatalErrorCode(error)};
+        handleFatalError(error, "content-refresh");
+        return {state: "failed"};
       }
     };
     const pending = run();
@@ -3193,6 +3349,7 @@
   }
 
   async function loadScripture(entry, options) {
+    const context = captureReadingView(entry.readingId);
     const token = ++state.scriptureRequestToken;
     const passageIndex = normalizedScripturePassageIndex(entry, options && options.passageIndex);
     state.activeScripturePassageIndex = passageIndex;
@@ -3213,7 +3370,7 @@
     const cached = state.policy.offlinePersistenceAllowed
       ? await cachedScripture(entry, passageIndex)
       : null;
-    if (token !== state.scriptureRequestToken || state.currentEntry.readingId !== entry.readingId) return;
+    if (token !== state.scriptureRequestToken || !readingViewIsCurrent(context)) return;
     if (cached) renderScripture(cached, "cache");
     if (!serverCallsAllowed()) {
       if (!cached) {
@@ -3224,14 +3381,15 @@
     try {
       const result = await getScriptureForReading(entry, {passageIndex});
       const scripture = result.scripture;
-      if (token !== state.scriptureRequestToken || state.currentEntry.readingId !== entry.readingId) return;
+      if (token !== state.scriptureRequestToken || !readingViewIsCurrent(context)) return;
       if (scripture && scripture.available === false) throw appError("Scripture provider is unavailable.", scripture.code || "ESV_UNAVAILABLE");
       renderScripture(scripture, result.source);
     } catch (error) {
-      if (token !== state.scriptureRequestToken || state.currentEntry.readingId !== entry.readingId) return;
+      if (token !== state.scriptureRequestToken || !readingViewIsCurrent(context)) return;
       const fallback = cached || (state.policy.offlinePersistenceAllowed
         ? await cachedScripture(entry, passageIndex)
         : null);
+      if (token !== state.scriptureRequestToken || !readingViewIsCurrent(context)) return;
       if (fallback) {
         renderScripture(fallback, "cache");
         const fallbackState = element("scriptureState");
@@ -3932,6 +4090,8 @@
   }
 
   function showHome(options) {
+    state.readingLoadToken += 1;
+    root.clearTimeout(draftSaveTimer);
     state.view = "home";
     commentaryRefresh.clear();
     state.currentEntry = null;
@@ -3941,6 +4101,8 @@
     state.currentScripture = null;
     state.currentVerseCommentary = null;
     state.currentHenrySourceLink = null;
+    element("commentBody").value = "";
+    element("commentList").replaceChildren();
     notifyHighlightEnhancer();
     element("readingView").hidden = true;
     element("homeView").hidden = false;
@@ -3979,11 +4141,17 @@
   function renderReadingShell(schedule, options) {
     const entry = schedule.selectedEntry;
     state.currentEntry = entry;
+    state.readingUnavailableId = null;
     commentaryRefresh.select(!schedule.locked && hasPreparedReading(entry) ? entry.readingId : null);
     state.currentLibraryResource = schedule.libraryMode && options && options.libraryResource || null;
     state.currentScripture = null;
     state.currentVerseCommentary = null;
     state.currentHenrySourceLink = null;
+    root.clearTimeout(draftSaveTimer);
+    element("commentBody").value = "";
+    element("commentList").replaceChildren();
+    clearReadingStudyDisplay("Loading this reading’s study…");
+    setReadingDiscussionAvailable(false);
     notifyHighlightEnhancer();
     element("readingDate").textContent = formatReadingDate(schedule.readingDate);
     element("readingPosition").textContent = schedule.libraryMode
@@ -4023,6 +4191,8 @@
       ? calculateLibrarySchedule(state.plan, state.config, new Date(), requestedReadingId, state.preparedReadingIds)
       : calculateSchedule(state.plan, state.config, new Date(), requestedReadingId, options);
     state.schedule = schedule;
+    state.readingLoadToken += 1;
+    const context = captureReadingView(schedule.selectedEntry.readingId);
     renderReadingShell(schedule, options);
     clearHistoricalContextPanel();
     if (schedule.locked) {
@@ -4056,23 +4226,36 @@
       setSyncStatus("Study preparation pending");
       return;
     }
-    await loadCachedDiscussion(entry.readingId);
-    await loadDraft(entry.readingId);
-    const result = await readingPayloadWithCache(entry.readingId);
+    let result;
+    try {
+      await readingStep("cached-discussion", () => loadCachedDiscussion(entry.readingId, context));
+      if (!readingViewIsCurrent(context)) return;
+      await readingStep("draft-restore", () => loadDraft(entry.readingId, context));
+      if (!readingViewIsCurrent(context)) return;
+      result = await readingStep("payload-validation", () => readingPayloadWithCache(entry.readingId));
+    } catch (error) {
+      if (!readingViewIsCurrent(context)) return;
+      if (!recoverableContentFailure(error)) throw error;
+      if (state.currentEntry && state.currentEntry.readingId === entry.readingId) renderReadingUnavailable(entry, error);
+      return;
+    }
     const payload = result.payload;
-    if (state.currentEntry.readingId !== entry.readingId) return;
+    if (!readingViewIsCurrent(context)) return;
     const commentary = payload.commentary || payload.metadata;
     if (!commentary || commentary.readingId !== entry.readingId) {
       throw appError("Private commentary did not match the selected reading.", "CONTENT_MISMATCH");
     }
-    renderCommentary(commentary, payload.sources || state.sources || []);
+    try { renderCommentary(commentary, payload.sources || state.sources || []); }
+    catch (error) { throw tagReaderFailure(error, "render-study"); }
+    setReadingDiscussionAvailable(true);
     if (entry.kind === "chapter") {
       const passageIndex = libraryMode && state.currentLibraryResource &&
         Number.isInteger(state.currentLibraryResource.passageIndex)
         ? state.currentLibraryResource.passageIndex : undefined;
       loadScripture(entry, {passageIndex}).catch(() => {});
     }
-    await updateCacheInspector();
+    await readingStep("cache-inspector", () => updateCacheInspector());
+    if (!readingViewIsCurrent(context)) return;
     if (result.source === "cache") {
       setSyncStatus("Saved reading shown · checking for updates");
       retryOpenReadingSync().catch(() => {});
@@ -4082,14 +4265,78 @@
     refreshComments({background: true, readingId: entry.readingId}).catch(() => {});
   }
 
+  function setReadingDiscussionAvailable(available) {
+    for (const id of ["submitComment", "refreshComments"]) {
+      const control = element(id);
+      if (control) control.disabled = !available;
+    }
+  }
+
+  function readingViewIsCurrent(context) {
+    return Boolean(context && state.view === "reading" && state.currentEntry &&
+      state.currentEntry.readingId === context.readingId && state.readingLoadToken === context.token &&
+      readerSessionIsCurrent(context));
+  }
+
+  function captureReadingView(readingId) {
+    return {readingId, token: state.readingLoadToken, authorId: state.session && state.session.authorId,
+      sessionEpoch: state.readerSessionEpoch, readerCode: state.readerCode,
+      adapter: state.adapter, store: state.store, planVersion: state.plan && state.plan.planVersion,
+      cacheContext: privateCacheContext()};
+  }
+
+  function readerSessionIsCurrent(context) {
+    return Boolean(context && state.session && state.session.authorId === context.authorId &&
+      state.readerSessionEpoch === context.sessionEpoch && state.readerCode === context.readerCode &&
+      state.adapter === context.adapter && state.store === context.store && state.plan &&
+      state.plan.planVersion === context.planVersion && privateCacheContext() === context.cacheContext);
+  }
+
+  function renderReadingUnavailable(entry, error) {
+    state.readingUnavailableId = entry.readingId;
+    clearReadingStudyDisplay("Study content is unavailable for this reading. Retry commentary to check again.");
+    element("reviewBadge").textContent = "Study unavailable";
+    setReadingDiscussionAvailable(false);
+    commentaryRefresh.unavailable(entry.readingId, safeFatalErrorCode(error));
+    setSyncStatus("Study unavailable · other saved readings remain available");
+  }
+
+  function clearReadingStudyDisplay(message) {
+    state.scriptureRequestToken += 1;
+    state.activeScripturePassageIndex = null;
+    state.currentVerseCommentary = null;
+    state.currentHenrySourceLink = null;
+    state.verseOfTheDay = null;
+    for (const id of ["overviewContent", "commentarySummary", "practicalTakeaway", "comprehensiveSynthesis", "bookIntroductionContent"]) {
+      const node = element(id);
+      if (node) replaceWithText(node, message);
+    }
+    for (const id of ["overviewSources", "mainSourceNotes", "deepSourceNotes", "bookIntroductionSources", "coverageDetails",
+      "bookCommentaryBlurb", "bookCommentaryReference", "bookCommentaryScope", "verseCommentaryBlurb", "verseCommentarySourceAtoms"]) {
+      const node = element(id);
+      if (node) node.replaceChildren();
+    }
+    for (const id of ["mainSourceDisclosure", "deepSourceDisclosure", "sourceAuditDisclosure", "bookCommentaryResource", "verseCommentarySource", "verseOfDaySection"]) {
+      const node = element(id);
+      if (node) node.hidden = true;
+    }
+    clearHistoricalContextPanel();
+    element("scriptureHeading").textContent = "Scripture";
+    element("scripturePassageTabs").replaceChildren();
+    element("scripturePassageControls").hidden = true;
+    element("openEsvLink").removeAttribute("href");
+    renderScriptureUnavailable(message);
+  }
+
   function retryOpenReadingSync() {
     const entry = state.view === "reading" && state.currentEntry && hasPreparedReading(state.currentEntry)
       ? state.currentEntry
       : null;
     if (!entry) return Promise.resolve({state: "not_open"});
+    const context = captureReadingView(entry.readingId);
     commentaryRefresh.select(entry.readingId);
     return commentaryRefresh.request().then((refresh) => {
-      if (!state.currentEntry || state.currentEntry.readingId !== entry.readingId || refresh.state === "denied") return refresh;
+      if (!readingViewIsCurrent(context) || refresh.state === "denied") return refresh;
       if (refresh.state === "refreshed") setSyncStatus("Reading synchronized");
       else if (refresh.state === "retryable") setSyncStatus("Saved reading shown · secure sync retry available");
       return refresh;
@@ -4284,11 +4531,13 @@
     }
   }
 
-  async function loadDraft(readingId) {
+  async function loadDraft(readingId, context) {
     const draftKey = `comment:${readingId}`;
     const record = await state.store.get("commentDrafts", draftKey);
+    if (!readingViewIsCurrent(context)) return;
     const body = normalizedDraftBody(record);
     if (record && typeof record.body !== "string") await state.store.delete("commentDrafts", draftKey);
+    if (!readingViewIsCurrent(context)) return;
     element("commentBody").value = body;
     element("draftStatus").textContent = body ? "Draft restored from this browser." : "Drafts and pending writes use IndexedDB.";
   }
@@ -4300,16 +4549,17 @@
   let draftSaveTimer = null;
   function scheduleDraftSave() {
     root.clearTimeout(draftSaveTimer);
+    const context = captureReadingView(state.currentEntry && state.currentEntry.readingId);
+    const body = element("commentBody").value;
     draftSaveTimer = root.setTimeout(async () => {
-      if (!state.currentEntry) return;
-      const body = element("commentBody").value;
-      const draftKey = `comment:${state.currentEntry.readingId}`;
+      if (!readingViewIsCurrent(context)) return;
+      const draftKey = `comment:${context.readingId}`;
       if (body) {
-        await state.store.put("commentDrafts", {draftKey, readingId: state.currentEntry.readingId, body, updatedAt: new Date().toISOString()});
-        element("draftStatus").textContent = "Draft saved on this device.";
+        await context.store.put("commentDrafts", {draftKey, readingId: context.readingId, body, updatedAt: new Date().toISOString()});
+        if (readingViewIsCurrent(context)) element("draftStatus").textContent = "Draft saved on this device.";
       } else {
-        await state.store.delete("commentDrafts", draftKey);
-        element("draftStatus").textContent = "Drafts and pending writes use IndexedDB.";
+        await context.store.delete("commentDrafts", draftKey);
+        if (readingViewIsCurrent(context)) element("draftStatus").textContent = "Drafts and pending writes use IndexedDB.";
       }
       await updateCacheInspector();
     }, 250);
@@ -4458,54 +4708,60 @@
     return completedAuthors.has(state.session.authorId);
   }
 
-  async function loadCachedDiscussion(readingId) {
+  async function loadCachedDiscussion(readingId, context) {
     const [snapshots, outbox] = await Promise.all([
       state.store.getAll("commentSnapshot"),
       state.store.getAll("commentOutbox")
     ]);
+    if (!readingViewIsCurrent(context)) return;
     const comments = snapshots.filter((item) => item.readingId === readingId && !item.deletedAt);
     const pending = outbox.filter((item) => item.readingId === readingId);
     if (state.currentEntry && state.currentEntry.readingId === readingId) {
       state.comments = comments;
       await renderComments(pending);
     }
+    if (!readingViewIsCurrent(context)) return;
     updateReadingCompletion(readingId, comments, pending);
   }
 
   async function refreshComments(options) {
     const readingId = options && options.readingId || (state.currentEntry && state.currentEntry.readingId);
     if (!readingId) return;
+    const context = captureReadingView(readingId);
     const token = ++state.commentSyncToken;
     const background = Boolean(options && options.background);
     const access = await recoverServerAccess();
+    if (!readingViewIsCurrent(context)) return;
     if (access === null) return;
     if (!access) {
-      await loadCachedDiscussion(readingId);
-      if (!background) setSyncStatus("Saved discussion ready · writes will sync after access is confirmed");
+      await loadCachedDiscussion(readingId, context);
+      if (!background && readingViewIsCurrent(context)) setSyncStatus("Saved discussion ready · writes will sync after access is confirmed");
       return;
     }
     if (!background) setSyncStatus("Syncing discussion…");
     try {
       const comments = await state.adapter.listComments(readingId);
+      if (!readerSessionIsCurrent(context)) return;
       await replaceCommentSnapshots(readingId, comments);
       const outbox = (await state.store.getAll("commentOutbox"))
         .filter((item) => item.readingId === readingId);
       updateReadingCompletion(readingId, comments, outbox);
-      if (state.currentEntry && state.currentEntry.readingId === readingId && token === state.commentSyncToken) {
+      if (readingViewIsCurrent(context) && token === state.commentSyncToken) {
         state.comments = comments;
         await renderComments(outbox);
-        setSyncStatus(outbox.length ? `${outbox.length} comment update${outbox.length === 1 ? "" : "s"} pending` : "Discussion synchronized");
+        if (readingViewIsCurrent(context)) setSyncStatus(outbox.length ? `${outbox.length} comment update${outbox.length === 1 ? "" : "s"} pending` : "Discussion synchronized");
       }
     } catch {
+      if (!readerSessionIsCurrent(context)) return;
       const snapshots = (await state.store.getAll("commentSnapshot"))
         .filter((item) => item.readingId === readingId && !item.deletedAt);
       const outbox = (await state.store.getAll("commentOutbox"))
         .filter((item) => item.readingId === readingId);
       updateReadingCompletion(readingId, snapshots, outbox);
-      if (state.currentEntry && state.currentEntry.readingId === readingId && token === state.commentSyncToken) {
+      if (readingViewIsCurrent(context) && token === state.commentSyncToken) {
         state.comments = snapshots;
         await renderComments(outbox);
-        setSyncStatus("Offline · showing cached discussion");
+        if (readingViewIsCurrent(context)) setSyncStatus("Offline · showing cached discussion");
       }
     }
   }
@@ -4525,19 +4781,24 @@
     event.preventDefault();
     const body = element("commentBody").value.trim();
     if (!body || !state.currentEntry) return;
+    const context = captureReadingView(state.currentEntry.readingId);
+    if (!readingViewIsCurrent(context) || state.readingUnavailableId === context.readingId) return;
     const clientRequestId = createRequestId("comment-create");
     await queueComment({
       clientRequestId,
       localTempId: createRequestId("local-comment"),
       eventType: "create",
       planVersion: state.plan.planVersion,
-      readingId: state.currentEntry.readingId,
+      readingId: context.readingId,
       body,
       baseRevision: 0
     });
-    element("commentBody").value = "";
-    await state.store.delete("commentDrafts", `comment:${state.currentEntry.readingId}`);
-    await refreshComments();
+    if (!readerSessionIsCurrent(context)) return;
+    await context.store.delete("commentDrafts", `comment:${context.readingId}`);
+    if (readingViewIsCurrent(context)) {
+      element("commentBody").value = "";
+      await refreshComments({readingId: context.readingId});
+    }
     await flushOutbox();
   }
 
@@ -4661,6 +4922,7 @@
       clientDeliveryMode: CLIENT_DELIVERY_MODE,
       staticReleaseSource: root.DBRStaticRelease && root.DBRStaticRelease.source || null,
       serverBuildId: state.bootstrap && state.bootstrap.appBuildId,
+      lastFatal: state.lastFatal,
       providerPolicy: policyState,
       offlineReadingWindowDays: state.config.offlineReadingWindowDays,
       bootstrapCached,
@@ -4805,7 +5067,7 @@
     });
     element("openSelectedReading").addEventListener("click", () => {
       const readingId = element("openSelectedReading").dataset.readingId;
-      if (readingId) openReading(readingId).catch(handleFatalError);
+      if (readingId) openReading(readingId).catch(error => handleFatalError(error, "reading-open"));
     });
     element("libraryBookSelect").addEventListener("change", (event) => {
       renderLibraryPicker({bookId: event.target.value});
@@ -4815,7 +5077,7 @@
       renderLibraryPicker({bookId: resource && resource.bookId, resourceKey: event.target.value});
     });
     element("libraryOpenButton").addEventListener("click", () => {
-      openSelectedLibraryResource().catch(handleFatalError);
+      openSelectedLibraryResource().catch(error => handleFatalError(error, "library-open"));
     });
     [0, 1, 2].forEach((index) => {
       element(`pageStep${index}`).addEventListener("click", () => setReadingPage(index));
@@ -4939,6 +5201,9 @@
   }
 
   async function clearPrivateDataAfterAccessFailure() {
+    state.readerSessionEpoch += 1;
+    state.readingLoadToken += 1;
+    root.clearTimeout(draftSaveTimer);
     privatePayloadRequests.clear();
     commentaryRefresh.clear();
     await state.store.clearAll();
@@ -5141,6 +5406,7 @@
   }
 
   async function init() {
+    state.lastFatal = readFatalDiagnostic();
     setSyncStatus("Preparing…");
     state.store = await createBrowserStore();
     state.adapter = root.google && root.google.script && root.google.script.run
@@ -5166,10 +5432,11 @@
     await startAuthorizedApplication({allowCached: false});
   }
 
-  function handleFatalError(error) {
+  function handleFatalError(error, phase) {
     if (root.DBRBoot && typeof root.DBRBoot.ready === "function") root.DBRBoot.ready();
-    const code = error && error.code ? error.code : "UNAVAILABLE";
+    const code = recordFatalDiagnostic(error, phase).code;
     if (explicitAccessFailure(error) && state.adapter && state.adapter.kind === "apps-script") {
+      state.serverAccessConfirmed = false;
       const message = ["READER_CODE_REQUIRED", "READER_CODE_INVALID"].includes(code)
         ? error.message
         : "Access could not be confirmed. Check your private reader code and connection.";
@@ -5178,8 +5445,8 @@
     }
     const publicMessage = ["AUTH_REQUIRED", "ACCESS_DENIED", "WRONG_EXECUTION_IDENTITY"].includes(code)
       ? "Access could not be confirmed. Check your private reader code and connection."
-      : "The reader could not finish loading. Private data remains closed; retry after checking the local server or deployment configuration.";
-    setBanner(publicMessage, "error");
+      : "The reader could not finish opening. Reopen the app and retry this reading.";
+    setBanner(`${publicMessage} Error code: ${code}.`, "error");
     setSyncStatus("Unavailable");
     ["nextPage", "finishReading", "submitComment", "refreshComments", "refreshCalendar", "syncOutbox", "openSelectedReading", "previousMonth", "nextMonth"].forEach((id) => {
       if (element(id)) element(id).disabled = true;
@@ -5198,6 +5465,11 @@
     civilDayNumber,
     compactOutbox,
     contentServiceFailure,
+    recoverableContentFailure,
+    safeFatalErrorCode,
+    privateRecordIsUsable,
+    privatePayloadIsPrepared,
+    privatePayloadHasRenderableShape,
     commentStoreFailure,
     createRequestId,
     createBrowserStore,

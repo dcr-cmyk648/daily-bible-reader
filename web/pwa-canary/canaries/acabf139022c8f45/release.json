@@ -1,23 +1,23 @@
 {
   "schemaVersion": "dbr-static-release/v1",
   "loaderVersion": 1,
-  "releaseId": "d2331e5f07272b57",
+  "releaseId": "30e18b003c4bb0d0",
   "assets": {
     "styles": {
       "name": "styles",
-      "path": "releases/d2331e5f07272b57/styles.css",
+      "path": "releases/30e18b003c4bb0d0/styles.css",
       "integrity": "sha384-Qx4s/1HBYPu0PQmYqcxQ1XD+3TFCNoddEaNUWoekKySjY0z7iY24hzwlYByP7yWw",
       "bytes": 27783
     },
     "core": {
       "name": "core",
-      "path": "releases/d2331e5f07272b57/app.js",
-      "integrity": "sha384-gi6x8319jJwy+3Y4VEMdq8OC9WQZXADBFG0DEuQjwP5SF5cesBlNEFjfeUDkGiav",
-      "bytes": 140235
+      "path": "releases/30e18b003c4bb0d0/app.js",
+      "integrity": "sha384-/VITufGqj5lPsZ7F5GCWWkC3r+w7kn7C7X/nfo4YL74rGj9XBO2e+ik8A1K59/EN",
+      "bytes": 140358
     },
     "highlights": {
       "name": "highlights",
-      "path": "releases/d2331e5f07272b57/highlights.js",
+      "path": "releases/30e18b003c4bb0d0/highlights.js",
       "integrity": "sha384-cX+w1uOLarE/KW7Ung6iMb/us9Czq7KIaCaWhz7jYkNTvn/a0UPQDv68GJi6MHBz",
       "bytes": 9504
     }

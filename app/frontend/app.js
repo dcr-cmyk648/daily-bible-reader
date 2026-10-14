@@ -3267,12 +3267,8 @@
         const accepted = await readingStep("payload-validation", () => persistPrivatePayload(entry.readingId, payload, request));
         return {state: accepted ? "refreshed" : "retryable"};
       } catch (error) {
+        if (handleCurrentRequestDenial(error, context, "content-refresh")) return {state: "denied"};
         if (!readingViewIsCurrent(context)) return {state: "not_open"};
-        if (explicitAccessFailure(error)) {
-          state.serverAccessConfirmed = false;
-          handleFatalError(error);
-          return {state: "denied"};
-        }
         if (recoverableContentFailure(error)) return {state: "retryable", errorCode: safeFatalErrorCode(error)};
         handleFatalError(error, "content-refresh");
         return {state: "failed"};
@@ -4234,6 +4230,7 @@
       if (!readingViewIsCurrent(context)) return;
       result = await readingStep("payload-validation", () => readingPayloadWithCache(entry.readingId));
     } catch (error) {
+      if (handleCurrentRequestDenial(error, context, "reading-open")) return;
       if (!readingViewIsCurrent(context)) return;
       if (!recoverableContentFailure(error)) throw error;
       if (state.currentEntry && state.currentEntry.readingId === entry.readingId) renderReadingUnavailable(entry, error);
@@ -4286,10 +4283,23 @@
   }
 
   function readerSessionIsCurrent(context) {
+    return Boolean(requestSessionIsCurrent(context) && state.store === context.store && state.plan &&
+      state.plan.planVersion === context.planVersion);
+  }
+
+  function requestSessionIsCurrent(context) {
+    // Access denial belongs to the credential/backend that issued the request,
+    // regardless of a later reading, Home view or plan/load generation.
     return Boolean(context && state.session && state.session.authorId === context.authorId &&
       state.readerSessionEpoch === context.sessionEpoch && state.readerCode === context.readerCode &&
-      state.adapter === context.adapter && state.store === context.store && state.plan &&
-      state.plan.planVersion === context.planVersion && privateCacheContext() === context.cacheContext);
+      state.adapter === context.adapter && privateCacheContext() === context.cacheContext);
+  }
+
+  function handleCurrentRequestDenial(error, context, phase) {
+    if (!explicitAccessFailure(error) || !requestSessionIsCurrent(context)) return false;
+    state.serverAccessConfirmed = false;
+    handleFatalError(error, phase);
+    return true;
   }
 
   function renderReadingUnavailable(entry, error) {

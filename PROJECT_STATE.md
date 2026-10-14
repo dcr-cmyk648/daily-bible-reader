@@ -42,12 +42,14 @@ uncached content failures clear old study content without disabling Home;
 expired/mismatched/unprepared cache and real denial/programming defects fail closed.
 Drafts, comments/highlights, ESV rules, identities and immutable versions remain.
 Deferred-response guards prevent stale drafts/UI and wrong-day draft writes;
-render-shape validation precedes cache replacement. Focused checks pass 92/92.
+render-shape validation precedes cache replacement. Denial-focused checks pass 98/98.
 Only a NEW unselected canary may carry this repair; prior 2b4524cd5635c307 and
 db2a843f2ed0b875 remain immutable. See docs/execplans/wo2-pwa-update-loop-acceptance.md.
-Local candidate bc807348628702da / frontend d2331e5f07272b57 is unpublished.
-Full check: 965 total, 962 passed, zero failures, three existing pinned-PDF skips.
-All 201 previous public assets and four frozen backend files match exact bytes.
+Local candidate acabf139022c8f45 / frontend 30e18b003c4bb0d0 is unpublished.
+Late-denial P1 corrected; final check: 971 total, 968 passed, zero failures, three PDF skips.
+Root's 11-case offline compatibility and six-case denial review pass; phone gate is pending.
+All 201 published files and four frozen backend files match exact bytes; rejected
+candidate's eight unpublished files are removed from the tip and retained in Git history.
 Approved backend 5d9dd7e6b06df851 remains byte-verified/frozen and not cloud-staged
 by WO-2; old deployed bootstrap still strips additive heartbeat fields.
 GitHub push/publication and Google deployment are held for the overnight window.

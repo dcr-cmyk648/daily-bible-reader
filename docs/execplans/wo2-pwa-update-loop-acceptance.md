@@ -2,9 +2,9 @@
 
 ## October 14 content-service recovery addendum
 
-Current local candidate is `bc807348628702da`, frontend `d2331e5f07272b57`, source
-PWA `e17da696d5c31341`; use `config/unselected-reader-canary.json`. Its prepared
-[URL](https://dcr-cmyk648.github.io/daily-bible-reader/web/pwa-canary/canaries/bc807348628702da/)
+Current local candidate is `acabf139022c8f45`, frontend `30e18b003c4bb0d0`, source
+PWA `9f9fb98ea460f51a`; use `config/unselected-reader-canary.json`. Its prepared
+[URL](https://dcr-cmyk648.github.io/daily-bible-reader/web/pwa-canary/canaries/acabf139022c8f45/)
 is not published yet. GitHub push/publication, Google deployment
 and promotion are held for the manager's overnight release window. All private
 publication must finish before 06:30 Eastern; 06:30–23:30 publication is reserved
@@ -45,7 +45,7 @@ and replacement sessions. Validated legacy v1/v2 summaries, book introductions,
 complete Henry and full-source fallbacks remain supported. Focused checks pass
 92/92 with no skips; final full-repository acceptance is recorded separately below.
 
-Final October 14 local check: **965 total, 962 passed, zero failed, three existing
+Previous `0f934987` October 14 local check: **965 total, 962 passed, zero failed, three existing
 PDF skips**. The PDF runtime/security pin is unchanged; ignored private drafts are
 absent in this worker. The manager's published private-content gate remains
 separate (475/475). Log: ignored `tmp/wo2-content-recovery-final-check.log`, SHA-256
@@ -53,6 +53,36 @@ separate (475/475). Log: ignored `tmp/wo2-content-recovery-final-check.log`, SHA
 All 201 previously tracked public assets match HEAD byte-for-byte; all four frozen
 approved backend files match their retained hashes. Source-backed canary verification
 passes. No live browser/phone pass, GitHub push, Google upload or promotion is claimed.
+
+The bounded final independent review accepted the four fixes but reproduced a P1:
+late AUTH_REQUIRED from the still-current reader was discarded after Home or
+A→Home→A. Candidate `bc807348628702da` was not accepted or published; that immutable
+commit and passing/failed check history remain retained. Its eight unpublished
+generated files were proved inside this worktree and absent from both origin/main
+and the actual published baseline `6f458d5`, then removed individually from the
+final tip. The original Git commit preserves every rejected artifact for recovery;
+none of the 201 actually published files or earlier canaries was removed. The correction
+handles explicit denial for the actual current request session/credential/backend
+before rejecting an obsolete view. Denial scope excludes reading, load and plan
+generation; reader epoch, exact credential, author and adapter/backend context
+protect a replacement session, including the same author with a rotated code.
+The existing denial gate and draft storage remain. Both initial loading and
+revalidation have deferred DOM regressions for Home, A→Home→A, changed plan and
+replaced reader/credential/backend/session. Focused checks pass **98/98**, zero
+failures/skips. Corrected final local check: **971 total, 968 passed, zero failed,
+three existing PDF skips**, with the security pin unchanged and ignored private
+drafts absent. New log `tmp/wo2-denial-final-check.log` has SHA-256
+`67bc5ac6805d68cd0b3ba436c2d069e224fc873c77c6426bf4e894fe8b2bb9d7`.
+Final app SHA-256 is `3c94b5f88ac10ab7b0141d0fe3c0665a236b09cac7dce9f34196357d8d94a14a`.
+Before cleanup, all 209 tracked public files, including the unaccepted prior
+candidate, matched exact bytes. The delivery boundary retains the 201 actually
+published files and only the new accepted-for-review candidate; the eight rejected
+files are retained in Git history. All four approved backend files are unchanged.
+Root's 11-case real private offline compatibility and WO-3's six-case narrow
+denial recheck pass on this exact `3c94b5f8...` source hash; no blocking findings.
+Post-cleanup safety and exact local asset verification pass without another
+full-suite run. Live browser/iPhone acceptance and overnight publication remain
+pending. The original device exception is still unknown.
 
 Batch/rate inspection: priority warming requests two hot readings, full-window
 warming requests up to eight, and health splits its eight-reading request into

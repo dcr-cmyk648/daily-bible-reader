@@ -1424,7 +1424,7 @@ test("cached readings paint first, then use one confirmed recovery to rerender a
   assert.match(revalidation, /state\.readingRevalidationById\.get\(entry\.readingId\)/);
   assert.match(revalidation, /persistPrivatePayload\(entry\.readingId, payload, request\)/);
   assert.doesNotMatch(revalidation, /renderCommentary\(/);
-  assert.match(revalidation, /if \(explicitAccessFailure\(error\)\) \{\s*state\.serverAccessConfirmed = false;\s*handleFatalError\(error\);\s*return \{state: "denied"\};/);
+  assert.match(revalidation, /handleCurrentRequestDenial\(error, context, "content-refresh"\)\) return \{state: "denied"\};/);
   assert.match(loadReading, /setSyncStatus\("Saved reading shown · checking for updates"\)/);
   assert.match(loadReading, /retryOpenReadingSync\(\)\.catch/);
   assert.ok(loadReading.indexOf("retryOpenReadingSync().catch") <

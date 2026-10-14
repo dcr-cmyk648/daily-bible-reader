@@ -325,3 +325,59 @@ test("a delayed draft cannot enter a replacement reader session", async () => {
   pending.resolve({body: "FABRICATED other reader draft"}); await opening;
   assert.equal(h.node("commentBody").value, ""); assert.equal(h.state.lastFatal, null);
 });
+
+async function pendingDenialRequest(kind) {
+  const h = harness({cached: kind === "revalidation"});
+  if (kind === "revalidation") { await h.hooks.loadReading(h.entries[0].readingId); await flush(); }
+  const pending = deferred(); h.setResponse(pending.promise);
+  let requests = 0; const original = h.state.adapter.getReadingPayload;
+  h.state.adapter.getReadingPayload = (...args) => { requests += 1; return original(...args); };
+  const waiting = kind === "initial" ? h.hooks.loadReading(h.entries[0].readingId) : h.hooks.revalidateOpenReading(h.entries[0]);
+  await flush(); assert.equal(requests, 1, "the request began in the captured reader session");
+  h.setResponse(fault("CONTENT_UNAVAILABLE"));
+  h.node("readerCodeGate").hidden = true; h.node("appMain").hidden = false;
+  return {h, pending, waiting};
+}
+
+for (const kind of ["initial", "revalidation"]) {
+  test(`${kind}: same-session denial after Home closes private access and preserves the draft`, async () => {
+    const {h, pending, waiting} = await pendingDenialRequest(kind);
+    h.hooks.showHome({sync: false, focus: false});
+    // A plan revision is independent of the credential that made the pending RPC.
+    h.state.plan = {...h.state.plan, planVersion: "FABRICATED updated plan"};
+    pending.reject(fault("AUTH_REQUIRED")); await waiting; await flush();
+    assert.equal(h.state.serverAccessConfirmed, false); assert.equal(h.node("appMain").hidden, true);
+    assert.equal(h.node("readerCodeGate").hidden, false); assert.equal(h.state.lastFatal.code, "AUTH_REQUIRED");
+    assert.equal(h.data.get("commentDrafts:comment:" + h.entries[0].readingId).body, "FABRICATED retained draft");
+    assert.doesNotMatch(JSON.stringify([...h.local.values()]), /readerCode|authorId|FABRICATED content-service/);
+  });
+
+  test(`${kind}: same-session denial after A to Home to A still closes private access`, async () => {
+    const {h, pending, waiting} = await pendingDenialRequest(kind);
+    h.hooks.showHome({sync: false, focus: false});
+    h.data.set("privateContent:" + h.entries[0].readingId, h.record);
+    await h.hooks.openReading(h.entries[0].readingId); await flush();
+    pending.reject(fault("AUTH_REQUIRED")); await waiting; await flush();
+    assert.equal(h.state.serverAccessConfirmed, false); assert.equal(h.node("appMain").hidden, true);
+    assert.equal(h.node("readerCodeGate").hidden, false); assert.equal(h.state.lastFatal.code, "AUTH_REQUIRED");
+    assert.equal(h.data.get("commentDrafts:comment:" + h.entries[0].readingId).body, "FABRICATED retained draft");
+  });
+
+  test(`${kind}: denial from a replaced session, credential or backend cannot close fresh access`, async () => {
+    for (const replace of [
+      h => {h.state.session = {authorId: "shane", displayName: "FABRICATED other reader"};},
+      h => {h.state.readerCode = "FABRICATED rotated credential";},
+      h => {h.state.readerSessionEpoch += 1;},
+      h => {h.state.adapter = {...h.state.adapter};},
+      h => {h.state.adapter.cacheContext = "FABRICATED replacement backend";}
+    ]) {
+      const {h, pending, waiting} = await pendingDenialRequest(kind);
+      h.hooks.showHome({sync: false, focus: false}); replace(h);
+      h.state.serverAccessConfirmed = true;
+      pending.reject(fault("AUTH_REQUIRED")); await waiting; await flush();
+      assert.equal(h.state.serverAccessConfirmed, true); assert.equal(h.node("appMain").hidden, false);
+      assert.equal(h.node("readerCodeGate").hidden, true); assert.equal(h.state.lastFatal, null);
+      assert.equal(h.data.get("commentDrafts:comment:" + h.entries[0].readingId).body, "FABRICATED retained draft");
+    }
+  });
+}

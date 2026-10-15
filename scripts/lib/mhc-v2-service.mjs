@@ -30,6 +30,22 @@ async function historicalForwardHealth(ctx,now) {
   const {authenticatedForwardHealth}=await import('./service-supervisor-scope.mjs');
   return authenticatedForwardHealth(ctx,now);
 }
+const historicalHealthCodes=new Map([
+  ['LIVE_HEALTH_TRANSPORT_UNAVAILABLE','V2_HISTORICAL_HEALTH_TRANSPORT_UNAVAILABLE'],
+  ['LIVE_HEALTH_CREDENTIALS_INVALID','V2_HISTORICAL_HEALTH_CREDENTIALS_INVALID'],
+  ['LIVE_HEALTH_BOOTSTRAP_INVALID','V2_HISTORICAL_HEALTH_BOOTSTRAP_INVALID'],
+  ['LIVE_HEALTH_PAYLOAD_BATCH_INVALID','V2_HISTORICAL_HEALTH_PAYLOAD_BATCH_INVALID'],
+  ['LIVE_HEALTH_BRIDGE_INVALID','V2_HISTORICAL_HEALTH_BRIDGE_INVALID'],
+  ['LIVE_HEALTH_BACKEND_REJECTED','V2_HISTORICAL_HEALTH_BACKEND_REJECTED']
+]);
+async function readHistoricalHealth(ctx,now,health,readingId) {
+  try{return await health(ctx,now);}catch(error){
+    // The runner serializes V2 codes only. Normalize this read-only boundary
+    // before maintenance/claiming, without carrying URLs, reader codes or replies.
+    const code=historicalHealthCodes.get(error?.code)||'V2_HISTORICAL_HEALTH_FAILED';
+    throw Object.assign(new Error(code),{code,stage:'health',...(typeof readingId==='string'&&validReading(readingId)?{readingId}:{})});
+  }
+}
 const command=(ctx,args)=>{const argv=[process.execPath,ctx.launcher,...args];return {argv,command:process.platform==='win32'?'& '+argv.map(v=>`'${v.replaceAll("'","''")}'`).join(' '):argv.map(v=>`'${v.replaceAll("'","'\\''")}'`).join(' ')};};
 
 export async function serviceContext(ctx,{readOnly=false}={}) {
@@ -295,7 +311,7 @@ async function projectedAuthorJobs(ctx,requestedReadingId,now) {
 export async function selectHistoricalAuthorWorkV2(ctx,{requestedReadingId,lane}={},now=new Date(),{health=historicalForwardHealth}={}) {
   if(requestedReadingId!==undefined&&!validReading(requestedReadingId))throw new Error('V2_REQUESTED_READING_INVALID');
   if(lane!==undefined&&!MODELS[lane])throw new Error('V2_MODEL_NOT_ALLOWED');
-  const window=henryPriorityWindow(ctx.appConfig,now),measurement=await health(ctx,now),buffer=measuredBuffer(ctx.plan,ctx.appConfig,measurement,now);
+  const window=henryPriorityWindow(ctx.appConfig,now),measurement=await readHistoricalHealth(ctx,now,health,requestedReadingId),buffer=measuredBuffer(ctx.plan,ctx.appConfig,measurement,now);
   if(buffer.status!=='ready'||buffer.targetReadings!==8)throw new Error('V2_HISTORICAL_FORWARD_INCOMPLETE');
   const historicalCtx={...ctx,forwardOnly:false};
   let jobs=await projectedAuthorJobs(ctx,requestedReadingId,now),selected=await selectAuthorJob(historicalCtx,jobs,undefined,now);
@@ -364,11 +380,11 @@ async function defaultAuthorAdmission(ctx,lane,now,health) {
   let buffer,proof;
   const retainedHistoricalWriter=raw.some(j=>j.state?.phase==='generating'&&j.input.schedule_date<window.today);
   if((historical||retainedHistoricalWriter)&&!ctx.forwardOnly) {
-    let measurement=await health(ctx,now);buffer=measuredBuffer(ctx.plan,ctx.appConfig,measurement,now);
+    let measurement=await readHistoricalHealth(ctx,now,health,id);buffer=measuredBuffer(ctx.plan,ctx.appConfig,measurement,now);
     if(buffer.status==='ready'&&buffer.targetReadings===8) {
       // A first ready observation is discovery only. Recheck actual authenticated
       // health immediately before the original mutating admission path.
-      measurement=await health(ctx,now);buffer=measuredBuffer(ctx.plan,ctx.appConfig,measurement,now);
+      measurement=await readHistoricalHealth(ctx,now,health,id);buffer=measuredBuffer(ctx.plan,ctx.appConfig,measurement,now);
       if(buffer.status==='ready'&&buffer.targetReadings===8)proof={checked_at:new Date(now).toISOString(),health_sha256:digestObject(measurement)};
     }
   }

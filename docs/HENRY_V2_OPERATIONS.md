@@ -13,6 +13,23 @@ October 11. Actual installed ChatGPT preflight passed for both models. GEN19 and
 the paired Psalm 4/Proverbs reading subsequently passed independent review, exact
 publication readback and complete-service health; see PROJECT_STATE and private receipts.
 
+## October 15 historical-health diagnostics candidate
+
+The installed controller can replace a historical health transport error with
+`V2_CONTROLLER_FAILURE`, losing the original safe code and health stage. Offline
+reproduction with saved complete-service health selects and compiles D079 without
+a source error; an injected failed health fetch reproduces the generic result.
+The original October 15 exception was not retained, so a transient health failure
+is a possible cause, not a confirmed diagnosis of that execution.
+
+The local candidate maps six exact health-library failure codes to
+`V2_HISTORICAL_HEALTH_*`, sets stage `health`, and retains the selected reading
+when known. Unknown errors become `V2_HISTORICAL_HEALTH_FAILED`; raw messages,
+URLs, reader codes and response bodies are excluded. Both ready observations are
+still mandatory. A failed discovery or recheck stops before lease maintenance,
+job creation, ownership changes or author dispatch; it grants no fallback or
+source scope. Runtime installation and subsequent authoring await manager gates.
+
 ## October 11 source repair and author holds
 
 The accepted `955b2f6` atomizer already prevents excluded Scripture from returning

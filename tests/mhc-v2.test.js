@@ -19,6 +19,7 @@ import {authorPreflight} from '../scripts/lib/mhc-v2-author-session.mjs';
 import {authorFailure} from '../scripts/lib/mhc-v2-model-errors.mjs';
 import {openJournal} from '../scripts/lib/service-supervisor-store.mjs';
 import {buildRollingStudyWorkOrder} from '../scripts/lib/rolling-study-work-order.mjs';
+import {verifyLiveHorizon} from '../scripts/lib/live-horizon-health.mjs';
 
 const unavailableSparkEvents = () => JSON.stringify({type:'turn.failed',error:{message:JSON.stringify({type:'error',status:400,error:{type:'invalid_request_error',message:"The 'gpt-5.3-codex-spark' model is not supported when using Codex with a ChatGPT account."}})}})+'\n';
 
@@ -800,6 +801,51 @@ async function defaultPriorityFixture(t) {
     [...historical,...forward.slice(0,full?8:3)].map(e=>[e.readingId,{}]))});
   await prepare(false);return {ctx,now,forward,historical,ready,incomplete,prepare};
 }
+for(const lane of ['spark','luna'])for(const failAt of [1,2])test(`default ${lane} reports historical health transport failure at check ${failAt} without mutating an expired owner`,async t=>{
+  const f=await defaultPriorityFixture(t);await f.prepare(true);
+  await startV2(f.ctx,'spark',f.now,{}, {health:async()=>structuredClone(f.ready)});
+  const later=new Date(f.now.getTime()+61*60*1000),before=await jobBytes(f.ctx.jobRoot),manifest=await readFile(path.join(f.ctx.privateRoot,'private-manifest.json'));
+  const model=fabricatedModelRun();let checks=0;
+  const health=async()=>{
+    if(++checks<failAt)return structuredClone(f.ready);
+    throw Object.assign(new Error('FABRICATED_PRIVATE_RESPONSE: endpoint reader-code source text'),{code:'LIVE_HEALTH_TRANSPORT_UNAVAILABLE',stage:'FABRICATED_PRIVATE_STAGE',readingId:'FABRICATED_PRIVATE_READING'});
+  };
+  await assert.rejects(runAuthorSession(f.ctx,{lane,codexExecutable:process.execPath,maxReadings:1},{run:model.run,clock:()=>later,historicalHealth:health}),error=>{
+    assert.equal(error.message,'V2_HISTORICAL_HEALTH_TRANSPORT_UNAVAILABLE');assert.equal(error.code,error.message);assert.equal(error.stage,'health');assert.equal(error.readingId,'FAB-1');
+    assert.doesNotMatch(JSON.stringify(error)+error.stack,/FABRICATED_PRIVATE/);return true;
+  });
+  assert.equal(checks,failAt);assert.equal(model.calls,0);
+  assert.deepEqual(await jobBytes(f.ctx.jobRoot),before);assert.deepEqual(await readFile(path.join(f.ctx.privateRoot,'private-manifest.json')),manifest);
+});
+
+test('fabricated failed health fetch keeps the historical author blocked with a safe transport code',async t=>{
+  const f=await defaultPriorityFixture(t);await f.prepare(true);const before=await jobBytes(f.ctx.jobRoot);let calls=0;
+  const fabricatedDeploymentId='FABRICATED_HEALTH_ENDPOINT_ONLY';
+  const credentials={schemaVersion:'dbr-live-health-credentials/v1',backendWebAppUrl:`https://script.google.com/macros/s/${fabricatedDeploymentId}/exec`,readerCode:'FABRICATED_READER_CODE_ONLY'};
+  const health=async()=>verifyLiveHorizon(credentials,{fetchImpl:async()=>{calls++;throw new Error('FABRICATED_PRIVATE timeout details');}});
+  await assert.rejects(startV2(f.ctx,'spark',f.now,{}, {health}),error=>error.message==='V2_HISTORICAL_HEALTH_TRANSPORT_UNAVAILABLE'&&error.stage==='health'&&error.readingId==='FAB-1');
+  assert.equal(calls,1);assert.deepEqual(await jobBytes(f.ctx.jobRoot),before);
+});
+
+test('read-only historical discovery exposes only exact allowlisted health failure codes',async t=>{
+  const f=await defaultPriorityFixture(t);await f.prepare(true);const before=await jobBytes(f.ctx.jobRoot);
+  for(const suffix of ['TRANSPORT_UNAVAILABLE','CREDENTIALS_INVALID','BOOTSTRAP_INVALID','PAYLOAD_BATCH_INVALID','BRIDGE_INVALID','BACKEND_REJECTED']){
+    await assert.rejects(selectHistoricalAuthorWorkV2(f.ctx,{requestedReadingId:'FAB-1',lane:'spark'},f.now,{health:async()=>{throw Object.assign(new Error('FABRICATED_PRIVATE response'),{code:`LIVE_HEALTH_${suffix}`});}}),error=>error.message===`V2_HISTORICAL_HEALTH_${suffix}`&&error.code===error.message&&error.stage==='health'&&error.readingId==='FAB-1');
+  }
+  assert.deepEqual(await jobBytes(f.ctx.jobRoot),before);
+});
+
+test('historical health diagnostics redact unknown error details and spoofed safe-code prefixes',async t=>{
+  const f=await defaultPriorityFixture(t);await f.prepare(true);const before=await jobBytes(f.ctx.jobRoot);
+  for(const code of [undefined,'LIVE_HEALTH_TRANSPORT_UNAVAILABLE_FABRICATED_PRIVATE']){
+    await assert.rejects(startV2(f.ctx,'spark',f.now,{}, {health:async()=>{throw Object.assign(new Error('FABRICATED_PRIVATE endpoint credentials source'),{code});}}),error=>{
+      assert.equal(error.message,'V2_HISTORICAL_HEALTH_FAILED');assert.equal(error.stage,'health');assert.equal(error.readingId,'FAB-1');
+      assert.doesNotMatch(JSON.stringify(error)+error.stack,/FABRICATED_PRIVATE/);return true;
+    });
+  }
+  assert.deepEqual(await jobBytes(f.ctx.jobRoot),before);
+});
+
 for(const lane of ['spark','luna'])test(`default ${lane} cannot claim 32 historical candidates behind five missing daily readings`,async t=>{
   const f=await defaultPriorityFixture(t);
   if(lane==='luna') {
@@ -949,7 +995,10 @@ for(const mode of ['unpublished','owner_changed','expired_lease','transport_fail
     await appendState(job,'FABRICATED retained guard fixture',{...job.state,...(mode==='owner_changed'?{owners:{'TST.1':'luna'}}:{lease:{id:'FABRICATED expired lease',expires_at:new Date(now.getTime()-1).toISOString()}})},now);
   }
   const before=await jobBytes(ctx.jobRoot);
-  if(mode==='transport_failure')await assert.rejects(selectHistoricalAuthorWorkV2(ctx,{},now,{health:async()=>{throw Error('FABRICATED health transport unavailable');}}),/FABRICATED health transport/);
+  if(mode==='transport_failure')await assert.rejects(selectHistoricalAuthorWorkV2(ctx,{},now,{health:async()=>{throw Error('FABRICATED health transport unavailable');}}),error=>{
+    assert.equal(error.message,'V2_HISTORICAL_HEALTH_FAILED');assert.equal(error.code,error.message);assert.equal(error.stage,'health');assert.equal(error.readingId,undefined);
+    assert.doesNotMatch(error.stack,/FABRICATED health transport/);return true;
+  });
   else {const result=await startV2(ctx,'spark',now,{requestedReadingId:'FAB-1',requestedHistoricalAuthorization:selected.historicalAuthorization});assert.equal(result.action,'none');}
   assert.deepEqual(await jobBytes(ctx.jobRoot),before);
 });

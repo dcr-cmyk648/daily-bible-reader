@@ -82,7 +82,11 @@
     "LTP-0030-GEN-017",
     "LTP-0031-GEN-018",
     "LTP-0032-GEN-019",
-    "LTP-0033-PSA-004"
+    "LTP-0033-PSA-004",
+    "LTP-0034-MAT-007",
+    "LTP-0035-GEN-020",
+    "LTP-0036-GEN-021",
+    "LTP-0037-MAT-008"
   ],
   "displayTranslation": "ESV",
   "runtimeAI": false

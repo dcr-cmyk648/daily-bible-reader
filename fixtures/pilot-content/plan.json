@@ -2475,6 +2475,180 @@
           ]
         }
       ]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 73,
+      "civilDate": "2026-10-19",
+      "readingId": "LTP-0034-MAT-007",
+      "kind": "chapter",
+      "bookId": "MAT",
+      "streamId": "new_testament",
+      "streamSequence": 8,
+      "unitLabel": "Matthew 7",
+      "chapter": 7,
+      "passages": [
+        {
+          "bookId": "MAT",
+          "chapter": 7,
+          "verseCount": 29
+        }
+      ],
+      "orderingRationale": "Matthew begins the NT stream with Jesus' life and commission.",
+      "chronologyBasis": "event",
+      "confidence": "high",
+      "notes": "One complete canonical chapter.",
+      "sourceIds": [
+        "bible_api_web_structure_2026_08_26",
+        "tgc_new_testament_order_2026_08_26"
+      ],
+      "streamContributions": [
+        {
+          "streamId": "new_testament",
+          "streamSequence": 8,
+          "kind": "chapter",
+          "bookId": "MAT",
+          "chapter": 7,
+          "passages": [
+            {
+              "bookId": "MAT",
+              "chapter": 7,
+              "verseCount": 29
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 74,
+      "civilDate": "2026-10-20",
+      "readingId": "LTP-0035-GEN-020",
+      "kind": "chapter",
+      "bookId": "GEN",
+      "streamId": "old_testament",
+      "streamSequence": 21,
+      "unitLabel": "Genesis 20",
+      "chapter": 20,
+      "passages": [
+        {
+          "bookId": "GEN",
+          "chapter": 20,
+          "verseCount": 18
+        }
+      ],
+      "orderingRationale": "Genesis opens the plan because its creation, fall, flood, and patriarchal narrative supplies the canonical and historical frame for the remaining Bible.",
+      "chronologyBasis": "event",
+      "confidence": "high",
+      "notes": "One complete canonical chapter.",
+      "sourceIds": [
+        "bible_api_web_structure_2026_08_26",
+        "tgc_old_testament_order_2026_08_26",
+        "tgc_historical_books_2026_08_26"
+      ],
+      "streamContributions": [
+        {
+          "streamId": "old_testament",
+          "streamSequence": 21,
+          "kind": "chapter",
+          "bookId": "GEN",
+          "chapter": 20,
+          "passages": [
+            {
+              "bookId": "GEN",
+              "chapter": 20,
+              "verseCount": 18
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 75,
+      "civilDate": "2026-10-21",
+      "readingId": "LTP-0036-GEN-021",
+      "kind": "chapter",
+      "bookId": "GEN",
+      "streamId": "old_testament",
+      "streamSequence": 22,
+      "unitLabel": "Genesis 21",
+      "chapter": 21,
+      "passages": [
+        {
+          "bookId": "GEN",
+          "chapter": 21,
+          "verseCount": 34
+        }
+      ],
+      "orderingRationale": "Genesis opens the plan because its creation, fall, flood, and patriarchal narrative supplies the canonical and historical frame for the remaining Bible.",
+      "chronologyBasis": "event",
+      "confidence": "high",
+      "notes": "One complete canonical chapter.",
+      "sourceIds": [
+        "bible_api_web_structure_2026_08_26",
+        "tgc_old_testament_order_2026_08_26",
+        "tgc_historical_books_2026_08_26"
+      ],
+      "streamContributions": [
+        {
+          "streamId": "old_testament",
+          "streamSequence": 22,
+          "kind": "chapter",
+          "bookId": "GEN",
+          "chapter": 21,
+          "passages": [
+            {
+              "bookId": "GEN",
+              "chapter": 21,
+              "verseCount": 34
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 76,
+      "civilDate": "2026-10-22",
+      "readingId": "LTP-0037-MAT-008",
+      "kind": "chapter",
+      "bookId": "MAT",
+      "streamId": "new_testament",
+      "streamSequence": 9,
+      "unitLabel": "Matthew 8",
+      "chapter": 8,
+      "passages": [
+        {
+          "bookId": "MAT",
+          "chapter": 8,
+          "verseCount": 34
+        }
+      ],
+      "orderingRationale": "Matthew begins the NT stream with Jesus' life and commission.",
+      "chronologyBasis": "event",
+      "confidence": "high",
+      "notes": "One complete canonical chapter.",
+      "sourceIds": [
+        "bible_api_web_structure_2026_08_26",
+        "tgc_new_testament_order_2026_08_26"
+      ],
+      "streamContributions": [
+        {
+          "streamId": "new_testament",
+          "streamSequence": 9,
+          "kind": "chapter",
+          "bookId": "MAT",
+          "chapter": 8,
+          "passages": [
+            {
+              "bookId": "MAT",
+              "chapter": 8,
+              "verseCount": 34
+            }
+          ]
+        }
+      ]
     }
   ],
   "bookMetrics": {

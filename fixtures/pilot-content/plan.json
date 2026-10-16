@@ -2649,6 +2649,50 @@
           ]
         }
       ]
+    },
+    {
+      "planVersion": "celebration-y3q4-bridge-2026-v1",
+      "dayIndex": 77,
+      "civilDate": "2026-10-23",
+      "readingId": "LTP-0038-GEN-022",
+      "kind": "chapter",
+      "bookId": "GEN",
+      "streamId": "old_testament",
+      "streamSequence": 23,
+      "unitLabel": "Genesis 22",
+      "chapter": 22,
+      "passages": [
+        {
+          "bookId": "GEN",
+          "chapter": 22,
+          "verseCount": 24
+        }
+      ],
+      "orderingRationale": "Genesis opens the plan because its creation, fall, flood, and patriarchal narrative supplies the canonical and historical frame for the remaining Bible.",
+      "chronologyBasis": "event",
+      "confidence": "high",
+      "notes": "One complete canonical chapter.",
+      "sourceIds": [
+        "bible_api_web_structure_2026_08_26",
+        "tgc_old_testament_order_2026_08_26",
+        "tgc_historical_books_2026_08_26"
+      ],
+      "streamContributions": [
+        {
+          "streamId": "old_testament",
+          "streamSequence": 23,
+          "kind": "chapter",
+          "bookId": "GEN",
+          "chapter": 22,
+          "passages": [
+            {
+              "bookId": "GEN",
+              "chapter": 22,
+              "verseCount": 24
+            }
+          ]
+        }
+      ]
     }
   ],
   "bookMetrics": {

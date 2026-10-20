@@ -88,7 +88,7 @@ export async function authorPreflight(ctx,{lane='spark',codexExecutable},depende
   }
 }
 
-async function performPreflight(ctx,{lane='spark',codexExecutable},dependencies={}) {
+export async function prepareAuthorTransport(ctx,{lane='spark',codexExecutable},dependencies={}) {
   if(!MODELS[lane]||!path.isAbsolute(codexExecutable))throw Error('V2_TRANSPORT_CONFIGURATION_INVALID');
   const binary=await lstat(codexExecutable);if(!binary.isFile()||binary.isSymbolicLink())throw Error('V2_TRANSPORT_EXECUTABLE_INVALID');
   const run=dependencies.run||spawnSync,clock=dependencies.clock||(()=>new Date());
@@ -106,10 +106,16 @@ async function performPreflight(ctx,{lane='spark',codexExecutable},dependencies=
   const check=run(codexExecutable,[...restricted,...mcpNames.flatMap(name=>['-c',`mcp_servers.${name}.enabled=false`]),'mcp','list','--json'],options);
   let disabled;try{disabled=JSON.parse(check.stdout);}catch{throw Error('V2_TRANSPORT_MCP_PREFLIGHT_FAILED');}
   if(check.status!==0||!Array.isArray(disabled)||disabled.some(s=>s.enabled!==false))throw Error('V2_TRANSPORT_MCP_PREFLIGHT_FAILED');
-  const models=configuredModels(ctx),receipts=[];
+  const models=configuredModels(ctx);
   const version=run(codexExecutable,['--version'],options);
   if(version.status!==0||!/^codex-cli \d+\.\d+\.\d+$/.test(String(version.stdout||'').trim()))throw Error('V2_TRANSPORT_EXECUTABLE_VERSION_INVALID');
   const executableSha256=sha256(await readFile(codexExecutable));
+  const value={models,mcpNames,version:String(version.stdout||'').trim(),executableSha256};
+  Object.defineProperty(value,'options',{value:options,enumerable:false});return value;
+}
+async function performPreflight(ctx,{lane='spark',codexExecutable},dependencies={}) {
+  const {models,mcpNames,options,version,executableSha256}=await prepareAuthorTransport(ctx,{lane,codexExecutable},dependencies);
+  const run=dependencies.run||spawnSync,clock=dependencies.clock||(()=>new Date()),receipts=[];
   const root=path.join(ctx.runtimeRoot,'author-preflight');
   for(const [authorLane,model] of Object.entries(models)){
     const schemaPath=await atomicJson(root,'probe.schema.json',{type:'object',required:['ok'],additionalProperties:false,properties:{ok:{type:'boolean',const:true}}},{immutable:true});
@@ -122,12 +128,12 @@ async function performPreflight(ctx,{lane='spark',codexExecutable},dependencies=
     const receipt={model,lane:authorLane,reasoning:authorEffort(authorLane),checkedAt:clock().toISOString(),code:failure?.code??(valid?null:'V2_TRANSPORT_PREFLIGHT_FAILED'),reason:failure?.reason??(valid?'Model availability verified':'Probe response invalid'),eventsSha256:sha256(result.stdout||''),stderrSha256:sha256(result.stderr||'')};
     receipts.push(receipt);
     if(receipt.code){
-      const failed={schema_version:'mhc-author-preflight/v1',state:'blocked',billingRoute:'existing ChatGPT login; no API-key fallback',codexExecutable,executableSha256,version:String(version.stdout||'').trim(),receipts};
+      const failed={schema_version:'mhc-author-preflight/v1',state:'blocked',billingRoute:'existing ChatGPT login; no API-key fallback',codexExecutable,executableSha256,version,receipts};
       const receiptPath=await atomicJson(root,`receipts/${digestObject(failed)}.json`,failed,{immutable:true});
       const status=await stageAuthorBlock(ctx,receipt,clock());return {...failed,action:'none',stage:'model_availability',code:receipt.code,model,reason:receipt.reason,...status,receiptPath};
     }
   }
-  const receipt={schema_version:'mhc-author-preflight/v1',state:'available',billingRoute:'existing ChatGPT login; no API-key fallback',codexExecutable,executableSha256,version:String(version.stdout||'').trim(),receipts};
+  const receipt={schema_version:'mhc-author-preflight/v1',state:'available',billingRoute:'existing ChatGPT login; no API-key fallback',codexExecutable,executableSha256,version,receipts};
   const receiptPath=await atomicJson(root,`receipts/${digestObject(receipt)}.json`,receipt,{immutable:true});
   const value={...receipt,receiptPath};
   // Never serialize the inherited process environment into receipts or logs.

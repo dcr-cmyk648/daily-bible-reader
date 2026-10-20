@@ -18,6 +18,7 @@ import {openJournal} from './service-supervisor-store.mjs';
 import {measuredBuffer} from './service-supervisor-policy.mjs';
 import {assertNativeWriterAllowed} from './mhc-native-supervisor-guard.mjs';
 import {authorHeldReadingIds,authorHeldWork} from './mhc-author-holds.mjs';
+import {completedGen24Recovery} from './mhc-gen24-recovery.mjs';
 
 const HOUR=60*60*1000;
 const chapterKey=c=>`${c.book_id}.${c.chapter}`;
@@ -103,13 +104,13 @@ async function allJobs(ctx,{readOnly=false}={}) {
       const events=await readdir(await confined(directory,'events')).catch(error=>{if(error.code==='ENOENT')return null;throw error;});
       if(events===null){const {input_sha256,...basis}=input;if(digestObject(basis)!==input_sha256)throw new Error('V2_INPUT_HASH_MISMATCH');jobs.push({directory,input,state:null});continue;}
     } else await mkdir(await confined(directory,'events'),{recursive:true,mode:0o700});
-    jobs.push(await loadJob(directory));
+    jobs.push(await completedGen24Recovery(ctx,d.name)||await loadJob(directory));
   }
   return jobs;
 }
 async function checkedJob(ctx,id) {
   if(!validReading(id))throw new Error('V2_READING_ID_INVALID');
-  const job=await loadJob(await confined(ctx.jobRoot,id,{missing:false}));
+  const job=await completedGen24Recovery(ctx,id)||await loadJob(await confined(ctx.jobRoot,id,{missing:false}));
   const entry=ctx.plan.entries.find(e=>e.readingId===id);
   if(!entry||job.input.plan_version!==ctx.plan.planVersion)throw new Error('V2_PLAN_CHANGED');
   const sources=await sourceInput(ctx,entry);
@@ -661,7 +662,7 @@ export async function applyReviewV2(ctx,readingId,now=new Date()) {
   // Review revisions get separate transactions; old committed bytes survive
   // without competing with this approval's exact-one finalization requirement.
   const revision=job.state.history.some(e=>e.kind==='approval_reopened')?`/revisions/${job.state.review.approved_sha256}`:'';
-  const transactionRoot=await confined(ctx.jobRoot,`${readingId}/transactions${revision}`);await mkdir(transactionRoot,{recursive:true});
+  const transactionRoot=await confined(job.directory,`transactions${revision}`);await mkdir(transactionRoot,{recursive:true});
   // Canonical publication artifacts use the existing transaction/finalizer. V2
   // transactions live under this reading's job, not a competing global ledger.
   await applyNativeTransaction({root:transactionRoot,canonicalRoot:ctx.mhcRoot,manifest:transaction,entries,transactionSchema:await schemas('mhc-native-review-transaction'),progressSchema:await schemas('mhc-native-review-progress')});

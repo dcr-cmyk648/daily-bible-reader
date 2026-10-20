@@ -7,6 +7,7 @@ import {serviceContext,startV2,advanceV2,reviewWorkOrderV2,applyReviewV2,statusV
 import {runAuthorSession,authorPreflight} from './lib/mhc-v2-author-session.mjs';
 import {recoverClientUpgrade} from './lib/mhc-v2-client-upgrade.mjs';
 import {assertNativeWriterAllowed} from './lib/mhc-native-supervisor-guard.mjs';
+import {inspectGen24Recovery,prepareGen24Recovery,runGen24Recovery} from './lib/mhc-gen24-recovery.mjs';
 
 const json=async file=>JSON.parse(await readFile(file,"utf8"));
 let activePipeline=null;
@@ -36,6 +37,9 @@ async function main(){
       const service=await serviceContext(ctx,{readOnly:['author-preflight','status'].includes(command)});
       if(command==='author-preflight')return authorPreflight(service,{codexExecutable:option(args,'--codex-executable')}).then(({options,mcpNames,...receipt})=>receipt);
       if(command==='author-run')return runAuthorSession(service,{lane:option(args,'--lane'),codexExecutable:option(args,'--codex-executable'),maxReadings:args.includes('--max-readings')?Number(option(args,'--max-readings')):3});
+      if(command==='gen24-recovery'&&args[0]==='inspect'){const {binding,binding_sha256}=await inspectGen24Recovery(service);return {binding,binding_sha256,modelCalls:0};}
+      if(command==='gen24-recovery'&&args[0]==='prepare')return prepareGen24Recovery(service,{notBefore:option(args,'--not-before'),expiresAt:option(args,'--expires-at'),codexExecutable:option(args,'--codex-executable'),preflightReceipt:option(args,'--preflight-receipt')});
+      if(command==='gen24-recovery'&&args[0]==='run')return runGen24Recovery(service,{capabilitySha256:option(args,'--capability-sha256'),codexExecutable:option(args,'--codex-executable')});
       if(command==='recover-client-upgrade')return recoverClientUpgrade(service,option(args,'--reading'),option(args,'--prior-codex'),option(args,'--codex-executable'));
       if(command==='spark'||command==='luna')return startV2(service,command);
       if(command==='advance')return advanceV2(service,option(args,'--reading'),option(args,'--session'));

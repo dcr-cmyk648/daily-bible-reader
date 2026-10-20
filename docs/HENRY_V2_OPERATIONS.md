@@ -13,6 +13,44 @@ October 11. Actual installed ChatGPT preflight passed for both models. GEN19 and
 the paired Psalm 4/Proverbs reading subsequently passed independent review, exact
 publication readback and complete-service health; see PROJECT_STATE and private receipts.
 
+## Approved GEN24 exception — separate local candidate, not installed
+
+The October 20 user approval is one source-bound GEN24 window, at most 60 minutes
+overnight and five NEW author calls, exactly one per missing packet 7–11. There
+is no automatic retry, repair dispatch, fallback or extra availability probe.
+The unknown old packet-7 intent stays unknown and consumes one prior allowance.
+Original jobs, accepted candidates, leases, keys and deadlines remain immutable.
+This implementation is separate from the prevention-only release/handoff.
+
+After root separately qualifies and installs a runtime containing the recovery
+module in its manifest, the installed launcher exposes `gen24-recovery inspect`,
+`prepare` and `run`. Inspection returns the original binding/hash without a model
+call. Root records the already-given approval at the fixed private path
+`automation/gen24-recovery-20261020/approval.json` (beneath private-content), with
+schema `mhc-gen24-user-approval/v1`, fixed grant ID `gen24-recovery-20261020`,
+`approved:true`, actual `approved_at`, the inspected `original_binding_sha256`,
+`max_author_calls:5`, `max_duration_ms:3600000` and
+`unknown_prior_dispatches_charged:1`. Extra or weakened fields fail closed.
+
+`prepare` takes `--not-before`, `--expires-at` (explicit UTC), the exact
+`--codex-executable` and an existing `--preflight-receipt` identity. It performs
+no provider call and writes an immutable capability. `run --capability-sha256`
+uses that capability and the same executable under the existing native lock.
+Source/head/file drift or active/unknown ownership stops before consumption.
+Once consumed, the grant cannot be reused, including after interruption or with
+another capability hash. Calls use the normal forced ChatGPT/tool-isolation
+arguments and standard candidate validation. Runtime non-model auth verification
+does not replenish the five-call allowance. Every call is reserved durably first;
+any failure leaves the unused allowance unavailable and the grant consumed.
+
+Incomplete derivatives never enter the review queue. A complete derivative binds
+all 67 verses and eleven full source packets, preserving the six original
+candidate files. The normal reviewer work order, approval, transaction/finalizer,
+offline publication gates and exact readbacks then apply to that derivative.
+Canonical publication does not rewrite the original blocked job. Retain approval,
+capability, consumption ledger and all originals permanently as provenance.
+No ordinary author API has an option to bypass the all-session execution barrier.
+
 ## October 20 author prevention candidate — not installed
 
 V2 session slots follow the accepted overnight author wakes: primary 01:05 and

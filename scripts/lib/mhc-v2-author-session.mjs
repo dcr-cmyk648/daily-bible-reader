@@ -2,7 +2,7 @@ import {spawnSync} from 'node:child_process';
 import {readFile,lstat,writeFile,unlink} from 'node:fs/promises';
 import path from 'node:path';
 import {isDeepStrictEqual} from 'node:util';
-import {startV2,advanceV2,sourceInput} from './mhc-v2-service.mjs';
+import {startV2,advanceV2,sourceInput,assertAuthorExecutionAdmission} from './mhc-v2-service.mjs';
 import {MODELS,digestObject} from './mhc-v2.mjs';
 import {atomicJson,confined,maybeJson,readJson,loadJob,appendState} from './mhc-v2-store.mjs';
 import {authorFailure} from './mhc-v2-model-errors.mjs';
@@ -141,6 +141,7 @@ export async function runAuthorSession(ctx,{lane,codexExecutable,maxReadings=3,r
   if(requestedReadingId!==undefined&&maxReadings!==1)throw Error('V2_AUTHOR_REQUESTED_READING_CAP_INVALID');
   if(requestedDailyWorkOrder!==undefined&&(requestedReadingId===undefined||maxReadings!==1))throw Error('V2_AUTHOR_DAILY_WORK_ORDER_CAP_INVALID');
   if(requestedHistoricalAuthorization!==undefined&&(requestedReadingId===undefined||maxReadings!==1||requestedDailyWorkOrder!==undefined))throw Error('V2_AUTHOR_HISTORICAL_CAP_INVALID');
+  await assertAuthorExecutionAdmission(ctx,lane,(dependencies.clock||(()=>new Date()))());
   const preflight=await authorPreflight(ctx,{lane,codexExecutable},dependencies);
   if(preflight.state!=='available')return preflight;
   const run=dependencies.run||spawnSync,clock=dependencies.clock||(()=>new Date()),{mcpNames,options}=preflight.transport;

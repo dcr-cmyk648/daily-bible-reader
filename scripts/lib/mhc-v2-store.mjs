@@ -8,6 +8,20 @@ import {MODELS} from './mhc-v2.mjs';
 export const bytesFor = value => `${JSON.stringify(value,null,2)}\n`;
 export async function readJson(file) {return JSON.parse(await readFile(file,'utf8'));}
 export async function maybeJson(file) {try{return await readJson(file);}catch(error){if(error.code==='ENOENT')return null;throw error;}}
+export async function assertAuthorExecutionsFinished(job) {
+  const fail=code=>Object.assign(new Error(code),{stage:'model_transport',readingId:job.input.reading_id});
+  let root,names;
+  try{root=await confined(job.directory,'model-executions');names=await readdir(root);}catch(error){if(error.code==='ENOENT')return;throw fail('V2_AUTHOR_EXECUTION_UNVERIFIABLE');}
+  for(const name of names.sort()){
+    let record;
+    try{
+      if(!/^[a-f0-9]{64}$/.test(name))throw Error('Invalid execution key');
+      record=await readJson(await confined(root,`${name}/result.json`,{missing:false}));
+    }catch{throw fail('V2_AUTHOR_EXECUTION_UNVERIFIABLE');}
+    if(record?.status==='started')throw fail('V2_TRANSPORT_UNCERTAIN');
+    if(!['completed','failed'].includes(record?.status))throw fail('V2_AUTHOR_EXECUTION_UNVERIFIABLE');
+  }
+}
 export async function confined(root,relative,{missing=true}={}) {
   const target=path.resolve(root,relative);
   if(!target.startsWith(`${path.resolve(root)}${path.sep}`))throw new Error('V2_PATH_OUTSIDE_ROOT');

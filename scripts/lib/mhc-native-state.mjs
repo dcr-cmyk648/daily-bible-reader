@@ -25,6 +25,11 @@ const utcForDetroit = (year, month, day, hour, minute) => {
   return null; // Spring-forward local wall times do not exist.
 };
 export const SPARK_SLOT_MINUTES = [5 * 60 + 15, 11 * 60 + 15, 17 * 60 + 15, 23 * 60 + 15];
+const AUTHOR_SLOT_MINUTES=Object.freeze({spark:Object.freeze([65,245]),luna:Object.freeze([105,285])});
+export function latestDetroitAuthorSlot(now,lane) {
+  if(!Object.hasOwn(AUTHOR_SLOT_MINUTES,lane))throw Error('V2_MODEL_NOT_ALLOWED');
+  return latestDetroitSparkSlot(now,AUTHOR_SLOT_MINUTES[lane]);
+}
 export function currentLedgerEvents({events, planVersion, workItemIds}) {
   const allowed = new Set(workItemIds);
   return (events || []).filter((event) => event.plan_version === planVersion && allowed.has(event.work_item_id));

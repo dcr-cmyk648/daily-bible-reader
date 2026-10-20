@@ -13,6 +13,24 @@ October 11. Actual installed ChatGPT preflight passed for both models. GEN19 and
 the paired Psalm 4/Proverbs reading subsequently passed independent review, exact
 publication readback and complete-service health; see PROJECT_STATE and private receipts.
 
+## October 20 author prevention candidate — not installed
+
+V2 session slots follow the accepted overnight author wakes: primary 01:05 and
+04:05 Eastern, retained fallback 01:45 and 04:45. The legacy v1 slot calculation
+is unchanged. New slots do not rewrite an old session, lease, deadline or spent
+attempt. A still-active same-lane legacy session keeps its original key/deadline;
+the repeated fall-back hour does not create a second budget for the same wall slot.
+
+Before an author run's availability probes, claims or candidate admission, the
+selected reading is checked for unfinished executions across every session.
+An existing `started` record blocks with `V2_TRANSPORT_UNCERTAIN`; an unreadable
+or unknown record blocks with `V2_AUTHOR_EXECUTION_UNVERIFIABLE`. This read-only
+barrier preserves the intent and all job bytes. Terminal execution records retain
+the existing response, admission and per-packet validation rules. Another session
+key cannot hide an unresolved old call. A blocked unrelated reading is not claimed
+or reopened. No crash-streaming redesign, model/source change, budget reset or
+GEN24 recovery is part of this candidate; manager review/release is pending.
+
 ## October 15 historical-health diagnostics candidate
 
 The installed controller can replace a historical health transport error with

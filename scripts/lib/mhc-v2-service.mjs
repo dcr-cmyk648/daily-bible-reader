@@ -2,10 +2,10 @@ import {readFile,readdir,mkdir,lstat} from 'node:fs/promises';
 import path from 'node:path';
 import {isDeepStrictEqual} from 'node:util';
 import {VERSION,MODELS,MAX_SUBMISSIONS,REVIEW_ASSERTIONS,candidateSchema,passageScope,compileReading,validateCandidate,chapterRuntime,digestObject} from './mhc-v2.mjs';
-import {appendState,atomicJson,bytesFor,confined,createJob,initialJobState,loadJob,maybeJson,readJson} from './mhc-v2-store.mjs';
+import {appendState,atomicJson,bytesFor,confined,createJob,initialJobState,loadJob,maybeJson,readJson,assertAuthorExecutionsFinished} from './mhc-v2-store.mjs';
 import {loadHenryPlan,henryPriorityWindow,hasHenryPublicationReceipt,pendingHenryHandoffs} from './mhc-priority.mjs';
 import {selectMhcBackfillCandidate,isVerifiedHenryFallback} from './mhc-backfill-work-order.mjs';
-import {latestDetroitSparkSlot} from './mhc-native-state.mjs';
+import {latestDetroitAuthorSlot} from './mhc-native-state.mjs';
 import {scheduleDateForEntry} from './mhc-native-worker.mjs';
 import {sha256,normalizedBatchHash,normalizeBookChapter,readSwordModule,findSourceReportingPhrase,validateSourceCopyRisk} from './mhc-pipeline.mjs';
 import {assertSchemaValid} from './schema-validator.mjs';
@@ -183,9 +183,10 @@ export async function migrateCurrentV2(ctx,readingId,attemptSha256,reason,now=ne
 }
 
 async function beginSession(ctx,job,lane,now) {
-  const state=clone(job.state),slot=latestDetroitSparkSlot(now),id=`${lane}:${slot}`;
+  const state=clone(job.state),slot=latestDetroitAuthorSlot(now,lane),id=`${lane}:${slot}`;
   if(!state.lease)state.lease={id,started_at:new Date(now).toISOString(),expires_at:new Date(new Date(now).getTime()+24*HOUR).toISOString(),transport_checkpoints:0};
   if(state.session?.id===id)return job; // Restart does not replenish time/budget.
+  if(state.session?.lane===lane&&Date.parse(state.session.deadline_at)>new Date(now).getTime())return job;
   if(state.session&&Date.parse(state.session.deadline_at)>new Date(now).getTime())throw new Error('V2_SESSION_ALREADY_ACTIVE');
   state.session=state.sessions[id]||{id,lane,started_at:new Date(now).toISOString(),deadline_at:new Date(new Date(now).getTime()+HOUR).toISOString(),submissions:0,runtime_revision:ctx.config.source_revision??null,runtime_manifest_sha256:ctx.manifestSha256??null};
   state.sessions[id]=state.session;
@@ -225,11 +226,12 @@ function authorMaintenance(ctx,job,now) {
   return transitions;
 }
 async function selectAuthorJob(ctx,jobs,lane,now,{dailyEntry,edf=false}={}) {
+  const checked=async selection=>{if(selection.job)await assertAuthorExecutionsFinished(selection.job);return selection;};
   const held=await authorHeldReadingIds(ctx);
   const window=henryPriorityWindow(ctx.appConfig,now),forward=j=>!ctx.forwardOnly||(j.input.schedule_date>=window.today&&j.input.schedule_date<=window.horizonDate);
   const active=jobs.filter(j=>j.state?.phase==='generating'&&!(j.partial&&held.has(j.input.reading_id)));
   if(active.length>1)throw new Error('V2_MULTIPLE_GENERATING_JOBS');
-  if(active[0])return held.has(active[0].input.reading_id)?{kind:'held_active',heldReadingId:active[0].input.reading_id}:{job:active[0],kind:'generating'};
+  if(active[0])return held.has(active[0].input.reading_id)?{kind:'held_active',heldReadingId:active[0].input.reading_id}:checked({job:active[0],kind:'generating'});
   const earliest=phase=>jobs.filter(j=>j.state?.phase===phase&&forward(j)&&!held.has(j.input.reading_id)).sort((a,b)=>a.input.schedule_date.localeCompare(b.input.schedule_date))[0];
   if(dailyEntry&&held.has(dailyEntry.readingId))dailyEntry=undefined;
   const queued=earliest('queued');
@@ -241,13 +243,22 @@ async function selectAuthorJob(ctx,jobs,lane,now,{dailyEntry,edf=false}={}) {
       ...(fresh&&fresh.dayIndex>=window.currentDay&&fresh.dayIndex<=window.horizonDay?[{entry:fresh,kind:'new'}]:[])];
     const date=item=>item.job?.input.schedule_date??scheduleDateForEntry(ctx.appConfig,item.entry);
     candidates.sort((a,b)=>date(a).localeCompare(date(b)));
-    return {...(candidates[0]||{kind:'new'}),queue:selected.queue};
+    return checked({...(candidates[0]||{kind:'new'}),queue:selected.queue});
   }
-  if(queued)return {job:queued,kind:'queued'};
-  if(lane!=='spark'){const fallback=earliest('fallback_pending');if(fallback)return {job:fallback,kind:'fallback_pending'};}
+  if(queued)return checked({job:queued,kind:'queued'});
+  if(lane!=='spark'){const fallback=earliest('fallback_pending');if(fallback)return checked({job:fallback,kind:'fallback_pending'});}
   const selected=await selection(ctx,jobs,now,held);
   if(dailyEntry&&lane!=='luna'&&(!selected.candidate||dailyEntry.dayIndex<=selected.candidate.entry.dayIndex))return {entry:dailyEntry,kind:'daily_dependency',queue:selected.queue};
   return {entry:selected.candidate?.entry,kind:'new',queue:selected.queue};
+}
+export async function assertAuthorExecutionAdmission(ctx,lane,now=new Date()) {
+  const held=await authorHeldReadingIds(ctx),jobs=await allJobs(ctx,{readOnly:true});
+  const projected=jobs.map(job=>{
+    let value=job.state?job:{...job,partial:true,state:initialJobState(job.input,now)};
+    if(!held.has(job.input.reading_id))for(const transition of authorMaintenance(ctx,value,now))value={...value,state:transition.state};
+    return value;
+  });
+  await selectAuthorJob(ctx,projected,lane,now);
 }
 async function requestedDailyDependency(ctx,readingId,reference,now) {
   const invalid=()=>{throw new Error('V2_DAILY_DEPENDENCY_BINDING_INVALID');};
@@ -467,6 +478,7 @@ export async function advanceV2(ctx,readingId,sessionId,now=new Date()) {
   if((await authorHeldReadingIds(ctx)).has(readingId))return authorHeldWork(readingId);
   let {job}=await checkedJob(ctx,readingId);
   if(job.state.phase!=='generating')return report(ctx,job,{action:job.state.phase==='review_pending'?'review_handoff':'none'});
+  await assertAuthorExecutionsFinished(job);
   if(job.state.session?.id!==sessionId)throw new Error('V2_SESSION_MISMATCH');
   const next=nextBatch(job);if(!next)return authorPacket(ctx,job,now);
   const {packet,lane,key}=next;

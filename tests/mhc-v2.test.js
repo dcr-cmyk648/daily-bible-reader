@@ -248,6 +248,65 @@ test('held earlier reading cannot bypass a global ChatGPT login failure',async t
   assert.equal(result.code,'V2_AUTHOR_MODEL_UNAVAILABLE');assert.equal(model.calls,0);assert.deepEqual(await jobBytes(f.ctx.jobRoot),before);
 });
 const sessionId=report=>report.advanceArgv.at(-1);
+for(const lane of ['spark','luna'])test(`prior-session unfinished execution blocks ${lane} before probes, claims or budget changes`,async t=>{
+  const {ctx}=await fixture(t),now=new Date('2026-09-13T05:06:00Z');
+  let work=await startV2(ctx,'spark',now);await writeCandidate(work);work=await advanceV2(ctx,'FAB-1',sessionId(work),now);
+  const job=await loadJob(path.join(ctx.jobRoot,'FAB-1')),packet=await readJson(work.sourcePath),key=digestObject({session:job.state.session.id,packet:packet.packet_id,submissions:job.state.total_submissions});
+  await atomicJson(job.directory,`model-executions/${key}/result.json`,{schema_version:'mhc-model-execution/v1',session:job.state.session.id,status:'started',started_at:now.toISOString(),proof:{packet_sha256:digestObject(packet)}});
+  const before=await jobBytes(ctx.jobRoot),later=new Date('2026-09-13T08:06:00Z');let probesOrCalls=0;
+  await assert.rejects(runAuthorSession(ctx,{lane,codexExecutable:process.execPath,maxReadings:1},{clock:()=>later,run:()=>{probesOrCalls++;throw Error('FABRICATED provider must not run');}}),error=>error.message==='V2_TRANSPORT_UNCERTAIN'&&error.readingId==='FAB-1'&&error.stage==='model_transport');
+  await assert.rejects(startV2(ctx,lane,later),/V2_TRANSPORT_UNCERTAIN/);
+  await assert.rejects(advanceV2(ctx,'FAB-1',job.state.session.id,later),/V2_TRANSPORT_UNCERTAIN/);
+  assert.equal(probesOrCalls,0);assert.deepEqual(await jobBytes(ctx.jobRoot),before);
+});
+
+for(const mode of ['unknown_status','missing_record','invalid_json'])test(`unverifiable ${mode} execution blocks admission without leaking or rewriting its bytes`,async t=>{
+  const {ctx,now}=await fixture(t);await startV2(ctx,'spark',now);const job=await loadJob(path.join(ctx.jobRoot,'FAB-1')),dir=path.join(job.directory,'model-executions','a'.repeat(64));
+  await mkdir(dir,{recursive:true});
+  if(mode==='unknown_status')await atomicJson(dir,'result.json',{status:'FABRICATED_PRIVATE_STATUS'});
+  if(mode==='invalid_json')await writeFile(path.join(dir,'result.json'),'FABRICATED_PRIVATE_NOT_JSON');
+  const before=await jobBytes(ctx.jobRoot);let calls=0;
+  await assert.rejects(runAuthorSession(ctx,{lane:'spark',codexExecutable:process.execPath,maxReadings:1},{clock:()=>now,run:()=>{calls++;throw Error('FABRICATED call must not run');}}),error=>{
+    assert.equal(error.message,'V2_AUTHOR_EXECUTION_UNVERIFIABLE');assert.equal(error.stage,'model_transport');assert.equal(error.readingId,'FAB-1');assert.doesNotMatch(error.stack,/FABRICATED_PRIVATE/);return true;
+  });
+  assert.equal(calls,0);assert.deepEqual(await jobBytes(ctx.jobRoot),before);
+});
+
+for(const rejected of [false,true])test(`known completed ${rejected?'rejected':'accepted'} execution permits a later scheduled session without reopening spent budgets`,async t=>{
+  const {ctx}=await fixture(t),now=new Date('2026-09-13T05:06:00Z'),initial=await startV2(ctx,'spark',now),packet=await readJson(initial.sourcePath);
+  const response=await writeCandidate(initial,c=>rejected?{...c,packet_id:'MHP2-'+'0'.repeat(32)}:c);
+  await advanceV2(ctx,'FAB-1',sessionId(initial),now);
+  const prior=await loadJob(path.join(ctx.jobRoot,'FAB-1')),key=digestObject({session:prior.state.session.id,packet:packet.packet_id,submissions:0});
+  await atomicJson(prior.directory,`model-executions/${key}/result.json`,{schema_version:'mhc-model-execution/v1',session:prior.state.session.id,status:'completed',started_at:now.toISOString(),finished_at:now.toISOString(),candidate_sha256:digestObject(response),proof:{packet_sha256:digestObject(packet)}});
+  await atomicJson(prior.directory,`model-executions/${key}/response.json`,response);
+  const later=new Date('2026-09-13T08:06:00Z'),model=fabricatedModelRun(),result=await runAuthorSession(ctx,{lane:'spark',codexExecutable:process.execPath,maxReadings:1},{run:model.run,clock:()=>later});
+  assert.equal(result.action,'review_handoff');const after=await loadJob(prior.directory);
+  assert.notEqual(after.state.session.id,prior.state.session.id);assert.equal(after.state.session.id,'spark:2026-09-13T08:05:00.000Z');
+  assert.deepEqual(after.state.sessions[prior.state.session.id],prior.state.session);assert.equal(after.state.lease.expires_at,prior.state.lease.expires_at);
+  assert.deepEqual(after.state.rejected,prior.state.rejected);for(const [id,value] of Object.entries(prior.state.accepted))assert.deepEqual(after.state.accepted[id],value);
+  assert.equal(after.state.total_submissions,rejected?3:2);assert.equal(Date.parse(after.state.session.deadline_at)-later.getTime(),3600000);
+});
+
+test('a still-active legacy session retains its exact key and deadline after slot alignment',async t=>{
+  const {ctx}=await fixture(t),now=new Date('2026-09-13T05:06:00Z');await startV2(ctx,'spark',now);
+  const job=await loadJob(path.join(ctx.jobRoot,'FAB-1')),legacy={...job.state.session,id:'spark:2026-09-13T03:15:00.000Z'};
+  await appendState(job,'FABRICATED legacy session',{...job.state,session:legacy,sessions:{[legacy.id]:legacy},lease:{...job.state.lease,id:legacy.id}},now);
+  const before=await jobBytes(ctx.jobRoot),work=await startV2(ctx,'spark',new Date('2026-09-13T05:20:00Z'));
+  assert.equal(work.advanceArgv.at(-1),legacy.id);assert.equal(work.deadlineAt,legacy.deadline_at);assert.deepEqual(await jobBytes(ctx.jobRoot),before);
+});
+
+test('eligible Luna continuation uses its own second overnight slot and retains primary failures',async t=>{
+  const {ctx}=await fixture(t),primaryAt=new Date('2026-09-13T05:06:00Z');let work=await startV2(ctx,'spark',primaryAt);
+  for(let i=0;i<2;i++){await writeCandidate(work,c=>({...c,packet_id:'MHP2-'+String(i).repeat(32)}));work=await advanceV2(ctx,'FAB-1',sessionId(work),primaryAt);}
+  const fallbackAt=new Date('2026-09-13T05:46:00Z');work=await startV2(ctx,'luna',fallbackAt);await writeCandidate(work);await advanceV2(ctx,'FAB-1',sessionId(work),fallbackAt);
+  const prior=await loadJob(path.join(ctx.jobRoot,'FAB-1')),later=new Date('2026-09-13T08:46:00Z'),model=fabricatedModelRun(x=>x,{model:MODELS.luna});
+  const result=await runAuthorSession(ctx,{lane:'luna',codexExecutable:process.execPath,maxReadings:1},{run:model.run,clock:()=>later}),after=await loadJob(prior.directory);
+  assert.equal(result.action,'review_handoff');assert.equal(prior.state.session.id,'luna:2026-09-13T05:45:00.000Z');assert.equal(after.state.session.id,'luna:2026-09-13T08:45:00.000Z');
+  assert.deepEqual(after.state.sessions[prior.state.session.id],prior.state.session);assert.deepEqual(after.state.rejected,prior.state.rejected);
+  assert.equal(after.state.lease.expires_at,prior.state.lease.expires_at);assert.equal(after.state.total_submissions,4);
+  assert.equal(Date.parse(after.state.session.deadline_at)-later.getTime(),3600000);
+});
+
 function fabricatedModelRun(transform=x=>x,{model=MODELS.spark}={}){
   let calls=0;
   const run=(_binary,args,options)=>{
@@ -597,9 +656,9 @@ test('Luna exhaustion gets one explicit editorial derivative, not replenished mo
   const result=await editorialRepairV2(ctx,'FAB-1',now);assert.equal(result.action,'review_handoff');assert.equal((await loadJob(path.join(ctx.jobRoot,'FAB-1'))).state.total_submissions,4);await assert.rejects(editorialRepairV2(ctx,'FAB-1',now),/PHASE_INVALID/);
 });
 test('an older editorial repair queues remaining packets behind the active reading and resumes without resetting attempts',async t=>{
-  const {ctx,now}=await fixture(t,{verseCount:12,readingCount:2});let r=await startV2(ctx,'spark',now);
-  for(const lane of ['spark','luna']){if(lane==='luna')r=await startV2(ctx,lane,new Date('2026-09-13T17:26:00Z'));for(let n=0;n<2;n++){await writeCandidate(r,c=>({...c,packet_id:'MHP2-'+String(n).repeat(32)}));r=await advanceV2(ctx,'FAB-1',sessionId(r),now);}}
-  const later=new Date('2026-09-13T21:16:00Z'),active=await startV2(ctx,'spark',later);assert.equal(active.readingId,'FAB-2');
+  const {ctx}=await fixture(t,{verseCount:12,readingCount:2}),now=new Date('2026-09-13T05:06:00Z');let r=await startV2(ctx,'spark',now);
+  for(const lane of ['spark','luna']){const at=lane==='spark'?now:new Date('2026-09-13T05:46:00Z');if(lane==='luna')r=await startV2(ctx,lane,at);for(let n=0;n<2;n++){await writeCandidate(r,c=>({...c,packet_id:'MHP2-'+String(n).repeat(32)}));r=await advanceV2(ctx,'FAB-1',sessionId(r),at);}}
+  const later=new Date('2026-09-13T08:46:00Z'),active=await startV2(ctx,'spark',later);assert.equal(active.readingId,'FAB-2');
   const order=await reviewWorkOrderV2(ctx,later),basis=await readJson(order.packetPath);
   await writeFile(order.repairPath,bytesFor({schema_version:'mhc-evidence-editorial-repair/v2',input_sha256:basis.input_sha256,rejected_sha256:basis.rejected_sha256,status:'approved',reviewer:'FABRICATED editor',reviewed_at:later.toISOString(),findings:['FABRICATED supported correction while another reading is active.'],candidate:candidate(basis.packet)}));
   assert.equal((await editorialRepairV2(ctx,'FAB-1',later)).state,'queued');
@@ -647,7 +706,7 @@ test('forward cooldown debt prevents generation of historical backlog',async t=>
   const {ctx,now}=await fixture(t,{verseCount:1,readingCount:2});ctx.appConfig.sharedStartDate='2026-09-12';await atomicJson(ctx.privateRoot,'automation/mhc-backfill-attempt-state.json',{schemaVersion:'mhc-backfill-attempt-state/v1',planVersion:ctx.plan.planVersion,attempts:{'FAB-2':{attemptedAt:now.toISOString(),outcome:'model_failure',stage:'validation',code:'NATIVE_CANDIDATE_UNRESOLVED'}}});const result=await startV2(ctx,'spark',now);assert.equal(result.state,'no_eligible_reading');assert.equal(result.queue.priorityTier,'forward');assert.equal(result.queue.historicalDebtCount,1);
 });
 test('expired session cannot author or replenish its budget until a later slot',async t=>{
-  const {ctx,now}=await fixture(t,{verseCount:1});const r=await startV2(ctx,'spark',now);await writeCandidate(r);const expired=new Date(now.getTime()+61*60*1000);assert.equal((await advanceV2(ctx,'FAB-1',sessionId(r),expired)).action,'checkpointed');assert.equal((await startV2(ctx,'spark',expired)).action,'checkpointed');const job=await loadJob(path.join(ctx.jobRoot,'FAB-1'));assert.equal(job.state.total_submissions,0);assert.equal((await startV2(ctx,'spark',new Date('2026-09-13T21:16:00Z'))).action,'author_candidate');
+  const {ctx}=await fixture(t,{verseCount:1}),now=new Date('2026-09-13T05:06:00Z');const r=await startV2(ctx,'spark',now);await writeCandidate(r);const expired=new Date(now.getTime()+61*60*1000);assert.equal((await advanceV2(ctx,'FAB-1',sessionId(r),expired)).action,'checkpointed');assert.equal((await startV2(ctx,'spark',expired)).action,'checkpointed');const job=await loadJob(path.join(ctx.jobRoot,'FAB-1'));assert.equal(job.state.total_submissions,0);assert.equal((await startV2(ctx,'spark',new Date('2026-09-13T08:06:00Z'))).action,'author_candidate');
 });
 test('tampered or wrong approved runtime cannot be completed by a locally valid publication receipt',async t=>{
   const {ctx,now}=await fixture(t,{verseCount:1});await drain(ctx,now);await approve(ctx,'FAB-1',now);

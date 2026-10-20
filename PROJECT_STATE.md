@@ -1,58 +1,51 @@
-# Project state — October 15 overnight service and unselected reader canary
+# Project state — October 20 service recovery and accepted prevention candidate
 
-## Verified service
-Saved authenticated October 15–22 health receipts report 8/8 reviewed devotionals,
-8/8 complete Henry layers, seven consecutive complete future days and zero debt.
-Matthew 8 passed independent review of 34 records/seven packets, one bounded
-repair, ten citation-preserving prose corrections, six offline gates and 475 tests.
-Immutable metadata and manifest-last publication passed exact raw readbacks.
-Root independently reconciled the six gate logs, four exact payload/manifest/status
-readbacks and three saved authenticated health receipts without another live call.
-Failed checks, prior versions, source review, sharing and budgets remain preserved.
+## Current service
+Authenticated October 20–27 receipts verify eight devotionals and seven complete
+Henry layers. Matthew 9 was recovered from its exact approved artifact after a
+zero-worker Windows EPERM validation launch failure. One explicitly admitted
+replacement passed six gates and 475 published tests; metadata/manifest exact
+readbacks, native published state and unchanged restricted sharing passed.
+Genesis 24 for October 26 is the sole Henry gap; its verified full-source fallback
+remains. There are seven devotional future days and five consecutive fully
+complete future days. The reader correctly retains the GEN24 blocked notice.
 
-## Overnight schedules and runtime boundaries
-Four existing schedules remain ACTIVE, Eastern time:
-- Daily preparation: 00:20 / 03:20.
-- Henry primary: 01:05 / 04:05; gated fallback: 01:45 / 04:45.
-- Independent review/publication and buffer audit: 02:20 / 05:20.
-Finish publication before 06:30. Between 06:30 and 23:30, Drive/manifest publication
-is held except a missing devotional for today or tomorrow, including status writes.
-The diagnostics handoff uses the existing review wake; twelve other definitions,
-including seven PAUSED unrelated tasks, stay byte-identical. No new task or timer.
-Daily preparation remains independently on 63283db
-with two frozen overlays; native Henry remains the accepted dde81ae/205-file pin.
-Root reverified those 205 files, configuration and both overlays on October 15.
-The publication helper retains its separate accepted release. Supervisor remains
-observation/trial until its own ordinary new devotional publishes end to end.
-See docs/DAILY_RUNTIME_OPERATIONS.md and docs/PUBLICATION_VALIDATION.md.
+## Genesis 24 diagnosis and pending exception
+Six of eleven packets were accepted. A seventh execution intent has no terminal
+result; provider startup/outcome remain unknown. The coordinator discarded the
+shell session ID and stopped polling. The next continuation failed a read-only
+status launch with EPERM. The original 24-hour lease expired October 20.
+The two author coordinator and reviewer prompts now retain full execution results,
+poll shell sessions to real exit, and distinguish scoped process-access failure
+from model failure. All other automation definitions were preserved.
+One source-bound recovery-window exception was routed through Claude and remains
+approval pending. No reset, replay, time extension or new allowance is authorized.
 
-## Reader repair actually published as an unselected canary
-Commit 36c6b99 published canary acabf139022c8f45 / frontend 30e18b003c4bb0d0.
-CI/Pages, 20 exact HTTPS byte/MIME checks and the locked-browser smoke passed.
-Full check: 971 total, 968 passed, zero failures, three existing PDF skips.
-Root rechecked the 20 public assets and all 201 prior published files against the
-saved release receipts; original rejected candidates remain recoverable history.
-The repair preserves matching saved content with a visible retry warning, clears
-stale study/Scripture on unavailable uncached days, guards async drafts/UI, honors
-same-session denial and records safe fatal code/time/phase/operation diagnostics.
-Production remains frontend 844ce06fb805f5f4 / PWA 8fcefb5ae56b5def; version 23 stays.
-The original October 14 iPhone exception was not retained and remains unknown.
-The 08:31 failure preceded the 08:34 manifest switch; timing does not prove cause.
+## Prevention candidate accepted locally; overnight release pending
+Based on installed native 5d9c0a8, the candidate aligns primary slots with
+01:05/04:05 Eastern and fallback slots with 01:45/04:45. Existing session IDs,
+deadlines, model/source policy and spent budgets remain. A read-only barrier
+checks all execution sessions of the selected reading before probes/claims and
+candidate admission; started or unverifiable records block new dispatch.
+Root reviewed the code/test/docs changes and verified every handoff/file/log hash.
+166 v2 tests pass; full check is 1,002 total, 999 passed, zero failures, three
+existing PDF skips. No GEN24 exception or crash-streaming redesign is included.
+The candidate is not installed; native remains 5d9c0a8/207 files until the existing
+overnight reviewer completes exact committed-source qualification and readback.
 
-## Actual author failure and remaining gates
-The October 15 04:05 primary returned V2_CONTROLLER_FAILURE at controller stage
-with no reading selected. Its original exception was suppressed and is unknown.
-Read-only D079 selection and source compilation succeeded; no source defect was
-reproduced. Historical-health transport failure can produce the same generic code,
-but is not established as the original cause. The accepted local diagnostic fix
-passed 22 focused checks and 978 full tests: 975 passed, zero failed, three PDF skips.
-Release/installation await the existing overnight review; no replay or budget reset.
-The 04:45 fallback's original captured command actually returned exit 0,
-awaiting_primary D079. Its false uncertainty report is retained and corrected.
-The real primary failure notice remains red despite the full buffer. Legacy notice
-delivery is authenticated; additive heartbeat fields remain stripped/readerVisible:false.
-The approved frozen 5d9dd7e6b06df851 backend is not cloud-staged. Existing personal
-Google sign-in, exact backend delivery and combined installed-iPhone acceptance
-remain pending. Do not repeat the settled authorization or promote production.
-See docs/execplans/wo2-pwa-update-loop-acceptance.md. Manager private receipts and
-the Claude inbox remain authoritative; no paid API, new identity/resource/ACL.
+## Schedule and independent runtime boundaries
+Daily preparation runs 00:20/03:20; primary Henry 01:05/04:05; fallback 01:45/04:45;
+review/publication 02:20/05:20 Eastern. Publication completes before 06:30.
+No Drive/manifest changes 06:30–23:30 except a missing devotional today/tomorrow.
+Daily632 plus two frozen overlays, both bootstraps and the separately pinned
+publication helper remain unchanged. Seven unrelated automations remain paused.
+Supervisor remains observation/trial until its own new devotional publishes.
+
+## Reader/backend gate
+Reader canary acabf139022c8f45 / frontend 30e18b003c4bb0d0 is published but unselected.
+Production stays frontend844ce06fb805f5f4 / PWA8fcefb5ae56b5def; v23 rollback remains.
+The approved backend5d9dd7e6b06df851 still awaits personal Google sign-in and the
+combined installed-iPhone gate. Existing legacy status is reader-visible; additive
+lastRunAt/lastSuccessAt/buffer/lanes remain stripped. Do not repeat the question,
+infer phone acceptance, promote production or clear genuine GEN24 uncertainty.
+Private receipts/checkpoints retain every failed run and prior publication.

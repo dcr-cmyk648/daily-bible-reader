@@ -9,12 +9,16 @@ import {digestObject,candidateSchema,validateCandidate} from './mhc-v2.mjs';
 import {sha256} from './mhc-pipeline.mjs';
 import {prepareAuthorTransport,authorArguments,transportSchema,successfulModelResult,verifyPublicPacket} from './mhc-v2-author-session.mjs';
 import {configuredModels} from './mhc-v2-author-config.mjs';
-import {henryPriorityWindow} from './mhc-priority.mjs';
+import {henryPriorityWindow,hasHenryPublicationReceipt} from './mhc-priority.mjs';
 import {assertNativeWriterAllowed} from './mhc-native-supervisor-guard.mjs';
 
 export const GEN24_RECOVERY_GRANT='gen24-recovery-20261020';
 const READING='LTP-0041-GEN-024',MODEL='gpt-6-luna',HOUR=3600000;
 const POLICY={grant_id:GEN24_RECOVERY_GRANT,reading_id:READING,max_author_calls:5,max_duration_ms:HOUR,unknown_prior_dispatches_charged:1,model:MODEL,reasoning:'medium',billing_route:'existing ChatGPT login; no API-key fallback',missing_packet_indexes:[6,7,8,9,10]};
+// Factual reading IDs only. Opaque execution keys, hashes and private evidence
+// belong in the separately accepted private authority, never in this source.
+const HISTORIES=['LTP-0009-GEN-004','LTP-0022-GEN-012'];
+const CLASSIFICATION='retained_unknown_for_GEN24_admission_only';
 const hash=x=>/^[a-f0-9]{64}$/.test(String(x||''));
 const error=code=>Object.assign(Error(`V2_GEN24_RECOVERY_${code}`),{stage:'recovery',readingId:READING});
 function requireThat(ok,code){if(!ok)throw error(code);}
@@ -33,6 +37,71 @@ async function immutable(root,relative,value,{raw=false}={}){
   const handle=await open(file,'wx',0o600);try{await handle.writeFile(raw?value:bytesFor(value));await handle.sync();}finally{await handle.close();}return file;
 }
 async function inventory(root){const files=[];async function walk(dir){for(const ent of await readdir(dir,{withFileTypes:true})){const file=await confined(root,path.relative(root,path.join(dir,ent.name)),{missing:false});if(ent.isDirectory()&&!ent.isSymbolicLink())await walk(file);else{requireThat(ent.isFile()&&!ent.isSymbolicLink(),'ORIGINAL_UNVERIFIABLE');const b=await readFile(file);files.push({path:path.relative(root,file).replaceAll('\\','/'),sha256:sha256(b),bytes:b.length});}}}await walk(root);return files.sort((a,b)=>a.path.localeCompare(b.path));}
+
+async function historyEvidence(ctx,now,consumed=false){
+  const root=recoveryRoot(ctx),prefix=consumed?'consumed-history':'history-admission',authorityPath=await confined(root,`${prefix}/authority.json`),authority=await maybeJson(authorityPath);if(!authority){requireThat(!consumed,'HISTORY_EVIDENCE_CHANGED');return null;}
+  exact(authority,['schema_version','grant_id','classification','accepted','accepted_at','diagnosis_sha256','design_review_sha256']);
+  requireThat(authority.schema_version==='mhc-gen24-history-authority/v1'&&authority.grant_id===GEN24_RECOVERY_GRANT&&authority.classification===CLASSIFICATION&&authority.accepted===true&&Number.isFinite(Date.parse(authority.accepted_at))&&(!now||Date.parse(authority.accepted_at)<=+new Date(now))&&hash(authority.diagnosis_sha256)&&hash(authority.design_review_sha256),'HISTORY_AUTHORITY_INVALID');
+  const evidence=async(relative,sum)=>{requireThat(hash(sum),'HISTORY_AUTHORITY_INVALID');const b=await readFile(await confined(root,`${prefix}/${relative}`,{missing:false}));requireThat(sha256(b)===sum,'HISTORY_EVIDENCE_CHANGED');return b;};
+  const diagnosis=JSON.parse(await evidence('diagnosis.json',authority.diagnosis_sha256)),review=JSON.parse(await evidence('design-review.json',authority.design_review_sha256));
+  requireThat(diagnosis.schemaVersion==='gen24-two-historical-intents-admission-diagnosis/v1'&&review.schema_version==='wo3-gen24-history-admission-design-review/v1'&&review.assessment==='ACCEPTED_DESIGN_ONLY_NO_BLOCKING_DESIGN_FINDING'&&review.diagnosis_sha256===authority.diagnosis_sha256&&isDeepStrictEqual(diagnosis.histories?.map(j=>j.readingId),HISTORIES)&&isDeepStrictEqual(review.histories?.map(j=>j.reading_id),HISTORIES),'HISTORY_AUTHORITY_INVALID');
+  const inspectionSha=diagnosis.assets?.['history-inspection.json']?.sha256,inspection=JSON.parse(await evidence('history-inspection.json',inspectionSha));
+  requireThat(inspection.schemaVersion==='gen24-history-admission-inspection/v1'&&isDeepStrictEqual(inspection.reports?.map(j=>j.readingId),HISTORIES),'HISTORY_AUTHORITY_INVALID');
+  return {root,authorityPath,authority,diagnosis,review,inspectionSha,inspection,evidence};
+}
+async function retainedHistories(ctx,now){
+  const proof=await historyEvidence(ctx,now);if(!proof)return null;const {authorityPath,authority,diagnosis,review,inspectionSha,inspection,evidence}=proof;
+  const manifest=await readJson(await confined(ctx.privateRoot,'private-manifest.json',{missing:false})),bindings=[];
+  for(const [index,id] of HISTORIES.entries()){
+    const accepted=diagnosis.histories[index],reviewed=review.histories[index],snapshot=inspection.reports[index],directory=await confined(normalJobs(ctx),id,{missing:false}),job=await loadJob(directory),unknown=accepted.unknown;
+    requireThat(unknown?.status==='started'&&unknown.terminalOutcomeProven===false&&reviewed.status_unchanged==='started'&&reviewed.remote_termination_proven===false&&reviewed.event_head===accepted.eventHead&&reviewed.input_sha256===accepted.inputSha256&&reviewed.unknown_key===unknown.key&&reviewed.unknown_record_sha256===unknown.record?.sha256,'HISTORY_AUTHORITY_INVALID');
+    requireThat(job.state.phase==='published'&&!job.state.pending_attempt&&job.input.input_sha256===accepted.inputSha256&&job.previous===accepted.eventHead&&job.sequence===accepted.eventSequence&&snapshot.inputSha256===accepted.inputSha256&&snapshot.eventHead===accepted.eventHead,'HISTORY_CHANGED');
+    if(now)requireThat(Object.values(job.state.sessions).every(s=>Number.isFinite(Date.parse(s.deadline_at))&&Date.parse(s.deadline_at)<=+new Date(now))&&(!job.state.lease||job.state.lease.released===true||Date.parse(job.state.lease.expires_at)<=+new Date(now)),'ACTIVE_OWNER');
+    const files=await inventory(directory),expected=snapshot.files.map(f=>({path:String(f.relativePath).replaceAll('\\','/'),sha256:f.sha256,bytes:f.bytes})).sort((a,b)=>a.path.localeCompare(b.path));requireThat(isDeepStrictEqual(files,expected),'HISTORY_CHANGED');
+    const executions=await readdir(await confined(directory,'model-executions',{missing:false}));let retained=0;
+    for(const key of executions){requireThat(hash(key),'HISTORY_CHANGED');const recordBytes=await readFile(await confined(directory,`model-executions/${key}/result.json`,{missing:false})),record=JSON.parse(recordBytes);
+      if(key===unknown.key){retained++;requireThat(record.status==='started'&&sha256(recordBytes)===unknown.record.sha256&&record.session===unknown.session&&record.proof?.packet_sha256===unknown.packetSha256,'HISTORY_CHANGED');}
+      else requireThat(['completed','failed'].includes(record.status),'HISTORY_CHANGED');
+    }
+    requireThat(retained===1,'HISTORY_CHANGED');
+    const packet=job.input.chapters.flatMap(c=>c.batches).find(p=>p.packet_id===unknown.packetId),admitted=job.state.accepted[`${unknown.packetId}:luna`];
+    requireThat(packet&&digestObject(packet)===unknown.packetSha256&&unknown.key===digestObject({session:unknown.session,packet:packet.packet_id,submissions:unknown.submissionsBeforeIntent})&&admitted?.candidate_sha256===accepted.replacement?.acceptedCandidateByteSha256,'HISTORY_CHANGED');
+    const attempt=await readJson(await confined(directory,`attempts/${admitted.candidate_sha256}.json`,{missing:false})),candidate=JSON.parse(attempt.bytes);requireThat(sha256(attempt.bytes)===admitted.candidate_sha256&&validateCandidate(candidate,packet).valid,'HISTORY_CHANGED');
+    const replacement=accepted.replacement,executionRoot=`model-executions/${replacement.key}`;
+    const replacementBytes=await readFile(await confined(directory,`${executionRoot}/result.json`,{missing:false})),record=JSON.parse(replacementBytes),events=await readFile(await confined(directory,`${executionRoot}/events.jsonl`,{missing:false}));
+    requireThat(sha256(replacementBytes)===replacement.record.sha256&&sha256(events)===replacement.events.sha256&&record.status==='completed'&&record.session!==unknown.session&&record.proof?.packet_sha256===digestObject(packet)&&record.candidate_sha256===digestObject(candidate)&&successfulModelResult({status:0,stdout:events.toString()})&&digestObject(await readJson(await confined(directory,`${executionRoot}/response.json`,{missing:false})))===digestObject(candidate),'HISTORY_CHANGED');
+    const publication=accepted.publication,receiptBytes=await readFile(await confined(ctx.privateRoot,`automation/staging/${id}/manager-publication-result.json`,{missing:false})),metadataBytes=await readFile(await confined(ctx.privateRoot,`bridge/celebration-y3q4/${id}.metadata.json`,{missing:false})),approvalBytes=await readFile(await confined(directory,`approved/${job.state.review?.approved_sha256}.json`,{missing:false}));
+    const approved=JSON.parse(approvalBytes),metadata=JSON.parse(metadataBytes),attached=metadata.verseCommentaries||(metadata.verseCommentary?[metadata.verseCommentary]:[]);
+    requireThat(sha256(receiptBytes)===publication.receipt.sha256&&sha256(metadataBytes)===publication.metadata.sha256&&sha256(approvalBytes)===publication.approvedArtifact.sha256&&digestObject(JSON.parse(receiptBytes))===job.state.publication.receipt_sha256&&digestObject(approved)===job.state.review.approved_sha256&&await hasHenryPublicationReceipt({privateRoot:ctx.privateRoot,readingId:id,manifest})&&approved.results.length===attached.length&&approved.results.every(r=>attached.some(a=>digestObject(a)===digestObject(r.runtime))),'HISTORY_PUBLICATION_CHANGED');
+    // These immutable copies establish provenance only, never provider termination.
+    for(const r of [accepted.childRollout,accepted.parentCoordinator])await evidence(`evidence/${r.sha256}.jsonl`,r.sha256);
+    requireThat((await loadJob(directory)).previous===job.previous,'HISTORY_CHANGED');
+    bindings.push({reading_id:id,input_sha256:job.input.input_sha256,event_head:job.previous,event_sequence:job.sequence,file_inventory_sha256:digestObject(files),unknown_key:unknown.key,unknown_record_sha256:unknown.record.sha256,unknown_session:unknown.session,unknown_packet_sha256:unknown.packetSha256,replacement_record_sha256:sha256(replacementBytes),replacement_events_sha256:sha256(events),approved_sha256:sha256(approvalBytes),publication_receipt_sha256:sha256(receiptBytes),metadata_sha256:sha256(metadataBytes),manifest_entry_sha256:digestObject(manifest.readings[id]),child_rollout_sha256:accepted.childRollout.sha256,parent_coordinator_sha256:accepted.parentCoordinator.sha256,classification:CLASSIFICATION,provider_termination_proven:false});
+  }
+  return {schema_version:'mhc-gen24-retained-histories/v1',grant_id:GEN24_RECOVERY_GRANT,classification:CLASSIFICATION,authority_sha256:sha256(await readFile(authorityPath)),diagnosis_sha256:authority.diagnosis_sha256,design_review_sha256:authority.design_review_sha256,inspection_sha256:inspectionSha,bindings};
+}
+async function checkRetainedHistories(ctx,expected,now){const current=await retainedHistories(ctx,now);requireThat(isDeepStrictEqual(current,expected),'HISTORY_CHANGED');if(current){const receipt=await readJson(await confined(recoveryRoot(ctx),`retained-unknown/${digestObject(current)}.json`,{missing:false}));requireThat(isDeepStrictEqual(receipt,current),'HISTORY_CHANGED');}return current;}
+async function freezeRetainedHistories(ctx,admission){
+  if(!admission)return;
+  const proof=await historyEvidence(ctx),{authorityPath,diagnosis}=proof,root=recoveryRoot(ctx);
+  requireThat(sha256(await readFile(authorityPath))===admission.authority_sha256,'HISTORY_CHANGED');
+  const names=['authority.json','diagnosis.json','design-review.json','history-inspection.json',...diagnosis.histories.flatMap(h=>[h.childRollout,h.parentCoordinator].map(r=>`evidence/${r.sha256}.jsonl`))];
+  for(const name of names)await immutable(root,`consumed-history/${name}`,await readFile(await confined(root,`history-admission/${name}`,{missing:false})),{raw:true});
+  await immutable(root,'consumed-history/classification.json',admission);await frozenRetainedHistories(ctx,admission);
+}
+async function frozenRetainedHistories(ctx,admission){
+  if(!admission)return;
+  const {authorityPath,authority,diagnosis,review,inspectionSha,inspection,evidence}=await historyEvidence(ctx,undefined,true),stored=await readJson(await confined(recoveryRoot(ctx),'consumed-history/classification.json',{missing:false}));
+  requireThat(isDeepStrictEqual(stored,admission)&&admission.schema_version==='mhc-gen24-retained-histories/v1'&&admission.grant_id===GEN24_RECOVERY_GRANT&&admission.classification===CLASSIFICATION&&admission.authority_sha256===sha256(await readFile(authorityPath))&&admission.diagnosis_sha256===authority.diagnosis_sha256&&admission.design_review_sha256===authority.design_review_sha256&&admission.inspection_sha256===inspectionSha&&isDeepStrictEqual(admission.bindings?.map(b=>b.reading_id),HISTORIES),'HISTORY_EVIDENCE_CHANGED');
+  // Completed reads use only the evidence admitted under the lock and copied at
+  // consumption. Later maintenance of unrelated historical publications cannot
+  // re-admit or invalidate a finished GEN24 derivative.
+  for(const [i,b] of admission.bindings.entries()){
+    const h=diagnosis.histories[i],r=review.histories[i],s=inspection.reports[i],files=s.files.map(f=>({path:String(f.relativePath).replaceAll('\\','/'),sha256:f.sha256,bytes:f.bytes})).sort((a,b)=>a.path.localeCompare(b.path));
+    requireThat(b.classification===CLASSIFICATION&&b.provider_termination_proven===false&&h.unknown.status==='started'&&h.unknown.terminalOutcomeProven===false&&r.status_unchanged==='started'&&r.remote_termination_proven===false&&b.input_sha256===h.inputSha256&&b.input_sha256===s.inputSha256&&b.input_sha256===r.input_sha256&&b.event_head===h.eventHead&&b.event_head===s.eventHead&&b.event_head===r.event_head&&b.event_sequence===h.eventSequence&&b.file_inventory_sha256===digestObject(files)&&b.unknown_key===h.unknown.key&&b.unknown_key===r.unknown_key&&b.unknown_record_sha256===h.unknown.record.sha256&&b.unknown_record_sha256===r.unknown_record_sha256&&b.unknown_session===h.unknown.session&&b.unknown_packet_sha256===h.unknown.packetSha256&&b.replacement_record_sha256===h.replacement.record.sha256&&b.replacement_events_sha256===h.replacement.events.sha256&&b.approved_sha256===h.publication.approvedArtifact.sha256&&b.publication_receipt_sha256===h.publication.receipt.sha256&&b.metadata_sha256===h.publication.metadata.sha256&&hash(b.manifest_entry_sha256)&&b.child_rollout_sha256===h.childRollout.sha256&&b.parent_coordinator_sha256===h.parentCoordinator.sha256,'HISTORY_EVIDENCE_CHANGED');
+    for(const p of [h.childRollout,h.parentCoordinator])await evidence(`evidence/${p.sha256}.jsonl`,p.sha256);
+  }
+}
 
 export async function inspectGen24Recovery(ctx){
   const root=await confined(ctx.projectRoot,path.relative(ctx.projectRoot,originalRoot(ctx)),{missing:false}),job=await loadJob(root),entry=ctx.plan.entries.find(e=>e.readingId===READING);
@@ -77,19 +146,22 @@ export async function prepareGen24Recovery(ctx,{notBefore,expiresAt,codexExecuta
   await assertNativeWriterAllowed(ctx);requireThat(!await lstat(await confined(recoveryRoot(ctx),'consumed.json')).catch(e=>{if(e.code==='ENOENT')return null;throw e;}),'CONSUMED');const inspected=await inspectGen24Recovery(ctx),approved=await approval(ctx,inspected.binding_sha256),window={not_before:notBefore,expires_at:expiresAt};windowValid(window,approved.approved_at);
   requireThat(hash(preflightReceipt)&&path.isAbsolute(codexExecutable),'TRANSPORT_UNQUALIFIED');const receipt=await readJson(await confined(ctx.runtimeRoot,`author-preflight/receipts/${preflightReceipt}.json`,{missing:false}));
   requireThat(digestObject(receipt)===preflightReceipt&&receipt.state==='available'&&receipt.billingRoute===POLICY.billing_route&&path.resolve(receipt.codexExecutable)===path.resolve(codexExecutable)&&receipt.executableSha256===sha256(await readFile(codexExecutable))&&receipt.receipts?.some(r=>r.model===MODEL&&r.reasoning==='medium'&&r.code===null),'TRANSPORT_UNQUALIFIED');
-  const cap={schema_version:'mhc-gen24-recovery-capability/v1',policy:structuredClone(POLICY),approval_sha256:digestObject(approved),binding:inspected.binding,runtime:runtimeBinding(ctx),runtime_code_sha256:await runtimeCode(ctx),window,transport:{executable:path.resolve(codexExecutable),executable_sha256:receipt.executableSha256,version:receipt.version,preflight_receipt:preflightReceipt,preflight_receipt_sha256:digestObject(receipt)}};
+  const histories=await retainedHistories(ctx,new Date(notBefore));
+  if(histories){const relative=`retained-unknown/${digestObject(histories)}.json`,prior=await maybeJson(await confined(recoveryRoot(ctx),relative));if(prior)requireThat(isDeepStrictEqual(prior,histories),'HISTORY_CHANGED');else await immutable(recoveryRoot(ctx),relative,histories);}
+  const cap={schema_version:'mhc-gen24-recovery-capability/v2',policy:structuredClone(POLICY),approval_sha256:digestObject(approved),binding:inspected.binding,history_admission:histories,runtime:runtimeBinding(ctx),runtime_code_sha256:await runtimeCode(ctx),window,transport:{executable:path.resolve(codexExecutable),executable_sha256:receipt.executableSha256,version:receipt.version,preflight_receipt:preflightReceipt,preflight_receipt_sha256:digestObject(receipt)}};
   const id=digestObject(cap),root=recoveryRoot(ctx);await mkdir(root,{recursive:true,mode:0o700});const prior=await maybeJson(await confined(root,`capabilities/${id}.json`));if(prior)requireThat(isDeepStrictEqual(prior,cap),'CAPABILITY_INVALID');else await immutable(root,`capabilities/${id}.json`,cap);
   return {capability_sha256:id,capability_path:await confined(root,`capabilities/${id}.json`),max_author_calls:5,window};
 }
-async function capability(ctx,id,completed=false){
+async function capability(ctx,id,completed=false,now){
   requireThat(hash(id),'CAPABILITY_INVALID');const cap=await readJson(await confined(recoveryRoot(ctx),`capabilities/${id}.json`,{missing:false}));
-  exact(cap,['schema_version','policy','approval_sha256','binding','runtime','runtime_code_sha256','window','transport']);
-  requireThat(digestObject(cap)===id&&cap.schema_version==='mhc-gen24-recovery-capability/v1'&&isDeepStrictEqual(cap.policy,POLICY),'CAPABILITY_INVALID');
+  exact(cap,['schema_version','policy','approval_sha256','binding','history_admission','runtime','runtime_code_sha256','window','transport']);
+  requireThat(digestObject(cap)===id&&cap.schema_version==='mhc-gen24-recovery-capability/v2'&&isDeepStrictEqual(cap.policy,POLICY),'CAPABILITY_INVALID');
   if(!completed)requireThat(isDeepStrictEqual(cap.runtime,runtimeBinding(ctx))&&cap.runtime_code_sha256===await runtimeCode(ctx),'CAPABILITY_INVALID');
   exact(cap.transport,['executable','executable_sha256','version','preflight_receipt','preflight_receipt_sha256']);requireThat(hash(cap.transport.preflight_receipt),'TRANSPORT_UNQUALIFIED');
   const receipt=await readJson(await confined(ctx.runtimeRoot,`author-preflight/receipts/${cap.transport.preflight_receipt}.json`,{missing:false}));
   requireThat(digestObject(receipt)===cap.transport.preflight_receipt&&digestObject(receipt)===cap.transport.preflight_receipt_sha256&&receipt.state==='available'&&receipt.billingRoute===POLICY.billing_route&&path.resolve(receipt.codexExecutable)===cap.transport.executable&&receipt.executableSha256===cap.transport.executable_sha256&&receipt.version===cap.transport.version&&receipt.receipts?.some(r=>r.model===MODEL&&r.reasoning==='medium'&&r.code===null),'TRANSPORT_UNQUALIFIED');
   const inspected=await inspectGen24Recovery(ctx);requireThat(isDeepStrictEqual(cap.binding,inspected.binding),'BINDING_CHANGED');const approved=await approval(ctx,inspected.binding_sha256);requireThat(digestObject(approved)===cap.approval_sha256,'BINDING_CHANGED');windowValid(cap.window,approved.approved_at);
+  if(completed)await frozenRetainedHistories(ctx,cap.history_admission);else await checkRetainedHistories(ctx,cap.history_admission,now);
   return {cap,inspected,approved};
 }
 async function ledger(ctx){const root=recoveryRoot(ctx),names=await readdir(await confined(root,'ledger')).catch(e=>{if(e.code==='ENOENT')return [];throw e;}),events=[];let previous='0'.repeat(64);
@@ -97,43 +169,74 @@ async function ledger(ctx){const root=recoveryRoot(ctx),names=await readdir(awai
 }
 async function appendLedger(ctx,kind,data,now){const events=await ledger(ctx),body={sequence:events.length+1,previous:events.at(-1)?.sha256??'0'.repeat(64),kind,at:new Date(now).toISOString(),data},event={...body,sha256:digestObject(body)};await immutable(recoveryRoot(ctx),`ledger/${String(body.sequence).padStart(6,'0')}.json`,event);return event;}
 async function lockOwned(ctx){const owner=await readJson(await confined(ctx.runtimeRoot,'runner.lock/owner.json',{missing:false}));requireThat(owner.pid===process.pid,'LOCK_REQUIRED');}
-export function inspectGen24Owners(ctx,{run=spawnSync}={}){
-  requireThat(process.platform==='win32','OWNER_UNVERIFIABLE');
-  const script=String.raw`$ErrorActionPreference='Stop'
-$gen24Unknown=$false
-$gen24Processes=@(Get-CimInstance Win32_Process | Where-Object {
-  $_.Name -in @('node.exe','codex.exe') -and $_.ProcessId -notin @([int]$env:DBR_RECOVERY_PID,[int]$env:DBR_RECOVERY_PARENT)
-} | Where-Object {
-  if (-not $_.CommandLine) { $script:gen24Unknown=$true; $false } else {
-    $gen24Command=$_.CommandLine.Replace([char]47,[char]92)
-    $gen24Matched=$false
-    foreach ($gen24Target in @($env:DBR_RECOVERY_ORIGINAL,$env:DBR_RECOVERY_NATIVE,$env:DBR_RECOVERY_GRANT)) {
-      if ($gen24Command.IndexOf($gen24Target.Replace([char]47,[char]92),[StringComparison]::OrdinalIgnoreCase) -ge 0) { $gen24Matched=$true }
+const ownerTargets=(ctx,histories)=>[originalRoot(ctx),ctx.runtimeRoot,recoveryRoot(ctx),derivativeJobs(ctx),...HISTORIES.map(id=>path.join(normalJobs(ctx),id)),...(histories?.bindings||[]).map(b=>{requireThat(HISTORIES.includes(b.reading_id)&&hash(b.unknown_key),'OWNER_UNVERIFIABLE');return path.join(normalJobs(ctx),b.reading_id,'model-executions',b.unknown_key);})].map(p=>path.resolve(p));
+export function evaluateGen24Owners(ctx,data,{historyAdmission=null}={}){
+  requireThat(data&&Number.isInteger(data.inspector_pid)&&data.inspector_pid>0&&Array.isArray(data.first)&&Array.isArray(data.second),'OWNER_UNVERIFIABLE');
+  const targets=ownerTargets(ctx,historyAdmission),normal=s=>s.replaceAll('/','\\').toLowerCase();
+  function inspect(rows){
+    const byPid=new Map(),matched=new Set();let unknown=false;
+    for(const r of rows){requireThat(r&&Number.isInteger(r.pid)&&r.pid>=0&&Number.isInteger(r.parent_pid)&&r.parent_pid>=0&&typeof r.name==='string'&&r.name.length>0&&!byPid.has(r.pid),'OWNER_UNVERIFIABLE');byPid.set(r.pid,r);}
+    const identity=r=>{requireThat(r&&typeof r.command_line==='string'&&r.command_line.length>0&&Number.isFinite(Date.parse(r.created_at)),'OWNER_UNVERIFIABLE');return {pid:r.pid,parent_pid:r.parent_pid,name:r.name,created_at:r.created_at,command_sha256:sha256(r.command_line)};};
+    const self=byPid.get(process.pid),inspector=byPid.get(data.inspector_pid),launcher=byPid.get(process.ppid),launcherPath=normal(path.resolve(ctx.launcher)),runnerPath=normal(path.join(ctx.releaseRoot,'scripts/mhc-native-runner.mjs'));
+    const ancestry=[identity(self),identity(inspector),identity(launcher)];
+    requireThat(/^node(\.exe)?$/i.test(self.name)&&self.parent_pid===process.ppid&&normal(self.command_line).includes(runnerPath)&&/^node(\.exe)?$/i.test(launcher.name)&&normal(launcher.command_line).includes(launcherPath)&&Date.parse(launcher.created_at)<=Date.parse(self.created_at)&&inspector.parent_pid===self.pid&&/^(powershell|pwsh)(\.exe)?$/i.test(inspector.name)&&Date.parse(inspector.created_at)>=Date.parse(self.created_at),'OWNER_UNVERIFIABLE');
+    const excluded=new Set([self.pid,inspector.pid,launcher.pid]),ancestors=new Set([launcher.pid]);let child=launcher,seen=new Set([self.pid,inspector.pid,launcher.pid]);
+    while(child.parent_pid!==0){
+      const parent=byPid.get(child.parent_pid);requireThat(parent&&!seen.has(parent.pid),'OWNER_UNVERIFIABLE');seen.add(parent.pid);ancestry.push(identity(parent));requireThat(Date.parse(parent.created_at)<=Date.parse(child.created_at),'OWNER_UNVERIFIABLE');
+      // Exempt only the proved launcher and shells actually invoking it. The
+      // first other ancestor is checked normally, never broadly exempted.
+      if(!/^(powershell|pwsh|cmd)(\.exe)?$/i.test(parent.name)||!normal(parent.command_line).includes(launcherPath))break;
+      excluded.add(parent.pid);ancestors.add(parent.pid);child=parent;
     }
-    $gen24Matched
+    for(const r of rows){
+      if(excluded.has(r.pid))continue;
+      const critical=/^(node|codex)(\.exe)?$/i.test(r.name),command=typeof r.command_line==='string'?normal(r.command_line):'',hit=targets.some(t=>command.includes(normal(t)));
+      if((critical||hit)&&(!command||!Number.isFinite(Date.parse(r.created_at))))unknown=true;
+      if(hit||r.parent_pid===process.pid||(critical&&ancestors.has(r.parent_pid)))matched.add(r.pid);
+    }
+    for(let changed=true;changed;){changed=false;for(const r of rows){if(excluded.has(r.pid)||matched.has(r.pid)||!matched.has(r.parent_pid))continue;matched.add(r.pid);changed=true;const parent=byPid.get(r.parent_pid);if(!Number.isFinite(Date.parse(r.created_at))||!parent||Date.parse(r.created_at)<Date.parse(parent.created_at))unknown=true;}}
+    for(const pid of matched){let r=byPid.get(pid),seen=new Set();while(r){if(seen.has(r.pid)){unknown=true;break;}seen.add(r.pid);r=byPid.get(r.parent_pid);}}
+    const watched=rows.filter(r=>!excluded.has(r.pid)&&(/^(node|codex)(\.exe)?$/i.test(r.name)||matched.has(r.pid))).map(r=>({pid:r.pid,parent_pid:r.parent_pid,name:r.name,created_at:r.created_at,command_sha256:sha256(String(r.command_line??''))})).sort((a,b)=>a.pid-b.pid);
+    return {unknown,matched,watched,byPid,ancestry};
   }
-} | ForEach-Object { [pscustomobject]@{pid=$_.ProcessId;parent_pid=$_.ParentProcessId} })
-[pscustomobject]@{quiescent=(!$gen24Unknown -and $gen24Processes.Count -eq 0);unknown=$gen24Unknown;processes=$gen24Processes} | ConvertTo-Json -Depth 3 -Compress`;
-  const result=run('powershell.exe',['-NoProfile','-NonInteractive','-Command',script],{windowsHide:true,encoding:'utf8',timeout:30000,env:{...process.env,DBR_RECOVERY_PID:String(process.pid),DBR_RECOVERY_PARENT:String(process.ppid),DBR_RECOVERY_ORIGINAL:originalRoot(ctx),DBR_RECOVERY_NATIVE:ctx.runtimeRoot,DBR_RECOVERY_GRANT:recoveryRoot(ctx)}});
-  requireThat(result.status===0&&!result.error,'OWNER_UNVERIFIABLE');let proof;try{proof=JSON.parse(result.stdout);}catch{throw error('OWNER_UNVERIFIABLE');}return proof;
+  const first=inspect(data.first),second=inspect(data.second),race=!isDeepStrictEqual(first.watched,second.watched)||!isDeepStrictEqual(first.ancestry,second.ancestry),unknown=first.unknown||second.unknown||race,pids=[...new Set([...first.matched,...second.matched])].sort((a,b)=>a-b);
+  return {quiescent:!unknown&&pids.length===0,unknown,observed_race:race,snapshot_count:2,coverage_sha256:digestObject(targets),invocation_sha256:digestObject(first.ancestry),processes:pids.map(pid=>({pid,parent_pid:(second.byPid.get(pid)||first.byPid.get(pid)).parent_pid}))};
 }
-async function quiescent(ctx,checkOwners){
-  for(const d of await readdir(normalJobs(ctx),{withFileTypes:true})){requireThat(d.isDirectory()&&!d.isSymbolicLink(),'OWNER_UNVERIFIABLE');if(d.name===READING)continue;const job=await loadJob(await confined(normalJobs(ctx),d.name,{missing:false}));requireThat(job.state?.phase!=='generating'&&!job.state?.pending_attempt,'ACTIVE_OWNER');await assertAuthorExecutionsFinished(job);}
-  let proof;try{proof=await checkOwners(ctx);}catch{throw error('OWNER_UNVERIFIABLE');}requireThat(proof?.quiescent===true&&proof.unknown===false&&Array.isArray(proof.processes)&&proof.processes.length===0,'ACTIVE_OWNER');return proof;
+export function inspectGen24Owners(ctx,{run=spawnSync,historyAdmission=null}={}){
+  requireThat(process.platform==='win32','OWNER_UNVERIFIABLE');
+  // Keep raw command lines in memory only. Public proof contains IDs and hashes.
+  const script=String.raw`$ErrorActionPreference='Stop'
+function Get-Gen24Processes {
+  @(Get-CimInstance Win32_Process | ForEach-Object {
+    [pscustomobject]@{pid=[int]$_.ProcessId;parent_pid=[int]$_.ParentProcessId;name=$_.Name;command_line=$_.CommandLine;created_at=$(if ($_.CreationDate) {$_.CreationDate.ToUniversalTime().ToString('o')} else {$null})}
+  })
+}
+$gen24First=@(Get-Gen24Processes)
+$gen24Second=@(Get-Gen24Processes)
+[pscustomobject]@{inspector_pid=$PID;first=$gen24First;second=$gen24Second} | ConvertTo-Json -Depth 4 -Compress`;
+  const result=run('powershell.exe',['-NoProfile','-NonInteractive','-Command',script],{windowsHide:true,encoding:'utf8',timeout:30000,maxBuffer:16*1024*1024,env:{...process.env}});
+  requireThat(result.status===0&&!result.error,'OWNER_UNVERIFIABLE');let data;try{data=JSON.parse(result.stdout);}catch{throw error('OWNER_UNVERIFIABLE');}return evaluateGen24Owners(ctx,data,{historyAdmission});
+}
+async function quiescent(ctx,checkOwners,histories,now){
+  await assertNativeWriterAllowed(ctx);await lockOwned(ctx);await checkRetainedHistories(ctx,histories,now);
+  for(const d of await readdir(normalJobs(ctx),{withFileTypes:true})){requireThat(d.isDirectory()&&!d.isSymbolicLink(),'OWNER_UNVERIFIABLE');if(d.name===READING)continue;const job=await loadJob(await confined(normalJobs(ctx),d.name,{missing:false}));requireThat(job.state?.phase!=='generating'&&!job.state?.pending_attempt,'ACTIVE_OWNER');if(!histories?.bindings.some(b=>b.reading_id===d.name))await assertAuthorExecutionsFinished(job);}
+  let proof;try{proof=await checkOwners(ctx,{historyAdmission:histories});}catch{throw error('OWNER_UNVERIFIABLE');}requireThat(proof?.quiescent===true&&proof.unknown===false&&Array.isArray(proof.processes)&&proof.processes.length===0,'ACTIVE_OWNER');return proof;
 }
 
 export async function runGen24Recovery(ctx,{capabilitySha256,codexExecutable},dependencies={}){
   await assertNativeWriterAllowed(ctx);await lockOwned(ctx);const root=recoveryRoot(ctx);
   requireThat(!await lstat(await confined(root,'consumed.json')).catch(e=>{if(e.code==='ENOENT')return null;throw e;}),'CONSUMED');
-  const {cap,inspected,approved}=await capability(ctx,capabilitySha256),clock=dependencies.clock||(()=>new Date()),run=dependencies.run||spawnSync,checkOwners=dependencies.checkOwners||inspectGen24Owners;
+  const clock=dependencies.clock||(()=>new Date()),run=dependencies.run||spawnSync,checkOwners=dependencies.checkOwners||inspectGen24Owners,{cap,inspected,approved}=await capability(ctx,capabilitySha256,false,clock());
   windowValid(cap.window,approved.approved_at,clock());const entry=ctx.plan.entries.find(e=>e.readingId===READING),priority=henryPriorityWindow(ctx.appConfig,clock());requireThat(entry.dayIndex>=priority.currentDay&&entry.dayIndex<=priority.horizonDay,'OUTSIDE_FORWARD_WINDOW');
   requireThat(Date.parse(inspected.job.state.session.deadline_at)<=+clock()&&Date.parse(inspected.job.state.lease.expires_at)<=+clock(),'ORIGINAL_STATE_INVALID');
-  requireThat(path.resolve(codexExecutable)===cap.transport.executable&&sha256(await readFile(codexExecutable))===cap.transport.executable_sha256&&configuredModels(ctx).spark===MODEL,'TRANSPORT_UNQUALIFIED');await quiescent(ctx,checkOwners);
-  const consumed={grant_id:GEN24_RECOVERY_GRANT,capability_sha256:capabilitySha256,original_binding_sha256:digestObject(cap.binding),claimed_at:clock().toISOString(),expires_at:cap.window.expires_at,max_author_calls:5,unknown_prior_dispatches_charged:1};
+  requireThat(path.resolve(codexExecutable)===cap.transport.executable&&sha256(await readFile(codexExecutable))===cap.transport.executable_sha256&&configuredModels(ctx).spark===MODEL,'TRANSPORT_UNQUALIFIED');await quiescent(ctx,checkOwners,cap.history_admission,clock());
+  windowValid(cap.window,approved.approved_at,clock());
+  const consumed={grant_id:GEN24_RECOVERY_GRANT,capability_sha256:capabilitySha256,original_binding_sha256:digestObject(cap.binding),history_admission_sha256:digestObject(cap.history_admission),claimed_at:clock().toISOString(),expires_at:cap.window.expires_at,max_author_calls:5,unknown_prior_dispatches_charged:1};
   await immutable(root,'consumed.json',consumed);await immutable(root,'consumed-capability.json',cap);await immutable(root,'consumed-approval.json',approved);await appendLedger(ctx,'capability_consumed',consumed,clock());
   let derived;
   const derivativeCtx={...ctx,jobRoot:derivativeJobs(ctx)};
   try{
+    await freezeRetainedHistories(ctx,cap.history_admission);
     const transport=await prepareAuthorTransport(ctx,{lane:'spark',codexExecutable},{run,clock});requireThat(transport.executableSha256===cap.transport.executable_sha256&&transport.version===cap.transport.version&&transport.models.spark===MODEL,'TRANSPORT_UNQUALIFIED');
     derived=await createJob(derivativeCtx.jobRoot,inspected.job.input,clock(),inspected.job.state.models);
     for(const accepted of cap.binding.accepted)await immutable(derived.directory,`attempts/${accepted.candidate_sha256}.json`,await readFile(await confined(originalRoot(ctx),`attempts/${accepted.candidate_sha256}.json`,{missing:false})),{raw:true});
@@ -142,14 +245,16 @@ export async function runGen24Recovery(ctx,{capabilitySha256,codexExecutable},de
     derived=await appendState(derived,'approved_gen24_recovery_derivative',{...derived.state,accepted:structuredClone(inspected.job.state.accepted),rejected:structuredClone(inspected.job.state.rejected),total_submissions:inspected.job.state.total_submissions,owners:structuredClone(inspected.job.state.owners),sessions:{...structuredClone(inspected.job.state.sessions),[session.id]:session},session,lease:{id:session.id,started_at:session.started_at,expires_at:cap.window.expires_at,transport_checkpoints:0},history:[...inspected.job.state.history,{kind:'approved_gen24_recovery',capability_sha256:capabilitySha256,original_event_head:cap.binding.event_head,unknown_intent:cap.binding.unknown_intent,new_author_call_limit:5}]},clock());
     for(const index of POLICY.missing_packet_indexes){
       windowValid(cap.window,approved.approved_at,clock());requireThat(Date.parse(cap.window.expires_at)-+clock()>=15000,'DEADLINE');
-      const again=await inspectGen24Recovery(ctx);requireThat(isDeepStrictEqual(again.binding,cap.binding),'BINDING_CHANGED');await quiescent(ctx,checkOwners);await assertAuthorExecutionsFinished(await loadJob(derived.directory));
+      const again=await inspectGen24Recovery(ctx);requireThat(isDeepStrictEqual(again.binding,cap.binding),'BINDING_CHANGED');await quiescent(ctx,checkOwners,cap.history_admission,clock());await assertAuthorExecutionsFinished(await loadJob(derived.directory));
       const packet=inspected.packets[index],base=`author/${packet.packet_id}/spark`,work={readingId:READING,requiredModel:MODEL};
       work.sourcePath=await atomicJson(derived.directory,`${base}/source-view.json`,packet,{immutable:true});work.schemaPath=await atomicJson(derived.directory,`${base}/candidate.schema.json`,candidateSchema,{immutable:true});
       work.instructionsPath=await atomicJson(derived.directory,`${base}/instructions-${MODEL}.json`,{model:MODEL,reasoning_effort:'medium',instructions:await readFile(path.join(ctx.releaseRoot,'prompts/mhc-v2-author.md'),'utf8')},{immutable:true});work.candidatePath=await confined(derived.directory,`${base}/candidate.json`);work.validationPath=await confined(derived.directory,`${base}/validation.json`);
       const verified=await verifyPublicPacket(derivativeCtx,work,'spark'),events=await ledger(ctx),intents=events.filter(e=>e.kind==='author_intent');requireThat(intents.length<5&&!intents.some(e=>e.data.packet_id===packet.packet_id),'CALL_LIMIT');
       const key=digestObject({grant_id:GEN24_RECOVERY_GRANT,capability_sha256:capabilitySha256,packet_id:packet.packet_id,attempt:1}),relative=`model-executions/${key}`;
       const schemaPath=await immutable(derived.directory,`${relative}/transport.schema.json`,transportSchema(candidateSchema)),outputPath=await confined(derived.directory,`${relative}/response.json`);
+      await quiescent(ctx,checkOwners,cap.history_admission,clock());windowValid(cap.window,approved.approved_at,clock());
       await appendLedger(ctx,'author_intent',{execution_key:key,packet_id:packet.packet_id,packet_sha256:digestObject(packet),call_number:intents.length+1,model:MODEL,reasoning:'medium',original_unknown_allowance:index===6?1:0},clock());
+      await quiescent(ctx,checkOwners,cap.history_admission,clock());
       const args=authorArguments({model:MODEL,reasoning:'medium',schemaPath,outputPath,mcpNames:transport.mcpNames}),remaining=Date.parse(cap.window.expires_at)-+clock();requireThat(remaining>=15000,'DEADLINE');
       const result=run(codexExecutable,args,{...transport.options,cwd:path.dirname(outputPath),timeout:Math.min(12*60000,remaining-5000),input:`Condense the supplied verified public-domain Henry source packet. Return only the candidate JSON. Do not use tools, read other files, change files or publish.\n\n${verified.instructions.instructions}\n\nSOURCE PACKET:\n${JSON.stringify(packet)}`});
       await immutable(derived.directory,`${relative}/events.jsonl`,result.stdout||'',{raw:true});await immutable(derived.directory,`${relative}/stderr.txt`,result.stderr||'',{raw:true});
@@ -160,7 +265,8 @@ export async function runGen24Recovery(ctx,{capabilitySha256,codexExecutable},de
       await appendLedger(ctx,'author_complete',{execution_key:key,packet_id:packet.packet_id,accepted:Boolean(derived.state.accepted[`${packet.packet_id}:spark`]),candidate_sha256:digestObject(candidate)},clock());
       requireThat(derived.state.accepted[`${packet.packet_id}:spark`]&&report.action!=='repair_candidate','CANDIDATE_REJECTED');
     }
-    windowValid(cap.window,approved.approved_at,clock());const {job,bundle}=await buildReview(derivativeCtx,READING);requireThat(job.state.phase==='review_pending'&&Object.keys(job.state.accepted).length===11,'INCOMPLETE');
+    windowValid(cap.window,approved.approved_at,clock());requireThat(isDeepStrictEqual((await inspectGen24Recovery(ctx)).binding,cap.binding),'BINDING_CHANGED');await quiescent(ctx,checkOwners,cap.history_admission,clock());const {job,bundle}=await buildReview(derivativeCtx,READING);requireThat(job.state.phase==='review_pending'&&Object.keys(job.state.accepted).length===11,'INCOMPLETE');
+    await quiescent(ctx,checkOwners,cap.history_admission,clock());windowValid(cap.window,approved.approved_at,clock());
     const bundlePath=await immutable(job.directory,`review/${bundle.review_basis_sha256}.json`,bundle),last=await appendLedger(ctx,'window_complete',{capability_sha256:capabilitySha256,job_sequence:job.sequence,job_event_head:job.previous,review_basis_sha256:bundle.review_basis_sha256},clock());
     await immutable(root,'completed.json',{capability_sha256:capabilitySha256,job_sequence:job.sequence,job_event_head:job.previous,review_basis_sha256:bundle.review_basis_sha256,ledger_head:last.sha256});
     return {action:'review_handoff',state:'review_pending',readingId:READING,recoveryGrantId:GEN24_RECOVERY_GRANT,capabilitySha256,bundlePath,reviewPath:path.join(job.directory,'review.json'),instructionsPath:path.join(ctx.releaseRoot,'prompts/mhc-v2-review.md'),validatedBatches:11,totalBatches:11,newAuthorCalls:5,unknownPriorDispatchesCharged:1,published:false};
@@ -176,8 +282,9 @@ export async function completedGen24Recovery(ctx,id){
   if(id!==READING||path.resolve(ctx.jobRoot)!==path.resolve(normalJobs(ctx)))return null;
   const root=recoveryRoot(ctx),completed=await maybeJson(await confined(root,'completed.json'));if(!completed)return null;
   const {cap}=await capability(ctx,completed.capability_sha256,true),consumed=await readJson(await confined(root,'consumed.json',{missing:false}));requireThat(consumed.capability_sha256===completed.capability_sha256,'COMPLETION_INVALID');
+  requireThat(isDeepStrictEqual(await readJson(await confined(root,'consumed-capability.json',{missing:false})),cap)&&digestObject(await readJson(await confined(root,'consumed-approval.json',{missing:false})))===cap.approval_sha256&&consumed.grant_id===GEN24_RECOVERY_GRANT&&consumed.max_author_calls===5&&consumed.unknown_prior_dispatches_charged===1&&consumed.history_admission_sha256===digestObject(cap.history_admission),'COMPLETION_INVALID');
   const events=await ledger(ctx),intents=events.filter(e=>e.kind==='author_intent'),successes=events.filter(e=>e.kind==='author_complete');
-  requireThat(consumed.original_binding_sha256===digestObject(cap.binding)&&events[0]?.kind==='capability_consumed'&&events[0].data.capability_sha256===completed.capability_sha256&&events.at(-1)?.kind==='window_complete'&&events.at(-1).sha256===completed.ledger_head&&events.at(-1).data.job_event_head===completed.job_event_head&&events.at(-1).data.job_sequence===completed.job_sequence&&events.at(-1).data.review_basis_sha256===completed.review_basis_sha256&&intents.length===5&&successes.length===5&&successes.every((e,i)=>e.data.accepted&&e.data.execution_key===intents[i].data.execution_key&&e.data.packet_id===intents[i].data.packet_id)&&new Set(intents.map(e=>e.data.packet_id)).size===5&&isDeepStrictEqual(intents.map(e=>e.data.packet_id),cap.binding.packets.slice(6).map(p=>p.packet_id)),'COMPLETION_INVALID');
+  requireThat(consumed.original_binding_sha256===digestObject(cap.binding)&&events[0]?.kind==='capability_consumed'&&isDeepStrictEqual(events[0].data,consumed)&&events.at(-1)?.kind==='window_complete'&&events.at(-1).sha256===completed.ledger_head&&events.at(-1).data.job_event_head===completed.job_event_head&&events.at(-1).data.job_sequence===completed.job_sequence&&events.at(-1).data.review_basis_sha256===completed.review_basis_sha256&&intents.length===5&&successes.length===5&&successes.every((e,i)=>e.data.accepted&&e.data.execution_key===intents[i].data.execution_key&&e.data.packet_id===intents[i].data.packet_id)&&new Set(intents.map(e=>e.data.packet_id)).size===5&&isDeepStrictEqual(intents.map(e=>e.data.packet_id),cap.binding.packets.slice(6).map(p=>p.packet_id)),'COMPLETION_INVALID');
   const directory=await confined(derivativeJobs(ctx),READING,{missing:false}),job=await loadJob(directory),event=await readJson(await confined(directory,`events/${String(completed.job_sequence).padStart(6,'0')}.json`,{missing:false}));
   requireThat(event.event_sha256===completed.job_event_head&&event.state.phase==='review_pending'&&cap.binding.accepted.every(a=>event.state.accepted[`${a.packet_id}:spark`]?.candidate_sha256===a.candidate_sha256)&&job.input.input_sha256===cap.binding.input_sha256&&['review_pending','editorial_attention','approved','publishing','published'].includes(job.state.phase),'COMPLETION_INVALID');
   return {...job,recoveryGrantId:GEN24_RECOVERY_GRANT};

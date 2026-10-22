@@ -1,4 +1,41 @@
-# Project state — October 20 service recovery and accepted prevention candidate
+# Project state — October 21 bounded historical admission candidate
+
+## October 21 installed release and remaining admission block
+The combined prevention/recovery source `6f3a2e5` was released and installed with
+208 verified files. Its exact release acceptance is complete; do not repeat it.
+The retained 02:39 Eastern receipt measured October 21–28 at eight devotionals,
+six complete Henry layers, GEN24/GEN25 fallbacks and four complete future days.
+These are recorded observations, not a new live health check by this worker.
+GEN24 stopped before consumption: two unrelated published historical jobs retain
+unknown model intents. Their later replacements/publications prove reading
+closure, not the original provider outcomes. The grant remains unspent.
+
+## Separate local historical admission correction — not activated
+Root accepted the independently reviewed design for only those two exact private
+history snapshots. A fixed private authority and accepted evidence bind the
+inventories, input/event heads, old intents, replacements and publication closure
+into a v2 capability and immutable retained-unknown classification. Opaque keys,
+hashes and original evidence stay private. No original history is reclassified.
+Every other history remains strict; ordinary same-reading execution barriers are
+unchanged. Fresh two-snapshot owner checks include both historical job/execution
+paths, native runtime and GEN24/grant/derivative paths and related descendants.
+Unavailable data, observed races or drift block admission or stop a spent grant.
+All bindings and owners are rechecked before claim, every intent/dispatch and
+completion. The original GEN24 six responses/unknown charged one, five new
+Luna/medium calls, one overnight hour, no retries/repair/fallback and full67/all11
+independent review/publication remain. Old unbound capabilities cannot activate.
+This local candidate awaits independent code review and changed-source runtime
+qualification. No commit, release, installation, canonical mutation or real
+provider/preflight/author/publication call occurred during this implementation.
+Independent code review rejected the first candidate for coupling completed
+reads to live historical publication state and flagging the invoking shell as
+a competing writer. Local corrections now freeze accepted history evidence at
+consumption for completed reads, while preserving live admission/dispatch checks.
+Owner inspection verifies launcher/shell ancestry and creation identities before
+recognizing the invocation; ambiguous ancestry, siblings and other writers block.
+The rejected candidate, review probes and all validation receipts are retained;
+these corrections require a new independent review before qualification.
+The release history below describes the preceding preparation stages.
 
 ## Current service
 Authenticated October 20–27 receipts verify eight devotionals and seven complete

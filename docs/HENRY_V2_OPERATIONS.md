@@ -13,7 +13,83 @@ October 11. Actual installed ChatGPT preflight passed for both models. GEN19 and
 the paired Psalm 4/Proverbs reading subsequently passed independent review, exact
 publication readback and complete-service health; see PROJECT_STATE and private receipts.
 
-## Approved GEN24 exception — separate local candidate, not installed
+## October 21 historical admission correction — local candidate
+
+Combined source `6f3a2e5` is released/installed with 208 verified files. That
+release is complete. GEN24 admission stopped without a claim because the global
+other-job terminal-history gate encountered two retained old intents in published
+Genesis 4 and Genesis 12 jobs. Their later successful replacement/review/publication
+does not prove that either original provider turn terminated.
+
+The separately accepted correction admits only those two exact privately reviewed
+snapshots within the dedicated GEN24 route. The ordinary
+`assertAuthorExecutionsFinished` and selected-reading barriers are unchanged;
+every other record/job remains strict. A published phase alone grants no bypass.
+Original jobs, intents, attempts and publication bytes are never rewritten.
+
+Root separately qualifies changed source before activation. At the fixed private
+grant path, `history-admission/authority.json` has exact fields `schema_version`
+(`mhc-gen24-history-authority/v1`), `grant_id`, `classification`
+(`retained_unknown_for_GEN24_admission_only`), `accepted:true`, actual root
+`accepted_at`, and the raw `diagnosis_sha256` / `design_review_sha256`. No reading,
+key, skip flag or arbitrary evidence path is accepted from a CLI argument. Private
+byte-identical copies are `diagnosis.json`, `design-review.json` and
+`history-inspection.json` in that same directory; the accepted diagnosis binds
+the inspection digest. Its exact child/parent rollout bytes reside under
+`evidence/<sha256>.jsonl`. All real opaque keys, hashes and evidence remain private.
+The authority records root's accepted maintenance decision, not new author calls
+or provider-termination proof. This worker creates none of these canonical files.
+
+Preparation verifies both full immutable inventories/input/event heads, exact old
+started keys, separate terminal accepted replacements, approved artifacts and
+current local receipt/metadata/manifest bindings. It writes a content-addressed,
+exclusive-create retained-unknown classification and binds it plus all evidence
+to a `mhc-gen24-recovery-capability/v2`. Changed authority/evidence/snapshots,
+reopened jobs, pending writes, extra or malformed execution records, third
+unknowns or stale publication closure fail closed. Old v1/unbound capabilities
+cannot be redeemed. Without private historical authority, the original strict
+global history gate still applies; there is no automatic published-job exemption.
+
+Fresh owner inspection takes two process inventories, checks creation identity
+and normalized paths, and follows matched owners' descendants. It covers both
+historical job roots and exact execution/output/schema paths, native runtime,
+GEN24 original and grant/derivative paths. Missing query/required command-line
+data, incomplete inspector coverage, malformed rows, matching children or an
+observed relevant process race block. Raw command lines stay in memory; returned
+proof exposes process IDs and coverage hashes. A retained process snapshot is
+never fresh admission evidence and no local process proof establishes a remote
+provider outcome.
+
+The current runner, its exact verified Node launcher and path-bound invoking
+shells are recognized only through a complete observed parent chain with ordered
+creation identities. The inspector must be the runner's child. Missing or
+inaccessible ancestors, cycles, reused/racy identities or an unproved invocation
+fail closed. The first other ancestor is checked normally; siblings and other
+historical writers plus their descendants remain subject to owner rejection.
+There is no blanket parent/ancestor PID exclusion.
+
+Under the existing lock, bindings and owners are checked before claim, before
+every durable intent, again before dispatch, and before completion. Any failure
+before consumption leaves the grant unspent; after consumption it stays spent.
+The original GEN24 six accepted responses/unknown charged one, at most five new
+Luna/medium calls (one each packet 7–11), same overnight hour, forced ChatGPT,
+no extra preflight/retry/repair/fallback and full67/all11 independent review and
+normal publication/readback gates remain. Existing accepted overnight scheduling
+also requires start by 04:00, expiry by 05:00 and completion/readbacks by 06:30;
+05:20 may continue a complete derivative but cannot start a new recovery hour.
+
+At consumption, immutable `consumed-history/` copies retain the authority,
+diagnosis, design review, inspection, exact rollout evidence and classification.
+The claim and ledger bind their admission digest. After successful completion,
+normal GEN24 reads verify these frozen copies, consumed capability/approval,
+claim, completion event and ledger. They do not re-admit against a later live
+GEN4/GEN12 manifest entry or publication; legitimate unrelated maintenance cannot
+invalidate a completed derivative. Live historical checks still apply throughout
+admission/authoring and immediately before completion. Ordinary GEN24 source,
+candidate, independent approval and publication integrity gates remain active.
+Tampered frozen evidence or target/ledger provenance still blocks completed reads.
+
+## Approved GEN24 exception — October 20 implementation history
 
 The October 20 user approval is one source-bound GEN24 window, at most 60 minutes
 overnight and five NEW author calls, exactly one per missing packet 7–11. There

@@ -178,7 +178,7 @@ async function retainedFixture(f){
 }
 const processRow=(pid,name,command_line,parent_pid=0)=>({pid,parent_pid,name,command_line,created_at:'2026-10-20T00:00:00Z'});
 function ownerInventory(f,rows=[],other=rows){const base=[processRow(900002,'powershell.exe',`powershell -Command node "${f.ctx.launcher}"`,0),processRow(process.ppid,'node.exe',`node "${f.ctx.launcher}"`,900002),processRow(process.pid,'node.exe',`node "${path.join(f.ctx.releaseRoot,'scripts/mhc-native-runner.mjs')}" gen24-recovery run`,process.ppid),processRow(900001,'powershell.exe','FABRICATED process inspector',process.pid)];return {inspector_pid:900001,first:structuredClone([...base,...rows]),second:structuredClone([...base,...other])};}
-async function matcher(f,rows=[],other=rows){const cap=JSON.parse(await readFile(f.cap.capability_path));return inspectGen24Owners(f.ctx,{historyAdmission:cap.history_admission,run:()=>({status:0,stdout:JSON.stringify(ownerInventory(f,rows,other))})});}
+async function matcher(f,rows=[],other=rows){const cap=JSON.parse(await readFile(f.cap.capability_path));return evaluateGen24Owners(f.ctx,ownerInventory(f,rows,other),{historyAdmission:cap.history_admission});}
 
 test('exact two retained unknowns bind a v2 capability and preserve all three trees through full review',async t=>{
   const f=await retainedFixture(await fixture(t)),tr=transport(f),cap=JSON.parse(await readFile(f.cap.capability_path));

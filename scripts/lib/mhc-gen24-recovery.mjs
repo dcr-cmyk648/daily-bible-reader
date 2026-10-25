@@ -11,6 +11,7 @@ import {prepareAuthorTransport,authorArguments,transportSchema,successfulModelRe
 import {configuredModels} from './mhc-v2-author-config.mjs';
 import {henryPriorityWindow,hasHenryPublicationReceipt} from './mhc-priority.mjs';
 import {assertNativeWriterAllowed} from './mhc-native-supervisor-guard.mjs';
+import {safeV2ErrorCode} from './mhc-v2-error-code.mjs';
 
 export const GEN24_RECOVERY_GRANT='gen24-recovery-20261020';
 const READING='LTP-0041-GEN-024',MODEL='gpt-6-luna',HOUR=3600000;
@@ -221,6 +222,50 @@ async function quiescent(ctx,checkOwners,histories,now){
   await assertNativeWriterAllowed(ctx);await lockOwned(ctx);await checkRetainedHistories(ctx,histories,now);
   for(const d of await readdir(normalJobs(ctx),{withFileTypes:true})){requireThat(d.isDirectory()&&!d.isSymbolicLink(),'OWNER_UNVERIFIABLE');if(d.name===READING)continue;const job=await loadJob(await confined(normalJobs(ctx),d.name,{missing:false}));requireThat(job.state?.phase!=='generating'&&!job.state?.pending_attempt,'ACTIVE_OWNER');if(!histories?.bindings.some(b=>b.reading_id===d.name))await assertAuthorExecutionsFinished(job);}
   let proof;try{proof=await checkOwners(ctx,{historyAdmission:histories});}catch{throw error('OWNER_UNVERIFIABLE');}requireThat(proof?.quiescent===true&&proof.unknown===false&&Array.isArray(proof.processes)&&proof.processes.length===0,'ACTIVE_OWNER');return proof;
+}
+
+// Observation only. Do not enter withRunnerLock: even its readOnly mode writes
+// a lock. No clock override, capability preparation, transport or author entry is
+// reachable here. These non-atomic observations never authorize dispatch and
+// cannot reconstruct a prior failure whose complete code was not retained.
+export async function diagnoseGen24Recovery(ctx,{capabilitySha256,codexExecutable},{checkOwners=inspectGen24Owners}={}){
+  const started=new Date(),checks=[];
+  async function check(guard,operation){
+    try{const value=await operation();checks.push({guard,status:'passed',code:null});return {passed:true,value};}
+    catch(e){checks.push({guard,status:'blocked',code:safeV2ErrorCode(e)});return {passed:false};}
+  }
+  function skip(guard){checks.push({guard,status:'not_checked',code:null});}
+  await check('native_source_writer',()=>assertNativeWriterAllowed(ctx));
+  await check('grant_unconsumed',async()=>requireThat(!await lstat(await confined(recoveryRoot(ctx),'consumed.json')).catch(e=>{if(e.code==='ENOENT')return null;throw e;}),'CONSUMED'));
+  // Read the checksum-verified document separately so a runtime/binding failure
+  // cannot hide the independent fact that its existing window is now closed.
+  const document=await check('capability_document',async()=>{
+    requireThat(hash(capabilitySha256),'CAPABILITY_INVALID');
+    const cap=await readJson(await confined(recoveryRoot(ctx),`capabilities/${capabilitySha256}.json`,{missing:false}));
+    exact(cap,['schema_version','policy','approval_sha256','binding','history_admission','runtime','runtime_code_sha256','window','transport']);
+    requireThat(digestObject(cap)===capabilitySha256&&cap.schema_version==='mhc-gen24-recovery-capability/v2'&&isDeepStrictEqual(cap.policy,POLICY),'CAPABILITY_INVALID');return cap;
+  });
+  await check('bound_capability',()=>capability(ctx,capabilitySha256,false,new Date()));
+  const original=await check('original_snapshot',()=>inspectGen24Recovery(ctx));
+  await check('forward_window',async()=>{const entry=ctx.plan.entries.find(e=>e.readingId===READING),priority=henryPriorityWindow(ctx.appConfig,new Date());requireThat(entry&&entry.dayIndex>=priority.currentDay&&entry.dayIndex<=priority.horizonDay,'OUTSIDE_FORWARD_WINDOW');});
+  if(original.passed)await check('original_deadlines',async()=>requireThat(Date.parse(original.value.job.state.session.deadline_at)<=Date.now()&&Date.parse(original.value.job.state.lease.expires_at)<=Date.now(),'ORIGINAL_STATE_INVALID'));else skip('original_deadlines');
+  if(document.passed){
+    const cap=document.value;
+    await check('current_window',async()=>{const approved=await approval(ctx,digestObject(cap.binding));requireThat(digestObject(approved)===cap.approval_sha256,'BINDING_CHANGED');windowValid(cap.window,approved.approved_at,new Date());});
+    await check('executable_identity',async()=>requireThat(typeof codexExecutable==='string'&&path.isAbsolute(codexExecutable)&&path.resolve(codexExecutable)===cap.transport?.executable&&sha256(await readFile(codexExecutable))===cap.transport.executable_sha256&&configuredModels(ctx).spark===MODEL,'TRANSPORT_UNQUALIFIED'));
+    const histories=await check('retained_histories',()=>checkRetainedHistories(ctx,cap.history_admission,new Date()));
+    if(histories.passed){
+      await check('other_jobs',async()=>{
+        for(const d of await readdir(normalJobs(ctx),{withFileTypes:true})){requireThat(d.isDirectory()&&!d.isSymbolicLink(),'OWNER_UNVERIFIABLE');if(d.name===READING)continue;const job=await loadJob(await confined(normalJobs(ctx),d.name,{missing:false}));requireThat(job.state?.phase!=='generating'&&!job.state?.pending_attempt,'ACTIVE_OWNER');if(!histories.value?.bindings.some(b=>b.reading_id===d.name))await assertAuthorExecutionsFinished(job);}
+      });
+      await check('process_owners',async()=>{
+        let proof;try{proof=await checkOwners(ctx,{historyAdmission:histories.value});}catch{throw error('OWNER_UNVERIFIABLE');}
+        requireThat(proof?.quiescent===true&&proof.unknown===false&&Array.isArray(proof.processes)&&proof.processes.length===0,'ACTIVE_OWNER');
+      });
+    }else{skip('other_jobs');skip('process_owners');}
+  }else for(const guard of ['current_window','executable_identity','retained_histories','other_jobs','process_owners'])skip(guard);
+  await check('runner_lock_absent',async()=>requireThat(!await lstat(await confined(ctx.runtimeRoot,'runner.lock')).catch(e=>{if(e.code==='ENOENT')return null;throw e;}),'LOCK_PRESENT'));
+  return {schema_version:'mhc-gen24-recovery-diagnostic/v1',readingId:READING,scope:'current_observation_only',started_at:started.toISOString(),finished_at:new Date().toISOString(),checks,dispatchAuthorized:false,runnerLockAcquired:false,originalFailureReconstructed:false,modelCalls:0};
 }
 
 export async function runGen24Recovery(ctx,{capabilitySha256,codexExecutable},dependencies={}){

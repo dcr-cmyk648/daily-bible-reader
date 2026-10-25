@@ -4,12 +4,13 @@ import {mkdtemp,mkdir,cp,readFile,writeFile,readdir,rm} from 'node:fs/promises';
 import {writeFileSync,readFileSync,existsSync} from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {serviceContext,sourceInput,startV2,advanceV2,reviewWorkOrderV2,applyReviewV2} from '../scripts/lib/mhc-v2-service.mjs';
 import {atomicJson,loadJob,createJob,appendState,bytesFor,assertAuthorExecutionsFinished} from '../scripts/lib/mhc-v2-store.mjs';
 import {digestObject,REVIEW_ASSERTIONS} from '../scripts/lib/mhc-v2.mjs';
 import {sha256,normalizedBatchHash} from '../scripts/lib/mhc-pipeline.mjs';
-import {GEN24_RECOVERY_GRANT,inspectGen24Recovery,prepareGen24Recovery,runGen24Recovery,inspectGen24Owners,evaluateGen24Owners} from '../scripts/lib/mhc-gen24-recovery.mjs';
+import {GEN24_RECOVERY_GRANT,inspectGen24Recovery,prepareGen24Recovery,runGen24Recovery,inspectGen24Owners,evaluateGen24Owners,diagnoseGen24Recovery} from '../scripts/lib/mhc-gen24-recovery.mjs';
 import {prepareAuthorTransport,runAuthorSession} from '../scripts/lib/mhc-v2-author-session.mjs';
 
 const repo=fileURLToPath(new URL('..',import.meta.url)),READING='LTP-0041-GEN-024',GRANT=GEN24_RECOVERY_GRANT;
@@ -314,4 +315,103 @@ for(const mode of ['missing_launcher','missing_shell','hidden_launcher','hidden_
   if(mode==='changed_creation')data.second.find(r=>r.pid===process.ppid).created_at='2026-10-19T00:00:00Z';
   if(mode==='changed_ancestor')data.second.find(r=>r.pid===900002).command_line+=' FABRICATED changed argument';
   let proof;try{proof=evaluateGen24Owners(f.ctx,data);}catch(e){assert.match(e.message,/OWNER_UNVERIFIABLE/);return;}assert.equal(proof.quiescent,false);
+});
+
+// Include directories, so an empty lock/claim/transport directory is a mutation
+// too. The entire fabricated project, runtime, grant and release are compared.
+async function diagnosticTree(root){
+  const rows=[];async function walk(dir){for(const d of await readdir(dir,{withFileTypes:true})){const file=path.join(dir,d.name);rows.push([path.relative(root,file),d.isDirectory()?'directory':sha256(await readFile(file))]);if(d.isDirectory())await walk(file);}}
+  await walk(root);return rows.sort((a,b)=>a[0].localeCompare(b[0]));
+}
+const diagnosticCheck=(report,name)=>report.checks.find(c=>c.guard===name);
+async function diagnostic(f,checkOwners=()=>({quiescent:true,unknown:false,processes:[]})){
+  const before=await diagnosticTree(f.root),report=await diagnoseGen24Recovery(f.ctx,{capabilitySha256:f.cap.capability_sha256,codexExecutable:f.executable},{checkOwners});
+  assert.deepEqual(await diagnosticTree(f.root),before,'read-only diagnostic changed a file or directory');
+  assert.equal(report.dispatchAuthorized,false);assert.equal(report.runnerLockAcquired,false);assert.equal(report.originalFailureReconstructed,false);assert.equal(report.modelCalls,0);
+  assert.equal(report.scope,'current_observation_only');assert.ok(Date.parse(report.finished_at)>=Date.parse(report.started_at));
+  assert.ok(!JSON.stringify(report).includes(f.root));return report;
+}
+test('read-only diagnostic reports the current expired window without acquiring or removing an existing lock',async t=>{
+  const f=await retainedFixture(await fixture(t));let ownerChecks=0;
+  const report=await diagnostic(f,(_ctx,{historyAdmission})=>{ownerChecks++;assert.equal(historyAdmission.bindings.length,2);return matcher(f);});
+  assert.equal(ownerChecks,1);assert.equal(diagnosticCheck(report,'bound_capability').status,'passed');
+  assert.equal(diagnosticCheck(report,'current_window').code,'V2_GEN24_RECOVERY_WINDOW_CLOSED');
+  assert.equal(diagnosticCheck(report,'runner_lock_absent').code,'V2_GEN24_RECOVERY_LOCK_PRESENT');
+  assert.equal(diagnosticCheck(report,'retained_histories').status,'passed');assert.equal(diagnosticCheck(report,'other_jobs').status,'passed');
+});
+test('read-only diagnostic leaves an absent lock absent and never claims the grant',async t=>{
+  const f=await fixture(t);await rm(path.join(f.ctx.runtimeRoot,'runner.lock'),{recursive:true});
+  const report=await diagnostic(f);assert.equal(diagnosticCheck(report,'runner_lock_absent').status,'passed');
+  for(const name of ['runner.lock','author-transport'])assert.equal(existsSync(path.join(f.ctx.runtimeRoot,name)),false);
+  for(const name of ['consumed.json','consumed-capability.json','consumed-history','ledger','derivative-jobs','completed.json'])assert.equal(existsSync(path.join(f.grantRoot,name)),false);
+});
+test('read-only diagnostic reports current window independently of a capability runtime mismatch',async t=>{
+  const f=await fixture(t);f.ctx={...f.ctx,manifestSha256:'9'.repeat(64)};const report=await diagnostic(f);
+  assert.equal(diagnosticCheck(report,'capability_document').status,'passed');assert.equal(diagnosticCheck(report,'bound_capability').code,'V2_GEN24_RECOVERY_CAPABILITY_INVALID');
+  assert.equal(diagnosticCheck(report,'current_window').code,'V2_GEN24_RECOVERY_WINDOW_CLOSED');
+});
+for(const mode of ['active','unknown','throw'])test(`read-only diagnostic preserves owner failure ${mode} without raw process/error output`,async t=>{
+  const f=await fixture(t),report=await diagnostic(f,()=>{if(mode==='throw')throw Error(`FABRICATED PRIVATE ${f.root}`);return {quiescent:false,unknown:mode==='unknown',processes:mode==='active'?[{pid:901001}]:[]};});
+  assert.equal(diagnosticCheck(report,'process_owners').code,mode==='throw'?'V2_GEN24_RECOVERY_OWNER_UNVERIFIABLE':'V2_GEN24_RECOVERY_ACTIVE_OWNER');
+  assert.ok(!JSON.stringify(report).includes('FABRICATED PRIVATE'));
+});
+test('read-only diagnostic retains changed-history failure and does not use its unverified exception for other jobs or processes',async t=>{
+  const f=await retainedFixture(await fixture(t));await writeFile(f.histories[0].receiptFile,'FABRICATED history publication drift');let owners=0;
+  const report=await diagnostic(f,()=>{owners++;throw Error('must not inspect with unverified history binding');});
+  assert.equal(diagnosticCheck(report,'retained_histories').code,'V2_GEN24_RECOVERY_HISTORY_PUBLICATION_CHANGED');
+  assert.equal(diagnosticCheck(report,'other_jobs').status,'not_checked');assert.equal(diagnosticCheck(report,'process_owners').status,'not_checked');assert.equal(owners,0);
+});
+test('read-only diagnostic does not reclassify a third unknown execution',async t=>{
+  const f=await fixture(t),{input_sha256,...basis}=f.old.input,input={...basis,reading_id:'FABRICATED-THIRD'};input.input_sha256=digestObject(input);
+  let job=await createJob(f.ctx.jobRoot,input,originalAt);job=await appendState(job,'FABRICATED published third',{...job.state,phase:'published',publication:{}},originalAt);
+  await atomicJson(job.directory,`model-executions/${'d'.repeat(64)}/result.json`,{status:'started'});
+  const report=await diagnostic(f);assert.equal(diagnosticCheck(report,'other_jobs').code,'V2_TRANSPORT_UNCERTAIN');
+});
+test('read-only diagnostic reports executable drift without launching the executable',async t=>{
+  const f=await fixture(t);await writeFile(f.executable,'FABRICATED changed non-executable bytes');const report=await diagnostic(f);
+  assert.equal(diagnosticCheck(report,'executable_identity').code,'V2_GEN24_RECOVERY_TRANSPORT_UNQUALIFIED');
+});
+test('read-only diagnostic rejects path-shaped capability input without echoing it',async t=>{
+  const f=await fixture(t);f.cap={...f.cap,capability_sha256:'../../FABRICATED-PRIVATE'};let owners=0;
+  const report=await diagnostic(f,()=>{owners++;});assert.equal(diagnosticCheck(report,'capability_document').code,'V2_GEN24_RECOVERY_CAPABILITY_INVALID');
+  assert.equal(diagnosticCheck(report,'bound_capability').code,'V2_GEN24_RECOVERY_CAPABILITY_INVALID');assert.equal(owners,0);assert.ok(!JSON.stringify(report).includes('FABRICATED-PRIVATE'));
+});
+test('read-only diagnostic observes a malformed retained claim without repairing or replacing it',async t=>{
+  const f=await fixture(t);await writeFile(path.join(f.grantRoot,'consumed.json'),'FABRICATED interrupted claim');const report=await diagnostic(f);
+  assert.equal(diagnosticCheck(report,'grant_unconsumed').code,'V2_GEN24_RECOVERY_CONSUMED');
+});
+
+async function fabricatedRunner(f,args){
+  const config=path.join(f.root,'FABRICATED-runtime-config.json');if(!existsSync(config))await writeFile(config,bytesFor({...f.ctx.config,pipeline_version:'mhc-evidence-author/v2'}));
+  return spawnSync(process.execPath,[path.join(repo,'scripts/mhc-native-runner.mjs'),...args],{encoding:'utf8',windowsHide:true,timeout:30000,env:{...process.env,MHC_NATIVE_RUNTIME_CONFIG:config,MHC_NATIVE_RELEASE_ROOT:f.ctx.releaseRoot,MHC_NATIVE_LAUNCHER:f.ctx.launcher,MHC_NATIVE_MANIFEST_SHA256:f.ctx.manifestSha256}});
+}
+test('native CLI diagnostic bypasses the mutating lock wrapper and preserves all fabricated files and directories',async t=>{
+  const f=await retainedFixture(await fixture(t));await writeFile(f.histories[0].receiptFile,'FABRICATED drift prevents any real process inspection');
+  // Prepare only this test harness config before taking the preservation image.
+  await writeFile(path.join(f.root,'FABRICATED-runtime-config.json'),bytesFor({...f.ctx.config,pipeline_version:'mhc-evidence-author/v2'}));const before=await diagnosticTree(f.root);
+  const child=await fabricatedRunner(f,['gen24-recovery','diagnose','--capability-sha256',f.cap.capability_sha256,'--codex-executable',f.executable]);
+  assert.equal(child.error,undefined);assert.equal(child.status,1);assert.equal(child.stderr,'');const report=JSON.parse(child.stdout);
+  assert.equal(report.dispatchAuthorized,false);assert.equal(report.runnerLockAcquired,false);assert.equal(diagnosticCheck(report,'current_window').code,'V2_GEN24_RECOVERY_WINDOW_CLOSED');
+  assert.equal(diagnosticCheck(report,'process_owners').status,'not_checked');assert.equal(diagnosticCheck(report,'runner_lock_absent').code,'V2_GEN24_RECOVERY_LOCK_PRESENT');assert.deepEqual(await diagnosticTree(f.root),before);
+});
+test('native CLI diagnostic rejects extra mutation or clock arguments before any guard process inspection',async t=>{
+  const f=await fixture(t);await writeFile(path.join(f.root,'FABRICATED-runtime-config.json'),bytesFor({...f.ctx.config,pipeline_version:'mhc-evidence-author/v2'}));const before=await diagnosticTree(f.root);
+  for(const flag of ['--at','--not-before','--expires-at','run','prepare']){
+    const child=await fabricatedRunner(f,['gen24-recovery','diagnose','--capability-sha256',f.cap.capability_sha256,'--codex-executable',f.executable,flag,'FABRICATED']);
+    assert.equal(child.status,1);assert.equal(JSON.parse(child.stdout).code,'V2_GEN24_RECOVERY_DIAGNOSTIC_ARGUMENTS_INVALID');assert.equal(child.stderr,'');
+  }
+  assert.deepEqual(await diagnosticTree(f.root),before);
+});
+test('native CLI diagnostic does not create absent project runtime or job roots',async t=>{
+  const f=await fixture(t),emptyProject=path.join(f.root,'FABRICATED-ABSENT-PROJECT'),emptyRuntime=path.join(emptyProject,'private-content/automation/mhc-runtime');
+  await writeFile(path.join(f.root,'FABRICATED-runtime-config.json'),bytesFor({...f.ctx.config,pipeline_version:'mhc-evidence-author/v2',project_root:emptyProject,runtime_root:emptyRuntime}));const before=await diagnosticTree(f.root);
+  const child=await fabricatedRunner(f,['gen24-recovery','diagnose','--capability-sha256','FABRICATED-INVALID','--codex-executable',f.executable]);
+  assert.equal(child.status,1);assert.equal(child.stderr,'');const report=JSON.parse(child.stdout);assert.equal(report.dispatchAuthorized,false);assert.equal(diagnosticCheck(report,'process_owners').status,'not_checked');
+  assert.deepEqual(await diagnosticTree(f.root),before);assert.equal(existsSync(emptyProject),false);
+});
+test('actual runner catch emits the complete digit-bearing inspection code',async t=>{
+  const f=await fixture(t);await rm(path.join(f.ctx.runtimeRoot,'runner.lock'),{recursive:true});
+  const job=await loadJob(f.old.directory);await appendState(job,'FABRICATED changed original state',{...job.state,phase:'queued'},originalAt);
+  const child=await fabricatedRunner(f,['gen24-recovery','inspect']);assert.equal(child.status,1);assert.equal(child.stderr,'');
+  assert.deepEqual(JSON.parse(child.stdout),{pipeline:'mhc-evidence-author/v2',action:'none',state:'blocked',stage:'recovery',code:'V2_GEN24_RECOVERY_ORIGINAL_STATE_INVALID',readingId:READING});
 });

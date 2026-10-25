@@ -602,3 +602,40 @@ comparison. Re-fetch the live manifest immediately before its final pointer upda
 ## Ranged daily passages — September 27, 2026
 
 Source normalization verifies the complete source chapter independently of the scheduled passage. An explicit verseStart/verseEnd is validated within that chapter, and its count must match the range. Author requests, evidence targeting and the assembled runtime use those exact verse numbers. Full-chapter inputs retain their existing hashes. The regression suite covers beginning, middle and ending ranges through independent approval and immutable library finalization; malformed ranges and out-of-bounds source requests fail closed. This fixes the Psalm 2/Proverbs 1:1–8 source blocker without generating commentary beyond the assigned range or changing author/reviewer budgets.
+## Current GEN24 guard diagnostics
+
+The verified installed launcher exposes an observation-only route with these
+exact arguments, in this order:
+
+```text
+node <verified-installed-launcher> gen24-recovery diagnose --capability-sha256 <existing-capability-sha256> --codex-executable <existing-codex-executable>
+```
+
+The exported `diagnoseGen24Recovery` function is also available to read-only
+inspection code. Construct its service context with `readOnly:true`; do not wrap
+it in `withRunnerLock`, whose inspection mode still writes a lock. The dedicated
+CLI route returns before that wrapper and never creates a missing job root.
+It accepts no additional arguments, clock overrides, preparation or execution.
+It reads existing files, hashes the existing executable without launching it,
+and uses the existing read-only Windows process inventory. A process proof still
+requires the verified native invocation; unavailable/ambiguous ancestry fails
+closed. No login, model availability probe, capability renewal, provider or
+author call is part of diagnosis.
+
+Results contain safe full error identifiers, factual reading ID and observation
+timestamps; raw errors, command lines and private paths are omitted. A failed
+prerequisite leaves dependent checks `not_checked`. An existing lock is reported
+without acquiring, deleting, refreshing or adopting it. Checks are observations
+over an interval, not an atomic admission decision: every receipt explicitly
+denies dispatch authority and reconstruction of an earlier failure. A nonzero
+CLI exit means at least one check blocked or could not be checked. Even a report
+whose checks pass does not replace any run-time guard or the required writer lock.
+
+The existing capability's current window is checked independently of its runtime
+binding, so an expired window remains visible after a source upgrade invalidates
+that binding. Neither observation proves the cause of an earlier stop. In
+particular, the historical truncated `V2_GEN` output cannot recover which full
+GEN24 guard originally failed. Do not renew or retry recovery from this report.
+The normal runner now emits only complete `V2_` identifiers containing uppercase
+letters, digits and underscores; raw messages with appended details use the
+static `V2_CONTROLLER_FAILURE` fallback.

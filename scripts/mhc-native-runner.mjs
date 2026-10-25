@@ -7,7 +7,8 @@ import {serviceContext,startV2,advanceV2,reviewWorkOrderV2,applyReviewV2,statusV
 import {runAuthorSession,authorPreflight} from './lib/mhc-v2-author-session.mjs';
 import {recoverClientUpgrade} from './lib/mhc-v2-client-upgrade.mjs';
 import {assertNativeWriterAllowed} from './lib/mhc-native-supervisor-guard.mjs';
-import {inspectGen24Recovery,prepareGen24Recovery,runGen24Recovery} from './lib/mhc-gen24-recovery.mjs';
+import {inspectGen24Recovery,prepareGen24Recovery,runGen24Recovery,diagnoseGen24Recovery} from './lib/mhc-gen24-recovery.mjs';
+import {safeV2ErrorCode} from './lib/mhc-v2-error-code.mjs';
 
 const json=async file=>JSON.parse(await readFile(file,"utf8"));
 let activePipeline=null;
@@ -31,6 +32,13 @@ async function legacyReview(ctx,reviewCommand,reviewArgs){
 async function main(){
   const [command,...args]=process.argv.slice(2),ctx=await context();let result;
   activePipeline=ctx.config.pipeline_version;
+  // Unlike withRunnerLock({readOnly:true}), this route must not write a lock or
+  // create a missing job root. Keep its exact argument surface observation-only.
+  if(activePipeline==='mhc-evidence-author/v2'&&command==='gen24-recovery'&&args[0]==='diagnose'){
+    if(args.length!==5||args[1]!=='--capability-sha256'||args[3]!=='--codex-executable')throw Object.assign(Error('V2_GEN24_RECOVERY_DIAGNOSTIC_ARGUMENTS_INVALID'),{stage:'recovery',readingId:'LTP-0041-GEN-024'});
+    result=await diagnoseGen24Recovery(await serviceContext(ctx,{readOnly:true}),{capabilitySha256:args[2],codexExecutable:args[4]});
+    process.stdout.write(`${JSON.stringify(result)}\n`);if(result.checks.some(c=>c.status!=='passed'))process.exitCode=1;return;
+  }
   if(!['author-preflight','status'].includes(command))await assertNativeWriterAllowed(ctx);
   if(ctx.config.pipeline_version==='mhc-evidence-author/v2'){
     result=await withRunnerLock(ctx,async()=>{
@@ -72,7 +80,7 @@ async function main(){
 }
 main().catch(error=>{
   if(activePipeline==='mhc-evidence-author/v2'){
-    const code=/^V2_[A-Z_]+/.exec(String(error.message))?.[0]||'V2_CONTROLLER_FAILURE';
+    const code=safeV2ErrorCode(error);
     process.stdout.write(`${JSON.stringify({pipeline:activePipeline,action:'none',state:'blocked',stage:error.stage||'controller',code,readingId:error.readingId||null})}\n`);
   }else process.stderr.write(`Native runner failed: ${error.message}\n`);
   process.exitCode=1;

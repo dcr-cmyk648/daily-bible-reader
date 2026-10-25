@@ -1,4 +1,21 @@
-# Project state — October 21 bounded historical admission candidate
+# Project state — October 25 local diagnostic candidate
+
+## October 25 local diagnostic correction — awaiting independent qualification
+This worker is based on accepted source `3d40cade9dd82c96683ef14bfa3b6586f454b321`.
+The native v2 error formatter now preserves complete digit-bearing identifiers,
+including GEN24 guard codes, while raw messages and appended details fall back
+to the static controller-failure code. A separate read-only diagnostic reports
+current capability/window, source, history, job, process and lock observations.
+Its explicit launcher route returns before the mutating lock wrapper and creates
+no job root, claim, capability, transport or author work. It has no clock override.
+Every result denies dispatch authority and historical failure reconstruction;
+the old truncated `V2_GEN` does not identify the original October 23 guard.
+This is an uncommitted local candidate. No installation, capability renewal,
+canonical write, real preflight/recovery/author call or paid API is authorized
+by this worker assignment. Root retains independent review and release gates.
+Local validation passed all required checks: 1,115 tests, 1,112 passed, zero failed
+with three existing Windows PDF skips. All-files safety inspected 595 files.
+The 368 original job files, 208 installed files and unconsumed grant are preserved.
 
 ## October 21 installed release and remaining admission block
 The combined prevention/recovery source `6f3a2e5` was released and installed with

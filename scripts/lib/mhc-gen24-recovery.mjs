@@ -171,10 +171,23 @@ async function ledger(ctx){const root=recoveryRoot(ctx),names=await readdir(awai
 async function appendLedger(ctx,kind,data,now){const events=await ledger(ctx),body={sequence:events.length+1,previous:events.at(-1)?.sha256??'0'.repeat(64),kind,at:new Date(now).toISOString(),data},event={...body,sha256:digestObject(body)};await immutable(recoveryRoot(ctx),`ledger/${String(body.sequence).padStart(6,'0')}.json`,event);return event;}
 async function lockOwned(ctx){const owner=await readJson(await confined(ctx.runtimeRoot,'runner.lock/owner.json',{missing:false}));requireThat(owner.pid===process.pid,'LOCK_REQUIRED');}
 const ownerTargets=(ctx,histories)=>[originalRoot(ctx),ctx.runtimeRoot,recoveryRoot(ctx),derivativeJobs(ctx),...HISTORIES.map(id=>path.join(normalJobs(ctx),id)),...(histories?.bindings||[]).map(b=>{requireThat(HISTORIES.includes(b.reading_id)&&hash(b.unknown_key),'OWNER_UNVERIFIABLE');return path.join(normalJobs(ctx),b.reading_id,'model-executions',b.unknown_key);})].map(p=>path.resolve(p));
+function startupConsoleHost(row,self,inspector,rows,image,targets){
+  const canonical=value=>typeof value==='string'&&/^[a-z]:\\/i.test(value)&&!/[\x00-\x1f"<>|?*]/.test(value)&&!value.slice(2).includes(':')&&path.win32.normalize(value)===value?value.toLowerCase():null;
+  if(!image||Array.isArray(image)||!canonical(image.windows_directory)||!canonical(image.path)||canonical(image.path)!==path.win32.join(image.windows_directory,'System32','conhost.exe').toLowerCase()||image.path_no_reparse_points!==true||image.stable_file!==true||image.signature_status!=='Valid'||!['Catalog','Authenticode'].includes(image.signature_type)||image.is_os_binary!==true||!['Microsoft Windows','Microsoft Windows Publisher'].includes(image.signer_name)||image.microsoft_organization!==true||typeof image.sha256!=='string'||image.sha256.length!==64||!hash(image.sha256)||!Number.isSafeInteger(image.bytes)||image.bytes<=0||!Number.isFinite(Date.parse(image.last_write_utc)))return null;
+  if(!/^conhost\.exe$/i.test(row.name)||row.parent_pid!==self.pid||canonical(row.executable_path)!==canonical(image.path)||typeof row.command_line!=='string'||targets.some(t=>row.command_line.replaceAll('/','\\').toLowerCase().includes(t.replaceAll('/','\\').toLowerCase()))||rows.some(r=>r.parent_pid===row.pid))return null;
+  // Windows' own startup host has exactly an image token and a console handle.
+  // Do not admit headless hosts, flags, a client program or trailing arguments.
+  const command=/^(?:"([^"\r\n]+)"|([^\s"]+)) (0x[0-9a-f]{1,16})$/i.exec(row.command_line);
+  if(!command||command[0]!==row.command_line||BigInt(command[3])===0n)return null;
+  let executable=command[1]||command[2];if(executable.startsWith('\\??\\'))executable=executable.slice(4);else if(executable.startsWith('\\\\?\\'))executable=executable.slice(4);
+  const born=Date.parse(row.created_at),parentBorn=Date.parse(self.created_at);
+  if(canonical(executable)!==canonical(image.path)||!Number.isFinite(born)||born<parentBorn||born-parentBorn>1000||born>Date.parse(inspector.created_at))return null;
+  return {pid:row.pid,parent_pid:row.parent_pid,name:row.name,created_at:row.created_at,command_sha256:sha256(row.command_line),executable_path_sha256:sha256(row.executable_path),image_sha256:image.sha256,image_identity_sha256:digestObject(image)};
+}
 export function evaluateGen24Owners(ctx,data,{historyAdmission=null}={}){
   requireThat(data&&Number.isInteger(data.inspector_pid)&&data.inspector_pid>0&&Array.isArray(data.first)&&Array.isArray(data.second),'OWNER_UNVERIFIABLE');
   const targets=ownerTargets(ctx,historyAdmission),normal=s=>s.replaceAll('/','\\').toLowerCase();
-  function inspect(rows){
+  function inspect(rows,image){
     const byPid=new Map(),matched=new Set();let unknown=false;
     for(const r of rows){requireThat(r&&Number.isInteger(r.pid)&&r.pid>=0&&Number.isInteger(r.parent_pid)&&r.parent_pid>=0&&typeof r.name==='string'&&r.name.length>0&&!byPid.has(r.pid),'OWNER_UNVERIFIABLE');byPid.set(r.pid,r);}
     const identity=r=>{requireThat(r&&typeof r.command_line==='string'&&r.command_line.length>0&&Number.isFinite(Date.parse(r.created_at)),'OWNER_UNVERIFIABLE');return {pid:r.pid,parent_pid:r.parent_pid,name:r.name,created_at:r.created_at,command_sha256:sha256(r.command_line)};};
@@ -189,6 +202,8 @@ export function evaluateGen24Owners(ctx,data,{historyAdmission=null}={}){
       if(!/^(powershell|pwsh|cmd)(\.exe)?$/i.test(parent.name)||!normal(parent.command_line).includes(launcherPath))break;
       excluded.add(parent.pid);ancestors.add(parent.pid);child=parent;
     }
+    const candidates=rows.filter(r=>/^conhost\.exe$/i.test(r.name)&&r.parent_pid===self.pid),consoleHosts=[];
+    if(candidates.length===1){const host=startupConsoleHost(candidates[0],self,inspector,rows,image,targets);if(host){excluded.add(host.pid);consoleHosts.push(host);}else unknown=true;}else if(candidates.length>1)unknown=true;
     for(const r of rows){
       if(excluded.has(r.pid))continue;
       const critical=/^(node|codex)(\.exe)?$/i.test(r.name),command=typeof r.command_line==='string'?normal(r.command_line):'',hit=targets.some(t=>command.includes(normal(t)));
@@ -198,10 +213,10 @@ export function evaluateGen24Owners(ctx,data,{historyAdmission=null}={}){
     for(let changed=true;changed;){changed=false;for(const r of rows){if(excluded.has(r.pid)||matched.has(r.pid)||!matched.has(r.parent_pid))continue;matched.add(r.pid);changed=true;const parent=byPid.get(r.parent_pid);if(!Number.isFinite(Date.parse(r.created_at))||!parent||Date.parse(r.created_at)<Date.parse(parent.created_at))unknown=true;}}
     for(const pid of matched){let r=byPid.get(pid),seen=new Set();while(r){if(seen.has(r.pid)){unknown=true;break;}seen.add(r.pid);r=byPid.get(r.parent_pid);}}
     const watched=rows.filter(r=>!excluded.has(r.pid)&&(/^(node|codex)(\.exe)?$/i.test(r.name)||matched.has(r.pid))).map(r=>({pid:r.pid,parent_pid:r.parent_pid,name:r.name,created_at:r.created_at,command_sha256:sha256(String(r.command_line??''))})).sort((a,b)=>a.pid-b.pid);
-    return {unknown,matched,watched,byPid,ancestry};
+    return {unknown,matched,watched,byPid,ancestry,consoleHosts};
   }
-  const first=inspect(data.first),second=inspect(data.second),race=!isDeepStrictEqual(first.watched,second.watched)||!isDeepStrictEqual(first.ancestry,second.ancestry),unknown=first.unknown||second.unknown||race,pids=[...new Set([...first.matched,...second.matched])].sort((a,b)=>a-b);
-  return {quiescent:!unknown&&pids.length===0,unknown,observed_race:race,snapshot_count:2,coverage_sha256:digestObject(targets),invocation_sha256:digestObject(first.ancestry),processes:pids.map(pid=>({pid,parent_pid:(second.byPid.get(pid)||first.byPid.get(pid)).parent_pid}))};
+  const first=inspect(data.first,data.first_console_host_image),second=inspect(data.second,data.second_console_host_image),race=!isDeepStrictEqual(first.watched,second.watched)||!isDeepStrictEqual(first.ancestry,second.ancestry)||!isDeepStrictEqual(first.consoleHosts,second.consoleHosts),unknown=first.unknown||second.unknown||race,pids=[...new Set([...first.matched,...second.matched])].sort((a,b)=>a-b);
+  return {quiescent:!unknown&&pids.length===0,unknown,observed_race:race,snapshot_count:2,coverage_sha256:digestObject(targets),invocation_sha256:digestObject([...first.ancestry,...first.consoleHosts]),console_hosts:first.consoleHosts,processes:pids.map(pid=>({pid,parent_pid:(second.byPid.get(pid)||first.byPid.get(pid)).parent_pid}))};
 }
 export function inspectGen24Owners(ctx,{run=spawnSync,historyAdmission=null}={}){
   requireThat(process.platform==='win32','OWNER_UNVERIFIABLE');
@@ -209,12 +224,32 @@ export function inspectGen24Owners(ctx,{run=spawnSync,historyAdmission=null}={})
   const script=String.raw`$ErrorActionPreference='Stop'
 function Get-Gen24Processes {
   @(Get-CimInstance Win32_Process | ForEach-Object {
-    [pscustomobject]@{pid=[int]$_.ProcessId;parent_pid=[int]$_.ParentProcessId;name=$_.Name;command_line=$_.CommandLine;created_at=$(if ($_.CreationDate) {$_.CreationDate.ToUniversalTime().ToString('o')} else {$null})}
+    [pscustomobject]@{pid=[int]$_.ProcessId;parent_pid=[int]$_.ParentProcessId;name=$_.Name;command_line=$_.CommandLine;executable_path=$_.ExecutablePath;created_at=$(if ($_.CreationDate) {$_.CreationDate.ToUniversalTime().ToString('o')} else {$null})}
   })
 }
+function Get-Gen24ConsoleImage($rows) {
+  try {
+    $inspector=@($rows|Where-Object{$_.pid -eq $PID})
+    if($inspector.Count -ne 1){return $null}
+    if(@($rows|Where-Object{$_.parent_pid -eq $inspector[0].parent_pid -and $_.name -ieq 'conhost.exe'}).Count -eq 0){return $null}
+    $windows=(Get-CimInstance Win32_OperatingSystem -Property WindowsDirectory).WindowsDirectory
+    $expected=[IO.Path]::GetFullPath((Join-Path $windows 'System32/conhost.exe'))
+    $component=$expected
+    while($component){$item=Get-Item -LiteralPath $component -Force;if(($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){return $null};$component=Split-Path -Parent $component}
+    $before=Get-Item -LiteralPath $expected -Force
+    $sumBefore=(Get-FileHash -LiteralPath $expected -Algorithm SHA256).Hash.ToLowerInvariant()
+    $signature=Get-AuthenticodeSignature -LiteralPath $expected
+    $sum=(Get-FileHash -LiteralPath $expected -Algorithm SHA256).Hash.ToLowerInvariant()
+    $after=Get-Item -LiteralPath $expected -Force
+    if($sumBefore -ne $sum -or $before.Length -ne $after.Length -or $before.LastWriteTimeUtc.Ticks -ne $after.LastWriteTimeUtc.Ticks -or $before.CreationTimeUtc.Ticks -ne $after.CreationTimeUtc.Ticks){return $null}
+    [pscustomobject]@{windows_directory=$windows;path=$expected;path_no_reparse_points=$true;stable_file=$true;sha256=$sum;bytes=[long]$after.Length;last_write_utc=$after.LastWriteTimeUtc.ToString('o');signature_status=$signature.Status.ToString();signature_type=$signature.SignatureType.ToString();is_os_binary=$signature.IsOSBinary;signer_name=$signature.SignerCertificate.GetNameInfo([Security.Cryptography.X509Certificates.X509NameType]::SimpleName,$false);microsoft_organization=($signature.SignerCertificate.Subject -match '(?:^|,\s*)O=Microsoft Corporation(?:,|$)')}
+  }catch{return $null}
+}
 $gen24First=@(Get-Gen24Processes)
+$gen24FirstImage=Get-Gen24ConsoleImage $gen24First
 $gen24Second=@(Get-Gen24Processes)
-[pscustomobject]@{inspector_pid=$PID;first=$gen24First;second=$gen24Second} | ConvertTo-Json -Depth 4 -Compress`;
+$gen24SecondImage=Get-Gen24ConsoleImage $gen24Second
+[pscustomobject]@{inspector_pid=$PID;first=$gen24First;second=$gen24Second;first_console_host_image=$gen24FirstImage;second_console_host_image=$gen24SecondImage} | ConvertTo-Json -Depth 4 -Compress`;
   const result=run('powershell.exe',['-NoProfile','-NonInteractive','-Command',script],{windowsHide:true,encoding:'utf8',timeout:30000,maxBuffer:16*1024*1024,env:{...process.env}});
   requireThat(result.status===0&&!result.error,'OWNER_UNVERIFIABLE');let data;try{data=JSON.parse(result.stdout);}catch{throw error('OWNER_UNVERIFIABLE');}return evaluateGen24Owners(ctx,data,{historyAdmission});
 }

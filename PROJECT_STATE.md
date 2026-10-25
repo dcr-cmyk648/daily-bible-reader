@@ -1,4 +1,25 @@
-# Project state — October 25 local diagnostic candidate
+# Project state — October 25 console-host recognition candidate
+
+## October 25 bounded startup console-host recognition — local only
+The diagnostic correction is now accepted and installed at source
+`96c3426a188a19a1a2a3bdb772cc9305818a6cdc`, with 209 verified runtime files.
+A fresh read-only observation reproduced an owner false positive: the verified
+runner's own signed Windows console host was counted as a direct child.
+The separate local candidate recognizes only that startup infrastructure after
+strict ancestry, System32 path/image/signature, handle-only command, creation
+and two-snapshot identity checks. Extra hosts, descendants, other children,
+critical siblings, historical targets, unavailable proof and races still block.
+The binary-byte hash and path-string hash have distinct, explicit fields.
+No actual image hash or raw process command is stored in Git. The old capability
+remains unchanged, expired and bound to its earlier source; no recovery authority
+follows this correction. The original truncated failure remains unknown.
+This uncommitted candidate awaits independent review and source qualification.
+No canonical/runtime/automation write, recovery/prepare/renewal/claim, provider,
+preflight, paid API, commit, push, installation or publication occurred.
+Local full check passed: 1,180 tests, 1,177 passed, zero failed, three existing
+Windows PDF skips; all-files safety inspected 596 files. The 65 new pure tests
+and six fabricated collector cases passed; Windows PowerShell 5.1 parsed the
+collector, with actual installed execution still awaiting qualification.
 
 ## October 25 local diagnostic correction — awaiting independent qualification
 This worker is based on accepted source `3d40cade9dd82c96683ef14bfa3b6586f454b321`.

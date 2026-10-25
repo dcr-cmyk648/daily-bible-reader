@@ -639,3 +639,29 @@ GEN24 guard originally failed. Do not renew or retry recovery from this report.
 The normal runner now emits only complete `V2_` identifiers containing uppercase
 letters, digits and underscores; raw messages with appended details use the
 static `V2_CONTROLLER_FAILURE` fallback.
+
+## Verified startup console host
+
+The Windows owner inspector can recognize one console host belonging to the
+already verified native runner. It is invocation infrastructure only when its
+direct parent is that runner, its creation is within one second after the runner
+and before the CIM inspector, and it has no observed children. A second host or
+any ambiguity prevents recognition. Other direct children, critical siblings,
+protected-path matches and descendants retain their existing owner barriers.
+
+The read-only collector derives the Windows directory from the local OS, rejects
+reparse points along the complete System32 image path, hashes the executable
+before and after signature verification, and checks unchanged file metadata.
+Recognition requires a valid Microsoft Windows OS-binary signature, the expected
+Microsoft organization and Windows signer identity, and a canonical image path.
+The command must name exactly that image and one nonzero hexadecimal console
+handle. Headless flags, a client program, trailing text and alternate images fail.
+Both inventories must retain the exact host and image identities; missing proof,
+image changes, creation/parent/command changes and process races fail closed.
+
+Safe proofs distinguish `image_sha256` (executable file bytes) from
+`executable_path_sha256` (path-string bytes). A path-string digest is never binary
+identity evidence. Raw paths, command lines and OS signature details remain local
+to inspection; only IDs and hashes are returned. This recognition does not change
+capability, history, source, lock, transport, budget or overnight-window gates,
+reconstruct a historical failure, or authorize a recovery retry or renewal.

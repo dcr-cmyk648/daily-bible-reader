@@ -218,10 +218,64 @@ export function evaluateGen24Owners(ctx,data,{historyAdmission=null}={}){
   const first=inspect(data.first,data.first_console_host_image),second=inspect(data.second,data.second_console_host_image),race=!isDeepStrictEqual(first.watched,second.watched)||!isDeepStrictEqual(first.ancestry,second.ancestry)||!isDeepStrictEqual(first.consoleHosts,second.consoleHosts),unknown=first.unknown||second.unknown||race,pids=[...new Set([...first.matched,...second.matched])].sort((a,b)=>a-b);
   return {quiescent:!unknown&&pids.length===0,unknown,observed_race:race,snapshot_count:2,coverage_sha256:digestObject(targets),invocation_sha256:digestObject([...first.ancestry,...first.consoleHosts]),console_hosts:first.consoleHosts,processes:pids.map(pid=>({pid,parent_pid:(second.byPid.get(pid)||first.byPid.get(pid)).parent_pid}))};
 }
-export function inspectGen24Owners(ctx,{run=spawnSync,historyAdmission=null}={}){
-  requireThat(process.platform==='win32','OWNER_UNVERIFIABLE');
-  // Keep raw command lines in memory only. Public proof contains IDs and hashes.
-  const script=String.raw`$ErrorActionPreference='Stop'
+export function gen24OwnerInspectionScript(){return String.raw`$ErrorActionPreference='Stop'
+function Assert-Gen24NativePath([string]$value) {
+  if([string]::IsNullOrEmpty($value) -or -not [IO.Path]::IsPathRooted($value) -or -not [string]::Equals([IO.Path]::GetFullPath($value),$value,[StringComparison]::OrdinalIgnoreCase)){throw 'GEN24_NATIVE_PATH_UNQUALIFIED'}
+  $component=$value
+  while($component){if(([IO.File]::GetAttributes($component) -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'GEN24_NATIVE_PATH_UNQUALIFIED'};$component=[IO.Path]::GetDirectoryName($component)}
+}
+function Get-Gen24CommandOrigin($command,$spec) {
+  if($command -isnot [Management.Automation.CommandInfo] -or $command.CommandType.ToString() -ne $spec.type -or $command.ModuleName -ne $spec.module -or $null -eq $command.Module){throw 'GEN24_NATIVE_COMMAND_UNQUALIFIED'}
+  $module=$command.Module
+  if(-not [string]::Equals($module.Path,$spec.manifest,[StringComparison]::OrdinalIgnoreCase) -or -not [string]::Equals($module.ModuleBase,$script:Gen24NativeHome,[StringComparison]::OrdinalIgnoreCase) -or $module.Guid -ne $spec.guid -or $module.Version.ToString() -ne $spec.version){throw 'GEN24_NATIVE_COMMAND_UNQUALIFIED'}
+  Assert-Gen24NativePath $module.Path
+  $origin=$null
+  if($spec.type -eq 'Function') {
+    $origin=$command.ScriptBlock.File
+    $expected=[IO.Path]::Combine([IO.Path]::GetDirectoryName($spec.manifest),$spec.module+'.psm1')
+    if(-not [string]::Equals($origin,$expected,[StringComparison]::OrdinalIgnoreCase)){throw 'GEN24_NATIVE_COMMAND_UNQUALIFIED'}
+  } else {
+    $assembly=$command.ImplementingType.Assembly
+    $origin=$assembly.Location
+    $name=$assembly.GetName()
+    $token=[BitConverter]::ToString($name.GetPublicKeyToken()).Replace('-','').ToLowerInvariant()
+    $gac=[IO.Path]::Combine($script:Gen24WindowsRoot,'Microsoft.NET','assembly','GAC_MSIL',$spec.assembly)+[IO.Path]::DirectorySeparatorChar
+    $homeAssembly=[IO.Path]::Combine($script:Gen24NativeHome,$spec.assembly+'.dll')
+    if($name.Name -ne $spec.assembly -or $token -ne '31bf3856ad364e35' -or [IO.Path]::GetFileName($origin) -ne $spec.assembly+'.dll' -or (-not [string]::Equals($origin,$homeAssembly,[StringComparison]::OrdinalIgnoreCase) -and -not $origin.StartsWith($gac,[StringComparison]::OrdinalIgnoreCase))){throw 'GEN24_NATIVE_COMMAND_UNQUALIFIED'}
+  }
+  Assert-Gen24NativePath $origin
+  return $origin
+}
+function Initialize-Gen24NativeCommands {
+  if($PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1 -or $PSVersionTable.PSEdition -ne 'Desktop' -or [IntPtr]::Size -ne 8){throw 'GEN24_NATIVE_PS51_REQUIRED'}
+  $script:Gen24WindowsRoot=[Environment]::GetFolderPath([Environment+SpecialFolder]::Windows)
+  $script:Gen24NativeHome=[IO.Path]::Combine($script:Gen24WindowsRoot,'System32','WindowsPowerShell','v1.0')
+  if(-not [string]::Equals($PSHOME,$script:Gen24NativeHome,[StringComparison]::OrdinalIgnoreCase)){throw 'GEN24_NATIVE_HOME_UNQUALIFIED'}
+  Assert-Gen24NativePath $script:Gen24NativeHome
+  $script:Gen24NativeBindings=@{}
+  foreach($dependency in @(@{module='Microsoft.PowerShell.Utility';commands=@(@{key='hash';name='Get-FileHash';type='Function'},@{key='json';name='ConvertTo-Json';type='Cmdlet';assembly='Microsoft.PowerShell.Commands.Utility'})},@{module='Microsoft.PowerShell.Security';commands=@(@{key='signature';name='Get-AuthenticodeSignature';type='Cmdlet';assembly='Microsoft.PowerShell.Security'})})) {
+    $manifest=[IO.Path]::Combine($script:Gen24NativeHome,'Modules',$dependency.module,$dependency.module+'.psd1')
+    Assert-Gen24NativePath $manifest
+    $loaded=@(Microsoft.PowerShell.Core\Import-Module -Name $manifest -PassThru -ErrorAction Stop)
+    if($loaded.Count -ne 1 -or -not [string]::Equals($loaded[0].Path,$manifest,[StringComparison]::OrdinalIgnoreCase)){throw 'GEN24_NATIVE_MODULE_UNQUALIFIED'}
+    foreach($entry in $dependency.commands) {
+      $spec=@{module=$dependency.module;manifest=$manifest;guid=$loaded[0].Guid;version=$loaded[0].Version.ToString();type=$entry.type;assembly=$entry.assembly;name=$entry.name}
+      $command=Microsoft.PowerShell.Core\Get-Command -Name $entry.name -ErrorAction Stop
+      $origin=Get-Gen24CommandOrigin $command $spec
+      $script:Gen24NativeBindings[$entry.key]=@{command=$command;spec=$spec;origin=$origin;definition=$command.Definition}
+    }
+  }
+}
+function Get-Gen24BoundNativeCommand([string]$key) {
+  $binding=$script:Gen24NativeBindings[$key]
+  if($null -eq $binding){throw 'GEN24_NATIVE_BINDING_UNAVAILABLE'}
+  $current=Microsoft.PowerShell.Core\Get-Command -Name $binding.spec.name -ErrorAction Stop
+  $origin=Get-Gen24CommandOrigin $current $binding.spec
+  $savedOrigin=Get-Gen24CommandOrigin $binding.command $binding.spec
+  if($current.Definition -cne $binding.definition -or $binding.command.Definition -cne $binding.definition -or $origin -cne $binding.origin -or $savedOrigin -cne $binding.origin){throw 'GEN24_NATIVE_BINDING_CHANGED'}
+  return $binding.command
+}
+Initialize-Gen24NativeCommands
 function Get-Gen24Processes {
   @(Get-CimInstance Win32_Process | ForEach-Object {
     [pscustomobject]@{pid=[int]$_.ProcessId;parent_pid=[int]$_.ParentProcessId;name=$_.Name;command_line=$_.CommandLine;executable_path=$_.ExecutablePath;created_at=$(if ($_.CreationDate) {$_.CreationDate.ToUniversalTime().ToString('o')} else {$null})}
@@ -237,9 +291,9 @@ function Get-Gen24ConsoleImage($rows) {
     $component=$expected
     while($component){$item=Get-Item -LiteralPath $component -Force;if(($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){return $null};$component=Split-Path -Parent $component}
     $before=Get-Item -LiteralPath $expected -Force
-    $sumBefore=(Get-FileHash -LiteralPath $expected -Algorithm SHA256).Hash.ToLowerInvariant()
-    $signature=Get-AuthenticodeSignature -LiteralPath $expected
-    $sum=(Get-FileHash -LiteralPath $expected -Algorithm SHA256).Hash.ToLowerInvariant()
+    $sumBefore=(& (Get-Gen24BoundNativeCommand 'hash') -LiteralPath $expected -Algorithm SHA256).Hash.ToLowerInvariant()
+    $signature=& (Get-Gen24BoundNativeCommand 'signature') -LiteralPath $expected
+    $sum=(& (Get-Gen24BoundNativeCommand 'hash') -LiteralPath $expected -Algorithm SHA256).Hash.ToLowerInvariant()
     $after=Get-Item -LiteralPath $expected -Force
     if($sumBefore -ne $sum -or $before.Length -ne $after.Length -or $before.LastWriteTimeUtc.Ticks -ne $after.LastWriteTimeUtc.Ticks -or $before.CreationTimeUtc.Ticks -ne $after.CreationTimeUtc.Ticks){return $null}
     [pscustomobject]@{windows_directory=$windows;path=$expected;path_no_reparse_points=$true;stable_file=$true;sha256=$sum;bytes=[long]$after.Length;last_write_utc=$after.LastWriteTimeUtc.ToString('o');signature_status=$signature.Status.ToString();signature_type=$signature.SignatureType.ToString();is_os_binary=$signature.IsOSBinary;signer_name=$signature.SignerCertificate.GetNameInfo([Security.Cryptography.X509Certificates.X509NameType]::SimpleName,$false);microsoft_organization=($signature.SignerCertificate.Subject -match '(?:^|,\s*)O=Microsoft Corporation(?:,|$)')}
@@ -249,7 +303,12 @@ $gen24First=@(Get-Gen24Processes)
 $gen24FirstImage=Get-Gen24ConsoleImage $gen24First
 $gen24Second=@(Get-Gen24Processes)
 $gen24SecondImage=Get-Gen24ConsoleImage $gen24Second
-[pscustomobject]@{inspector_pid=$PID;first=$gen24First;second=$gen24Second;first_console_host_image=$gen24FirstImage;second_console_host_image=$gen24SecondImage} | ConvertTo-Json -Depth 4 -Compress`;
+[pscustomobject]@{inspector_pid=$PID;first=$gen24First;second=$gen24Second;first_console_host_image=$gen24FirstImage;second_console_host_image=$gen24SecondImage} | & (Get-Gen24BoundNativeCommand 'json') -Depth 4 -Compress`;
+}
+export function inspectGen24Owners(ctx,{run=spawnSync,historyAdmission=null}={}){
+  requireThat(process.platform==='win32','OWNER_UNVERIFIABLE');
+  // Keep raw command lines in memory only. Public proof contains IDs and hashes.
+  const script=gen24OwnerInspectionScript();
   const result=run('powershell.exe',['-NoProfile','-NonInteractive','-Command',script],{windowsHide:true,encoding:'utf8',timeout:30000,maxBuffer:16*1024*1024,env:{...process.env}});
   requireThat(result.status===0&&!result.error,'OWNER_UNVERIFIABLE');let data;try{data=JSON.parse(result.stdout);}catch{throw error('OWNER_UNVERIFIABLE');}return evaluateGen24Owners(ctx,data,{historyAdmission});
 }

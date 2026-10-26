@@ -1,4 +1,30 @@
-# Project state — October 25 console-host recognition candidate
+# Project state — October 26 native dependency candidate
+
+## October 26 cold native command binding — local only
+The console-host correction is installed at accepted source
+`ce896d2247d66a64eaff905dcd247e803383c24b`, with 209 verified runtime files.
+Its installed owner qualification remained blocked: both image proofs were null.
+Read-only diagnosis reproduced cold Windows PowerShell 5.1 command resolution
+selecting a user-local Utility 7 module without usable hashing, followed by a
+Security autoload failure. This does not reconstruct the historical truncated
+failure. Original unknown histories and the unspent grant remain unchanged.
+The local correction selects only absolute protected native Utility/Security
+manifests, validates actual command/module/script or assembly provenance, and
+rechecks captured command identity before invoking the verified command object.
+It changes no owner, image, signature, path, timing, history or budget predicate.
+No global module, environment, profile, policy or installed resource is changed.
+Cold Node-to-PowerShell tests use controlled process-local version-7 shadows,
+without a dependency-warming preamble. Real read-only image evidence qualifies
+dependency binding only, not native ancestry, quiescence or recovery admission.
+The portable 65-predicate suite remains unchanged. Windows collector qualification
+is an explicitly skipped group on Linux; it executes fully on Windows 5.1.
+This uncommitted candidate awaits independent review and source qualification.
+No native diagnosis/recovery/preparation/renewal/claim, provider, preflight,
+paid API, commit, push, installation or canonical/automation write occurred.
+Local full check passed: 1,200 tests, 1,197 passed, zero failed and three
+existing Windows PDF skips; safety inspected 597 files. The cold qualification
+group executes on Windows and contributes one explicit platform skip on Linux.
+Exact source invariants and private evidence accompany the review handoff.
 
 ## October 25 bounded startup console-host recognition — local only
 The diagnostic correction is now accepted and installed at source

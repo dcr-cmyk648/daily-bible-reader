@@ -665,3 +665,28 @@ identity evidence. Raw paths, command lines and OS signature details remain loca
 to inspection; only IDs and hashes are returned. This recognition does not change
 capability, history, source, lock, transport, budget or overnight-window gates,
 reconstruct a historical failure, or authorize a recovery retry or renewal.
+
+## Cold native dependency binding
+
+The owner collector's supported host is native 64-bit Windows PowerShell 5.1
+Desktop. It loads only the absolute protected Utility and Security manifests
+under that host's native PSHOME, before any hashing, signature or JSON helper.
+It does not rely on ambient module-name autoload or change PSModulePath, user
+modules, profiles, execution policy or permissions. Missing or unqualified
+dependencies fail closed; there is no alternate-shell or unsigned fallback.
+
+Bindings require real CommandInfo objects from the exact native manifest,
+module identity/version/root and expected command type. The hash function's
+script must reside in the protected native Utility module; cmdlet assemblies
+must have the expected Microsoft strong-name identity and protected native
+home/GAC location. Before every use, current and captured provenance and saved
+definitions are checked again. The captured verified object is invoked, so a
+later ambient replacement cannot silently substitute a different implementation.
+
+Image, owner, ancestry, signature and race predicates remain unchanged. A cold
+Node-to-Windows-PowerShell test puts controlled version-7 shadow manifests first
+in only the child environment, reproduces the old missing-hash/signature failures,
+and verifies native binding and real read-only image evidence. This Windows-only
+qualification group is explicitly skipped on Linux, where the existing portable
+evaluator regressions still run. Passing metadata qualification is not an
+installed native diagnosis, historical reconstruction or recovery authorization.

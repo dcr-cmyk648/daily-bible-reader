@@ -12,7 +12,7 @@ import {assertSchemaValid} from './schema-validator.mjs';
 import {applyNativeTransaction} from './mhc-native-transaction.mjs';
 import {finalizeReviewedLibrary} from './mhc-reviewed-library-finalize.mjs';
 import {sparkModelUnavailable} from './mhc-v2-model-errors.mjs';
-import {configuredModels,jobModels} from './mhc-v2-author-config.mjs';
+import {configuredModels,jobModels,authorEffort} from './mhc-v2-author-config.mjs';
 import {stageAuthorBlock} from './mhc-v2-author-status.mjs';
 import {openJournal} from './service-supervisor-store.mjs';
 import {measuredBuffer} from './service-supervisor-policy.mjs';
@@ -410,7 +410,7 @@ async function defaultAuthorAdmission(ctx,lane,now,health) {
 }
 
 export async function startV2(ctx,lane,now=new Date(),{requestedReadingId,requestedDailyWorkOrder,requestedHistoricalAuthorization}={},
-  {health=historicalForwardHealth}={}) {
+  {health=historicalForwardHealth,assertAuthorBinding}={}) {
   await assertNativeWriterAllowed(ctx);
   if(!MODELS[lane])throw new Error('V2_MODEL_NOT_ALLOWED');
   if(requestedDailyWorkOrder!==undefined&&requestedReadingId===undefined)throw new Error('V2_DAILY_DEPENDENCY_READING_REQUIRED');
@@ -423,6 +423,22 @@ export async function startV2(ctx,lane,now=new Date(),{requestedReadingId,reques
   const held=await authorHeldReadingIds(ctx),window=henryPriorityWindow(ctx.appConfig,now),allowed=job=>!held.has(job.input.reading_id)&&(!admission?.restricted||
     job.input.schedule_date>=window.today&&job.input.schedule_date<=window.horizonDate);
   let jobs=await allJobs(ctx,{readOnly:true});
+  const qualify=async selected=>{
+    if(!assertAuthorBinding||selected.kind==='held_active'||!selected.job&&!selected.entry)return;
+    const job=selected.job,next=job&&nextBatch(job),authorLane=selected.kind==='fallback_pending'?'luna':next?.lane??lane;
+    await assertAuthorBinding({readingId:job?.input.reading_id??selected.entry.readingId,lane:authorLane,
+      model:(job?jobModels(job):configuredModels(ctx))[authorLane],reasoning_effort:authorEffort(authorLane)});
+  };
+  if(assertAuthorBinding){
+    // Match the existing post-maintenance selector without writing even a
+    // housekeeping event or initializing a partial job under an unqualified model.
+    const projected=jobs.map(job=>{
+      let value=job.state?job:{...job,partial:true,state:initialJobState(job.input,now)};
+      if(allowed(job)&&(requestedReadingId===undefined||job.input.reading_id===requestedReadingId))for(const transition of authorMaintenance(ctx,value,now))value={...value,state:transition.state};
+      return value;
+    }).filter(job=>allowed(job)||job.state?.phase==='generating');
+    await qualify(await selectAuthorJob(ctx,projected,exact?.historical?undefined:lane,now,{dailyEntry:exact?.selectionKind==='daily_dependency'?ctx.plan.entries.find(e=>e.readingId===requestedReadingId):undefined,edf:Boolean(exact)&&!exact.historical}));
+  }
   for(const partial of jobs.filter(j=>!j.state&&allowed(j)&&(requestedReadingId===undefined||j.input.reading_id===requestedReadingId))){const entry=ctx.plan.entries.find(e=>e.readingId===partial.input.reading_id);if(!entry)throw new Error('V2_PARTIAL_JOB_PLAN_CHANGED');const sources=await sourceInput(ctx,entry);if(sources.input.input_sha256!==partial.input.input_sha256)throw new Error('V2_PARTIAL_JOB_SOURCE_CHANGED');await createJob(ctx.jobRoot,partial.input,now);}
   jobs=await allJobs(ctx,{readOnly:true});
   for(let old of jobs){
@@ -438,6 +454,7 @@ export async function startV2(ctx,lane,now=new Date(),{requestedReadingId,reques
   // still excludes held jobs; a partial input without events is not an owner.
   jobs=(await allJobs(ctx,{readOnly:true})).filter(job=>allowed(job)||job.state?.phase==='generating');
   const selected=await selectAuthorJob(ctx,jobs,exact?.historical?undefined:lane,now,{dailyEntry:exact?.selectionKind==='daily_dependency'?ctx.plan.entries.find(e=>e.readingId===requestedReadingId):undefined,edf:Boolean(exact)&&!exact.historical});let job=selected.job;
+  await qualify(selected);
   if(selected.kind==='held_active')return authorHeldWork(selected.heldReadingId);
   if(selected.kind==='queued'){job=(await checkedJob(ctx,job.input.reading_id)).job;const next=nextBatch(job);if(next&&next.lane!==lane)return ownershipWake(ctx,job,now);job=await appendState(job,'queued_authoring_resumed',{...job.state,phase:'generating'},now);}
   if(job&&selected.kind!=='fallback_pending'){job=(await checkedJob(ctx,job.input.reading_id)).job;const next=nextBatch(job);if(next&&next.lane!==lane)return ownershipWake(ctx,job,now);}

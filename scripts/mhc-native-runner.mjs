@@ -14,6 +14,13 @@ const json=async file=>JSON.parse(await readFile(file,"utf8"));
 let activePipeline=null;
 const usage=()=>"Usage: mhc-native <spark|luna|advance|reviewer> [--checkpoint ID] [reviewer arguments]";
 function option(args,name){const at=args.indexOf(name);if(at<0||!args[at+1])throw Error(usage());return args[at+1];}
+function receiptReuseOptions(args){
+  const names=['--preflight-receipt','--preflight-receipt-sha256'],counts=names.map(name=>args.filter(arg=>arg===name).length);
+  if(args.some(arg=>arg.startsWith('--preflight-receipt')&&!names.includes(arg)))throw Error('V2_TRANSPORT_PREFLIGHT_RECEIPT_ARGUMENTS_INVALID');
+  if(counts.every(count=>count===0))return {};
+  if(counts.some(count=>count!==1)||names.some(name=>!/^[a-f0-9]{64}$/.test(args[args.indexOf(name)+1]||'')))throw Error('V2_TRANSPORT_PREFLIGHT_RECEIPT_ARGUMENTS_INVALID');
+  return {preflightReceipt:option(args,names[0]),preflightReceiptSha256:option(args,names[1])};
+}
 
 async function context(){
   const configPath=process.env.MHC_NATIVE_RUNTIME_CONFIG,releaseRoot=process.env.MHC_NATIVE_RELEASE_ROOT,launcher=process.env.MHC_NATIVE_LAUNCHER,manifestSha256=process.env.MHC_NATIVE_MANIFEST_SHA256;
@@ -32,6 +39,7 @@ async function legacyReview(ctx,reviewCommand,reviewArgs){
 async function main(){
   const [command,...args]=process.argv.slice(2),ctx=await context();let result;
   activePipeline=ctx.config.pipeline_version;
+  const reuseOptions=command==='author-run'?receiptReuseOptions(args):{};
   // Unlike withRunnerLock({readOnly:true}), this route must not write a lock or
   // create a missing job root. Keep its exact argument surface observation-only.
   if(activePipeline==='mhc-evidence-author/v2'&&command==='gen24-recovery'&&args[0]==='diagnose'){
@@ -44,7 +52,8 @@ async function main(){
     result=await withRunnerLock(ctx,async()=>{
       const service=await serviceContext(ctx,{readOnly:['author-preflight','status'].includes(command)});
       if(command==='author-preflight')return authorPreflight(service,{codexExecutable:option(args,'--codex-executable')}).then(({options,mcpNames,...receipt})=>receipt);
-      if(command==='author-run')return runAuthorSession(service,{lane:option(args,'--lane'),codexExecutable:option(args,'--codex-executable'),maxReadings:args.includes('--max-readings')?Number(option(args,'--max-readings')):3});
+      if(command==='author-run')return runAuthorSession(service,{lane:option(args,'--lane'),codexExecutable:option(args,'--codex-executable'),maxReadings:args.includes('--max-readings')?Number(option(args,'--max-readings')):3,
+        ...reuseOptions});
       if(command==='gen24-recovery'&&args[0]==='inspect'){const {binding,binding_sha256}=await inspectGen24Recovery(service);return {binding,binding_sha256,modelCalls:0};}
       if(command==='gen24-recovery'&&args[0]==='prepare')return prepareGen24Recovery(service,{notBefore:option(args,'--not-before'),expiresAt:option(args,'--expires-at'),codexExecutable:option(args,'--codex-executable'),preflightReceipt:option(args,'--preflight-receipt')});
       if(command==='gen24-recovery'&&args[0]==='run')return runGen24Recovery(service,{capabilitySha256:option(args,'--capability-sha256'),codexExecutable:option(args,'--codex-executable')});

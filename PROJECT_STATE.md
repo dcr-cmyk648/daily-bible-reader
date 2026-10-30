@@ -1,4 +1,26 @@
-# Project state — October 26 native dependency candidate
+# Project state — October 29 ordinary receipt-reuse candidate
+
+## October 29 forward Henry stall — local repair awaiting review
+Accepted native source `a0fe4d7` remains installed with 209 verified files.
+October 28–29 primary wakes did not invoke authoring: coordination confused the
+historical recovery-only hold and existing-job status with forward eligibility.
+Published Genesis 30 and Matthew 11 fallbacks have valid inputs but no native job.
+Two October 28 fallback runs returned `awaiting_primary`, with no author calls;
+their four unexpected availability turns remain preserved history.
+The local candidate adds explicit exact-receipt reuse for ordinary author-run.
+It verifies current non-model transport and both model/effort bindings without
+availability calls or fresh-probe fallback. Independent review blocked the first
+candidate for a retained legacy-model binding gap and ambiguous duplicate flags;
+its original patch/handoff remains immutable. R2 checks the selected model/effort
+before housekeeping or claims and each actual packet before durable execution
+intent. Duplicate/incomplete receipt flags fail before lock or author entry.
+The R2 candidate changes no selection order, source hold,
+original job/history, budget, ownership, deadline or GEN24 recovery predicate.
+Fabricated tests and private preservation/review artifacts accompany this change.
+No live author/model/preflight/provider or recovery call, automation/canonical
+write, commit, push or runtime installation is part of this local assignment.
+Independent review and qualified release remain pending; proposed header wording
+stays private and inactive. Daily632 and all independent services remain pinned.
 
 ## October 26 cold native command binding — local only
 The console-host correction is installed at accepted source

@@ -13,6 +13,45 @@ October 11. Actual installed ChatGPT preflight passed for both models. GEN19 and
 the paired Psalm 4/Proverbs reading subsequently passed independent review, exact
 publication readback and complete-service health; see PROJECT_STATE and private receipts.
 
+## October 29 exact ordinary preflight reuse — local candidate
+
+The optional ordinary `author-run` arguments `--preflight-receipt` and
+`--preflight-receipt-sha256` must be supplied together. They name an existing
+runtime receipt by its content identity and exact raw-byte SHA-256. Each flag
+must appear exactly once; duplicate, incomplete, malformed or unsupported receipt
+flag forms fail before lock/author entry. No private
+receipt identity belongs in source or Git. Reuse verifies a regular confined file,
+both checksums, exact successful receipt shape, ChatGPT-only billing, the current
+executable path/hash/version and both configured model/lane/effort bindings.
+Current non-model login and tool-isolation checks still run; invalid evidence,
+future/invalid verification times or identity drift fail closed. The receipt is
+rechecked after transport inspection, retained unchanged and never refreshed or
+relabelled. Receipt age alone is not a new expiry policy; the current identity
+must still match its accepted qualification. Reuse makes no availability model
+turn and never falls back to fresh probes. Omitting both arguments preserves the
+existing explicitly selected preflight behavior for other callers.
+
+This availability evidence grants no work or recovery authority. Original native
+writer/unfinished-execution admission precedes transport; actual reading
+selection, source holds, ownership, deadlines, budgets and independent review
+remain unchanged. Reuse additionally qualifies the actual selected job model and
+effort, not just current configured defaults. The existing selector is projected
+without mutation and checked before any housekeeping, partial-job initialization,
+ownership transfer or session claim; actual selection and each packet proof are
+checked again before durable execution intent. An uncovered retained legacy model
+fails closed without probing, relabelling history or replenishing budgets.
+Ordinary status lists existing jobs, not all unstarted eligible
+published fallbacks: an empty status or a last published date cannot prove no
+forward work. The October 28 fallback results were `awaiting_primary`; their four
+unexpected availability turns remain historical evidence, never hidden or reset.
+Historical GEN24's unspent recovery grant and pending date exception remain
+separate; neither supplies a global stop for genuinely eligible forward work.
+Replacement coordination headers are private proposals awaiting independent
+review, qualified delivery and manager activation; no automation is changed here.
+Independent review blocked the first candidate for the selected-model binding
+gap and conflicting duplicate flags. Its exact patch/handoff and fabricated
+reproduction are retained privately; this R2 candidate awaits independent re-review.
+
 ## October 21 historical admission correction — local candidate
 
 Combined source `6f3a2e5` is released/installed with 208 verified files. That

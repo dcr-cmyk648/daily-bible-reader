@@ -141,31 +141,71 @@ async function performPreflight(ctx,{lane='spark',codexExecutable},dependencies=
   return value;
 }
 
-export async function runAuthorSession(ctx,{lane,codexExecutable,maxReadings=3,requestedReadingId,requestedDailyWorkOrder,requestedHistoricalAuthorization},dependencies={}) {
+// Reuse is explicit and exact: an accepted availability receipt never replaces
+// current non-model transport checks or grants selection/dispatch authority.
+async function reuseAuthorPreflight(ctx,{lane,codexExecutable,preflightReceipt,preflightReceiptSha256},dependencies) {
+  const invalid=()=>{throw Error('V2_TRANSPORT_PREFLIGHT_RECEIPT_INVALID');};
+  const hash=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
+  const exact=(value,keys)=>value&&typeof value==='object'&&!Array.isArray(value)&&isDeepStrictEqual(Object.keys(value).sort(),keys.sort());
+  if(!hash(preflightReceipt)||!hash(preflightReceiptSha256))invalid();
+  let receipt,receiptPath,bytes;
+  try {
+    receiptPath=await confined(ctx.runtimeRoot,`author-preflight/receipts/${preflightReceipt}.json`,{missing:false});
+    if(!(await lstat(receiptPath)).isFile())invalid();
+    bytes=await readFile(receiptPath);receipt=JSON.parse(bytes);
+  } catch {invalid();}
+  if(sha256(bytes)!==preflightReceiptSha256||digestObject(receipt)!==preflightReceipt||
+    !exact(receipt,['schema_version','state','billingRoute','codexExecutable','executableSha256','version','receipts'])||
+    receipt.schema_version!=='mhc-author-preflight/v1'||receipt.state!=='available'||
+    receipt.billingRoute!=='existing ChatGPT login; no API-key fallback'||
+    typeof receipt.codexExecutable!=='string'||!path.isAbsolute(receipt.codexExecutable)||
+    !hash(receipt.executableSha256)||!Array.isArray(receipt.receipts))invalid();
+  const transport=await prepareAuthorTransport(ctx,{lane,codexExecutable},dependencies),now=+(dependencies.clock||(()=>new Date()))();
+  if(!Number.isFinite(now)||path.resolve(receipt.codexExecutable)!==path.resolve(codexExecutable)||
+    receipt.executableSha256!==transport.executableSha256||receipt.version!==transport.version||
+    receipt.receipts.length!==Object.keys(transport.models).length)invalid();
+  for(const [authorLane,model] of Object.entries(transport.models)){
+    const matching=receipt.receipts.filter(r=>r?.lane===authorLane),r=matching[0];
+    if(matching.length!==1||!exact(r,['model','lane','reasoning','checkedAt','code','reason','eventsSha256','stderrSha256'])||
+      r.model!==model||r.reasoning!==authorEffort(authorLane)||r.code!==null||r.reason!=='Model availability verified'||
+      typeof r.checkedAt!=='string'||!Number.isFinite(Date.parse(r.checkedAt))||Date.parse(r.checkedAt)>now||!hash(r.eventsSha256)||!hash(r.stderrSha256))invalid();
+  }
+  try {if(sha256(await readFile(await confined(ctx.runtimeRoot,`author-preflight/receipts/${preflightReceipt}.json`,{missing:false})))!==preflightReceiptSha256)invalid();}catch{invalid();}
+  // Do not create or relabel a qualification, or serialize the process environment.
+  const value={...receipt,receiptPath};Object.defineProperty(value,'transport',{value:{mcpNames:transport.mcpNames,options:transport.options},enumerable:false});return value;
+}
+
+export async function runAuthorSession(ctx,{lane,codexExecutable,maxReadings=3,requestedReadingId,requestedDailyWorkOrder,requestedHistoricalAuthorization,preflightReceipt,preflightReceiptSha256},dependencies={}) {
   await assertNativeWriterAllowed(ctx);
   if(!Number.isInteger(maxReadings)||maxReadings<1||maxReadings>3)throw Error('V2_AUTHOR_RUN_CAP_INVALID');
   if(requestedReadingId!==undefined&&maxReadings!==1)throw Error('V2_AUTHOR_REQUESTED_READING_CAP_INVALID');
   if(requestedDailyWorkOrder!==undefined&&(requestedReadingId===undefined||maxReadings!==1))throw Error('V2_AUTHOR_DAILY_WORK_ORDER_CAP_INVALID');
   if(requestedHistoricalAuthorization!==undefined&&(requestedReadingId===undefined||maxReadings!==1||requestedDailyWorkOrder!==undefined))throw Error('V2_AUTHOR_HISTORICAL_CAP_INVALID');
   await assertAuthorExecutionAdmission(ctx,lane,(dependencies.clock||(()=>new Date()))());
-  const preflight=await authorPreflight(ctx,{lane,codexExecutable},dependencies);
+  const reuse=preflightReceipt!==undefined||preflightReceiptSha256!==undefined;
+  const preflight=await (reuse?reuseAuthorPreflight(ctx,{lane,codexExecutable,preflightReceipt,preflightReceiptSha256},dependencies):authorPreflight(ctx,{lane,codexExecutable},dependencies));
   if(preflight.state!=='available')return preflight;
+  const qualifiedBindings=reuse?preflight.receipts.map(r=>Object.freeze({lane:r.lane,model:r.model,reasoning_effort:r.reasoning})):null;
+  const assertAuthorBinding=reuse?binding=>{
+    if(!qualifiedBindings.some(r=>r.lane===binding.lane&&r.model===binding.model&&r.reasoning_effort===binding.reasoning_effort))throw Error('V2_TRANSPORT_PREFLIGHT_SELECTED_MODEL_UNQUALIFIED');
+  }:undefined;
   const run=dependencies.run||spawnSync,clock=dependencies.clock||(()=>new Date()),{mcpNames,options}=preflight.transport;
   const results=[],runDeadline=clock().getTime()+60*60*1000;
   for(let readingCount=0;readingCount<maxReadings&&clock().getTime()<runDeadline;readingCount++){
-    const work=await drainReading(readingCount?{...ctx,forwardOnly:true}:ctx,{lane,codexExecutable,run,clock,mcpNames,options,runDeadline,requestedReadingId,requestedDailyWorkOrder,requestedHistoricalAuthorization,historicalHealth:dependencies.historicalHealth});
+    const work=await drainReading(readingCount?{...ctx,forwardOnly:true}:ctx,{lane,codexExecutable,run,clock,mcpNames,options,runDeadline,requestedReadingId,requestedDailyWorkOrder,requestedHistoricalAuthorization,historicalHealth:dependencies.historicalHealth,assertAuthorBinding});
     results.push(work);
     if(work.action!=='review_handoff'||work.scheduleDate<henryToday(ctx,clock()))break;
   }
   return {...results.at(-1),readings:results,preflightReceiptPath:preflight.receiptPath};
 }
 const henryToday=(ctx,now)=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Detroit',year:'numeric',month:'2-digit',day:'2-digit'}).format(now);
-async function drainReading(ctx,{lane,codexExecutable,run,clock,mcpNames,options,runDeadline,requestedReadingId,requestedDailyWorkOrder,requestedHistoricalAuthorization,historicalHealth}) {
-  let work=await startV2(ctx,lane,clock(),{requestedReadingId,requestedDailyWorkOrder,requestedHistoricalAuthorization},{health:historicalHealth});
+async function drainReading(ctx,{lane,codexExecutable,run,clock,mcpNames,options,runDeadline,requestedReadingId,requestedDailyWorkOrder,requestedHistoricalAuthorization,historicalHealth,assertAuthorBinding}) {
+  let work=await startV2(ctx,lane,clock(),{requestedReadingId,requestedDailyWorkOrder,requestedHistoricalAuthorization},{health:historicalHealth,assertAuthorBinding});
   // Classifying retained provider evidence is not a model dispatch. An expired
   // session may transfer its proven refusal, but cannot get time or attempts back.
   if(lane==='spark'&&work.code==='V2_WAKE_BUDGET'){
     const {packet,proof}=await verifyPublicPacket(ctx,work,lane);
+    assertAuthorBinding?.({...proof,lane});
     const session=work.advanceArgv.at(-1),root=await confined(ctx.jobRoot,work.readingId,{missing:false});
     const key=digestObject({session,packet:packet.packet_id,submissions:work.totalSubmissions});
     const record=await maybeJson(await confined(root,`model-executions/${key}/result.json`));
@@ -179,6 +219,7 @@ async function drainReading(ctx,{lane,codexExecutable,run,clock,mcpNames,options
   }
   for(let count=0;authorActions.has(work.action)&&count<32;count++){
     const {packet,instructions,proof}=await verifyPublicPacket(ctx,work,lane);
+    assertAuthorBinding?.({...proof,lane});
     const remaining=Math.min(Date.parse(work.deadlineAt),runDeadline)-clock().getTime();
     if(remaining<15000)return checkpointTransport(ctx,work,'V2_TRANSPORT_DEADLINE',clock());
     const session=work.advanceArgv.at(-1),root=await confined(ctx.jobRoot,work.readingId,{missing:false});
@@ -210,6 +251,7 @@ async function drainReading(ctx,{lane,codexExecutable,run,clock,mcpNames,options
       const args=authorArguments({model:proof.model,reasoning:effort(lane),schemaPath,outputPath,mcpNames});
       let diagnostics='';if(work.action==='repair_candidate')diagnostics=JSON.stringify(publicRepairDiagnostics(await readJson(work.validationPath),packet));
       const prompt=`Condense the supplied verified public-domain Henry source packet. You are the exact assigned author, not the reviewer. Return only the candidate JSON. Do not use tools, read other files, change files, or publish. The parent records and validates your final response.\n\n${instructions.instructions}\n\nSOURCE PACKET:\n${JSON.stringify(packet)}\n\n${diagnostics?'VALIDATION TO REPAIR:\n'+diagnostics:''}`;
+      assertAuthorBinding?.({...proof,lane});
       record={schema_version:'mhc-model-execution/v1',session,proof,started_at:clock().toISOString(),status:'started'};
       await atomicJson(root,`${relative}/result.json`,record);
       const result=run(codexExecutable,args,{...options,cwd:path.dirname(outputPath),input:prompt,timeout:Math.min(12*60*1000,remaining-5000)});

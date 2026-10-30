@@ -8,7 +8,7 @@ import {fileURLToPath,pathToFileURL} from 'node:url';
 import {createRequire} from 'node:module';
 import {VERSION,MODELS,REVIEW_ASSERTIONS,passageScope,compileReading,validateCandidate,digestObject} from '../scripts/lib/mhc-v2.mjs';
 import {sha256,normalizedBatchHash} from '../scripts/lib/mhc-pipeline.mjs';
-import {serviceContext,startV2,selectAuthorWorkV2,selectHistoricalAuthorWorkV2,historicalSelectionBindingVersion,sourceInput,advanceV2,buildReview,reviewWorkOrderV2,applyReviewV2,editorialRepairV2,requestEditorialV2,migrateCurrentV2,reopenReviewV2} from '../scripts/lib/mhc-v2-service.mjs';
+import {serviceContext,startV2,statusV2,selectAuthorWorkV2,selectHistoricalAuthorWorkV2,historicalSelectionBindingVersion,sourceInput,advanceV2,buildReview,reviewWorkOrderV2,applyReviewV2,editorialRepairV2,requestEditorialV2,migrateCurrentV2,reopenReviewV2} from '../scripts/lib/mhc-v2-service.mjs';
 import {atomicJson,appendState,loadJob,readJson,bytesFor,createJob} from '../scripts/lib/mhc-v2-store.mjs';
 import {writeFileSync,readdirSync} from 'node:fs';
 import {runAuthorSession,selectionBindingVersion,transportSchema,authorArguments,successfulModelResult,verifyPublicPacket,publicRepairDiagnostics} from '../scripts/lib/mhc-v2-author-session.mjs';
@@ -40,6 +40,137 @@ test('preflight probes each configured model with ephemeral ChatGPT-only exec an
   assert.equal(result.state,'available');assert.deepEqual(models,['gpt-6-luna','gpt-5.6-luna']);assert.equal(normal.calls,0);assert.deepEqual(await readdir(ctx.jobRoot),[]);
   assert.equal(Object.hasOwn(JSON.parse(JSON.stringify(result)),'transport'),false);
   assert.ok(result.receipts.every(receipt=>receipt.code===null&&receipt.reason==='Model availability verified'));
+});
+
+// All availability and author behavior below is fabricated in-process. The real
+// Node executable is read only as a local file identity; it is never a provider.
+async function fabricatedReuse(f,mutate=()=>{}) {
+  const receipt={schema_version:'mhc-author-preflight/v1',state:'available',billingRoute:'existing ChatGPT login; no API-key fallback',codexExecutable:process.execPath,
+    executableSha256:sha256(await readFile(process.execPath)),version:'codex-cli 0.162.1',receipts:[['spark','gpt-6-luna','medium'],['luna','gpt-5.6-luna','low']].map(([lane,model,reasoning])=>({lane,model,reasoning,
+      checkedAt:new Date(f.now.getTime()-8*86400000).toISOString(),code:null,reason:'Model availability verified',eventsSha256:'a'.repeat(64),stderrSha256:'b'.repeat(64)}))};
+  mutate(receipt);const preflightReceipt=digestObject(receipt),file=await atomicJson(f.ctx.runtimeRoot,`author-preflight/receipts/${preflightReceipt}.json`,receipt,{immutable:true}),bytes=await readFile(file);
+  return {receipt,file,bytes,options:{lane:'spark',codexExecutable:process.execPath,maxReadings:1,preflightReceipt,preflightReceiptSha256:sha256(bytes)}};
+}
+function noProbeModel(normal=fabricatedModelRun()) {
+  let probes=0,transportChecks=0;
+  return {normal,get probes(){return probes;},get transportChecks(){return transportChecks;},run:(bin,args,options)=>{
+    if(options.input?.startsWith('Availability preflight')){probes++;assert.fail('FABRICATED reuse must never issue an availability probe');}
+    if(args[0]==='exec'){assert.equal(options.env.OPENAI_API_KEY,undefined);assert.equal(options.env.CODEX_API_KEY,undefined);assert.ok(args.includes('forced_login_method="chatgpt"'));}
+    else transportChecks++;return normal.run(bin,args,options);
+  }};
+}
+test('exact receipt reuse makes zero availability calls, preserves its old date and uses normal author budgets',async t=>{
+  const f=await fixture(t,{verseCount:1}),reuse=await fabricatedReuse(f),model=noProbeModel(),files=await jobBytes(path.dirname(reuse.file));
+  const result=await runAuthorSession(f.ctx,reuse.options,{run:model.run,clock:()=>f.now});
+  assert.equal(result.action,'review_handoff');assert.equal(result.preflightReceiptPath,reuse.file);assert.equal(model.probes,0);assert.equal(model.normal.calls,1);assert.equal(model.transportChecks,4);
+  assert.deepEqual(await jobBytes(path.dirname(reuse.file)),files);const job=await loadJob(path.join(f.ctx.jobRoot,'FAB-1'));
+  assert.equal(job.state.total_submissions,1);assert.equal(job.state.phase,'review_pending');assert.equal(Date.parse(job.state.session.deadline_at)-+f.now,3600000);
+});
+for(const mode of ['missing_identity','missing_raw_hash','invalid_identity','invalid_raw_hash','absent_receipt','edited_bytes','malformed_json','extra_field','blocked','api_billing','stale_version','stale_executable_hash','different_executable','wrong_model','wrong_effort','missing_primary','missing_fallback','duplicate_lane','future_check','invalid_check','failed_check','unverified_reason','bad_events_hash'])test(`receipt reuse rejects ${mode} without probes, author dispatch or job mutation`,async t=>{
+  const f=await fixture(t,{verseCount:1}),reuse=await fabricatedReuse(f,r=>{
+    if(mode==='extra_field')r.unexpected='FABRICATED';if(mode==='blocked')r.state='blocked';if(mode==='api_billing')r.billingRoute='FABRICATED API key route';
+    if(mode==='stale_version')r.version='codex-cli 0.0.1';if(mode==='stale_executable_hash')r.executableSha256='c'.repeat(64);if(mode==='different_executable')r.codexExecutable=path.resolve(f.ctx.projectRoot,'fabricated-other.exe');
+    if(mode==='wrong_model')r.receipts[0].model='gpt-5.3-codex-spark';if(mode==='wrong_effort')r.receipts[1].reasoning='medium';
+    if(mode==='missing_primary')r.receipts.shift();if(mode==='missing_fallback')r.receipts.pop();if(mode==='duplicate_lane')r.receipts[1]={...r.receipts[0]};
+    if(mode==='future_check')r.receipts[0].checkedAt=new Date(+f.now+1).toISOString();if(mode==='invalid_check')r.receipts[0].checkedAt='FABRICATED';
+    if(mode==='failed_check')r.receipts[0].code='V2_AUTHOR_MODEL_UNAVAILABLE';if(mode==='unverified_reason')r.receipts[0].reason='FABRICATED unchecked';if(mode==='bad_events_hash')r.receipts[0].eventsSha256='FABRICATED';
+  }),model=noProbeModel(),before=await jobBytes(f.ctx.jobRoot);
+  if(mode==='missing_identity')delete reuse.options.preflightReceipt;if(mode==='missing_raw_hash')delete reuse.options.preflightReceiptSha256;
+  if(mode==='invalid_identity')reuse.options.preflightReceipt='../FABRICATED';if(mode==='invalid_raw_hash')reuse.options.preflightReceiptSha256='c'.repeat(64);
+  if(mode==='absent_receipt')reuse.options.preflightReceipt='d'.repeat(64);if(mode==='edited_bytes')await writeFile(reuse.file,reuse.bytes+' ');
+  if(mode==='malformed_json'){await writeFile(reuse.file,'{FABRICATED');reuse.options.preflightReceiptSha256=sha256('{FABRICATED');}
+  await assert.rejects(runAuthorSession(f.ctx,reuse.options,{run:model.run,clock:()=>f.now}),/V2_TRANSPORT_PREFLIGHT_RECEIPT_INVALID/);
+  assert.equal(model.normal.calls,0);assert.equal(model.probes,0);assert.deepEqual(await jobBytes(f.ctx.jobRoot),before);
+});
+for(const mode of ['api_login','version_drift','model_configuration_drift','tool_isolation_failure','receipt_changed_during_transport'])test(`receipt reuse retains live ${mode} guard without provider fallback`,async t=>{
+  const f=await fixture(t,{verseCount:1}),reuse=await fabricatedReuse(f),model=noProbeModel(),before=await jobBytes(f.ctx.jobRoot);
+  if(mode==='model_configuration_drift')f.ctx.config.author_model='gpt-5.3-codex-spark';
+  const run=(bin,args,options)=>{
+    if(mode==='api_login'&&args[0]==='login')return {status:0,stdout:'FABRICATED Logged in using API key'};
+    if(mode==='version_drift'&&args[0]==='--version')return {status:0,stdout:'codex-cli 0.999.0'};
+    if(mode==='tool_isolation_failure'&&args.includes('mcp'))return {status:1,stdout:'FABRICATED'};
+    if(mode==='receipt_changed_during_transport'&&args[0]==='--version')writeFileSync(reuse.file,reuse.bytes+' ');
+    return model.run(bin,args,options);
+  };
+  await assert.rejects(runAuthorSession(f.ctx,reuse.options,{run,clock:()=>f.now}),/V2_TRANSPORT_(?:PREFLIGHT_RECEIPT_INVALID|CHATGPT_LOGIN_REQUIRED|MCP_PREFLIGHT_FAILED)/);
+  assert.equal(model.normal.calls,0);assert.equal(model.probes,0);assert.deepEqual(await jobBytes(f.ctx.jobRoot),before);
+});
+test('empty job status does not hide an unstarted metadata-backed forward candidate',async t=>{
+  const f=await fixture(t,{verseCount:1});assert.deepEqual((await statusV2(f.ctx)).readings,[]);
+  const selected=await selectAuthorWorkV2(f.ctx,{requestedReadingId:'FAB-1',lane:'spark'},f.now);assert.equal(selected.action,'selected');
+  assert.deepEqual((await statusV2(f.ctx)).readings,[]);assert.deepEqual(await readdir(f.ctx.jobRoot),[]);
+});
+test('receipt reuse fallback awaiting_primary never generates or claims the ready forward reading',async t=>{
+  const f=await fixture(t,{verseCount:1}),reuse=await fabricatedReuse(f),model=noProbeModel();reuse.options.lane='luna';
+  const before=await jobBytes(f.ctx.jobRoot),result=await runAuthorSession(f.ctx,reuse.options,{run:model.run,clock:()=>f.now});
+  assert.equal(result.state,'awaiting_primary');assert.equal(model.normal.calls,0);assert.equal(model.probes,0);assert.deepEqual(await jobBytes(f.ctx.jobRoot),before);
+});
+test('receipt reuse cannot bypass a genuine unfinished execution at author admission',async t=>{
+  const f=await fixture(t,{verseCount:1}),work=await startV2(f.ctx,'spark',f.now),job=await loadJob(path.join(f.ctx.jobRoot,'FAB-1')),packet=await readJson(work.sourcePath);
+  await atomicJson(job.directory,`model-executions/${digestObject({session:job.state.session.id,packet:packet.packet_id,submissions:0})}/result.json`,{schema_version:'mhc-model-execution/v1',session:job.state.session.id,status:'started',started_at:f.now.toISOString(),proof:{packet_sha256:digestObject(packet)}});
+  const reuse=await fabricatedReuse(f),before=await jobBytes(f.ctx.jobRoot);let calls=0;
+  await assert.rejects(runAuthorSession(f.ctx,reuse.options,{run:()=>{calls++;assert.fail('FABRICATED active execution must block before any transport');},clock:()=>f.now}),/V2_TRANSPORT_UNCERTAIN/);
+  assert.equal(calls,0);assert.deepEqual(await jobBytes(f.ctx.jobRoot),before);
+});
+async function retainedReuseJob(t,{legacy=false}={}){
+  const f=await fixture(t,{verseCount:12});if(legacy)f.ctx.config.author_model='gpt-5.3-codex-spark';
+  const work=await startV2(f.ctx,'spark',f.now);await writeCandidate(work);await advanceV2(f.ctx,'FAB-1',sessionId(work),f.now);
+  let job=await loadJob(path.join(f.ctx.jobRoot,'FAB-1'));job=await appendState(job,'FABRICATED retained queue',{...job.state,phase:'queued'},f.now);
+  f.ctx.config.author_model='gpt-6-luna';return {...f,job};
+}
+test('receipt reuse rejects a retained legacy selected model before claim, housekeeping, reservation or dispatch',async t=>{
+  const f=await retainedReuseJob(t,{legacy:true}),reuse=await fabricatedReuse(f),model=noProbeModel(),before=await jobBytes(f.ctx.jobRoot);
+  await assert.rejects(runAuthorSession(f.ctx,reuse.options,{run:model.run,clock:()=>f.now}),/V2_TRANSPORT_PREFLIGHT_SELECTED_MODEL_UNQUALIFIED/);
+  assert.equal(model.probes,0);assert.equal(model.normal.calls,0);assert.deepEqual(await jobBytes(f.ctx.jobRoot),before);
+});
+test('receipt reuse rejects retained selected-model effort mismatch without changing the queued history',async t=>{
+  const f=await retainedReuseJob(t),reuse=await fabricatedReuse(f,r=>{r.receipts[0].reasoning='low';}),model=noProbeModel(),before=await jobBytes(f.ctx.jobRoot);
+  await assert.rejects(runAuthorSession(f.ctx,reuse.options,{run:model.run,clock:()=>f.now}),/V2_TRANSPORT_PREFLIGHT_RECEIPT_INVALID/);
+  assert.equal(model.probes,0);assert.equal(model.normal.calls,0);assert.deepEqual(await jobBytes(f.ctx.jobRoot),before);
+});
+test('pre-claim qualification compares actual selected model and effort before any maintenance event',async t=>{
+  const f=await retainedReuseJob(t),before=await jobBytes(f.ctx.jobRoot);let checks=0;
+  await assert.rejects(startV2(f.ctx,'spark',f.now,{}, {assertAuthorBinding:binding=>{
+    checks++;assert.equal(binding.model,'gpt-6-luna');assert.equal(binding.reasoning_effort,'medium');assert.equal(binding.lane,'spark');
+    // FABRICATED qualification covers low only; actual medium is unqualified.
+    if(binding.reasoning_effort!=='low')throw Error('V2_TRANSPORT_PREFLIGHT_SELECTED_MODEL_UNQUALIFIED');
+  }}),/V2_TRANSPORT_PREFLIGHT_SELECTED_MODEL_UNQUALIFIED/);
+  assert.equal(checks,1);assert.deepEqual(await jobBytes(f.ctx.jobRoot),before);
+});
+test('receipt reuse matching retained continuation preserves accepted records and original session budgets',async t=>{
+  const f=await retainedReuseJob(t),reuse=await fabricatedReuse(f),model=noProbeModel(),prior=f.job;
+  const result=await runAuthorSession(f.ctx,reuse.options,{run:model.run,clock:()=>f.now}),after=await loadJob(prior.directory);
+  assert.equal(result.action,'review_handoff');assert.equal(model.probes,0);assert.equal(model.normal.calls,1);assert.equal(after.state.total_submissions,prior.state.total_submissions+1);
+  assert.equal(after.state.session.deadline_at,prior.state.session.deadline_at);assert.equal(after.state.lease.expires_at,prior.state.lease.expires_at);
+  for(const [key,value]of Object.entries(prior.state.accepted))assert.deepEqual(after.state.accepted[key],value);
+});
+test('receipt reuse still permits the existing never-authored legacy rebind before qualified first claim',async t=>{
+  const f=await fixture(t,{verseCount:1});f.ctx.config.author_model='gpt-5.3-codex-spark';await startV2(f.ctx,'spark',f.now);
+  let prior=await loadJob(path.join(f.ctx.jobRoot,'FAB-1'));prior=await appendState(prior,'FABRICATED never-authored queue',{...prior.state,phase:'queued'},f.now);f.ctx.config.author_model='gpt-6-luna';
+  const reuse=await fabricatedReuse(f),model=noProbeModel(),result=await runAuthorSession(f.ctx,reuse.options,{run:model.run,clock:()=>f.now}),after=await loadJob(prior.directory);
+  assert.equal(result.action,'review_handoff');assert.equal(model.probes,0);assert.equal(model.normal.calls,1);assert.ok(after.state.history.some(e=>e.kind==='author_configuration_rebound'));
+  for(const [key,value]of Object.entries(prior.state.sessions)){const {submissions:beforeCount,...beforeSession}=value,{submissions:afterCount,...afterSession}=after.state.sessions[key];assert.deepEqual(afterSession,beforeSession);assert.equal(afterCount,beforeCount+(key===after.state.session.id?1:0));}
+});
+test('receipt reuse matching low-effort fallback preserves primary exhaustion and original reading lease',async t=>{
+  const f=await fixture(t,{verseCount:1});let work=await startV2(f.ctx,'spark',f.now);
+  for(let n=0;n<2;n++){await writeCandidate(work,c=>({...c,packet_id:'MHP2-'+String(n).repeat(32)}));work=await advanceV2(f.ctx,'FAB-1',sessionId(work),f.now);}
+  const prior=await loadJob(path.join(f.ctx.jobRoot,'FAB-1'));assert.equal(prior.state.phase,'fallback_pending');
+  const reuse=await fabricatedReuse(f),model=noProbeModel(fabricatedModelRun(x=>x,{model:MODELS.luna}));reuse.options.lane='luna';
+  const result=await runAuthorSession(f.ctx,reuse.options,{run:model.run,clock:()=>f.now}),after=await loadJob(prior.directory);
+  assert.equal(result.action,'review_handoff');assert.equal(model.normal.calls,1);assert.equal(model.probes,0);assert.deepEqual(after.state.rejected,prior.state.rejected);
+  assert.equal(after.state.lease.expires_at,prior.state.lease.expires_at);assert.equal(after.state.total_submissions,prior.state.total_submissions+1);
+});
+test('receipt reuse selects ready unstarted GEN30 behind historical blocked GEN24 without rewriting its history',async t=>{
+  const f=await fixture(t,{verseCount:1,readingCount:2}),ids=['LTP-0041-GEN-024','LTP-0050-GEN-030'];
+  for(const [index,id] of ids.entries()){f.ctx.plan.entries[index].readingId=id;await atomicJson(f.ctx.privateRoot,`bridge/celebration-y3q4/${id}.metadata.json`,{readingId:id,henrySourceLink:{sourceId:'fabricated-henry',title:'FABRICATED Henry',note:'FABRICATED fallback; test TST source only',url:'https://example.invalid/fabricated'}});}
+  await atomicJson(f.ctx.privateRoot,'private-manifest.json',{readings:Object.fromEntries(ids.map(id=>[id,{}]))});
+  let old=await createJob(f.ctx.jobRoot,(await sourceInput(f.ctx,f.ctx.plan.entries[0])).input,new Date(+f.now-86400000),{spark:'gpt-6-luna',luna:'gpt-5.6-luna'});
+  old=await appendState(old,'FABRICATED expired historical GEN24',{...old.state,phase:'blocked',blocker:{code:'V2_AUTHOR_LEASE_EXPIRED'},lease:{...old.state.lease,released:true}},f.now);
+  f.ctx.appConfig.sharedStartDate='2026-09-12';const before=await jobBytes(old.directory),reuse=await fabricatedReuse(f),model=noProbeModel();
+  const status=await statusV2(f.ctx);assert.equal(status.readings.length,1);assert.equal(status.readings[0].readingId,ids[0]);
+  const selected=await selectAuthorWorkV2(f.ctx,{requestedReadingId:ids[1],lane:'spark'},f.now);assert.equal(selected.action,'selected');
+  const result=await runAuthorSession(f.ctx,reuse.options,{run:model.run,clock:()=>f.now});assert.equal(result.action,'review_handoff');assert.equal(result.readingId,ids[1]);
+  assert.equal(model.normal.calls,1);assert.equal(model.probes,0);assert.deepEqual(await jobBytes(old.directory),before);
 });
 test('provider 4xx and configuration errors are deterministic; timeout remains transport',()=>{
   for(const result of [{status:1,stdout:unavailableSparkEvents()},{status:1,stderr:'FABRICATED unexpected status 403'},{status:1,stderr:'FABRICATED requires a newer version of Codex'},{status:null,error:{code:'ENOENT'}}])assert.equal(authorFailure(result).code,'V2_AUTHOR_MODEL_UNAVAILABLE');

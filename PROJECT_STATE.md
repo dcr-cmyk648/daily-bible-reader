@@ -1,4 +1,32 @@
-# Project state — October 29 ordinary receipt-reuse candidate
+# Project state — October 31 ordinary author scope candidate
+
+## October 31 historical selection defect — local repair awaiting review
+HEAD and origin/main match accepted installed source `cfc111` and its existing
+209-file release. The October 31 ordinary primary run reused the exact accepted
+receipt, then admitted historical D081 through the default historical health gate
+on its first reading. Two accepted submissions ended review_pending/unpublished.
+Preserve D081 and all original unknown histories; no review or publication is
+authorized for that historical handoff. Both ordinary author automations remain
+paused by the manager; daily preparation and review retain their existing states.
+
+The local correction scopes ordinary sessions to current-through-T+7 before
+execution admission and the first reading, closing the previous first-reading
+historical fallback. Fabricated tests cover a full published forward buffer with
+historical metadata, queued and partial jobs in both lanes, zero author dispatch
+and exact byte preservation. Explicit verified historical workflows and direct
+controller compatibility keep their existing health, ownership and budget gates;
+GEN24's separate recovery boundary is unchanged. The successful Matthew 11,
+Genesis 31 and Genesis 32 publication receipts reconcile read-only to exact
+metadata/manifest readbacks and published native heads; none was replayed.
+This is a local candidate for independent review. No commit, push, installation,
+live author/provider/preflight/recovery call, automation or canonical mutation
+is part of this assignment. Validation and private preservation evidence accompany
+the sealed review handoff; author resume requires separate manager action.
+Full local check passed with 1,280 tests, 1,277 passed, zero failed and three
+existing skips; safety inspected 598 files. Local build/asset verification passed
+with selected production files unchanged. Exact preservation checks cover all
+native jobs/releases/receipts, original unknowns, grant, 13 definitions and the
+three successful publication receipts. No live qualification was run.
 
 ## October 29 forward Henry stall — local repair awaiting review
 Accepted native source `a0fe4d7` remains installed with 209 verified files.

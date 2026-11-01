@@ -181,6 +181,10 @@ export async function runAuthorSession(ctx,{lane,codexExecutable,maxReadings=3,r
   if(requestedReadingId!==undefined&&maxReadings!==1)throw Error('V2_AUTHOR_REQUESTED_READING_CAP_INVALID');
   if(requestedDailyWorkOrder!==undefined&&(requestedReadingId===undefined||maxReadings!==1))throw Error('V2_AUTHOR_DAILY_WORK_ORDER_CAP_INVALID');
   if(requestedHistoricalAuthorization!==undefined&&(requestedReadingId===undefined||maxReadings!==1||requestedDailyWorkOrder!==undefined))throw Error('V2_AUTHOR_HISTORICAL_CAP_INVALID');
+  // Ordinary wakes own only current-through-T+7 work, including their first
+  // reading. A complete forward buffer is not historical dispatch authority.
+  // The explicit historical reference still passes the controller's live checks.
+  if(requestedHistoricalAuthorization===undefined)ctx={...ctx,forwardOnly:true};
   await assertAuthorExecutionAdmission(ctx,lane,(dependencies.clock||(()=>new Date()))());
   const reuse=preflightReceipt!==undefined||preflightReceiptSha256!==undefined;
   const preflight=await (reuse?reuseAuthorPreflight(ctx,{lane,codexExecutable,preflightReceipt,preflightReceiptSha256},dependencies):authorPreflight(ctx,{lane,codexExecutable},dependencies));

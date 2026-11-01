@@ -334,6 +334,17 @@ test('held queued GEN19 history, expired lease and original author budget stay b
   assert.equal(denied.code,'V2_AUTHOR_HELD');assert.deepEqual(await jobBytes(held.directory),before);
 });
 
+test('ordinary receipt-reuse session skips held current work and authors the next eligible forward reading',async t=>{
+  const f=await heldPairFixture(t),sources=await sourceInput(f.ctx,f.ctx.plan.entries[0]);
+  const held=await createJob(f.ctx.jobRoot,sources.input,new Date(f.now.getTime()-25*60*60*1000));
+  await appendState(held,'FABRICATED held current queue',{...held.state,phase:'queued'},f.now);await f.hold();
+  const before=await jobBytes(held.directory),holdFile=path.join(f.ctx.privateRoot,'automation/mhc-author-holds.json'),holdBytes=await readFile(holdFile);
+  const reuse=await fabricatedReuse(f),model=noProbeModel(),result=await runAuthorSession(f.ctx,reuse.options,{run:model.run,clock:()=>f.now});
+  assert.equal(result.action,'review_handoff');assert.equal(result.readingId,'LTP-0033-PSA-004');
+  assert.equal(model.normal.calls,2);assert.equal(model.probes,0);assert.deepEqual(await jobBytes(held.directory),before);
+  assert.deepEqual(await readFile(holdFile),holdBytes);
+});
+
 test('an active held native owner still prevents a concurrent author and direct advance',async t=>{
   const f=await heldPairFixture(t),work=await startV2(f.ctx,'spark',f.now,{requestedReadingId:'LTP-0032-GEN-019'});
   await f.hold();const before=await jobBytes(f.ctx.jobRoot);
@@ -995,16 +1006,16 @@ for(const lane of ['spark','luna'])for(const failAt of [1,2])test(`default ${lan
   const f=await defaultPriorityFixture(t);await f.prepare(true);
   await startV2(f.ctx,'spark',f.now,{}, {health:async()=>structuredClone(f.ready)});
   const later=new Date(f.now.getTime()+61*60*1000),before=await jobBytes(f.ctx.jobRoot),manifest=await readFile(path.join(f.ctx.privateRoot,'private-manifest.json'));
-  const model=fabricatedModelRun();let checks=0;
+  let checks=0;
   const health=async()=>{
     if(++checks<failAt)return structuredClone(f.ready);
     throw Object.assign(new Error('FABRICATED_PRIVATE_RESPONSE: endpoint reader-code source text'),{code:'LIVE_HEALTH_TRANSPORT_UNAVAILABLE',stage:'FABRICATED_PRIVATE_STAGE',readingId:'FABRICATED_PRIVATE_READING'});
   };
-  await assert.rejects(runAuthorSession(f.ctx,{lane,codexExecutable:process.execPath,maxReadings:1},{run:model.run,clock:()=>later,historicalHealth:health}),error=>{
+  await assert.rejects(startV2(f.ctx,lane,later,{}, {health}),error=>{
     assert.equal(error.message,'V2_HISTORICAL_HEALTH_TRANSPORT_UNAVAILABLE');assert.equal(error.code,error.message);assert.equal(error.stage,'health');assert.equal(error.readingId,'FAB-1');
     assert.doesNotMatch(JSON.stringify(error)+error.stack,/FABRICATED_PRIVATE/);return true;
   });
-  assert.equal(checks,failAt);assert.equal(model.calls,0);
+  assert.equal(checks,failAt);
   assert.deepEqual(await jobBytes(f.ctx.jobRoot),before);assert.deepEqual(await readFile(path.join(f.ctx.privateRoot,'private-manifest.json')),manifest);
 });
 
@@ -1045,10 +1056,10 @@ for(const lane of ['spark','luna'])test(`default ${lane} cannot claim 32 histori
   }
   const before=await jobBytes(f.ctx.jobRoot),ledger=Buffer.from(bytesFor({schemaVersion:'mhc-backfill-attempt-state/v1',planVersion:f.ctx.plan.planVersion,attempts:{}}));
   await writeFile(path.join(f.ctx.privateRoot,'automation/mhc-backfill-attempt-state.json'),ledger);
-  const model=fabricatedModelRun(),result=await runAuthorSession(f.ctx,{lane,codexExecutable:process.execPath},
-    {run:model.run,clock:()=>f.now,historicalHealth:async()=>structuredClone(f.incomplete)});
+  const result=await startV2(f.ctx,lane,f.now,{},
+    {health:async()=>structuredClone(f.incomplete)});
   assert.equal(result.action,'none');assert.equal(result.state,'forward_preparation_pending');assert.equal(result.code,null);
-  assert.equal(result.buffer.completeConsecutiveReadings,3);assert.equal(result.buffer.devotionalGaps.length,5);assert.equal(model.calls,0);
+  assert.equal(result.buffer.completeConsecutiveReadings,3);assert.equal(result.buffer.devotionalGaps.length,5);
   assert.deepEqual(await jobBytes(f.ctx.jobRoot),before);assert.deepEqual(await readFile(path.join(f.ctx.privateRoot,'automation/mhc-backfill-attempt-state.json')),ledger);
 });
 test('incomplete default buffer preserves historical expiry and model-rebind heads while forward maintenance remains allowed',async t=>{
@@ -1076,21 +1087,23 @@ test('default historical admission rechecks authenticated scope immediately befo
   const ledger={schemaVersion:'mhc-backfill-attempt-state/v1',planVersion:f.ctx.plan.planVersion,attempts:{[f.historical[0].readingId]:{
     attemptedAt:f.now.toISOString(),outcome:'model_failure',stage:'generate',code:'FABRICATED_FAILURE'}}};
   await atomicJson(f.ctx.privateRoot,'automation/mhc-backfill-attempt-state.json',ledger);checks=0;
-  const model=fabricatedModelRun(),result=await runAuthorSession(f.ctx,{lane:'spark',codexExecutable:process.execPath},
-    {run:model.run,clock:()=>f.now,historicalHealth:async()=>{checks++;return structuredClone(f.ready);}});
-  assert.equal(checks,2);assert.equal(result.readingId,f.historical[1].readingId);assert.equal(result.action,'review_handoff');assert.equal(model.calls,1);
-  assert.equal(result.readings.length,1);const job=await loadJob(path.join(f.ctx.jobRoot,result.readingId));
+  let result=await startV2(f.ctx,'spark',f.now,{}, {health:async()=>{checks++;return structuredClone(f.ready);}});
+  await writeCandidate(result);result=await advanceV2(f.ctx,result.readingId,sessionId(result),f.now);
+  assert.equal(checks,2);assert.equal(result.readingId,f.historical[1].readingId);assert.equal(result.action,'review_handoff');
+  const job=await loadJob(path.join(f.ctx.jobRoot,result.readingId));
   assert.equal(job.state.total_submissions,1);assert.equal(job.state.session.submissions,1);
   assert.equal(Date.parse(job.state.session.deadline_at)-Date.parse(job.state.session.started_at),60*60*1000);
   const proof=job.state.history.find(h=>h.kind==='default_historical_authorization_admitted');assert.match(proof.health_sha256,/^[a-f0-9]{64}$/);
   assert.deepEqual(await readJson(path.join(f.ctx.privateRoot,'automation/mhc-backfill-attempt-state.json')),ledger);
 });
-test('eight complete permits original default fallback transfer without replenishing primary submissions or sessions',async t=>{
+test('eight complete permits explicit verified historical fallback without replenishing primary submissions or sessions',async t=>{
   const f=await defaultPriorityFixture(t);await f.prepare(true);let work=await startV2(f.ctx,'spark',f.now,{}, {health:async()=>f.ready});
   for(let i=0;i<2;i++){await writeCandidate(work,c=>({...c,packet_id:'MHP2-'+String(i).repeat(32)}));work=await advanceV2(f.ctx,work.readingId,sessionId(work),f.now);}
   const before=await loadJob(path.join(f.ctx.jobRoot,work.readingId)),model=fabricatedModelRun(x=>x,{model:MODELS.luna});let checks=0;
-  const result=await runAuthorSession(f.ctx,{lane:'luna',codexExecutable:process.execPath},
-    {run:model.run,clock:()=>f.now,historicalHealth:async()=>{checks++;return f.ready;}});
+  const selected=await selectHistoricalAuthorWorkV2(f.ctx,{},f.now,{health:async()=>{checks++;return f.ready;}});
+  const result=await runAuthorSession(f.ctx,{lane:'luna',codexExecutable:process.execPath,maxReadings:1,
+    requestedReadingId:selected.readingId,requestedHistoricalAuthorization:selected.historicalAuthorization},
+    {run:model.run,clock:()=>f.now});
   assert.equal(checks,2);assert.equal(result.readingId,before.input.reading_id);assert.equal(result.action,'review_handoff');assert.equal(model.calls,1);
   const after=await loadJob(before.directory);assert.deepEqual(after.state.rejected,before.state.rejected);assert.equal(after.state.total_submissions,3);
   for(const [id,session]of Object.entries(before.state.sessions))assert.deepEqual(after.state.sessions[id],session);
@@ -1126,13 +1139,56 @@ async function priorityCooldown(f) {
       attemptedAt:f.now.toISOString(),outcome:'model_failure',stage:'generate',code:'FABRICATED_FAILURE'}}});
   return {file,bytes:await readFile(file)};
 }
+for(const lane of ['spark','luna'])for(const retained of ['metadata','queued','partial'])test(`ordinary ${lane} with eight published forward readings preserves ${retained} historical work without dispatch`,async t=>{
+  // FABRICATED reproduction: a full current-through-T+7 buffer leaves only
+  // historical fallback metadata and, optionally, an untouched old native job.
+  const f=await defaultPriorityFixture(t);await publishPriorityForward(f,8);
+  const ledger=await priorityCooldown(f),entry=f.historical[1];
+  if(retained!=='metadata'){
+    const source=await sourceInput(f.ctx,entry),old=new Date(f.now.getTime()-25*60*60*1000);
+    if(retained==='partial')await atomicJson(path.join(f.ctx.jobRoot,entry.readingId),'input.json',source.input);
+    else {
+      const job=await createJob(f.ctx.jobRoot,source.input,old,{spark:'gpt-5.3-codex-spark',luna:MODELS.luna});
+      await appendState(job,'FABRICATED retained historical queue',{...job.state,phase:'queued'},old);
+    }
+  }
+  const reuse=await fabricatedReuse(f),model=noProbeModel(),before=await jobBytes(f.ctx.jobRoot),runtime=await jobBytes(f.ctx.runtimeRoot);
+  let healthChecks=0;
+  const result=await runAuthorSession({...f.ctx,forwardOnly:false},{...reuse.options,lane,maxReadings:3},
+    {run:model.run,clock:()=>f.now,historicalHealth:async()=>{healthChecks++;return f.ready;}});
+  assert.equal(result.action,'none');assert.equal(result.state,'forward_drain_complete');assert.equal(result.readingId,undefined);
+  assert.equal(result.readings.length,1);assert.equal(healthChecks,0);assert.equal(model.probes,0);assert.equal(model.normal.calls,0);
+  assert.deepEqual(await jobBytes(f.ctx.jobRoot),before);assert.deepEqual(await jobBytes(f.ctx.runtimeRoot),runtime);
+  assert.deepEqual(await readFile(ledger.file),ledger.bytes);assert.deepEqual(await readFile(reuse.file),reuse.bytes);
+});
+test('ordinary forward session preserves a retained historical writer without resuming or claiming another reading',async t=>{
+  const f=await defaultPriorityFixture(t);await f.prepare(true);
+  await startV2(f.ctx,'spark',f.now,{}, {health:async()=>f.ready});
+  const reuse=await fabricatedReuse(f),model=noProbeModel(),before=await jobBytes(f.ctx.jobRoot);
+  const result=await runAuthorSession(f.ctx,reuse.options,{run:model.run,clock:()=>f.now,historicalHealth:()=>assert.fail('ordinary scope cannot authorize historical work')});
+  assert.equal(result.state,'forward_preparation_pending');assert.equal(model.normal.calls,0);assert.equal(model.probes,0);
+  assert.deepEqual(await jobBytes(f.ctx.jobRoot),before);
+});
+test('explicit verified historical primary session still uses exact receipt bindings and original budget',async t=>{
+  const f=await defaultPriorityFixture(t);await publishPriorityForward(f,8);const ledger=await priorityCooldown(f);
+  const selected=await selectHistoricalAuthorWorkV2(f.ctx,{},f.now,{health:async()=>f.ready});
+  const reuse=await fabricatedReuse(f),model=noProbeModel();
+  const result=await runAuthorSession(f.ctx,{...reuse.options,requestedReadingId:selected.readingId,requestedHistoricalAuthorization:selected.historicalAuthorization},
+    {run:model.run,clock:()=>f.now});
+  assert.equal(result.action,'review_handoff');assert.equal(result.readingId,f.historical[1].readingId);
+  assert.equal(model.normal.calls,1);assert.equal(model.probes,0);assert.equal(result.readings.length,1);
+  const job=await loadJob(path.join(f.ctx.jobRoot,result.readingId));assert.equal(job.state.total_submissions,1);
+  assert.equal(Date.parse(job.state.session.deadline_at)-Date.parse(job.state.session.started_at),60*60*1000);
+  assert.ok(job.state.history.some(h=>h.kind==='historical_authorization_admitted'));
+  assert.deepEqual(await readFile(ledger.file),ledger.bytes);
+});
 for(const lane of ['spark','luna'])test(`verified published forward jobs clear ${lane} queue debt but three of eight still cannot claim historical work`,async t=>{
   const f=await defaultPriorityFixture(t);await publishPriorityForward(f,3);const ledger=await priorityCooldown(f),before=await jobBytes(f.ctx.jobRoot);
-  const model=fabricatedModelRun(x=>x,{model:MODELS[lane]});let checks=0;
-  const result=await runAuthorSession(f.ctx,{lane,codexExecutable:process.execPath},
-    {run:model.run,clock:()=>f.now,historicalHealth:async()=>{checks++;return f.incomplete;}});
+  let checks=0;
+  const result=await startV2(f.ctx,lane,f.now,{},
+    {health:async()=>{checks++;return f.incomplete;}});
   assert.equal(result.action,'none');assert.equal(result.state,'forward_preparation_pending');assert.equal(result.code,null);
-  assert.equal(checks,1);assert.equal(model.calls,0);assert.equal(result.buffer.completeConsecutiveReadings,3);
+  assert.equal(checks,1);assert.equal(result.buffer.completeConsecutiveReadings,3);
   assert.equal(result.queue.forwardDebtCount,0);assert.equal(result.queue.awaitingReviewCount,0);assert.equal(result.queue.historicalDebtCount,32);
   assert.deepEqual(await jobBytes(f.ctx.jobRoot),before);assert.deepEqual(await readFile(ledger.file),ledger.bytes);
 });

@@ -13,6 +13,23 @@ October 11. Actual installed ChatGPT preflight passed for both models. GEN19 and
 the paired Psalm 4/Proverbs reading subsequently passed independent review, exact
 publication readback and complete-service health; see PROJECT_STATE and private receipts.
 
+## October 31 ordinary author scope — local candidate
+
+Ordinary `author-run` sessions constrain selection and maintenance to the current
+Detroit reading through T+7 before execution admission and the first reading.
+A complete forward buffer returns without historical authoring; full health and
+an availability receipt do not grant historical work authority. Retained queued
+or partial historical jobs stay untouched. A real retained historical writer
+still blocks concurrent work under the existing controller rules.
+
+The explicit in-process historical selection reference remains supported for
+its separately authorized single-reading workflow, with fresh controller checks,
+exact model/effort receipt bindings and unchanged budgets. Direct compatibility
+controller commands retain their existing historical health gates. The separate
+GEN24 recovery gate, original unknown histories and held-reading rules are unchanged.
+This candidate is local and uninstalled; both ordinary author automations remain
+paused pending independent review and manager release qualification.
+
 ## October 29 exact ordinary preflight reuse — local candidate
 
 The optional ordinary `author-run` arguments `--preflight-receipt` and

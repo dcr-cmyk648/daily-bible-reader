@@ -1,3 +1,11 @@
+## 2026-11-23T22:08:53.971Z — Validator race fixed and Matthew 16 Henry published
+
+An offline status poll for the earlier Matthew 16 run read the running receipt before the worker committed its terminal receipt. By the time the process lookup returned, the worker had exited. The old status code recorded `WORKER_KILLED` against the stale receipt. A fabricated regression reproduced the race. The fixed poll re-reads the bound receipt after identity loss or reuse and applies the full existing checks for a terminal pass. The original blocked run and its completion evidence remain byte-identical.
+
+The independent two-file validator release from `952ab32` passed 18 focused tests and the full repository check with 1,281 passed and three existing skips. GitHub CI and Pages succeeded and 20 public byte and MIME checks passed. The scheduled reviewer read back its new helper pins. All five service schedules read back ACTIVE. The 02:20 and 05:20 reviewer already uses the installed v2 selector, which selected Matthew 16 for recovery while it was pending. Its historical result after reconciliation was excluded under the existing forward scope.
+
+A fresh run with the installed helper verified all six gates on the existing Matthew 16 approval. Immutable metadata received an exact Drive readback before manifest promotion. The manifest and authenticated v34 single and batch payloads matched exactly. Controller reconciliation marked Matthew 16 published. Authenticated November 23–30 health measured eight devotionals, three complete condensed Henry layers and five verified full-commentary fallbacks. The strict service check exited 1 for remaining Henry debt. The private work-order records retain the diagnosis, release qualification, schedule readbacks and publication evidence.
+
 ## 2026-11-23T21:46:54.602Z — Genesis 42 and 43 Henry published
 
 The supervised review corrected and approved Genesis 42 and Genesis 43 in order. Each passed the pinned six-gate offline validation and was published to the restricted store as immutable metadata before its manifest pointer was promoted. Exact Drive byte readbacks, authenticated v34 single and batch payloads, and installed reviewer reconciliation passed for both readings. The npm selector returned a completed historical entry, so the installed v2 reviewer supplied each current handoff.

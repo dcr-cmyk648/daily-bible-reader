@@ -1,3 +1,11 @@
+## 2026-11-23T21:46:54.602Z — Genesis 42 and 43 Henry published
+
+The supervised review corrected and approved Genesis 42 and Genesis 43 in order. Each passed the pinned six-gate offline validation and was published to the restricted store as immutable metadata before its manifest pointer was promoted. Exact Drive byte readbacks, authenticated v34 single and batch payloads, and installed reviewer reconciliation passed for both readings. The npm selector returned a completed historical entry, so the installed v2 reviewer supplied each current handoff.
+
+Matthew 16 was independently reviewed, corrected, approved and applied locally. Its validator recorded six passing gates and a completion file. The installed status command returned exit 1 with the durable `WORKER_KILLED` blocker, which takes precedence for publication. Matthew 16 remains unpublished and retains its live full-commentary fallback.
+
+Authenticated November 23–30 health found all eight devotionals prepared, two complete condensed Henry layers, six verified full-commentary fallbacks, and one complete future day. The complete-service command exited 1 for Henry debt. The per-reading review and publication evidence remains in the private November 23 work-order records.
+
 ## 2026-11-23T21:23:01.863Z — Genesis 42 Henry review held
 
 The supervised November 23 review verified the pinned offline workspace and compared all 38 Genesis 42 verse records with the source packets. Approval stopped on a source-binding defect in verse 16. Its draft used the atom describing the later hostage arrangement to support the earlier inverse arrangement and omitted Henry's alternate readings of Joseph's language. The independent review also identified qualification and scope corrections. Genesis 42 remains unpublished. Genesis 43 and Matthew 16 remain pending because this work order stops at the first failed review.

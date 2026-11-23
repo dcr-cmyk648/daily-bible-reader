@@ -119,6 +119,34 @@ test('absolute real npm CLI runs fabricated gates including the copied bundle pa
   assert.equal((await f.status(run)).state, 'passed');
 });
 
+test('status verifies committed completion when the worker exits during its identity check', async t => {
+  const f = await fixture(t);
+  const {run, receipt} = await f.localRun(DEFAULT_POLICY);
+  assert.equal(receipt.state, 'passed');
+  const receiptFile = path.join(run, 'receipt.json');
+  const running = {...receipt, state: 'running', validationReady: false};
+  delete running.completedAt;
+  await atomicJson(receiptFile, running);
+
+  const cleanup = [];
+  const identity = async pid => {
+    assert.equal(pid, receipt.worker.pid);
+    // The poll has read "running". Commit the exact terminal receipt before
+    // returning process absence, as when the worker exits during the OS query.
+    await atomicJson(receiptFile, receipt);
+    return null;
+  };
+  const status = await validationStatus(run, {...f.helper, requestSha256: f.requestSha256}, {
+    identity, kill: async target => {cleanup.push(target); return false;}
+  });
+  assert.equal(status.state, 'passed');
+  assert.equal(status.validationReady, true);
+  assert.equal(status.publicationHeld, true);
+  assert.equal(status.blockerCode, null);
+  assert.deepEqual(cleanup, []);
+  await assert.rejects(access(path.join(run, 'blocker.json')), {code: 'ENOENT'});
+});
+
 test('CLI detached start exits before the long nested check and status uses exit 2 while running', async t => {
   const f = await fixture(t, {delay: 1800});
   const call = async args => new Promise((resolve, reject) => {

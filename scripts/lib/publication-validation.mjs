@@ -354,27 +354,44 @@ export async function runValidation(run, {policy = DEFAULT_POLICY, commands, ins
   return state;
 }
 export async function validationStatus(run, {requestSha256, ...helper}, {now = Date.now(), inspect = inspectBindings, identity = processIdentity, kill = terminateTree, helperCheck = verifyHelper} = {}) {
-  let receipt, blocker; const cleanup = [];
+  let receipt, receiptSha256, blocker; const cleanup = [];
+  const receiptFile = path.join(run, 'receipt.json');
   try {
     await helperCheck(helper);
     const context = await json(path.join(run, 'context.json'));
     if (!hashPattern.test(requestSha256 || '') || context.requestSha256 !== requestSha256 || context.helperSha256 !== helper.helperSha256 ||
         sha256(await regular(path.join(run, 'request.json'))) !== requestSha256) fail('STATUS_BINDING_CHANGED');
-    receipt = await json(path.join(run, 'receipt.json'));
-    if (receipt.schemaVersion !== 'publication-validation-receipt/v1' || receipt.requestSha256 !== requestSha256 || receipt.helperSha256 !== helper.helperSha256 ||
-        receipt.token !== context.token || receipt.publicationHeld !== true || !['queued', 'running', 'blocked', 'passed'].includes(receipt.state)) fail('RECEIPT_INVALID');
+    const readReceipt = async () => {
+      const raw = await regular(receiptFile);
+      const next = JSON.parse(raw);
+      if (next.schemaVersion !== 'publication-validation-receipt/v1' || next.requestSha256 !== requestSha256 || next.helperSha256 !== helper.helperSha256 ||
+          next.token !== context.token || next.publicationHeld !== true || !['queued', 'running', 'blocked', 'passed'].includes(next.state)) fail('RECEIPT_INVALID');
+      receipt = next;
+      receiptSha256 = sha256(raw);
+    };
+    await readReceipt();
     if (!terminal(receipt.state)) {
       const staleMs = receipt.state === 'queued' ? DEFAULT_POLICY.launchMs : (receipt.policy?.staleMs || DEFAULT_POLICY.staleMs);
       if (!Number.isFinite(Date.parse(receipt.updatedAt)) || now - Date.parse(receipt.updatedAt) > staleMs) fail('WORKER_STALE');
-      if (receipt.state === 'running' && (!receipt.worker || JSON.stringify(await identity(receipt.worker.pid)) !== JSON.stringify(receipt.worker))) fail('WORKER_KILLED');
+      let worker = receipt.worker;
+      if (receipt.state === 'running' && !worker) fail('WORKER_KILLED');
       if (receipt.state === 'queued' && await exists(path.join(run, 'launch.json'))) {
         const launch = await json(path.join(run, 'launch.json'));
-        if (launch.token !== context.token || !launch.worker || JSON.stringify(await identity(launch.pid)) !== JSON.stringify(launch.worker)) fail('WORKER_KILLED');
+        if (launch.token !== context.token || !launch.worker || launch.pid !== launch.worker.pid) fail('WORKER_KILLED');
+        worker = launch.worker;
       }
-      if (receipt.deadlineAt && now >= Date.parse(receipt.deadlineAt)) fail('TOTAL_TIMEOUT');
-    } else if (receipt.state === 'passed') {
+      if (worker && !isDeepStrictEqual(await identity(worker.pid), worker)) {
+        // The process may have exited normally after the first receipt read.
+        // Re-read the bound receipt after observing absence or PID reuse.
+        await readReceipt();
+        if (!terminal(receipt.state)) fail('WORKER_KILLED');
+      }
+      if (!terminal(receipt.state) && receipt.deadlineAt && now >= Date.parse(receipt.deadlineAt)) fail('TOTAL_TIMEOUT');
+    }
+    if (receipt.state === 'passed') {
       const completion = await json(path.join(run, 'completion.json'));
-      if (completion.schemaVersion !== 'publication-validation-completion/v1' || completion.receiptSha256 !== sha256(await regular(path.join(run, 'receipt.json'))) ||
+      if (completion.schemaVersion !== 'publication-validation-completion/v1' || completion.receiptSha256 !== receiptSha256 ||
+          receiptSha256 !== sha256(await regular(receiptFile)) ||
           completion.requestSha256 !== requestSha256 || completion.fingerprint !== receipt.binding?.fingerprint || receipt.validationReady !== true ||
           receipt.steps.length !== GATES.length || receipt.steps.some((s, i) => s.gate !== GATES[i] || s.state !== 'passed' || s.exitCode !== 0 || s.signal || s.errorCode || !s.completedAt)) fail('COMPLETION_INVALID');
       const actual = await inspect(await json(path.join(run, 'request.json')));

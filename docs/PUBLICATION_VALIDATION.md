@@ -181,6 +181,12 @@ gate after worker death. Linux gate groups are detached and killed as groups.
 Reused PIDs are never killed. Unsupported or unavailable process identity fails
 closed. A hard-killed worker may leave a running receipt; status makes its blocker
 durable rather than interpreting that receipt as successful.
+
+A worker can finish and exit while status is checking its process identity. If
+the identity is gone or reused, status reads the bound receipt again. A terminal
+success still requires the exact completion, all gate logs, and current input
+and bundle verification. A receipt that remains queued or running still blocks
+publication. An existing blocker takes precedence over either receipt.
 Linux proc reads classify only `ENOENT` and `ESRCH` as task absence. The latter
 can occur when the task is reaped after the stat file is opened; see
 [Linux proc task lookup](https://github.com/torvalds/linux/blob/master/fs/proc/base.c).

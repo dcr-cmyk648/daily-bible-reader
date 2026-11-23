@@ -1,3 +1,11 @@
+## November 23, 2026 — Henry authorship resumed, three readings awaiting review
+
+The October 31 qualified-install receipt described pre-activation. A private hash-bound post-activation receipt now verifies both author activations, the three exact November 1 readbacks, and the installed native runtime. Both author automations point to it and the refreshed CLI 0.170.0 availability receipt. The existing manager heartbeat checks Henry author records for unresolved manager-gate deferrals older than 24 hours.
+
+The supervised November 23 primary run passed automatic approval review and exited 0. It handed off `LTP-0069-GEN-042` (November 23), `LTP-0070-GEN-043` (November 24), and `LTP-0071-MAT-016` (November 25). The publication bootstrap stopped at `CORTAN_DAILY_LOCKED_DEPENDENCIES` with npm `ENOTCACHED`. The three remain pending independent review under the work order's first-failure rule. Both locked esbuild tarballs were restored in the standard cache and verified with a clean offline install using the scheduled runtime's exact package files.
+
+The five ordinary service schedules are ACTIVE. Authenticated November 23–30 health verified 8/8 devotionals, 0/8 condensed Henry layers, and eight verified full-commentary fallbacks. The local safety, build, Pages, and full checks passed with 1,280 tests passed and three skipped. The scheduled reviewer owns the three staged handoffs. Ordinary authors retain the remaining forward Henry work.
+
 # Project state — October 31 ordinary author scope candidate
 
 ## October 31 historical selection defect — local repair awaiting review

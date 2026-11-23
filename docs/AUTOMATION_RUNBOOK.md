@@ -102,6 +102,12 @@ The daily study remains ready when a verified full-commentary link is present. T
 
 Native replacement: the quarter-hour Spark automation runs `npm run mhc:native:prepare -- --model gpt-5.3-codex-spark --automation-id <installed-id>`, which first durably binds that Spark/Luna pair to one cooldown-selected reading and exact source/chunk state, then processes only resulting private work items with `prompts/mhc-native-spark-worker-v1.md` and submits each candidate. Ten minutes later Luna uses the same command with exact `gpt-5.6-luna`, its fallback prompt, and `--primary-automation-id <spark-id>`; it consumes that pair instead of rerunning the queue selector, and prepare releases only a recorded eligible Spark model failure or authenticated missed/stale primary lease for the same reading. A deterministic pre-work-item evidence/source failure is stored as a pair block and is never Luna-eligible. Submit never updates a live manifest. Assemble produces a non-generating schema-validated review handoff. Terra review creates an explicitly approved all-assertions-true staged review before `review-apply`; that command commits canonical artifacts and finalizes the reviewed library, but does not attach metadata or publish. A legacy canonical-only review may be safely recovered with `npm run mhc:native:review:finalize -- --reading <readingId>`. Only after finalization may the separate reviewer run `mhc:sync-latest`, metadata/content validation, and manifest-last private publication.
 
+### Henry author gate health
+
+Record a manager-gate outcome in the author automation's `memory.md` as `HENRY_AUTHOR_GATE <UTC ISO-8601 time> <activation_pending|approval_denied|verified>`. Use `activation_pending` when missing activation evidence prevents ordinary authoring and `approval_denied` when an unresolved automatic review denial prevents it. Keep the exact reason in the run record. Use `verified` when activation evidence and any applicable automatic review have cleared that gate.
+
+The existing manager heartbeat runs `node scripts/check-henry-author-gates.mjs` before its quiet exit. An unresolved deferral older than 24 hours produces `STATUS FOR USER` and keeps the issue with the manager until it clears. The check reads local run records and never selects a reading, dispatches a worker, or publishes content.
+
 ## 6. One-reading protocol refresh backfill
 
 The daily T+7 task may run this lane after its own horizon is ready; it does not wait for or inspect the independent Henry lane:

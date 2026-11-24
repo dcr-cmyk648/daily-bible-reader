@@ -1,3 +1,15 @@
+## 2026-11-24T14:42:13.137Z — Forward Henry wakes repaired and four reviewed layers published
+
+At 01:08 Eastern the primary wake stopped after status showed November 24 published. The fallback identified Genesis 44 as the next eligible reading. The 04:05 schedule recorded a 04:06 dispatch with no corresponding Codex thread, queued turn, or rollout.
+
+The primary prompt now submits the installed, receipt-bound forward controller at both scheduled wakes. The fallback still handles controller-proven model failures. For a verified missed primary launch, the fallback coordinator can submit the exact primary command through normal approval review. The missed-slot checker blocks on an unresolved activation or approval gate, an existing primary turn, or incomplete scheduler evidence. The launch fix is in f3510dc. Its 1,287 local tests had 1,284 passes and three existing skips. GitHub CI, Pages, 20 exact public asset readbacks, and all five ACTIVE schedule readbacks passed.
+
+Two supervised runs authored Genesis 44–47, Psalm 9, and Matthew 17. A fresh independent review compared all 174 verse records to their source evidence. Genesis 45, Genesis 46, Psalm 9, and Genesis 47 passed with 74 source-bound replacement blurbs. Genesis 44:32 and Matthew 17:1, 24, and 27 need citation changes and remain review pending.
+
+Each of the four approvals passed all six offline validation gates. The mhc:sync-latest command attached the approved versions. Drive publication began after 09:30 Eastern, and each exact metadata readback preceded its manifest update. Exact authenticated v34 single and batch responses matched the approved payloads. Native status marked all four published. Comparing the final manifest to the initial bytes confirmed exactly the four intended pointer changes.
+
+Authenticated November 24–December 1 health measured eight prepared devotionals, six complete Henry layers, and two verified fallbacks. The strict combined check exited 1 for the remaining two Henry layers. Private work-order records preserve the full author, review, publication, and scheduler evidence.
+
 ## 2026-11-24 — Saved Henry refresh race repaired in an unselected canary
 
 The owner saw the saved full-commentary fallback for Genesis 43 on the installed iPhone and recovered the condensed layer with Sync. The selected PWA revalidates today and tomorrow after startup authorization and on return through `visibilitychange`, `pageshow`, or reconnect. The open reading has bounded retries and a manual Sync path. The Pages manifest tracks public code. The client compares private revisions after fetching the reading payload. The app has no periodic content poll or publication-pointer event.

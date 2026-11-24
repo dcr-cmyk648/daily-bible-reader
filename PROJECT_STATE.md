@@ -1,3 +1,11 @@
+## 2026-11-24 — Genesis 43 Henry display verified
+
+Authenticated v34 single and batch reading calls agreed. Genesis 43 returned 34 approved Henry verse records and Matthew 16 returned 28. Both included cited source excerpts and had no full-chapter fallback link. All 12 selected Pages assets matched the tracked bytes and expected MIME types. The live frontend `844ce06fb805f5f4` and PWA `8fcefb5ae56b5def` rendered the Genesis 43:1 paraphrase and its exact cited excerpt at 390 × 844.
+
+The Scripture page's help calls this feature precomputed commentary. Tap **Open November 24 reading** → **Next page →** → verse **1**. The verse sheet shows **Matthew Henry — condensed paraphrase**. **Read Henry** expands the cited source excerpt. In an isolated replay, a saved fallback appeared while access confirmation was delayed. The verse showed the live paraphrase after reconnection. The installed iPhone's cache was unavailable for inspection, so the state at the time of the report is unconfirmed.
+
+This investigation required a documentation checkpoint. The unselected recovery canary retains its existing installed-iPhone acceptance gate before promotion.
+
 ## 2026-11-23T22:08:53.971Z — Validator race fixed and Matthew 16 Henry published
 
 An offline status poll for the earlier Matthew 16 run read the running receipt before the worker committed its terminal receipt. By the time the process lookup returned, the worker had exited. The old status code recorded `WORKER_KILLED` against the stale receipt. A fabricated regression reproduced the race. The fixed poll re-reads the bound receipt after identity loss or reuse and applies the full existing checks for a terminal pass. The original blocked run and its completion evidence remain byte-identical.

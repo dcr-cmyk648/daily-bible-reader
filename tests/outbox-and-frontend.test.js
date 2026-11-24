@@ -1089,7 +1089,7 @@ test("today and tomorrow are the only priority warm readings", () => {
   assert.match(offlineWarmSource, /let authenticatedPayloadWindow = false/);
   assert.match(offlineWarmSource, /authenticatedPayloadWindow = acceptedCompleteBatch/);
   assert.match(offlineWarmSource, /acceptedCompleteBatch = acceptedCompleteBatch && accepted/);
-  assert.match(offlineWarmSource, /if \(authenticatedPayloadWindow\) \{\s*renderContentReadiness\(currentContentReadiness\(payloadByReadingId\)\)/);
+  assert.match(offlineWarmSource, /if \(authenticatedPayloadWindow && readerSessionIsCurrent\(context\)\) \{[\s\S]*?renderContentReadiness\(currentContentReadiness\(\)\)/);
   assert.match(offlineWarmSource, /scriptureRetentionTargetCount/);
   assert.match(offlineWarmSource, /keep the first chapter ready and stream later chapters/);
   assert.doesNotMatch(offlineWarmSource, /missingEntries/);

@@ -29,7 +29,7 @@ async function scenario(day, devotionalCount, completeCount, lastRunAt) {
   const payloads = new Map(horizon.slice(0, devotionalCount).map((e, i) => [e.readingId, i < completeCount ? payload(e) : fallback(e)]));
   const input = {entries, schedule: {status: "active", calendarDayIndex: start + 1}, preparedIds, payloads,
     service: core.preparationServiceStatus({preparationStatus: service}, {authorId: "dustin"}), now: Date.parse(`2026-10-${String(day).padStart(2, "0")}T16:00:00Z`)};
-  return {input, readiness: app.evaluatePreparationReadiness(input), payload, horizon};
+  return {input, readiness: app.evaluatePreparationReadiness(input), payload, horizon, health};
 }
 
 function rendered(readiness, service, owner = true) {
@@ -121,12 +121,29 @@ test("complete downloaded payloads cannot hide missing manifest membership or a 
   // Calendar and payload paths share exactly the same evaluator and horizon.
   const source = fs.readFileSync(require.resolve("../app/frontend/app.js"), "utf8");
   assert.match(source, /renderContentReadiness\(currentContentReadiness\(\)\)/);
-  assert.match(source, /renderContentReadiness\(currentContentReadiness\(payloadByReadingId\)\)/);
+  assert.match(source, /verifiedPreparation = \{[^}]*payloads: payloadByReadingId/);
+});
+
+test("fresh authenticated publication evidence supersedes stale status, and a measured heartbeat supersedes cached fallbacks", async () => {
+  const {input, payload, horizon} = await scenario(10, 8, 2, "2026-10-10T08:00:00Z");
+  const completed = new Map(horizon.map(entry => [entry.readingId, payload(entry)]));
+  assert.equal(app.evaluatePreparationReadiness({...input, payloads: completed}).completeFutureDays, 1);
+
+  const tested = app.evaluatePreparationReadiness({...input, authenticatedPayloads: completed});
+  assert.equal(tested.completeFutureDays, 7);
+  assert.equal(tested.fallbackCount, 0);
+  assert.equal(app.preparationNotice(tested, input.service, true), null);
+  const {input: ready} = await scenario(10, 8, 8, "2026-10-10T15:00:00Z");
+  assert.equal(app.evaluatePreparationReadiness({...input, service: ready.service}).completeFutureDays, 7);
+
+  const missing = new Set(input.preparedIds);
+  missing.delete(horizon[0].readingId);
+  assert.equal(app.evaluatePreparationReadiness({...input, preparedIds: missing, authenticatedPayloads: completed}).state, "critical");
 });
 
 test("heartbeat no-op/success/blocked receipts preserve other lanes, last success, and reject a false ready claim", async () => {
   const [, {preparationStatusCandidate}] = await modules;
-  const {input} = await scenario(10, 3, 0, "2026-10-05T19:00:00Z");
+  const {input} = await scenario(10, 8, 2, "2026-10-05T19:00:00Z");
   const previous = input.service;
   const noOp = preparationStatusCandidate(previous, {state: "running", now: "2026-10-10T16:00:00Z",
     heartbeat: {lane: "daily", lastOutcome: "no_op", buffer: previous.buffer}});
@@ -138,6 +155,50 @@ test("heartbeat no-op/success/blocked receipts preserve other lanes, last succes
   assert.equal(blocked.lanes.daily.lastOutcome, "no_op");
   assert.throws(() => preparationStatusCandidate(blocked, {state: "ready"}), /COMPLETE_BUFFER/);
   assert.throws(() => preparationStatusCandidate(blocked, {state: "blocked", heartbeat: {lane: "daily", lastOutcome: "error", lastErrorCode: "raw private error text"}}), /HEARTBEAT_INVALID/);
+});
+
+test("the aggregate keeps the latest recorded publication or health success across unrelated and incomplete runs", async () => {
+  const [, {preparationStatusCandidate}] = await modules;
+  const {input} = await scenario(10, 3, 0, "2026-10-05T19:00:00Z");
+  const previous = input.service;
+  const dailySuccess = "2026-10-09T08:00:00Z";
+  previous.lanes.daily = {lastAttemptAt: "2026-10-10T09:00:00Z", lastSuccessAt: dailySuccess,
+    lastOutcome: "no_op", lastErrorCode: ""};
+  previous.lanes.henry_primary.lastSuccessAt = "2026-10-10T09:00:00Z";
+  const incomplete = preparationStatusCandidate(previous, {state: "running", now: "2026-10-10T15:00:00Z",
+    heartbeat: {lane: "daily", lastOutcome: "no_op", buffer: previous.buffer}});
+  assert.equal(incomplete.lastSuccessAt, dailySuccess);
+  assert.equal(incomplete.lanes.daily.lastSuccessAt, dailySuccess);
+  const authored = preparationStatusCandidate(incomplete, {state: "running", now: "2026-10-10T16:00:00Z",
+    heartbeat: {lane: "henry_primary", lastOutcome: "success"}});
+  assert.equal(authored.lastSuccessAt, dailySuccess);
+});
+
+test("a verified named publication updates the heartbeat even while another Henry layer remains pending", async () => {
+  const [, {preparationStatusAfterPublication}] = await modules;
+  const {input, health, horizon} = await scenario(10, 8, 7, "2026-10-10T05:00:00Z");
+  const readingId = horizon[0].readingId;
+  const now = "2026-10-10T16:00:00Z";
+  const options = {lane: "review", readingId, now, health, named: {readingId, status: "ready", henryLayerStatus: "complete"}};
+  const next = preparationStatusAfterPublication(input.service, options);
+  assert.equal(next.state, "running");
+  assert.equal(next.lastSuccessAt, now);
+  assert.equal(next.lanes.review.lastSuccessAt, now);
+  assert.deepEqual(next.buffer.henryGaps, [horizon[7].readingId]);
+  const olderReadingId = "FABRICATED-HISTORICAL-READING";
+  const historical = preparationStatusAfterPublication(input.service, {...options, readingId: olderReadingId,
+    named: {...options.named, readingId: olderReadingId}});
+  assert.equal(historical.lastSuccessAt, now);
+  assert.deepEqual(historical.buffer.readingIds, next.buffer.readingIds);
+  const devotional = preparationStatusAfterPublication(input.service, {...options, lane: "daily",
+    named: {...options.named, henryLayerStatus: "fallback"}});
+  assert.equal(devotional.lanes.daily.lastSuccessAt, now);
+  assert.throws(() => preparationStatusAfterPublication(input.service, {...options, named: {...options.named, readingId: olderReadingId}}),
+    /PREPARATION_PUBLICATION_READBACK_REQUIRED/);
+  assert.throws(() => preparationStatusAfterPublication(input.service, {...options, named: {...options.named, henryLayerStatus: "fallback"}}),
+    /PREPARATION_PUBLICATION_READBACK_REQUIRED/);
+  assert.throws(() => preparationStatusAfterPublication(input.service, {...options, health: {...health, status: "error"}}),
+    /PREPARATION_PUBLICATION_READBACK_REQUIRED/);
 });
 
 test("bootstrap exposes shared liveness without owner details and recomputes inflated buffer counts", async () => {

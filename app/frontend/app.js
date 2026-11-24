@@ -100,6 +100,7 @@
     preparedReadingIds: new Set(),
     prefetchScheduled: false,
     priorityPrefetchPromise: null,
+    verifiedPreparation: null,
     privatePayloadByReadingId: new Map(),
     privatePayloadRequestByReadingId: new Map(),
     readerCode: "",
@@ -2745,28 +2746,30 @@
   }
 
   function evaluatePreparationReadiness({entries = [], schedule = {}, preparedIds = new Set(), payloads = new Map(),
+    authenticatedPayloads = new Map(),
     service = null, now = Date.now()} = {}) {
     const start = schedule.status === "pilot_complete" ? entries.length : Math.max(0, schedule.calendarDayIndex - 1);
     const horizon = entries.slice(start, start + 8);
     const payloadMap = payloads instanceof Map ? payloads : new Map(Object.entries(payloads || {}));
     const buffer = service && service.buffer;
-    const measured = Boolean(buffer && buffer.measurementComplete === true && Array.isArray(buffer.readingIds) &&
+    const measured = Boolean(buffer && buffer.effectiveDate === calendarDateInTimeZone(now, "America/Detroit") &&
+      buffer.measurementComplete === true && Array.isArray(buffer.readingIds) &&
       Array.isArray(buffer.devotionalGaps) && Array.isArray(buffer.henryGaps) && Array.isArray(buffer.fallbackReadingIds));
     const rows = horizon.map(entry => {
-      const payload = payloadMap.get(entry.readingId);
+      const authenticated = authenticatedPayloads.get(entry.readingId);
+      const payload = authenticated || payloadMap.get(entry.readingId);
       const report = payload ? readingPreparationReport(payload, entry) : null;
-      const measuredHere = measured && buffer.readingIds.includes(entry.readingId);
-      const devotional = preparedIds.has(entry.readingId) && (!report || report.prepared) &&
-        (!measuredHere || !buffer.devotionalGaps.includes(entry.readingId));
+      const measuredHere = !authenticated && measured && buffer.readingIds.includes(entry.readingId);
+      const devotional = preparedIds.has(entry.readingId) &&
+        (measuredHere ? !buffer.devotionalGaps.includes(entry.readingId) : !report || report.prepared);
       const commentary = payload && (payload.commentary || payload.metadata);
-      const henry = report ? entry.kind === "book_intro" ? bookCommentaryIsComplete(commentary, entry)
-        : hasCompleteHenryVerseLayer(payload, entry) : measuredHere && !buffer.henryGaps.includes(entry.readingId) &&
-          !buffer.fallbackReadingIds.includes(entry.readingId);
-      const knownHenryGap = measuredHere && (buffer.henryGaps.includes(entry.readingId) || buffer.fallbackReadingIds.includes(entry.readingId));
-      return {entry, report, devotional, complete: devotional && Boolean(henry) && !knownHenryGap,
-        henryMissing: devotional && Boolean(report || measuredHere) && (!henry || knownHenryGap),
-        fallback: devotional && Boolean((commentary && normalizedHenrySourceLink(commentary.henrySourceLink, entry, payload.sources)) ||
-          (measuredHere && buffer.fallbackReadingIds.includes(entry.readingId)))};
+      const henry = measuredHere ? !buffer.henryGaps.includes(entry.readingId) && !buffer.fallbackReadingIds.includes(entry.readingId)
+        : report && (entry.kind === "book_intro" ? bookCommentaryIsComplete(commentary, entry) : hasCompleteHenryVerseLayer(payload, entry));
+      const fallback = measuredHere ? buffer.fallbackReadingIds.includes(entry.readingId)
+        : commentary && normalizedHenrySourceLink(commentary.henrySourceLink, entry, payload.sources);
+      return {entry, report, devotional, complete: devotional && Boolean(henry),
+        henryMissing: devotional && Boolean(report || measuredHere) && !henry,
+        fallback: devotional && !henry && Boolean(fallback)};
     });
     const prefix = (field) => { const gap = rows.findIndex(row => !row[field]); return gap < 0 ? rows.length : gap; };
     const consecutiveReady = prefix("devotional");
@@ -2798,11 +2801,19 @@
     return evaluatePreparationReadiness({entries, schedule, preparedIds, service, now});
   }
 
-  function currentContentReadiness(payloadsInput) {
+  function currentContentReadiness() {
+    const now = Date.now();
+    const service = state.bootstrap && state.bootstrap.preparationStatus;
+    const proof = state.verifiedPreparation;
+    const statusTime = Date.parse(service && service.lastRunAt);
+    const proofIsCurrent = proof && state.plan && state.config && proof.planVersion === state.plan.planVersion &&
+      proof.sessionEpoch === state.readerSessionEpoch &&
+      proof.effectiveDate === calendarDateInTimeZone(now, state.config.timezone) &&
+      (!Number.isFinite(statusTime) || proof.startedAt >= statusTime);
     return evaluatePreparationReadiness({entries: state.plan && state.plan.entries || [],
-      schedule: state.plan && state.config ? calculateSchedule(state.plan, state.config, new Date()) : {},
-      preparedIds: state.preparedReadingIds, payloads: payloadsInput || state.privatePayloadByReadingId,
-      service: state.bootstrap && state.bootstrap.preparationStatus});
+      schedule: state.plan && state.config ? calculateSchedule(state.plan, state.config, now) : {},
+      preparedIds: state.preparedReadingIds, payloads: state.privatePayloadByReadingId,
+      authenticatedPayloads: proofIsCurrent ? proof.payloads : new Map(), service, now});
   }
 
   function bootstrapRecordIsFresh(record, nowInput, credential) {
@@ -4437,6 +4448,9 @@
 
   async function prefetchOfflineWindow() {
     if (!state.plan || !state.config) return;
+    const context = captureReadingView(null);
+    const startedAt = Date.now();
+    const effectiveDate = calendarDateInTimeZone(startedAt, state.config.timezone);
     const target = Math.min(8, Math.max(1, Number(state.config.offlineReadingWindowDays) || 1));
     const entries = state.plan.entries;
     const calendarIndex = Math.min(entries.length - 1, Math.max(0, state.schedule.calendarDayIndex - 1));
@@ -4497,6 +4511,11 @@
       }
     }
 
+    if (authenticatedPayloadWindow && readerSessionIsCurrent(context)) {
+      state.verifiedPreparation = {planVersion: context.planVersion, sessionEpoch: context.sessionEpoch,
+        startedAt, effectiveDate, payloads: payloadByReadingId};
+      renderContentReadiness(currentContentReadiness());
+    }
     let scriptureRestrictedReadings = 0;
     const scriptureEntries = preparedEntries.filter((entry) => entry.kind === "chapter");
     scriptureEligible = scriptureEntries.reduce((total, entry) => total +
@@ -4533,9 +4552,6 @@
       ? `${scriptureCount}/${scriptureEligible} priority passage${scriptureEligible === 1 ? "" : "s"} retained within ESV limits` +
         (scriptureRestrictedReadings ? ` · ${scriptureRestrictedReadings} multi-chapter reading${scriptureRestrictedReadings === 1 ? "" : "s"} keep the first chapter ready and stream later chapters` : "")
       : "ESV text stays network-only by provider policy";
-    if (authenticatedPayloadWindow) {
-      renderContentReadiness(currentContentReadiness(payloadByReadingId));
-    }
     const offlineStatus = element("offlinePackStatus");
     offlineStatus.dataset.state = contentCount === windowEntries.length && scriptureCount === scriptureEligible
       ? "ready"
@@ -5001,6 +5017,7 @@
     element("commentBody").value = "";
     state.comments = [];
     state.privatePayloadByReadingId = new Map();
+    state.verifiedPreparation = null;
     state.privatePayloadRequestByReadingId = new Map();
     state.readingRevalidationById = new Map();
     resetScriptureMemory();
@@ -5247,6 +5264,7 @@
     state.sources = [];
     state.comments = [];
     state.privatePayloadByReadingId = new Map();
+    state.verifiedPreparation = null;
     state.privatePayloadRequestByReadingId = new Map();
     state.readingRevalidationById = new Map();
     resetScriptureMemory();

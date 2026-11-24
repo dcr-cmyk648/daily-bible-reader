@@ -1,3 +1,11 @@
+## 2026-11-24 — Study preparation status refreshed after verified publication
+
+The stored heartbeat still counted two condensed Henry layers after supervised publications. The raw daily lane recorded a November 24 success while the reader-facing aggregate still showed November 18. Supervised pointer promotion preserved the old heartbeat and subsequent no-op wrappers carried forward the old aggregate. After both publication workers finished and the transaction and lease checks were clear, a status-only update preserved all 116 reading pointers. Exact Drive bytes and authenticated token v34 readback showed eight devotionals and eight Henry layers through December 1, seven complete future days, and both run timestamps at 10:12:05 Eastern. The readiness panel is hidden on a fresh load.
+
+The reader uses current authenticated preparation results ahead of an older heartbeat and uses a current heartbeat ahead of cached content. The status builder preserves lane successes and advances the aggregate on verified publication or successful health checks. The publication runbook now requires a named-reading and horizon heartbeat followed by exact status readback. Use `prepare-service-status.mjs --after-publication daily|review <readingId>` for that follow-up. The installed native schedules and Apps Script version pointers remain as before.
+
+The Pages build selects frontend `d10466c220e57574` and PWA `5c15731b7be732ae`. The prior selected frontend `ec0679d241a05e36` and PWA `5a9d6b9cd799fbc7` stay available at their immutable paths. Commit `18e6067` contains their exact selected launcher, manifests and service worker.
+
 ## 2026-11-24T15:09:35.683Z — Genesis 44 and Matthew 17 Henry citations repaired and published
 
 The installed Henry v2 review return and bounded editorial repair path accepted one packet revision for Genesis 44 and two for Matthew 17. The revisions restored source support for the flagged verses. The original candidates, atom packets, and submission counts were preserved. A fresh Sol 6.2 high Codex review approved all 61 verse records across both readings after 50 source-bound prose corrections.

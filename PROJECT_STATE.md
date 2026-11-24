@@ -1,3 +1,11 @@
+## 2026-11-24T15:09:35.683Z — Genesis 44 and Matthew 17 Henry citations repaired and published
+
+The installed Henry v2 review return and bounded editorial repair path accepted one packet revision for Genesis 44 and two for Matthew 17. The revisions restored source support for the flagged verses. The original candidates, atom packets, and submission counts were preserved. A fresh Sol 6.2 high Codex review approved all 61 verse records across both readings after 50 source-bound prose corrections.
+
+Genesis 44 (November 26) and Matthew 17 (November 30) passed all six offline publication gates. Each reviewed Henry layer was attached with mhc:sync-latest, then published as versioned private metadata before manifest promotion. Exact Drive metadata and manifest readbacks and authenticated token v34 single and batch payload checks passed for both readings. The native controller reconciled both as published. The final manifest comparison isolated the changes to the two intended metadata pointers.
+
+Authenticated November 24–December 1 health is ready. All eight devotionals and all eight condensed Henry layers are live. The strict complete-service check exited 0, and all five existing schedules read back ACTIVE. The private work-order receipts retain the repairs, independent approvals, and publication evidence.
+
 ## 2026-11-24 — Henry refresh canary selected for the primary Pages reader
 
 The owner reported an installed-iPhone pass for canary `d9f2bcfa19fad412` from `89afa66` and explicitly approved promotion. Individual checklist steps were not reported. The documented Pages publisher selected frontend `ec0679d241a05e36` and PWA `5a9d6b9cd799fbc7` at the existing installed URL. The accepted canary and its predecessors retain their immutable paths. The completed pending record was archived with the owner acceptance receipt.

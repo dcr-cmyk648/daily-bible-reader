@@ -1,3 +1,9 @@
+## 2026-11-24 — Henry refresh canary selected for the primary Pages reader
+
+The owner reported an installed-iPhone pass for canary `d9f2bcfa19fad412` from `89afa66` and explicitly approved promotion. Individual checklist steps were not reported. The documented Pages publisher selected frontend `ec0679d241a05e36` and PWA `5a9d6b9cd799fbc7` at the existing installed URL. The accepted canary and its predecessors retain their immutable paths. The completed pending record was archived with the owner acceptance receipt.
+
+The previous selected Pages frontend `844ce06fb805f5f4` and PWA `8fcefb5ae56b5def` are the public rollback pair. Commit `6b2df73` contains their exact selected manifests, launcher, and service worker. Restore those selected files from that commit to roll back Pages. Apps Script version 23 remains the independent installed rollback.
+
 ## 2026-11-24T14:42:13.137Z — Forward Henry wakes repaired and four reviewed layers published
 
 At 01:08 Eastern the primary wake stopped after status showed November 24 published. The fallback identified Genesis 44 as the next eligible reading. The 04:05 schedule recorded a 04:06 dispatch with no corresponding Codex thread, queued turn, or rollout.

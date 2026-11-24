@@ -13,6 +13,25 @@ October 11. Actual installed ChatGPT preflight passed for both models. GEN19 and
 the paired Psalm 4/Proverbs reading subsequently passed independent review, exact
 publication readback and complete-service health; see PROJECT_STATE and private receipts.
 
+## November 24 scheduled forward launches
+
+At 01:05 and 04:05 Eastern, the primary schedule submits the exact receipt-bound
+`author-run` command through normal approval review. It uses the controller's
+terminal result to determine whether work exists. The status command lists
+existing jobs, so a published reading for today does not settle the forward queue.
+The controller selects the earliest eligible prepared reading through T+7 and
+authors up to three readings within its existing run budget.
+
+At 01:45 and 04:45, the fallback schedule runs its existing command first. Native
+fallback takes over an eligible model failure. If the controller returns
+`awaiting_primary`, `scripts/check-henry-primary-slot.mjs` can confirm a missed
+scheduler slot or a recorded dispatch with no Codex thread, queued turn, or
+rollout. Only then may the scheduled coordinator submit the same primary command
+through normal approval review. A primary turn that did start, an unresolved
+approval denial, or unavailable evidence prevents this catch-up. A delayed
+primary wake yields at the fallback boundary. The installed controller retains
+ownership, model binding, unfinished-execution, and budget checks.
+
 ## October 31 ordinary author scope — local candidate
 
 Ordinary `author-run` sessions constrain selection and maintenance to the current

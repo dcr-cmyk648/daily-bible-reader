@@ -2895,7 +2895,7 @@
 
   async function persistPrivatePayload(readingId, payload, request) {
     const context = captureReadingView(readingId);
-    if (request && !privatePayloadRequests.isCurrent(readingId, request)) return false;
+    if (request && !privatePayloadRequests.canAccept(readingId, request)) return false;
     const entry = state.plan && state.plan.entries.find(item => item.readingId === readingId);
     const commentary = payload && (payload.commentary || payload.metadata);
     if (!entry || !commentary || commentary.readingId !== readingId) {
@@ -2904,6 +2904,7 @@
     if (!privatePayloadIsPrepared(payload, entry)) {
       throw appError("The fresh private study is not a validated prepared reading.", "CONTENT_INVALID");
     }
+    if (request) privatePayloadRequests.accept(readingId, request);
     const previous = state.privatePayloadByReadingId.get(readingId);
     state.privatePayloadByReadingId.set(readingId, payload);
     const maxAgeSeconds = Number(state.config && state.config.privateContentCacheMaxAgeSeconds || 0);
@@ -3105,14 +3106,30 @@
 
   function createPrivatePayloadRequestTracker() {
     const latest = new Map();
+    let epoch = 0;
+    let sequence = 0;
+    function canAccept(readingId, request) {
+      const current = latest.get(readingId);
+      return request.epoch === epoch && request.readingIds.has(readingId) &&
+        (!current || current.sequence <= request.sequence);
+    }
     return {
-      begin(readingIds) {
-        const request = {};
-        for (const readingId of readingIds) latest.set(readingId, request);
+      begin(readingIds, {supersedeOnStart = true} = {}) {
+        const request = {epoch, sequence: ++sequence, readingIds: new Set(readingIds)};
+        if (supersedeOnStart) {
+          for (const readingId of request.readingIds) latest.set(readingId, request);
+        }
         return request;
       },
+      canAccept,
+      accept(readingId, request) {
+        latest.set(readingId, request);
+      },
       isCurrent(readingId, request) { return latest.get(readingId) === request; },
-      clear() { latest.clear(); }
+      clear() {
+        epoch += 1;
+        latest.clear();
+      }
     };
   }
 
@@ -4449,7 +4466,8 @@
         // authorization so a newly reviewed synthesis or Henry runtime replaces an
         // older cached placeholder without waiting for its retention age to expire.
         const readingIds = preparedEntries.map((entry) => entry.readingId);
-        const request = privatePayloadRequests.begin(readingIds);
+        // A slow or failed pack must not displace an in-flight priority or open-reading refresh.
+        const request = privatePayloadRequests.begin(readingIds, {supersedeOnStart: false});
         const batch = await state.adapter.getReadingPayloads(readingIds);
         if (!batch || batch.planVersion !== state.plan.planVersion ||
             !batch.payloads || typeof batch.payloads !== "object") {

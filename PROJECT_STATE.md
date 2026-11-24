@@ -1,3 +1,11 @@
+## 2026-11-24 — Saved Henry refresh race repaired in an unselected canary
+
+The owner saw the saved full-commentary fallback for Genesis 43 on the installed iPhone and recovered the condensed layer with Sync. The selected PWA revalidates today and tomorrow after startup authorization and on return through `visibilitychange`, `pageshow`, or reconnect. The open reading has bounded retries and a manual Sync path. The Pages manifest tracks public code. The client compares private revisions after fetching the reading payload. The app has no periodic content poll or publication-pointer event.
+
+An isolated 390 × 844 replay of the selected Pages shell used fabricated Scripture and two retained fallback payloads. The eight-reading download started while the two-reading request was in flight. The old request tracker discarded the valid two-reading reply when the wider download claimed those IDs and then timed out. The saved versions still rendered the full-commentary fallback. The replay establishes the failure path. The phone's original network sequence was unavailable for inspection.
+
+The offline pack now supersedes a request only after its reading payload validates. Priority and open-reading ordering still prevents stale results from canceling newer checks. The regression failed before the fix and passed afterward. Canary `d9f2bcfa19fad412` and frontend `ec0679d241a05e36` passed the same cold-launch replay plus independent visibility and `pageshow` refreshes for both readings. Automatic review rejected the standard Pages publish command while the iPhone gate was pending. The verified unselected canary is the handoff for that gate. It requires a cold launch, calendar and Scripture open, close/reopen, resume without manual Sync, and a temporary highlight write and verification.
+
 ## 2026-11-24 — Genesis 43 Henry display verified
 
 Authenticated v34 single and batch reading calls agreed. Genesis 43 returned 34 approved Henry verse records and Matthew 16 returned 28. Both included cited source excerpts and had no full-chapter fallback link. All 12 selected Pages assets matched the tracked bytes and expected MIME types. The live frontend `844ce06fb805f5f4` and PWA `8fcefb5ae56b5def` rendered the Genesis 43:1 paraphrase and its exact cited excerpt at 390 × 844.

@@ -218,9 +218,48 @@ test("out-of-order reading responses cannot replace a newer accepted payload", a
   assert.equal(tracker.isCurrent("FABRICATED-READING-B", oldRequest), true);
 });
 
+test("a failed offline-pack download does not discard a valid priority refresh", async () => {
+  const readingId = "FABRICATED-READING-A";
+  const tracker = app.createPrivatePayloadRequestTracker();
+  const priority = tracker.begin([readingId]);
+  const pack = tracker.begin([readingId, "FABRICATED-READING-B"], {supersedeOnStart: false});
+  const fixture = require("./helpers/preparation-fixture.js").preparationFixture();
+  const entry = {...fixture.entries[0], readingId};
+  const fallback = fixture.fallback(entry);
+  const fresh = fixture.payload(entry);
+  const h = setup(async () => ({state: "refreshed"}));
+  const p = persistenceSandbox(tracker, h.controller, fallback);
+
+  assert.equal(await p.persist(readingId, fresh, priority), true);
+  await assert.rejects(p.persist(readingId, {commentary: {readingId}, sources: []}, pack), {code: "CONTENT_INVALID"});
+  assert.equal(tracker.isCurrent(readingId, priority), true);
+  assert.equal(p.state.privatePayloadByReadingId.get(readingId), fresh);
+  assert.deepEqual(p.rendered, [fresh.commentary]);
+});
+
+test("a validated offline-pack result supersedes earlier requests for its own reading", async () => {
+  const readingId = "FABRICATED-READING-A";
+  const otherReading = "FABRICATED-READING-B";
+  const tracker = app.createPrivatePayloadRequestTracker();
+  const priority = tracker.begin([readingId, otherReading]);
+  const pack = tracker.begin([readingId, otherReading], {supersedeOnStart: false});
+  const fixture = require("./helpers/preparation-fixture.js").preparationFixture();
+  const entry = {...fixture.entries[0], readingId};
+  const fallback = fixture.fallback(entry);
+  const fresh = fixture.payload(entry);
+  const h = setup(async () => ({state: "refreshed"}));
+  const p = persistenceSandbox(tracker, h.controller, fallback);
+
+  assert.equal(await p.persist(readingId, fresh, pack), true);
+  assert.equal(await p.persist(readingId, fallback, priority), false);
+  assert.equal(tracker.isCurrent(otherReading, priority), true);
+  assert.equal(p.state.privatePayloadByReadingId.get(readingId), fresh);
+  assert.deepEqual(p.rendered, [fresh.commentary]);
+});
+
 test("credential or cache reset invalidates every outstanding private download", async () => {
   const tracker = app.createPrivatePayloadRequestTracker();
-  const request = tracker.begin(["FABRICATED-READING-A"]);
+  const request = tracker.begin(["FABRICATED-READING-A"], {supersedeOnStart: false});
   const old = {metadata: {readingId: "FABRICATED-READING-A", commentaryVersion: "fabricated/old"}};
   const h = setup(async () => ({state: "refreshed"}));
   const p = persistenceSandbox(tracker, h.controller, old);
